@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Notes</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<div class="app">
+			<aside class="sidebar">
+				<header class="sidebar-head">
+					<h1>Notes</h1>
+					<form id="new-form" autocomplete="off">
+						<input
+							id="new-name"
+							name="name"
+							type="text"
+							placeholder="New note"
+							aria-label="Name of the new note"
+							spellcheck="false"
+						/>
+						<button id="new-button" type="submit">Add</button>
+					</form>
+				</header>
+				<ul id="notes" class="notes" aria-label="Notes"></ul>
+				<p class="hint">↑ ↓ to move · Enter to open</p>
+			</aside>
+
+			<main class="editor">
+				<div class="toolbar">
+					<h2 id="title">No note selected</h2>
+					<span id="status" class="status" role="status" aria-live="polite"></span>
+					<button id="save" type="button" disabled>Save <kbd>⌘S</kbd></button>
+				</div>
+				<textarea
+					id="body"
+					aria-labelledby="title"
+					placeholder="Select a note, or add one on the left."
+					spellcheck="true"
+					disabled
+				></textarea>
+			</main>
+		</div>
+		<!-- Served from /app.js by the bridge; a built app embeds it. No inline
+		script, no style, no external request. -->
+		<script src="/app.js"></script>
+	</body>
+</html>
