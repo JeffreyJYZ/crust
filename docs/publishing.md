@@ -34,29 +34,26 @@ One `PASS`/`FAIL` line per assertion, a verdict line with the tarball size, and 
 
 The script runs as `bun run verify:package`. It is not in CI yet — no `.github/workflows/` exists — but nothing in it is macOS-specific (`tar`, `bun pm pack`, `bun add` and a temp directory), so a workflow step would work as it stands.
 
-## What it found on 2026-11-13
+## What it found, and what closed it
 
-Two gaps, both reproducible from the tarball, neither fixed by the lane that found them because both need `package.json`, which that lane did not own.
+The first run of `verify-package` on `0.1.0` failed 7 of 32 checks, and every install-phase failure traced to one defect. Both are fixed; the account stays because the failure mode is the reason the script exists.
 
-**`docs/` is not shipped.** Every `docs/*.md` is missing — the 8 pages present on 2026-11-13, this one included. `README.md` links into `docs/`, so every one of those links is dead in an installed package. Fix: add `"docs"` to `files`.
+**`docs/` was not shipped.** Every `docs/*.md` was missing, and `README.md` links into `docs/`, so every one of those links was dead in an installed package.
 
-**The package cannot load itself.** 15 of its 57 shipped TypeScript files import through the `@/…` alias, which resolves only through `paths` in `tsconfig.json` — and `tsconfig.json` is not in `files`. The installed package therefore fails before it starts:
+**The package could not load itself.** 15 of its 57 shipped TypeScript files import through the `@/…` alias, which resolves only through `paths` in `tsconfig.json` — and `tsconfig.json` was not in `files`. An installed copy therefore failed before it started:
 
 ```
-crust --help                                  → Cannot find module '@/config' from …/crust/src/cli/build.ts
-import "crust"                                → Cannot find module '@/bridge/errors' from …/crust/src/app.ts
-import "crust/plugin"                         → OK
-import "crust/vite"                           → OK
+crust --help          → Cannot find module '@/config' from …/crust/src/cli/build.ts
+import "crust"        → Cannot find module '@/bridge/errors' from …/crust/src/app.ts
+import "crust/plugin" → OK
+import "crust/vite"   → OK
 ```
 
-The two `exports` entries that work are the two subtrees with no alias imports; the plugin and vite modules never pull in `app.ts`, `config` or the bridge. So the failure is not "the package is broken everywhere", it is "every path that reaches the runtime is broken", which is to say all of them.
+The two `exports` entries that worked were the two subtrees with no alias imports; the plugin and vite modules never pull in `app.ts`, `config` or the bridge. So the failure was not "the package is broken everywhere", it was "every path that reaches the runtime is broken", which is to say all of them.
 
-Both fixes were measured rather than assumed:
+Closed by shipping `tsconfig.json` — one line in `files` — which was measured before the edit: copying it into `node_modules/crust/` made `crust --help` print its usage and `import "crust"` return the app exports. The alternative, rewriting `@/x` to relative imports, removes the dependency on the alias ever travelling; it was not taken because the alias is 16 files wide and the config is one line. The script now reads the shipped files for alias imports, so an install that carries one without its `paths` fails the check.
 
-- **Ship `tsconfig.json`.** Copying it into `node_modules/crust/` makes `crust --help` print its usage and `import "crust"` return the app exports. One line in `files`.
-- **Rewrite `@/x` to a relative import.** No config needed at all, and no chance of the alias and the tarball drifting apart again. Larger diff, and `bun check` catches a mistake immediately.
-
-Either way the assertion already exists: the script reads the shipped files for alias imports and refuses to pass while the alias ships without its `paths`.
+`verify-package` passes 32 of 32 at `0.1.1`, tarball 162.2 KiB.
 
 ## Shipping crust as one binary
 
@@ -101,7 +98,7 @@ AOT is not faster — a 300M-iteration loop ran 215.2 ms against 211.9 ms, so no
 
 `crust init` writes `link:<dir>` when crust's own directory has a `.git`, and `github:JeffreyJYZ/crust` otherwise. An installed package has no `.git`, so a scaffold made from the tarball names the GitHub repo instead of the registry — correct while `crust` is unpublished, and worth re-reading the moment it is, because a scaffold should then pin `^<version>` like any other dependency. The script asserts only the property that matters here: the pin is not a `link:` or `file:` path inside `node_modules`, which would work until a cache prune and then fail to install.
 
-`templates/react` also ships no `gitignore` (the other two do), so an app scaffolded with `--react` has no `.gitignore` and will happily commit `node_modules` and `dist`. The script notes it rather than failing, because a template's contents are not a package boundary.
+All three templates ship a `gitignore`, renamed to `.gitignore` on copy — npm renames a nested `.gitignore` when packing, so the template keeps it under the plain name. The script asserts the rename happened rather than the file merely existing, because a scaffold without one commits `node_modules` on the user's first `git add`.
 
 ## When you change `files` or `exports`
 
