@@ -10,17 +10,30 @@
  * `open`, which routes through LaunchServices and hides which process ran.
  *
  * The app has two windows, so "a different label" is a real second window and
- * not the same one under another name. The page calls every command through
- * `window.crust.invoke` and reports each answer to the backend, which prints it:
- * one stream then holds the page's observables and this process's own lines, and
- * the count of those report lines is an assertion — a page that never ran cannot
- * pass by exiting 0 with an empty log.
+ * not the same one under another name. `other` runs the driver page and `main`
+ * is the spare: `create` reusing a closed label needs the platform to drop its
+ * stale entry, and that is proved on `main` while the driver stays alive. The
+ * page calls every command through `window.crust.invoke` and reports each answer
+ * to the backend, which prints it: one stream then holds the page's observables
+ * and this process's own lines, and the count of those report lines is an
+ * assertion — a page that never ran cannot pass by exiting 0 with an empty log.
  *
  * What the page sees is asserted as measured, not as intended. An unknown label
  * is a *resolved* `{ ok: false, code: "unknown-window" }`, because the plugin
  * converts the adapter's throw; a *rejected* invoke is what an unknown command
  * produces. Both shapes are pinned below, so the difference cannot drift
  * silently.
+ *
+ * `create` is proved from both ends. The page that asks for a window only sees
+ * the plugin's answer, so the created windows load a document that runs the
+ * same `app.js` in its own page context and reports back: its own URL and the
+ * answer its own `invoke` got. That is what turns "a second NSWindow exists"
+ * into an observation, and it is also how URL resolution is checked — the
+ * relative request is resolved against the document the platform recorded for
+ * an open window (`/spare/idle.html`, not this page's `/`), so the child must
+ * land on `/spare/child/…`; an absolute one must load exactly as given. The
+ * driver waits for those reports through a backend command (`seen`), so a
+ * window that never loaded its page fails here instead of racing the close.
  *
  * Usage:
  *   bun scripts/e2e-window.ts    # or `bun run e2e:window` once package.json defines it
@@ -60,33 +73,54 @@ const APP_NAME = "Window crust";
 const FALLBACK_DEPENDENCY = REPO_ROOT;
 
 /**
- * The two windows: `main` serves the driver page, `other` is a second label a
- * page can focus and close. Two windows is the point — `focus` on a different
- * label must reach a different `NSWindow`, not the same one renamed.
+ * The two configured windows, and which one drives the page.
+ *
+ * `other` serves the driver and `main` is a spare. Two windows is the point:
+ * `focus` on a different label must reach a different `NSWindow`, not the same
+ * one renamed. The driver must never sit in the window `create` is tested
+ * against — closing it kills the page mid-proof — so the spare goes first in the
+ * list, which is also the order `window-all-closed` checks: it calls
+ * `platform.window(label)` per configured label and stops at the first open one,
+ * so `main` is examined (and a closed `main` pruned) while the driver is alive.
+ *
+ * `main` loads `/spare/idle.html` rather than `/idle.html` on purpose, and it is
+ * the only reason for that subdirectory: `create` with a relative URL resolves
+ * against the document the platform recorded for an open window, and `main` is
+ * the first of the two, so a path-relative request must land under `/spare/`.
+ * At `/` the recorded base and this page's own `/` would coincide and the
+ * resolution would be unobservable.
  */
 const CONFIG_SOURCE = `import type { CrustConfig } from "crust";
 
 export default {
 	app: { id: "land.jyz.e2e-window", name: ${JSON.stringify(APP_NAME)}, version: "0.1.0" },
 	windows: [
-		{ label: "main", url: "/", width: 900, height: 640, title: ${JSON.stringify(APP_NAME)} },
-		{ label: "other", url: "/idle.html", width: 420, height: 280, title: "Idle" },
+		{ label: "main", url: "/spare/idle.html", width: 420, height: 280, title: "Spare" },
+		{ label: "other", url: "/", width: 900, height: 640, title: ${JSON.stringify(APP_NAME)} },
 	],
 } satisfies CrustConfig;
 `;
 
 /**
  * The backend. `report` is the page's channel: one line per window answer, on
- * this process's stdout, which is the log the proof reads. `window-all-closed`
- * is what must run after the page closes the second window.
+ * this process's stdout, which is the log the proof reads. `seen` hands the tags
+ * recorded so far back to the page, so the driver can wait for a *created*
+ * window's page to report before closing the window it is proving.
+ * `window-all-closed` is what must run after the page closes the second window.
  */
 const MAIN_SOURCE = `import { app } from "crust";
 
+const reported = [];
+
 app.command("report", (args) => {
 	const line = typeof args.line === "string" ? args.line : "";
+	const tag = line.split(" ")[0];
+	if (tag) reported.push(tag);
 	console.log(\`  page      \${line}\`);
 	return "printed";
 });
+
+app.command("seen", () => [...reported]);
 
 app.on("window-all-closed", () => {
 	console.log("  window    every window closed; quitting");
@@ -111,7 +145,12 @@ const INDEX_SOURCE = `<!doctype html>
 </html>
 `;
 
-/** The second window's page: served, alive, and deliberately script-free. */
+/**
+ * The spare window's page: served from `/spare/`, alive, and deliberately
+ * script-free, so a window created with `url: "/spare/idle.html"` runs nothing
+ * and cannot report twice. Its path is what a relative `create` URL is resolved
+ * against; see `CONFIG_SOURCE`.
+ */
 const IDLE_SOURCE = `<!doctype html>
 <html>
 	<head>
@@ -165,6 +204,56 @@ function report(tag, answer) {
 	return window.crust.invoke("report", { line: tag + " " + JSON.stringify(answer) });
 }
 
+function delay(ms) {
+	return new Promise(function (resolve) {
+		setTimeout(resolve, ms);
+	});
+}
+
+// The tags the backend has printed so far. A created window's page reports on
+// its own time, so the driver waits on this instead of guessing a delay.
+function seen() {
+	return window.crust.invoke("seen", {});
+}
+
+async function appeared(tag, timeoutMs) {
+	var deadline = Date.now() + timeoutMs;
+	for (;;) {
+		var tags = await seen();
+		if (Array.isArray(tags) && tags.indexOf(tag) !== -1) return true;
+		if (Date.now() > deadline) return false;
+		await delay(50);
+	}
+}
+
+// The probe a created window's page runs: this script reached a *different*
+// page context, so its own invoke is the proof the bridge document loaded there
+// with the app's token. Both facts go in one report, so nothing can arrive
+// after the window is closed.
+async function child() {
+	var parts = location.pathname.split("/");
+	var label = parts[parts.length - 1];
+	var open = await ask("window", "isOpen", { label: label });
+	await report("child." + label, {
+		how: "resolved",
+		value: { href: location.href, open: open },
+	});
+}
+
+// list() reports only windows AppKit still holds, so a closed label is gone from
+// it at once. This poll is the bound on that claim, not a delay: the page waits
+// for the label to disappear before asking for it again, and gives up loudly.
+async function released(label, timeoutMs) {
+	var deadline = Date.now() + timeoutMs;
+	for (;;) {
+		var answer = await ask("window", "list");
+		var labels = answer.how === "resolved" && answer.value && answer.value.labels;
+		if (labels && labels.indexOf(label) === -1) return { how: "resolved", value: true };
+		if (Date.now() > deadline) return { how: "resolved", value: false };
+		await delay(50);
+	}
+}
+
 async function main() {
 	await report("list0", await ask("window", "list"));
 	await report("main0", await ask("window", "isOpen", { label: "main" }));
@@ -180,16 +269,128 @@ async function main() {
 	await report("unknown", await ask("window", "doesNotExist", {}));
 	await report("badlabel", await ask("window", "isOpen", { label: 42 }));
 	await report("alive", await ask("window", "list"));
+
+	// ---- a created window is a real second NSWindow ----------------------
+	// Every create below runs while the pump is ticking: a page's invoke is
+	// delivered by that pump, so an answer here has already crossed it.
+	//
+	// "child/relative" has no leading slash on purpose. The adapter resolves a
+	// relative url against the document the platform recorded for an open window
+	// — /spare/idle.html, not this page's / — so it must land on
+	// /spare/child/relative and not /child/relative. A relative string handed to
+	// NSURL unchanged becomes about:blank, so a window made from one would run no
+	// page at all.
+	await report(
+		"createrel",
+		await ask("window", "create", {
+			label: "relative",
+			title: "Relative child",
+			width: 460,
+			height: 300,
+			url: "child/relative",
+		}),
+	);
+	// An absolute url is handed through as given: the same origin, a path no
+	// resolver could have invented from this page's own location.
+	await report(
+		"createabs",
+		await ask("window", "create", {
+			label: "absolute",
+			title: "Absolute child",
+			width: 460,
+			height: 300,
+			url: location.origin + "/spare/child/absolute",
+		}),
+	);
+	// Each child page reports on its own time; these two polls are the bound on
+	// that, and a window that never loaded its document answers false here
+	// rather than passing on the create's own ok.
+	await report("sawrelative", { how: "resolved", value: await appeared("child.relative", 5000) });
+	await report("sawabsolute", { how: "resolved", value: await appeared("child.absolute", 5000) });
+	await report("lists2", await ask("window", "list"));
+	await report("childopen", await ask("window", "isOpen", { label: "relative" }));
+	await report(
+		"childtitle",
+		await ask("window", "setTitle", { label: "relative", title: "Relative titled" }),
+	);
+	await report("childclose", await ask("window", "close", { label: "relative" }));
+	await report("childgone", await ask("window", "isOpen", { label: "relative" }));
+	await report("absclose", await ask("window", "close", { label: "absolute" }));
+	await report("absgone", await ask("window", "isOpen", { label: "absolute" }));
+	await report("tidied", await ask("window", "list"));
+
+	// A closed window, then the same label again: the release the adapter's
+	// create depends on. Only the spare may be closed here — the driver's own
+	// window is closed last, because after that this page is gone.
 	await report("closemain", await ask("window", "close", { label: "main" }));
 	await report("mainafter", await ask("window", "isOpen", { label: "main" }));
 	await report("otherstill", await ask("window", "isOpen", { label: "other" }));
+	await report("released", await released("main", 2000));
+	await report(
+		"recreate",
+		await ask("window", "create", {
+			label: "main",
+			title: "Reopened main",
+			width: 520,
+			height: 300,
+			url: "/spare/child/main",
+		}),
+	);
+	// The re-created label loads its document again, and that page says so from
+	// its own context: same label, a window that is open again, a fresh page.
+	await report("sawreopen", { how: "resolved", value: await appeared("child.main", 5000) });
+	await report("relist", await ask("window", "list"));
+	await report("reopenopen", await ask("window", "isOpen", { label: "main" }));
+	await report(
+		"reopenset",
+		await ask("window", "setTitle", { label: "main", title: "Reopened and titled" }),
+	);
+
+	// A live label is refused, and nothing is released to make room for it.
+	await report("dup", await ask("window", "create", { label: "main", url: "/spare/idle.html" }));
+	await report("duplist", await ask("window", "list"));
+	await report("dupafter", await ask("window", "isOpen", { label: "main" }));
+
+	// A label that never existed: created, found by every other command, closed.
+	await report(
+		"create",
+		await ask("window", "create", {
+			label: "spawn",
+			title: "Spawned by the page",
+			width: 500,
+			height: 320,
+			url: "/spare/idle.html",
+		}),
+	);
+	await report("lists", await ask("window", "list"));
+	await report("spawnopen", await ask("window", "isOpen", { label: "spawn" }));
+	await report("spawnset", await ask("window", "setTitle", { label: "spawn", title: "Spawn titled" }));
+	await report("spawnclose", await ask("window", "close", { label: "spawn" }));
+	await report("spawngone", await ask("window", "isOpen", { label: "spawn" }));
+
+	// Refused arguments, not clamped or coerced: no window is built for any of
+	// them. A fractional size is the case a cast would silently round, so it gets
+	// its own answer; the list afterwards proves no refusal left one behind.
+	await report("badsize", await ask("window", "create", { label: "tiny", width: 0 }));
+	await report("badfraction", await ask("window", "create", { label: "fraction", width: 12.5 }));
+	await report("badurl", await ask("window", "create", { label: "nowhere", url: "" }));
+	await report("reflist", await ask("window", "list"));
+
+	await report("closeagain", await ask("window", "close", { label: "main" }));
+	await report("maingone", await ask("window", "isOpen", { label: "main" }));
 	await report("closing", { how: "resolved", value: "close other" });
 	await ask("window", "close", { label: "other" });
 }
 
-main().catch(function (error) {
-	// A driver that throws must not look like a quiet pass: one more line, and
-	// the count assertion fails with this reason beside it.
+// The driver is served at "/" and runs the whole sequence. A window created with
+// a /child/<label> document runs this same script in *its own* page context and
+// takes the probe branch instead — that is what makes "the child's own invoke
+// answers" an observation rather than an assumption.
+var CHILD = location.pathname.indexOf("/child/") !== -1;
+
+(CHILD ? child() : main()).catch(function (error) {
+	// A page that throws must not look like a quiet pass: one more line, and the
+	// tag assertion fails with this reason beside it.
 	report("crash", { how: "threw", message: String((error && error.message) || error) });
 });
 `;
@@ -213,10 +414,109 @@ const EXPECTED_TAGS = [
 	"unknown",
 	"badlabel",
 	"alive",
+	"createrel",
+	"createabs",
+	"sawrelative",
+	"child.relative",
+	"sawabsolute",
+	"child.absolute",
+	"lists2",
+	"childopen",
+	"childtitle",
+	"childclose",
+	"childgone",
+	"absclose",
+	"absgone",
+	"tidied",
 	"closemain",
 	"mainafter",
 	"otherstill",
+	"released",
+	"recreate",
+	"sawreopen",
+	"child.main",
+	"relist",
+	"reopenopen",
+	"reopenset",
+	"dup",
+	"duplist",
+	"dupafter",
+	"create",
+	"lists",
+	"spawnopen",
+	"spawnset",
+	"spawnclose",
+	"spawngone",
+	"badsize",
+	"badfraction",
+	"badurl",
+	"reflist",
+	"closeagain",
+	"maingone",
 	"closing",
+] as const;
+
+/**
+ * The assertions that read those answers, in one place: a build that never ran
+ * must report each of them as unchecked, and a drifted name must not silently
+ * vanish from that list.
+ */
+const WINDOW_CHECKS = [
+	"list open",
+	"isOpen main",
+	"isOpen other",
+	"ghost absent",
+	"isOpen ghost",
+	"setTitle",
+	"setTitle bad",
+	"focus",
+	"focus twice",
+	"focus other",
+	"focus ghost",
+	"after focus",
+	"unknown cmd",
+	"bad label",
+	"alive after",
+	"create relative",
+	"child relative",
+	"create absolute",
+	"child absolute",
+	"child waited",
+	"list children",
+	"child open",
+	"child title",
+	"child close",
+	"child gone",
+	"absolute close",
+	"absolute gone",
+	"tidy",
+	"close main",
+	"isOpen closed",
+	"other still",
+	"released",
+	"recreate",
+	"reopen loads",
+	"relist",
+	"reopen open",
+	"reopen title",
+	"duplicate",
+	"duplicate list",
+	"duplicate kept",
+	"create",
+	"list after create",
+	"spawn open",
+	"spawn title",
+	"spawn close",
+	"spawn gone",
+	"bad size",
+	"bad fraction",
+	"bad url",
+	"refused nothing",
+	"close again",
+	"close again gone",
+	"all closed",
+	"exit 0",
+	"no survivors",
 ] as const;
 
 /** The backend's own line once every window is closed. */
@@ -232,8 +532,12 @@ const ALL_CLOSED = /window\s+every window closed; quitting/;
  */
 const WAIT_FOR_EXIT = /(?!)/;
 
-/** Two windows plus WebKit's web processes and the shim compile; measured ~2 s. */
-const APP_TIMEOUT_MS = 25_000;
+/**
+ * Two windows plus WebKit's web processes, four created windows and the shim
+ * compile; measured ~3 s. The headroom covers the pages' own report waits, which
+ * only run long when something is already broken.
+ */
+const APP_TIMEOUT_MS = 40_000;
 
 function seconds(ms: number | null): string {
 	return ms === null ? "no exit" : `${(ms / 1000).toFixed(2)} s`;
@@ -278,13 +582,77 @@ function resolved(answer: PageAnswer | undefined): Record<string, unknown> | und
 		: undefined;
 }
 
+/** A resolved `list` answer's labels, or undefined when it is not one. */
+function labelsOf(answer: PageAnswer | undefined): string[] | undefined {
+	const labels = resolved(answer)?.labels;
+	if (!Array.isArray(labels)) return undefined;
+	return labels.every((label) => typeof label === "string") ? (labels as string[]) : undefined;
+}
+
+/** Whether `list` answered exactly this set of labels. */
+function sameLabels(answer: PageAnswer | undefined, expected: readonly string[]): boolean {
+	const labels = labelsOf(answer);
+	if (labels === undefined || labels.length !== expected.length) return false;
+	return [...labels].sort().join("\n") === [...expected].sort().join("\n");
+}
+
+/** The origin of an absolute URL, or undefined when it is not one. */
+function originOf(href: string): string | undefined {
+	try {
+		return new URL(href).origin;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * What a created window's own page reported: the document it loaded, and the
+ * answer its own `invoke` got. Absent means that page never ran, which is the
+ * first thing the child checks below fail on.
+ */
+interface ChildReport {
+	href: string;
+	open?: PageAnswer;
+}
+
+function childReport(answer: PageAnswer | undefined): ChildReport | undefined {
+	// `resolved` already unwraps the answer's `value`, which is the object the
+	// child page built: `{ href, open }`.
+	const value = resolved(answer);
+	if (typeof value !== "object" || value === null) return undefined;
+	const bag = value as { href?: unknown; open?: unknown };
+	if (typeof bag.href !== "string") return undefined;
+	const open =
+		typeof bag.open === "object" && bag.open !== null ? (bag.open as PageAnswer) : undefined;
+	return { href: bag.href, open };
+}
+
+/**
+ * Whether the page was told the window is gone.
+ *
+ * Measured, and it is the only truthful answer today: the platform reports only
+ * the windows AppKit still holds, so a closed label is absent from `list`, and
+ * the plugin's own existence check answers `unknown-window` before `isOpen` can
+ * report `open: false`. That branch is unreachable from a page — `window.test.ts`'s
+ * fake still models the older "closed but listed, number 0" platform, which is why
+ * the unit test sees `open: false` and this proof cannot.
+ */
+function goneAnswer(answer: PageAnswer | undefined): boolean {
+	const value = resolved(answer);
+	return value?.ok === false && value?.code === "unknown-window";
+}
+
 /** A short, single-line form of anything, for a verdict detail. */
 function show(value: unknown): string {
 	let text: string;
-	try {
-		text = typeof value === "string" ? value : JSON.stringify(value);
-	} catch {
-		text = String(value);
+	if (typeof value === "string") {
+		text = value;
+	} else {
+		try {
+			text = JSON.stringify(value) ?? String(value);
+		} catch {
+			text = String(value);
+		}
 	}
 	return text.length > 140 ? `${text.slice(0, 137)}…` : text;
 }
@@ -323,11 +691,12 @@ async function sandbox(scratch: string): Promise<string> {
 	await mkdir(join(scratch, "node_modules"), { recursive: true });
 	await symlink(FALLBACK_DEPENDENCY, join(scratch, "node_modules", "crust"), "dir");
 	await mkdir(join(scratch, "public"), { recursive: true });
+	await mkdir(join(scratch, "public", "spare"), { recursive: true });
 	await writeFile(join(scratch, "crust.config.ts"), CONFIG_SOURCE, "utf8");
 	await writeFile(join(scratch, "main.ts"), MAIN_SOURCE, "utf8");
 	await writeFile(join(scratch, "public", "index.html"), INDEX_SOURCE, "utf8");
 	await writeFile(join(scratch, "public", "app.js"), PAGE_SOURCE, "utf8");
-	await writeFile(join(scratch, "public", "idle.html"), IDLE_SOURCE, "utf8");
+	await writeFile(join(scratch, "public", "spare", "idle.html"), IDLE_SOURCE, "utf8");
 	return join(scratch, "dist", `${APP_NAME}.app`, "Contents", "MacOS", BINARY_NAME);
 }
 
@@ -350,33 +719,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 	);
 	if (!buildOk) {
 		const why = "not checked — crust build failed";
-		for (const name of [
-			"bundle",
-			"binary",
-			"codesign",
-			"page lines",
-			"list open",
-			"isOpen main",
-			"isOpen other",
-			"ghost absent",
-			"isOpen ghost",
-			"setTitle",
-			"setTitle bad",
-			"focus",
-			"focus twice",
-			"focus other",
-			"focus ghost",
-			"after focus",
-			"unknown cmd",
-			"bad label",
-			"alive after",
-			"close main",
-			"isOpen closed",
-			"other still",
-			"all closed",
-			"exit 0",
-			"no survivors",
-		]) {
+		for (const name of ["bundle", "binary", "codesign", "page lines", ...WINDOW_CHECKS]) {
 			verdict.check(name, false, why);
 		}
 		if (!built) console.log(build.stdout + build.stderr);
@@ -436,11 +779,14 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 	// ---- 5. the page reported every step -----------------------------------
 	// This is the guard the whole proof rests on: a window that closed early, or a
 	// page that never loaded, leaves fewer lines and cannot pass on an exit alone.
+	// The count is exact in both directions, so a document that loaded twice — a
+	// child page reporting its create a second time — fails here too.
 	const missing = EXPECTED_TAGS.filter((tag) => !byTag.has(tag));
 	const extra = answers.filter(
 		(entry) => !(EXPECTED_TAGS as readonly string[]).includes(entry.tag),
 	);
-	const complete = missing.length === 0 && extra.length === 0;
+	const repeated = answers.length - byTag.size;
+	const complete = missing.length === 0 && extra.length === 0 && repeated === 0;
 	const countOk = verdict.check(
 		"page lines",
 		complete,
@@ -449,33 +795,12 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 			: `${answers.length} page answers — ` +
 					`${missing.length > 0 ? `missing ${missing.join(", ")}` : "none missing"}` +
 					`${extra.length > 0 ? `, unexpected ${extra.map((entry) => entry.tag).join(", ")}` : ""}` +
+					`${repeated > 0 ? `, ${repeated} reported twice` : ""}` +
 					` — ${exitLine}`,
 	);
 	if (!countOk) {
 		const why = `not checked — the page did not report every step (${exitLine})`;
-		for (const name of [
-			"list open",
-			"isOpen main",
-			"isOpen other",
-			"ghost absent",
-			"isOpen ghost",
-			"setTitle",
-			"setTitle bad",
-			"focus",
-			"focus twice",
-			"focus other",
-			"focus ghost",
-			"after focus",
-			"unknown cmd",
-			"bad label",
-			"alive after",
-			"close main",
-			"isOpen closed",
-			"other still",
-			"all closed",
-			"exit 0",
-			"no survivors",
-		]) {
+		for (const name of WINDOW_CHECKS) {
 			verdict.check(name, false, why);
 		}
 		if (answers.length === 0) console.log(run.stdout + run.stderr);
@@ -655,6 +980,165 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 			: `answered ${show(byTag.get("alive"))}`,
 	);
 
+	// ---- 10b. create: a real second NSWindow, and a document that runs ------
+	// The page that asked only sees the plugin's answer, so the created windows
+	// load a document that runs this same script in its own context and reports
+	// what it found: its URL, and the answer its *own* invoke got. A window whose
+	// webview never loaded the bridge document has no page to report with, and
+	// every check below fails together — which is the point: the plugin's `ok` is
+	// not evidence that an NSWindow exists.
+	const createRel = resolved(byTag.get("createrel"));
+	const createRelOk =
+		createRel?.ok === true && createRel?.created === true && createRel?.label === "relative";
+	verdict.check(
+		"create relative",
+		createRelOk,
+		createRelOk ? `answered ${show(createRel)}` : `page saw ${show(byTag.get("createrel"))}`,
+	);
+
+	const relativeChild = childReport(byTag.get("child.relative"));
+	const relativeOrigin = relativeChild === undefined ? undefined : originOf(relativeChild.href);
+	const relativeOpen = resolved(relativeChild?.open);
+	// The resolved URL, not the request: the base is the document `main` recorded
+	// (`/spare/idle.html`), so `/spare/` is in the answer and `/` would mean the
+	// request had been resolved against this page instead.
+	const relativePath = relativeChild?.href === `${relativeOrigin}/spare/child/relative`;
+	const relativeAsk =
+		relativeOpen?.ok === true &&
+		relativeOpen?.label === "relative" &&
+		relativeOpen?.open === true;
+	const relativeOk = relativeOrigin !== undefined && relativePath && relativeAsk;
+	verdict.check(
+		"child relative",
+		relativeOk,
+		relativeOk
+			? `a second window loaded ${JSON.stringify(relativeChild?.href)} and its own invoke ` +
+					`answered ${show(relativeOpen)}`
+			: `href ${show(relativeChild?.href)} (resolved path ${relativePath}) from ` +
+					`${show(byTag.get("child.relative"))}, invoke ${show(relativeOpen)}`,
+	);
+
+	const createAbs = resolved(byTag.get("createabs"));
+	const createAbsOk =
+		createAbs?.ok === true && createAbs?.created === true && createAbs?.label === "absolute";
+	verdict.check(
+		"create absolute",
+		createAbsOk,
+		createAbsOk ? `answered ${show(createAbs)}` : `page saw ${show(byTag.get("createabs"))}`,
+	);
+
+	// An absolute URL loads as given: the exact document the page named, at the
+	// same origin as the resolved one. (A page cannot distinguish "passed through"
+	// from "resolved to the same absolute string", so what is asserted here is the
+	// load itself; `window.test.ts` pins the pass-through ordering against a
+	// platform double, where both candidates are visible.)
+	const absoluteChild = childReport(byTag.get("child.absolute"));
+	const absoluteOpen = resolved(absoluteChild?.open);
+	const absoluteOk =
+		relativeOrigin !== undefined &&
+		absoluteChild?.href === `${relativeOrigin}/spare/child/absolute` &&
+		absoluteOpen?.ok === true &&
+		absoluteOpen?.label === "absolute" &&
+		absoluteOpen?.open === true;
+	verdict.check(
+		"child absolute",
+		absoluteOk,
+		absoluteOk
+			? `loaded ${JSON.stringify(absoluteChild?.href)} and its own invoke answered ` +
+					`${show(absoluteOpen)}`
+			: `page saw ${show(byTag.get("child.absolute"))}`,
+	);
+
+	const sawRelative = byTag.get("sawrelative");
+	const sawAbsolute = byTag.get("sawabsolute");
+	const waitedOk =
+		sawRelative?.how === "resolved" &&
+		sawRelative?.value === true &&
+		sawAbsolute?.how === "resolved" &&
+		sawAbsolute?.value === true;
+	verdict.check(
+		"child waited",
+		waitedOk,
+		waitedOk
+			? "both created windows' pages reported before the driver went on"
+			: `waits answered ${show(sawRelative)} / ${show(sawAbsolute)}`,
+	);
+
+	// Both are tracked where every other command looks, which is what makes a
+	// created window usable rather than only open.
+	const lists2Ok = sameLabels(byTag.get("lists2"), ["main", "other", "relative", "absolute"]);
+	verdict.check(
+		"list children",
+		lists2Ok,
+		lists2Ok
+			? `labels ${show(labelsOf(byTag.get("lists2")))}`
+			: `list answered ${show(byTag.get("lists2"))}`,
+	);
+
+	const childOpen = resolved(byTag.get("childopen"));
+	verdict.check(
+		"child open",
+		childOpen?.open === true,
+		childOpen?.open === true
+			? "the created window reports open: true"
+			: `answered ${show(byTag.get("childopen"))}`,
+	);
+
+	const childTitle = resolved(byTag.get("childtitle"));
+	const childTitleOk = childTitle?.ok === true && childTitle?.title === "Relative titled";
+	verdict.check(
+		"child title",
+		childTitleOk,
+		childTitleOk
+			? `applied and read back ${JSON.stringify(childTitle?.title)}`
+			: `answered ${show(byTag.get("childtitle"))}`,
+	);
+
+	const childClose = resolved(byTag.get("childclose"));
+	const childCloseOk = childClose?.ok === true && childClose?.closed === true;
+	verdict.check(
+		"child close",
+		childCloseOk,
+		childCloseOk ? `answered ${show(childClose)}` : `answered ${show(byTag.get("childclose"))}`,
+	);
+
+	const childGone = goneAnswer(byTag.get("childgone"));
+	verdict.check(
+		"child gone",
+		childGone,
+		childGone
+			? `answered ${show(resolved(byTag.get("childgone")))}`
+			: `answered ${show(byTag.get("childgone"))}`,
+	);
+
+	const absClose = resolved(byTag.get("absclose"));
+	const absCloseOk = absClose?.ok === true && absClose?.closed === true;
+	verdict.check(
+		"absolute close",
+		absCloseOk,
+		absCloseOk ? `answered ${show(absClose)}` : `answered ${show(byTag.get("absclose"))}`,
+	);
+
+	const absGone = goneAnswer(byTag.get("absgone"));
+	verdict.check(
+		"absolute gone",
+		absGone,
+		absGone
+			? `answered ${show(resolved(byTag.get("absgone")))}`
+			: `answered ${show(byTag.get("absgone"))}`,
+	);
+
+	// Closed is closed: the two windows the app was configured with are all that
+	// is left, so a created window does not linger in the platform's map.
+	const tidiedOk = sameLabels(byTag.get("tidied"), ["main", "other"]);
+	verdict.check(
+		"tidy",
+		tidiedOk,
+		tidiedOk
+			? `labels ${show(labelsOf(byTag.get("tidied")))} after both children closed`
+			: `list answered ${show(byTag.get("tidied"))}`,
+	);
+
 	// ---- 11. close: state changes, and the last close ends the app ---------
 	const closeMain = resolved(byTag.get("closemain"));
 	const closed = closeMain?.ok === true && closeMain?.closed === true;
@@ -664,20 +1148,15 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 		closed ? `answered ${show(closeMain)}` : `answered ${show(byTag.get("closemain"))}`,
 	);
 
-	// `window-all-closed` polls every 250 ms and prunes a closed label from the
-	// platform's map, so the answer here is either "not open" or "no such window"
-	// — both mean closed. The measured shape is recorded rather than assumed; the
-	// prune window is sub-millisecond against a 250 ms tick, so `open: false` is
-	// what a run normally sees.
+	// The platform reports only windows AppKit still holds, so a closed label is
+	// already out of `list` — and the plugin answers from `list` first. The page's
+	// observable is therefore the typed failure, not `open: false`.
 	const mainAfter = byTag.get("mainafter");
-	const afterValue = resolved(mainAfter);
-	const notOpen =
-		(afterValue?.ok === true && afterValue?.open === false) ||
-		(afterValue?.ok === false && afterValue?.code === "unknown-window");
+	const notOpen = goneAnswer(mainAfter);
 	verdict.check(
 		"isOpen closed",
 		notOpen,
-		notOpen ? `answered ${show(afterValue)}` : `answered ${show(mainAfter)}`,
+		notOpen ? `answered ${show(resolved(mainAfter))}` : `answered ${show(mainAfter)}`,
 	);
 
 	// Closing one window is not "all closed": the other one keeps the app up, which
@@ -692,7 +1171,241 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 			: `answered ${show(byTag.get("otherstill"))}`,
 	);
 
-	// ---- 12. the app ended itself, having run window-all-closed -------------
+	// ---- 12. create: a released label comes back, a live one is refused -----
+	// `list` stops reporting a closed label immediately, so the page only has to
+	// confirm it: the label is reusable, and `create` is what drops the platform's
+	// stale entry for it (a tracked-but-closed label makes `createWindow` throw
+	// "already exists"). A label still open is refused instead — nothing released.
+	const released = byTag.get("released");
+	const releasedOk = released?.how === "resolved" && released?.value === true;
+	verdict.check(
+		"released",
+		releasedOk,
+		releasedOk
+			? "the closed label left the platform's list before create"
+			: `page saw ${show(released)}`,
+	);
+
+	const recreated = resolved(byTag.get("recreate"));
+	const recreateOk =
+		recreated?.ok === true && recreated?.created === true && recreated?.label === "main";
+	verdict.check(
+		"recreate",
+		recreateOk,
+		recreateOk
+			? `answered ${show(recreated)} — the released label was reusable`
+			: `page saw ${show(byTag.get("recreate"))}`,
+	);
+
+	// The re-created label loads its document again: the window's own page ran,
+	// and its own invoke found the window open under the same label. Without a
+	// fresh page there would be no `child.main` report at all.
+	const reopenChild = childReport(byTag.get("child.main"));
+	const reopenOrigin = reopenChild === undefined ? undefined : originOf(reopenChild.href);
+	const reopenPage = resolved(reopenChild?.open);
+	const reopenLoadsOk =
+		reopenOrigin !== undefined &&
+		reopenChild?.href === `${reopenOrigin}/spare/child/main` &&
+		reopenPage?.ok === true &&
+		reopenPage?.label === "main" &&
+		reopenPage?.open === true;
+	verdict.check(
+		"reopen loads",
+		reopenLoadsOk,
+		reopenLoadsOk
+			? `the reused label loaded ${JSON.stringify(reopenChild?.href)} and its page invokes ` +
+					`back ${show(reopenPage)}`
+			: `page saw ${show(byTag.get("child.main"))}`,
+	);
+
+	const relist = resolved(byTag.get("relist"));
+	const relabels = relist?.labels;
+	const relistOk =
+		Array.isArray(relabels) &&
+		relabels.length === 2 &&
+		relabels.includes("main") &&
+		relabels.includes("other");
+	verdict.check(
+		"relist",
+		relistOk,
+		relistOk ? `labels ${show(relabels)}` : `list answered ${show(byTag.get("relist"))}`,
+	);
+
+	const reopenOpen = resolved(byTag.get("reopenopen"));
+	verdict.check(
+		"reopen open",
+		reopenOpen?.open === true,
+		reopenOpen?.open === true
+			? "the re-created window reports open: true"
+			: `answered ${show(byTag.get("reopenopen"))}`,
+	);
+
+	const reopenTitle = resolved(byTag.get("reopenset"));
+	const reopenTitleOk = reopenTitle?.ok === true && reopenTitle?.title === "Reopened and titled";
+	verdict.check(
+		"reopen title",
+		reopenTitleOk,
+		reopenTitleOk
+			? `applied and read back ${JSON.stringify(reopenTitle?.title)}`
+			: `answered ${show(byTag.get("reopenset"))}`,
+	);
+
+	// A live label is refused before anything is released, so the window a page
+	// already holds cannot be replaced behind its back.
+	const duplicate = resolved(byTag.get("dup"));
+	const duplicateOk = duplicate?.ok === false && duplicate?.code === "duplicate-label";
+	verdict.check(
+		"duplicate",
+		duplicateOk,
+		duplicateOk
+			? `create on a live label answered ${show(duplicate)}`
+			: `page saw ${show(byTag.get("dup"))}`,
+	);
+
+	// Nothing was created either: a refused create must not leave an entry behind
+	// under the label it was refused for.
+	const dupListOk = sameLabels(byTag.get("duplist"), ["main", "other"]);
+	verdict.check(
+		"duplicate list",
+		dupListOk,
+		dupListOk
+			? `labels ${show(labelsOf(byTag.get("duplist")))} — unchanged`
+			: `list answered ${show(byTag.get("duplist"))}`,
+	);
+
+	const dupAfter = resolved(byTag.get("dupafter"));
+	verdict.check(
+		"duplicate kept",
+		dupAfter?.open === true,
+		dupAfter?.open === true
+			? "the refused label's window is still open — nothing was released"
+			: `answered ${show(byTag.get("dupafter"))}`,
+	);
+
+	// A label that never existed: created, found by `list`/`isOpen`, titled, closed.
+	const created = resolved(byTag.get("create"));
+	const createOk =
+		created?.ok === true && created?.created === true && created?.label === "spawn";
+	verdict.check(
+		"create",
+		createOk,
+		createOk ? `answered ${show(created)}` : `page saw ${show(byTag.get("create"))}`,
+	);
+
+	const lists = resolved(byTag.get("lists"));
+	const spawnLabels = lists?.labels;
+	const listsOk =
+		Array.isArray(spawnLabels) &&
+		spawnLabels.length === 3 &&
+		spawnLabels.includes("main") &&
+		spawnLabels.includes("other") &&
+		spawnLabels.includes("spawn");
+	verdict.check(
+		"list after create",
+		listsOk,
+		listsOk ? `labels ${show(spawnLabels)}` : `list answered ${show(byTag.get("lists"))}`,
+	);
+
+	const spawnOpen = resolved(byTag.get("spawnopen"));
+	verdict.check(
+		"spawn open",
+		spawnOpen?.open === true,
+		spawnOpen?.open === true
+			? "the created window reports open: true"
+			: `answered ${show(byTag.get("spawnopen"))}`,
+	);
+
+	const spawnTitle = resolved(byTag.get("spawnset"));
+	const spawnTitleOk = spawnTitle?.ok === true && spawnTitle?.title === "Spawn titled";
+	verdict.check(
+		"spawn title",
+		spawnTitleOk,
+		spawnTitleOk
+			? `applied and read back ${JSON.stringify(spawnTitle?.title)}`
+			: `answered ${show(byTag.get("spawnset"))}`,
+	);
+
+	const spawnClose = resolved(byTag.get("spawnclose"));
+	const spawnCloseOk = spawnClose?.ok === true && spawnClose?.closed === true;
+	verdict.check(
+		"spawn close",
+		spawnCloseOk,
+		spawnCloseOk ? `answered ${show(spawnClose)}` : `answered ${show(byTag.get("spawnclose"))}`,
+	);
+
+	const spawnGone = goneAnswer(byTag.get("spawngone"));
+	verdict.check(
+		"spawn gone",
+		spawnGone,
+		spawnGone
+			? `answered ${show(resolved(byTag.get("spawngone")))}`
+			: `answered ${show(byTag.get("spawngone"))}`,
+	);
+
+	// Refused arguments, not clamped or coerced: no window is built for either, so
+	// neither label is in the platform's map afterwards.
+	const badSize = resolved(byTag.get("badsize"));
+	const badSizeOk = badSize?.ok === false && badSize?.code === "invalid-size";
+	verdict.check(
+		"bad size",
+		badSizeOk,
+		badSizeOk ? `answered ${show(badSize)}` : `page saw ${show(byTag.get("badsize"))}`,
+	);
+
+	// A size a cast would have rounded is refused too, not turned into a window.
+	const badFraction = resolved(byTag.get("badfraction"));
+	const badFractionOk = badFraction?.ok === false && badFraction?.code === "invalid-size";
+	verdict.check(
+		"bad fraction",
+		badFractionOk,
+		badFractionOk
+			? `answered ${show(badFraction)}`
+			: `page saw ${show(byTag.get("badfraction"))}`,
+	);
+
+	const badUrl = resolved(byTag.get("badurl"));
+	const badUrlOk = badUrl?.ok === false && badUrl?.code === "invalid-url";
+	verdict.check(
+		"bad url",
+		badUrlOk,
+		badUrlOk ? `answered ${show(badUrl)}` : `page saw ${show(byTag.get("badurl"))}`,
+	);
+
+	// Every refused label was refused before a window existed: none of the three
+	// is in the platform's map, and the two configured labels are untouched.
+	const refusedList = labelsOf(byTag.get("reflist"));
+	const refusedOk =
+		sameLabels(byTag.get("reflist"), ["main", "other"]) &&
+		refusedList !== undefined &&
+		!refusedList.includes("tiny") &&
+		!refusedList.includes("fraction") &&
+		!refusedList.includes("nowhere");
+	verdict.check(
+		"refused nothing",
+		refusedOk,
+		refusedOk
+			? `labels ${show(refusedList)} — no window was built for a refused argument`
+			: `list answered ${show(byTag.get("reflist"))}`,
+	);
+
+	const closeAgain = resolved(byTag.get("closeagain"));
+	const closeAgainOk = closeAgain?.ok === true && closeAgain?.closed === true;
+	verdict.check(
+		"close again",
+		closeAgainOk,
+		closeAgainOk ? `answered ${show(closeAgain)}` : `answered ${show(byTag.get("closeagain"))}`,
+	);
+
+	const mainGone = goneAnswer(byTag.get("maingone"));
+	verdict.check(
+		"close again gone",
+		mainGone,
+		mainGone
+			? `answered ${show(resolved(byTag.get("maingone")))}`
+			: `answered ${show(byTag.get("maingone"))}`,
+	);
+
+	// ---- 13. the app ended itself, having run window-all-closed -------------
 	const closedLine = run.stdout.match(ALL_CLOSED)?.[0] ?? null;
 	verdict.check(
 		"all closed",
@@ -711,7 +1424,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 			: `${exitLine}${run.ended === "match" ? `, stopped on ${JSON.stringify(run.matched)}` : ""}`,
 	);
 
-	// ---- 13. nothing is left running ---------------------------------------
+	// ---- 14. nothing is left running ---------------------------------------
 	const survivors = await survivorsOf(binary);
 	verdict.check(
 		"no survivors",
