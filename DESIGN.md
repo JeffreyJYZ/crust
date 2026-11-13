@@ -298,7 +298,14 @@ Three paths, and they differ in what they need on the machine:
 
 The npm tarball path exists (`bun pm pack`) and is checked by `bun run verify:package`, which packs, unpacks, installs into a temp directory and runs `crust --help` and `crust init probe --react` from the installed copy alone: 32 checks, 162.2 KiB. That check is not ceremony — 0.1.0 shipped without the `tsconfig.json` that defines the `@/` alias, and an installed copy could not start at all until the file set included it.
 
-**Open question, being measured:** whether `bun build --compile` can replace the formula's Bun dependency with one standalone binary. The three things that could break are `bun:ffi`'s `cc` compiling the shim inside a compiled executable, `Bun.build` running from it, and reaching `templates/` with no repo on disk. If it holds, the install story becomes one file and no interpreter; the cost is 60–90 MiB where the formula is 589 KB plus the Bun the user already has.
+**Open question, now measured — it does not ship as one binary today.** `bun build --compile --minify --trim --target=bun-darwin-arm64 src/cli/index.ts` produces 85.09 MiB (identical with and without `--trim`; 24 modules, 116 ms). The binary loads, `--version` and `--help` work even with Bun off `PATH`, and the three things feared to break do not:
+
+- `bun:ffi`'s `cc` compiles C at runtime inside a compiled executable. Measured: a probe launched windowed out of the binary wrote `crust-shim-*.c` and `crust-status-bar-*.c` into `TMPDIR`, TinyCC compiled both, WebKit's GPU/WebContent/Networking XPC processes spawned, and the page inside `WKWebView` called back through the bridge — `app answered the page`, `GET / -> 200`, `GET /page.js -> 200`, then SIGTERM to the group and exit 0.
+- `Bun.build` runs from it: `crust doctor` in a single-file directory bundles the page successfully.
+
+What breaks is path resolution, in four places. `crustRoot` is `resolve(import.meta.dir, "..", "..")`, which collapses to `/` in a compiled binary, so `crust init` fails for every template (`no templates/react (expected /templates/react)`), and the generated runner imports `/src/index.ts`, `/src/runtime.ts` and `/src/single.ts` — `/$bunfs/...` or `/src/...`, paths that exist on no disk. `crust dev` spawns `"bun"` from `PATH` rather than `process.execPath`, and `crust build` does the same through `src/packaging/build.ts`.
+
+So the prerequisite for a standalone binary is embedding, not a runtime capability: templates as text imports (the trick `shim.c` already uses), the framework sources the generated entry imports, and `process.execPath` for the children — then `doctor`'s shim/window/templates checks have to read the embedded copies instead of `crustRoot`. Until then `depends_on "bun"` is honest, because `init`, `dev` and `build` all need real files on disk.
 
 
 ---
