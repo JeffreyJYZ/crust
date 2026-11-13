@@ -1,6 +1,6 @@
 # Install
 
-Three ways to get crust, what each one puts on your machine, what to check when it does not work, and the limits that decide whether your app can ship at all. Every command and every number below was run on macOS 27.0.1 (arm64) on 2026-11-13, except the packed-install row in the last section, which is [publishing.md](publishing.md)'s measurement.
+Three ways to get crust, what each one puts on your machine, what to check when it does not work, and the limits that decide whether your app can ship at all. Every command and every number below was run on macOS 27.0.1 (arm64) on 2026-11-13 against **crust 0.1.4**, except the packed-install row in the last section, which is [publishing.md](publishing.md)'s measurement.
 
 Nothing here installs a compiler or a native artifact. crust is TypeScript that Bun runs, and the macOS half is C source compiled at launch by the TinyCC inside Bun; `cc()` executes no compiler binary, so there is no Xcode build and no bottle to match to your machine.
 
@@ -8,28 +8,29 @@ Nothing here installs a compiler or a native artifact. crust is TypeScript that 
 
 - **macOS 13 (Ventura) or later, Apple silicon.** The shim links AppKit, WebKit and Foundation by name, and there is no Intel, Windows or Linux path. The Homebrew formula declares `depends_on macos: :ventura` for exactly this.
 - **Bun.** The formula installs it as a dependency; the other two paths need it already (`bun --version`).
-- **A macOS SDK.** No compiler runs, but the shim's `#include`s need headers. `xcode-select --install` is where they come from, which is why the formula's caveat asks for it.
+- **Nothing else — no Xcode, no command line tools, no macOS SDK.** The formula's caveat asks for `xcode-select --install` ("crust builds and signs macOS apps, so it needs the Xcode command line tools"). Measured, that requirement does not apply: `src/platform/darwin/*.c` contains no `#include` at all — every Objective-C symbol is a hand-written `extern` — and the shim compiles with an empty environment, `PATH` holding only `bun`, and `SDKROOT=/nonexistent/sdk`. So there are no headers to resolve, no `clang` to find and no SDK to match.
 
 ## Homebrew
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.1.1
+crust --version                 # 0.1.4
 ```
 
-The formula lives at `Formula/crust.rb` on `main` of [JeffreyJYZ/homebrew-tap](https://github.com/JeffreyJYZ/homebrew-tap), merged 2026-11-13. Installed from that tap on this machine: **`crust 0.1.1`, 87 files, 589 KB**, with `bun` pulled in as a dependency.
+The formula lives at `Formula/crust.rb` on `main` of [JeffreyJYZ/homebrew-tap](https://github.com/JeffreyJYZ/homebrew-tap), merged 2026-11-13. Installed from that tap on this machine: **`crust 0.1.4`, 95 files, 681.5 KB**, with `bun` pulled in as a dependency.
 
 What lands where:
 
 | path | what it is |
 | --- | --- |
-| `/opt/homebrew/Cellar/crust/0.1.1/libexec/` | `src/`, `templates/`, `docs/`, `package.json`, `tsconfig.json`, `README.md`, `DESIGN.md` — the tree crust resolves its templates, its docs and the shim against, so the layout has to stay intact |
+| `/opt/homebrew/Cellar/crust/0.1.4/libexec/` | `src/`, `templates/`, `docs/`, `package.json`, `tsconfig.json`, `DESIGN.md` — the tree crust resolves its templates, its docs and the shim against, so the layout has to stay intact |
+| `/opt/homebrew/Cellar/crust/0.1.4/README.md` | the formula lists `README.md` in `libexec.install`, and Homebrew's metafile pass moves it to the keg root (the root had no README of its own), so `libexec/README.md` does not exist. crust reads neither |
 | `/opt/homebrew/bin/crust` | a wrapper that execs the brewed `bun` on `libexec/src/cli/index.ts` |
 | `bun` | a formula dependency, not vendored |
 
 `research/` and `examples/` are deliberately not installed: recon and scratch, neither of which a user reads or runs.
 
-The install compiles nothing. The shim is compiled by `cc()` the first time something needs it — `crust dev`, `crust build`, or `crust doctor` — and it compiles *from the Cellar*, which is the check that the layout is complete rather than merely present. `crust init` writes into an empty directory and refuses anything else, so make one first:
+The install compiles nothing. The shim is compiled by `cc()` the first time something needs it — `crust dev`, `crust build`, or `crust doctor` — and it compiles *from the Cellar*, which is the check that the layout is complete rather than merely present. `crust init` writes into an empty directory and refuses anything else (exit 1, naming the entries it found), so make one first:
 
 ```sh
 mkdir my-app && cd my-app
@@ -43,31 +44,41 @@ crust doctor — /private/tmp/my-app
   bun       [ok] 1.4.4 at /opt/homebrew/Cellar/bun/1.4.4_1/bin/bun
   config    [ok] /private/tmp/my-app/crust.config.ts
   macos     [ok] 27.0.1 (no minimumSystemVersion set)
-  shim      [ok] /opt/homebrew/Cellar/crust/0.1.1/libexec/src/platform/darwin/shim.c compiles with cc()
-  bridge    [ok] bound http://127.0.0.1:61587, invoke answered "pong"
+  shim      [ok] /opt/homebrew/Cellar/crust/0.1.4/libexec/src/platform/darwin/shim.c compiles with cc()
+  bridge    [ok] http://127.0.0.1:46969 answered "pong" (stable port for app.crust.my-app)
   dev url   [fail] http://localhost:3000 did not answer — is the frontend dev server running?
   backend   [ok] /private/tmp/my-app/main.ts
-  window    [ok] /opt/homebrew/Cellar/crust/0.1.1/libexec/src/platform/darwin/index.ts
+  window    [ok] platform module loaded, 54 preflight entries
+  assets    [fail] build.assets "out" (/private/tmp/my-app/out) is missing — run the frontend build (`bun --bun x next build`) then crust build; a build now embeds no page
+  templates [ok] /opt/homebrew/Cellar/crust/0.1.4/libexec/templates holds default, react, next
   bundle    [note] no .app in dist — run crust build first
 
-1 check failed
+2 checks failed
 ```
 
-That is a `--next` scaffold with nothing running: `dev url [fail]` is the check being right, because `http://localhost:3000` is `next dev` and it has not started; `bundle [note]` is the build you have not run, and `1 check failed` is the exit code that follows from the first. On a scaffold with no `dev.url` both lines disappear and the run ends `all checks passed`, exit 0.
+That is a `--next` scaffold with nothing built or running: `dev url [fail]` is the check being right, because `http://localhost:3000` is `next dev` and it has not started; `assets [fail]` is the missing `out/` that `next build` produces, and `next build` needs the scaffold's own `bun install` first; `bundle [note]` is the build you have not run. `2 checks failed` is the exit code that follows. On a plain scaffold — no `dev.url`, `public/` present — the `dev url` and `assets` lines disappear and the run ends `all checks passed`, exit 0.
 
 Upgrade with `brew upgrade crust`; remove with `brew uninstall crust`. The formula installs no service and writes nothing outside the Cellar and the `bin` symlink.
 
-**The formula tracks the tag, not `main`.** It downloads `refs/tags/v0.1.1`, so a scaffold made with a brewed `crust` is the tag's template, not `main`'s — the Next template is the worked example, seven files at 0.1.1 and eight on `main`. The version string does not distinguish the two (both report `0.1.1`), so compare the scaffold you get, or `crust --help`, against the repo when a difference matters.
+**The formula tracks the newest tag, not `main`.** It downloads `refs/tags/v0.1.4`, so a brewed `crust` is exactly that release. The tap has moved fast in this release cycle — 0.1.1, then 0.1.3, then 0.1.4 in one afternoon — so treat the version in the table above as a measurement rather than a promise: `crust --version` and `brew list --versions crust` are the checks.
+
+That tag matters for the scaffold you get. Template sizes differ between releases: the Next template is **8 files at 0.1.4** and **7 at 0.1.1 and earlier** — the missing file is `tsconfig.json`, which the Next scaffold gained in 0.1.2, so an older Next scaffold has no `@/` path alias; the plain and React templates are 7 at both. And the version string is not always a tell, because `main` can carry the same version as the tag it sits past. Measured today: the tag `v0.1.4` is commit `a95b35c` and `main`'s head is `bf20f26`, both `0.1.4`, both an 8-file Next template. A brewed scaffold is the tag's; an app it scaffolds pins `github:JeffreyJYZ/crust` and `bun install` resolves `main`, so the app's copy and the CLI that made it can be different commits at the same version. When a difference matters, compare the resolved commit, not the number.
 
 ## bunx, with nothing installed
 
 ```sh
-bunx github:JeffreyJYZ/crust init my-app
+bunx github:JeffreyJYZ/crust#v0.1.4 init my-app
 ```
 
-`bunx` is `bun x`: it resolves the specifier, caches the result, and runs `bin/crust` out of it. Nothing is added to your `PATH`, and nothing needs to be, which is why this is the fastest way to try crust.
+`bunx` is `bun x`: it resolves the specifier, caches the result, and runs `bin/crust` out of it. Nothing is added to your `PATH`, and nothing needs to be, which is why this is the fastest way to try crust. Note the tag. A bare `github:JeffreyJYZ/crust` names no version at all — it means "whatever this machine's cache already resolved" — so the same page gives different readers different crust:
 
-**The trap is the cache, and it is not a bug in crust.** bunx keys its cache on the specifier string, so a bare `github:JeffreyJYZ/crust` keeps serving whatever commit it first resolved, indefinitely. A reader whose cache is older than a feature sees a command fail for a reason that has nothing to do with the code they are running:
+| specifier | fresh cache | this machine's existing cache |
+| --- | --- | --- |
+| `github:JeffreyJYZ/crust` | `0.1.4`, Next template 8 files | `0.1.0`, and `--next` refused |
+| `github:JeffreyJYZ/crust#main` | `main`'s head, `0.1.4` | `0.1.0`, Next template 7 files |
+| `github:JeffreyJYZ/crust#v0.1.4` | `0.1.4`, 8 files | `0.1.4`, 8 files |
+
+**The trap is the cache, and it is not a bug in crust.** bunx keys its cache on the specifier string, so a bare `github:JeffreyJYZ/crust` keeps serving whatever commit it first resolved, indefinitely. A reader whose cache predates a feature sees a command fail for a reason that has nothing to do with the code they are running:
 
 ```
 $ bunx github:JeffreyJYZ/crust init my-app --next
@@ -75,11 +86,11 @@ crust: unknown option --next
 run "crust --help" for usage
 ```
 
-Measured on this machine: a bunx cache resolved before `--next` existed answered exactly that, while `github:JeffreyJYZ/crust#v0.1.1` — never used before, so resolved fresh — answered `0.1.1` and scaffolded the template.
+Measured on this machine, twice, before touching the cache: `0.1.0` from both the bare and the `#main` specifier. The version string is still not the tell — those two answers are *different 0.1.0 commits*, and one of them has `--next` while the other does not. `#main` is a moving name with a frozen cache entry in front of it, so it fixes nothing.
 
 Two cures, in order of preference:
 
-1. **Name a ref.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#main init my-app --next` resolves fresh the first time. It goes stale the same way afterwards: `#main` is a moving name, and this machine's `#main` entry was itself answering `0.1.0` long after `main` had moved on. A tag is the one ref that cannot go stale, because the commit it names does not move.
+1. **Name a tag.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#v0.1.4 init my-app --next` resolves fresh the first time and answers `0.1.4` with the 8-file Next template. A tag is the one ref whose answer cannot drift, because the commit it names does not move (a re-tagged release is the only way it could).
 2. **Clear the two cache directories.** Both are safe to delete, nothing else lives in them:
 
 ```sh
@@ -94,26 +105,28 @@ The first is the bunx install of the specifier, the second the resolved git pack
 ```sh
 git clone https://github.com/JeffreyJYZ/crust
 cd crust
-bun install                     # one dev dependency: @types/bun
+bun install                     # two dev dependencies: @types/bun and vite
 bun run start init my-app       # `start` is `bun run src/cli/index.ts`
 ```
 
-`bun run start` takes every command and flag the `crust` binary does, so `bun run start dev --dir examples/hello` runs the bundled example and `bun run start --help` prints the usage. `bun src/cli/index.ts …` is the same thing without the script.
+`bun run start` takes every command and flag the `crust` binary does, so `bun run start dev --dir examples/hello` runs the bundled example and `bun run start --help` prints the usage. `bun src/cli/index.ts …` is the same thing without the script. The `vite` dev dependency is there for `src/vite.ts`, the Vite plugin crust exports (`crust/vite`), not for any crust command.
 
-A scaffold made from a checkout pins its `crust` dependency as `link:<checkout>`, so an edit under `src/` is picked up by the app without republishing. Every other install pins `github:JeffreyJYZ/crust`.
+A scaffold made from a checkout pins its `crust` dependency as `link:<checkout>` — absolute, as measured: `"crust": "link:/private/var/folders/…/crust-measure2/checkout"` — so an edit under `src/` is picked up by the app without republishing. Every other install pins `github:JeffreyJYZ/crust`.
 
 ## What the app runs, versus what you ran
 
-`crust init` writes `crust` into the scaffold's `package.json`, and `bun install` puts a copy in `node_modules/`, with its `bin` linked as `node_modules/.bin/crust`. Inside the project, `bunx crust dev` resolves through that local `bin` — bun prefers a local install — so **the app runs the copy it pinned**, not the CLI you used to scaffold it. Measured on a scaffold made by brew's 0.1.1, which pins `github:JeffreyJYZ/crust`:
+`crust init` writes `crust` into the scaffold's `package.json`, and `bun install` puts a copy in `node_modules/`, with its `bin` linked as `node_modules/.bin/crust`, a symlink pointing at `../crust/src/cli/index.ts`. Inside the project, `bunx crust` resolves through that local `bin` — bun prefers a local install — so **the app runs the copy it pinned**, not the CLI you used to scaffold it. Measured on a scaffold made by brew's 0.1.4, which pins `github:JeffreyJYZ/crust`:
 
 ```
 $ bun install
-+ crust@github:JeffreyJYZ/crust#a27808a
++ crust@github:JeffreyJYZ/crust#bf20f26
 $ bunx crust --version
-0.1.1
+0.1.4
 ```
 
-Both copies report `0.1.1` here, so the version is not the tell — the resolved commit is. The point is that they are two installations: the CLI in `/opt/homebrew/bin` and the one in the app's `node_modules` can be different commits, and a bug in one is not a bug in the other.
+Both copies report `0.1.4` here, so the version is not the tell — the resolved commit is. The brew CLI is the tag's `a95b35c`; the app's copy is `main`'s `bf20f26`. The local copy won the `bunx` lookup, and that is provable rather than inferred: pointing a checkout scaffold's `link:` package at `9.9.9` made `bunx crust --version` print `9.9.9` inside the app while `/opt/homebrew/bin/crust --version` still printed `0.1.4` in the same shell.
+
+So there are two installations, and a bug in one is not a bug in the other. When an app behaves differently from the CLI you scaffolded it with, `bunx crust --version` and `crust --version` inside the same directory is the first thing to run.
 
 ## Limits
 
@@ -131,13 +144,15 @@ These five decide what you can build; all are stated in [README.md](../README.md
 | --- | --- | --- |
 | `crust: unknown option --next` (or any newer flag) | a stale bunx cache serving an older commit | name a tag, or delete the two cache directories above |
 | `brew install` says there is no formula | your tap copy was cloned before the formula landed on `main` | `brew update` |
+| a scaffold has 7 files where the docs say 8 | you are on 0.1.1 or older, whose Next template has no `tsconfig.json`, or a stale bunx cache served it | check `crust --version`; name `#v0.1.4` |
 | `Cannot find module '@/config'` from a packed install | a 0.1.0-era tarball shipped without the `tsconfig.json` that defines the `@/` alias | reinstall at 0.1.1 or later |
 | `dev url [fail]` in `crust doctor` | the frontend dev server is not running, or is on another port | start it (`bun run dev`), and keep the port pinned — the bridge allows exactly the origin `dev.url` names |
+| `assets [fail]` in `crust doctor` on a `--next` scaffold | `out/` does not exist yet | `bun install && bun --bun x next build`, then `crust build` |
 | the app opens here, "is damaged" on another Mac | ad-hoc signature plus the quarantine attribute | `xattr -dr com.apple.quarantine "my-app.app"`, or right-click → Open |
 | `notification` reports `delivered: false` | known; inside a bundle the authorization answer is denied, and unbundled there is no bundle identifier to notify from | nothing to configure yet — see [README.md](../README.md#limits-stated-plainly) |
 | a built app is 85 MiB and you expected less | the Bun runtime, inside the binary | nothing; the honest claim is "no bundled Chromium", never "as small as Tauri" |
 
-`crust doctor` is the first command to run for any of these: it checks the platform, Bun, the config, the macOS version, the shim compiling, the bridge binding and answering, the dev URL, the backend entry, the window module and the bundle, and it prints one line per check.
+`crust doctor` is the first command to run for any of these: it checks the platform, Bun, the config, the macOS version, the shim compiling, the bridge binding and answering, the dev URL, the backend entry, the window module, the assets directory, the templates and the bundle, and it prints one line per check.
 
 ## Where to go next
 
