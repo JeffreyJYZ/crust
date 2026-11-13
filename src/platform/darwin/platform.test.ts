@@ -7,6 +7,7 @@ import {
 	darwinDialogAdapter,
 	preflightError,
 	shim,
+	windowLiveness,
 } from "@/platform/darwin/index.ts";
 import { createDialogPlugin } from "@/plugins/dialog.ts";
 import { isNotImplemented } from "@/plugins/define.ts";
@@ -35,6 +36,25 @@ describe("darwin shim", () => {
 		expect(typeof symbols.shim_open_panel).toBe("function");
 		expect(typeof symbols.shim_open_panel_count).toBe("function");
 		expect(typeof symbols.shim_open_panel_path).toBe("function");
+	});
+
+	/**
+	 * The liveness reads are C-side with one fixed prototype each, because they
+	 * are the evidence for "this window is gone". A null window is the one input
+	 * that must never fault, so every one of them answers 0 for it.
+	 */
+	test("exports the window liveness reads, each null-safe", () => {
+		const symbols = shim().symbols;
+		for (const name of [
+			"shim_window_number",
+			"shim_window_is_visible",
+			"shim_window_is_miniaturized",
+			"shim_window_is_released_when_closed",
+			"shim_window_is_key",
+		] as const) {
+			expect(typeof symbols[name]).toBe("function");
+			expect(Number(symbols[name](0) ?? -1)).toBe(0);
+		}
 	});
 
 	/**
@@ -102,6 +122,30 @@ describe("selector preflight", () => {
 		expect(c).not.toContain('"stringWithUTF8String:');
 		expect(c).not.toMatch(/shim_intern_[a-z]+/);
 		expect(shim().symbols).not.toHaveProperty("shim_intern_bytes");
+	});
+});
+
+describe("window liveness", () => {
+	/**
+	 * The defect this rule exists for: `-windowNumber` never reads 0 after a
+	 * close. Measured 2026-11-13 on macOS 27 — `-close` ordered the window out
+	 * (`isVisible` 1 → 0 in 1.02 ms, still 0 after 300 ms and after 1 s of
+	 * pumping) while the window device number stayed 517, and stayed 518 for a
+	 * second window that got `-orderOut:` before `-close`.
+	 */
+	test("a closed window is gone even though AppKit keeps its device number", () => {
+		expect(windowLiveness({ visible: false, miniaturized: false, appHidden: false })).toBe(
+			false,
+		);
+	});
+
+	test("a minimised window and a hidden app are both still open", () => {
+		expect(windowLiveness({ visible: false, miniaturized: true, appHidden: false })).toBe(true);
+		expect(windowLiveness({ visible: false, miniaturized: false, appHidden: true })).toBe(true);
+	});
+
+	test("an ordinary on-screen window is open", () => {
+		expect(windowLiveness({ visible: true, miniaturized: false, appHidden: false })).toBe(true);
 	});
 });
 

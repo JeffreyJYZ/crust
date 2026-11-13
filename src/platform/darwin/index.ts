@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import type { DialogNative, OpenPanelOptions, OpenPanelResult } from "@/plugins/dialog";
+import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 
 // Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file
 // does not exist. The shim therefore travels inside the binary as text and is
@@ -93,6 +94,11 @@ function compile() {
 			shim_window_new: { args: [F64, F64, F64, F64, I64, I64, I32], returns: P },
 			shim_window_set_title: { args: [P, P], returns: V },
 			shim_window_title_utf8: { args: [P], returns: CS },
+			shim_window_number: { args: [P], returns: I64 },
+			shim_window_is_visible: { args: [P], returns: I32 },
+			shim_window_is_released_when_closed: { args: [P], returns: I32 },
+			shim_window_is_key: { args: [P], returns: I32 },
+			shim_window_is_miniaturized: { args: [P], returns: I32 },
 
 			shim_app_load: { args: [], returns: I32 },
 			shim_pool_new: { args: [], returns: P },
@@ -160,6 +166,11 @@ export interface Shim {
 		shim_window_new: LooseSymbol;
 		shim_window_set_title: LooseSymbol;
 		shim_window_title_utf8: LooseSymbol;
+		shim_window_number: LooseSymbol;
+		shim_window_is_visible: LooseSymbol;
+		shim_window_is_released_when_closed: LooseSymbol;
+		shim_window_is_key: LooseSymbol;
+		shim_window_is_miniaturized: LooseSymbol;
 
 		shim_app_load: LooseSymbol;
 		shim_pool_new: LooseSymbol;
@@ -271,9 +282,15 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "setTitle:"],
 	["NSWindow", "title"],
 	["NSWindow", "windowNumber"],
+	["NSWindow", "isVisible"],
+	["NSWindow", "isMiniaturized"],
+	["NSWindow", "isReleasedWhenClosed"],
+	["NSWindow", "isKeyWindow"],
+	["NSWindow", "close"],
 	["WKWebView", "init"],
 	["WKWebView", "loadRequest:"],
 	["NSApplication", "setActivationPolicy:"],
+	["NSApplication", "isHidden"],
 	["NSApplication", "activateIgnoringOtherApps:"],
 	["NSApplication", "terminate:"],
 	["NSView", "addSubview:"],
@@ -448,6 +465,42 @@ interface NativeWindow {
 }
 
 /**
+ * What AppKit reports about a window, as the liveness rule needs it.
+ *
+ * `appHidden` is separate because hiding the app orders every window out and is
+ * not a close.
+ */
+export interface WindowLivenessState {
+	visible: boolean;
+	miniaturized: boolean;
+	appHidden: boolean;
+}
+
+/**
+ * Whether a window is still open, from the three AppKit reads that answer it.
+ *
+ * **`-windowNumber` is not a liveness test**, which is what broke
+ * `window-all-closed` for every crust app. Measured 2026-11-13 on macOS 27:
+ * `-close` takes effect immediately (`isVisible` 1 → 0 within 1.02 ms of the
+ * send, still 0 after 300 ms and after 1 s of pumping) and the window device
+ * number never clears — 517 stayed 517 through `-close`, and a second window
+ * stayed 518 through `-orderOut:` followed by `-close`. AppKit keeps the number
+ * for the life of the window object, so a window that has been shown once
+ * reports a non-zero number forever and `windowNumber === 0` can only ever
+ * detect a window that was never ordered in.
+ *
+ * The measured rule instead:
+ *
+ *   - visible        → open (the normal case, and after an unhide)
+ *   - miniaturised   → open: not visible, and definitely not closed
+ *   - app hidden     → open: Cmd+H orders every window out without closing one
+ *   - none of those  → closed, including a window never ordered in
+ */
+export function windowLiveness(state: WindowLivenessState): boolean {
+	return state.visible || state.miniaturized || state.appHidden;
+}
+
+/**
  * The macOS `Platform`. Construct through `createPlatform()`; the class is
  * exported because the pump and its timer are testable without a window.
  */
@@ -552,8 +605,9 @@ export class DarwinPlatform implements Platform {
 		const win = Number(shim().symbols.shim_window_new(120, 120, width, height, 15n, 2n, 0));
 		if (!win) throw new Error("shim_window_new returned null");
 
-		// A closed window must stay addressable: -windowNumber reads 0 once it
-		// has closed, and that is the liveness test window(label) uses.
+		// A closed window must stay addressable: `-close` does not release it,
+		// and the liveness read afterwards needs the object alive. Released, the
+		// pointer would dangle and the next guarded send would fault.
 		S.vb1(win, "setReleasedWhenClosed:", 0);
 
 		const web = allocInit("WKWebView");
@@ -591,13 +645,7 @@ export class DarwinPlatform implements Platform {
 		}
 
 		S.v1(win, "makeKeyAndOrderFront:", 0);
-		if (this.#app) {
-			try {
-				S.vb1(this.#app, "activateIgnoringOtherApps:", 1);
-			} catch {
-				// Activation is cosmetic; a failure must not lose the window.
-			}
-		}
+		this.activateOnce();
 
 		// A relative URL needs the bridge server, which the platform does not own;
 		// only an absolute URL can be handed to NSURL as-is.
@@ -612,18 +660,90 @@ export class DarwinPlatform implements Platform {
 	}
 
 	/**
-	 * Return the handle only while the window is alive. `-windowNumber` reads 0
-	 * once it has closed; `isVisible` is not a liveness test, because a minimised
-	 * window is not visible but is still open.
+	 * Return the handle only while the window is still open.
+	 *
+	 * Liveness is `windowLiveness`, not `-windowNumber` (see that rule for the
+	 * measurement that ruled the number out). A closed window stays addressable
+	 * because `setReleasedWhenClosed: 0` was applied at creation, so its
+	 * visibility can still be read after the close.
 	 */
 	window(label: string): WindowHandle | undefined {
 		const entry = this.#windows.get(label);
 		if (!entry) return undefined;
-		if (S.q0(entry.win, "windowNumber") === 0) {
+		if (!this.#windowIsOpen(entry.win)) {
 			this.#windows.delete(label);
 			return undefined;
 		}
 		return entry.handle;
+	}
+
+	/**
+	 * The labels this platform still tracks, in creation order.
+	 *
+	 * A closed window stays in the map (`setReleasedWhenClosed: 0` keeps it
+	 * addressable) until `window(label)` prunes it, so this is what the
+	 * platform knows about, not only what is on screen.
+	 */
+	windowLabels(): string[] {
+		return [...this.#windows.keys()];
+	}
+
+	/** The native `NSWindow *` behind a tracked label; undefined when never created. */
+	nativeWindow(label: string): number | undefined {
+		return this.#windows.get(label)?.win;
+	}
+
+	/**
+	 * The window's AppKit window device number while it is open, or 0 once it
+	 * has closed — the liveness number crust's own contract promises, not the
+	 * raw `-windowNumber` (which keeps its value after a close; see
+	 * `windowLiveness`). Undefined means the label was never created.
+	 */
+	windowNumber(label: string): number | undefined {
+		const entry = this.#windows.get(label);
+		if (!entry) return undefined;
+		if (!this.#windowIsOpen(entry.win)) return 0;
+		return Number(shim().symbols.shim_window_number(entry.win) ?? 0);
+	}
+
+	/** Whether AppKit still holds this window open, read the measured way. */
+	#windowIsOpen(win: number): boolean {
+		// Hiding the app (Cmd+H) orders every window out without closing one, so
+		// it must not read as "all windows gone". A failure here fails safe: no
+		// false quit, only a delayed one.
+		let appHidden = false;
+		if (this.#app) {
+			try {
+				appHidden = S.b0(this.#app, "isHidden");
+			} catch {
+				appHidden = false;
+			}
+		}
+		const symbols = shim().symbols;
+		return windowLiveness({
+			visible: Number(symbols.shim_window_is_visible(win) ?? 0) === 1,
+			miniaturized: Number(symbols.shim_window_is_miniaturized(win) ?? 0) === 1,
+			appHidden,
+		});
+	}
+
+	/**
+	 * Activate the app at most once per process.
+	 *
+	 * Every activation re-orders the app above whatever the user was doing, so
+	 * repeating it on each window creation or `window.focus` call makes the
+	 * Dock icon jump on every call. `#activated` is the one flag both paths
+	 * share; a failure is cosmetic and never loses a window.
+	 */
+	activateOnce(): void {
+		if (this.#activated) return;
+		this.#activated = true;
+		if (!this.#app) return;
+		try {
+			S.vb1(this.#app, "activateIgnoringOtherApps:", 1);
+		} catch {
+			// Activation is cosmetic; nothing depends on it.
+		}
 	}
 
 	/** Stop the pump, ask AppKit to terminate, then leave. */
@@ -650,7 +770,7 @@ export class DarwinPlatform implements Platform {
 }
 
 /** Build the macOS platform. `appName` names failures, nothing in AppKit reads it. */
-export function createPlatform(options: { appName?: string } = {}): Platform {
+export function createPlatform(options: { appName?: string } = {}): DarwinPlatform {
 	return new DarwinPlatform(options);
 }
 
@@ -726,4 +846,84 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 	};
 
 	return { pickOpen, openPanel: pickOpen };
+}
+
+// --- window adapter --------------------------------------------------------
+
+/**
+ * The native half of `crust:window` on macOS.
+ *
+ * Built on the `DarwinPlatform` instance the runtime attached, because the
+ * labels and the `NSWindow *` pointers already live there. Two facts carry the
+ * whole liveness rule:
+ *
+ *   - `close` sends `-close`, which orders the window out at once. The object
+ *     stays addressable because `setReleasedWhenClosed: 0` was applied at
+ *     creation, which is what lets the liveness read still work afterwards.
+ *   - `isOpen` reads the platform's measured liveness rule, never raw
+ *     `-windowNumber`: a closed window keeps its device number (measured), and a
+ *     minimised window is not visible yet still open.
+ *
+ * `focus` orders the window front and activates the app at most once per
+ * process through `DarwinPlatform.activateOnce`, so calling it on every switch
+ * does not make the Dock icon keep jumping.
+ *
+ * Every selector here is in `PREFLIGHT`, so a system that cannot do this fails
+ * `start()` with a name instead of aborting on an uncaught ObjC exception.
+ */
+export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
+	const require = (label: string): number => {
+		const win = platform.nativeWindow(label);
+		if (win === undefined) {
+			throw new WindowAdapterError(
+				"unknown-window",
+				`crust: no window labelled ${JSON.stringify(label)}`,
+			);
+		}
+		return win;
+	};
+
+	return {
+		close(label: string): void {
+			S.v0(require(label), "close");
+		},
+
+		focus(label: string): void {
+			S.v1(require(label), "makeKeyAndOrderFront:", 0);
+			platform.activateOnce();
+		},
+
+		/**
+		 * The title is built and applied inside `shim_window_set_title`, because
+		 * a short ASCII NSString is a tagged pointer and cannot be marshalled
+		 * through bun:ffi. The applied title is read back, so a silent no-op
+		 * becomes an error rather than a success.
+		 */
+		setTitle(label: string, title: string): void {
+			const win = require(label);
+			shim().symbols.shim_window_set_title(win, cstr(title));
+			const applied = String(shim().symbols.shim_window_title_utf8(win) ?? "");
+			if (applied !== title) {
+				throw new WindowAdapterError(
+					"handler-error",
+					`crust: window ${JSON.stringify(label)} title applied as ${JSON.stringify(applied)}`,
+				);
+			}
+		},
+
+		list(): string[] {
+			return platform.windowLabels();
+		},
+
+		isOpen(label: string): boolean {
+			const number = platform.windowNumber(label);
+			if (number === undefined) {
+				throw new WindowAdapterError(
+					"unknown-window",
+					`crust: no window labelled ${JSON.stringify(label)}`,
+				);
+			}
+			return number !== 0;
+		},
+	};
 }

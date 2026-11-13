@@ -248,6 +248,52 @@ const char *shim_window_title_utf8(obj_t win) {
 	return ((const char *(*)(void *, void *))objc_msgSend)(t, sel_registerName("UTF8String"));
 }
 
+// --- window liveness ------------------------------------------------------
+//
+// Read from C, not through the arity ladder, because these four are the whole
+// evidence for "this window is gone" and each must be one guarded send with a
+// fixed prototype. `-windowNumber` is the liveness test: a minimised window
+// still reports a number, a closed one reports 0. `-isVisible` is not, because
+// it is false for a minimised window too.
+
+long long shim_window_number(obj_t win) {
+	if (!win) return 0;
+	return ((long long (*)(void *, void *))objc_msgSend)(win, sel_registerName("windowNumber"));
+}
+
+int shim_window_is_visible(obj_t win) {
+	if (!win) return 0;
+	if (!class_getInstanceMethod(object_getClass(win), sel_registerName("isVisible"))) return 0;
+	return (int)(char)((char (*)(void *, void *))objc_msgSend)(win, sel_registerName("isVisible"));
+}
+
+int shim_window_is_released_when_closed(obj_t win) {
+	if (!win) return 0;
+	if (!class_getInstanceMethod(object_getClass(win),
+	                              sel_registerName("isReleasedWhenClosed")))
+		return 0;
+	return (int)(char)((char (*)(void *, void *))objc_msgSend)(
+	    win, sel_registerName("isReleasedWhenClosed"));
+}
+
+int shim_window_is_key(obj_t win) {
+	if (!win) return 0;
+	if (!class_getInstanceMethod(object_getClass(win), sel_registerName("isKeyWindow"))) return 0;
+	return (int)(char)((char (*)(void *, void *))objc_msgSend)(win, sel_registerName("isKeyWindow"));
+}
+
+// A minimised window is not visible and is still open, so liveness needs this
+// beside -isVisible. Measured 2026-11-13: -windowNumber keeps the window device
+// number after -close, so it cannot answer "is this window gone".
+int shim_window_is_miniaturized(obj_t win) {
+	if (!win) return 0;
+	if (!class_getInstanceMethod(object_getClass(win),
+	                             sel_registerName("isMiniaturized")))
+		return 0;
+	return (int)(char)((char (*)(void *, void *))objc_msgSend)(
+	    win, sel_registerName("isMiniaturized"));
+}
+
 // --- application ----------------------------------------------------------
 
 int shim_app_load(void) { return (int)NSApplicationLoad(); }
