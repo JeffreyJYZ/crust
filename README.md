@@ -237,16 +237,19 @@ The honest size claim is **"no bundled Chromium"**, never "as small as Tauri": T
 
 ## Two checks only a person can do
 
-Everything else in this README has a script behind it. Two things need hands on the keyboard, and each is a couple of minutes:
+Everything else in this README has a script behind it. Two things need hands on the keyboard, and each is a couple of minutes — so run the app the way macOS expects, not from `bun run demo`:
 
 ```sh
-bun run demo          # installs the example, then crust dev on it
+crust build --dir examples/dogear --entry desktop/main.ts
+open examples/dogear/dist/Dogear.app
 ```
 
-- **A completed folder pick.** Click **Choose…** in the app (or the tray's `Open folder`), then pick the `notes/` folder in the panel and hit **Open**. A sheet is up until you answer it; crust cannot click it, which is why every automated run only proves the sheet *appeared* and cancelled it. Success looks like the note list refreshing from the folder you picked, and `panel — picked <path>` in the terminal.
-- **A tray click.** Click the crust icon in the menu bar and choose **Save now**. The tray item is on the menu bar, so this needs a normal Space — on a fullscreen Space macOS draws no menu bar at all, which is why nobody had seen the item either. Success looks like the status line saying the note was saved, plus `tray click — Save now` in the terminal.
+`bun run demo` is fine for a quick look at the dev server, but a `crust dev` window cannot take keyboard focus: macOS only activates a process it launched itself, and `crust dev` is a plain `bun` process. It logs `active    no`, the traffic lights stay grey, and clicks do not bring it forward. A built bundle opened normally logs `active    yes`. Measured both ways, with `screencapture -l <window number>` frames six seconds apart identical at 438,691 bytes, so the content is stable — only the activation differs.
 
-If either behaves differently from that, the line to send is the terminal output around it; both paths log what they received before they act on it.
+- **A completed folder pick.** Click **Choose…** in the app (or the tray's `Open folder`), pick a folder of `.md` files, hit **Open**. A sheet is up until you answer it; crust cannot click it, which is why every automated run only proves the sheet *appeared* and cancelled it. Success: the note list refreshes from the folder you picked, and `panel — picked <path>` appears in the log — for a bundle, read it with `open --stdout /tmp/dogear.log dist/Dogear.app`.
+- **A tray click.** Click the crust icon in the menu bar and choose **Save now**. This needs a normal Space: on a fullscreen Space macOS draws no menu bar at all, which is why nobody had seen the item either. Success: the status line says the note was saved, plus `tray click — Save now` in that same log.
+
+If either behaves differently from that, the line to send is the log output around it; both paths record what they received before acting on it.
 
 ## Limits, stated plainly
 
