@@ -15,7 +15,7 @@ import { loadConfig } from "@/config";
 import { isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
 import { frameworkRoot, inExecutable } from "./framework.ts";
-import { fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
+import { fail, line, missingInstall, resolveBackendEntry, type CliOptions } from "./util.ts";
 
 /**
  * The interpreter a runtime child is started with.
@@ -87,6 +87,11 @@ export async function dev(options: CliOptions): Promise<number> {
 	let frontend: ReturnType<typeof Bun.spawn> | undefined;
 	const beforeDevCommand = config.dev?.beforeDevCommand;
 	if (beforeDevCommand) {
+		// Same rule as `build`: a declared dependency set with no node_modules means the
+		// dev server would be resolved from a global cache, and the failure would arrive
+		// as a bundler stack rather than as "run bun install".
+		const needsInstall = await missingInstall(projectDir);
+		if (needsInstall) return fail("dev", needsInstall);
 		line("before", beforeDevCommand);
 		// Started, not awaited: a dev server does not exit. Its own output is
 		// inherited so Vite's banner and HMR messages stay visible.

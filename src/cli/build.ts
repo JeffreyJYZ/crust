@@ -5,7 +5,15 @@ import { buildApp, formatBytes } from "@/packaging/build";
 import { signApp } from "@/packaging/sign";
 import { buildPage, detectSingle, type PageBuild, type SingleApp } from "../single.ts";
 import { frameworkRoot } from "./framework.ts";
-import { exists, fail, line, resolveBackendEntry, runShell, type CliOptions } from "./util.ts";
+import {
+	exists,
+	fail,
+	line,
+	missingInstall,
+	resolveBackendEntry,
+	runShell,
+	type CliOptions,
+} from "./util.ts";
 
 /** LSMinimumSystemVersion when the config does not name one. */
 const DEFAULT_MINIMUM_SYSTEM_VERSION = "13.0";
@@ -272,6 +280,12 @@ export async function build(options: CliOptions): Promise<number> {
 	const loaded = await loadConfig({ dir: options.dir, configPath: options.config });
 	console.log(`crust build — ${loaded.path}`);
 	const config = loaded.config;
+
+	// A missing install is the state a clone or a clean leaves behind, and it has to be
+	// said plainly: otherwise the frontend command resolves its tool from a global cache
+	// and fails deep inside its own bundler, which reads as crust's fault.
+	const needsInstall = await missingInstall(options.dir);
+	if (needsInstall) return fail("build", needsInstall);
 
 	const backend = await resolveBackendEntry(options.dir, options.entry);
 	if (!backend) {
