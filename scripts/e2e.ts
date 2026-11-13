@@ -122,9 +122,12 @@ async function main(): Promise<number> {
 	);
 
 	// ---- 4. run it, and prove the page reached the backend -----------------
+	// Launched from `/`, which is what a double-clicked app gets: a built app must carry
+	// its config, never load one from the working directory. Running this from the repo
+	// root once masked a wrapper that imported a second copy of the framework.
 	const run = await probe({
 		command: [BINARY],
-		cwd: REPO_ROOT,
+		cwd: "/",
 		match: GREET,
 		timeoutMs: APP_TIMEOUT_MS,
 	});

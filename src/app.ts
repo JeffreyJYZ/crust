@@ -129,6 +129,21 @@ export class App {
 	}
 
 	/**
+	 * Hand this instance the config without a platform.
+	 *
+	 * A built app's wrapper already carries the project's config and imports the
+	 * backend entry through `entryModule`, so there is no working directory to load
+	 * from — a launched `.app` runs with `/` as cwd. Without this, `app.run()` in the
+	 * entry fell back to `loadConfig()` and died with `no crust config in /` for any
+	 * app started outside its project directory.
+	 */
+	configure(config: CrustConfig): this {
+		if (this.#started) throw new Error("crust: cannot configure a running app");
+		this.#config = config;
+		return this;
+	}
+
+	/**
 	 * Create the bridge on the first `run()` instead of now.
 	 *
 	 * `startApp` calls this before importing the project's entry, because the

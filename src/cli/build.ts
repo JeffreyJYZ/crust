@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadConfig, type CrustConfig } from "@/config";
 import { buildApp, formatBytes } from "@/packaging/build";
@@ -239,6 +239,31 @@ export async function resolveAssets(
  * the compiled binary is what Bun produced, the assembled bundle is what a
  * recipient's disk gives up.
  */
+export /**
+ * The crust package the project itself depends on, when it has one.
+ *
+ * The generated wrapper has to import the runtime through the same module the app's
+ * `import "crust"` resolves to. Otherwise a built binary carries two copies of the
+ * framework — the wrapper's and the project's — and each has its own `app` singleton,
+ * so `app.run()` inside the entry never sees the config the wrapper passed and falls
+ * back to loading one from the working directory, which a launched app does not have.
+ * That is exactly how a scaffold installed from git failed while the same scaffold
+ * linked to a checkout worked: the symlink made both specifiers one realpath.
+ */
+async function projectCrustRoot(dir: string): Promise<string> {
+	const candidate = join(dir, "node_modules", "crust");
+	try {
+		const manifest = (await Bun.file(join(candidate, "package.json")).json()) as {
+			name?: unknown;
+		};
+		if (manifest.name === "crust" && (await exists(join(candidate, "src", "runtime.ts"))))
+			return await realpath(candidate);
+	} catch {
+		// No usable dependency: fall back to the framework this CLI carries.
+	}
+	return await frameworkRoot();
+}
+
 export async function build(options: CliOptions): Promise<number> {
 	const detected = await detectSingle(options);
 	if (detected.kind === "error") return fail("build", detected.message);
@@ -299,7 +324,7 @@ export async function build(options: CliOptions): Promise<number> {
 			configPath: resolve(options.dir, loaded.path),
 			entryPath: entry,
 			assetsPath,
-			runtimePath: resolve(await frameworkRoot(), "src/runtime.ts"),
+			runtimePath: resolve(await projectCrustRoot(options.dir), "src/runtime.ts"),
 		}),
 		"utf8",
 	);

@@ -325,6 +325,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 
 	app.deferBridge((runConfig) => startBridgeFor(runConfig).url);
 	if (platform) app.attach(platform, config);
+	else app.configure(config);
 
 	const entry = options.entryModule;
 	const entryPath = entry !== undefined ? undefined : await resolveEntry(options.entry);
