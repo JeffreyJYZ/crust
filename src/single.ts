@@ -163,19 +163,31 @@ export function hasDefaultExport(source: string): boolean {
 	);
 }
 
-/** Fail before `Bun.build` if the mount would need packages that are not here. */
-function requireReact(dir: string, file: string): void {
-	for (const specifier of ["react", "react-dom/client"]) {
-		try {
-			Bun.resolveSync(specifier, dir);
-		} catch {
-			throw new Error(
-				`${basename(file)} has a default export, so crust mounts it with React, but ` +
-					`${specifier} does not resolve from ${dir} — run "bun add react react-dom" there, ` +
-					"or drop the default export and render the page yourself",
-			);
-		}
+/** Whether a package is physically installed at or above `dir`. */
+async function installed(name: string, dir: string): Promise<boolean> {
+	let current = resolve(dir);
+	for (;;) {
+		if (await isFile(join(current, "node_modules", name, "package.json"))) return true;
+		const parent = dirname(current);
+		if (parent === current) return false;
+		current = parent;
 	}
+}
+
+/**
+ * Fail before `Bun.build` if the mount would need packages the project does not
+ * have. Bun's own resolver also consults its global install cache, and a
+ * half-populated cache resolves `react` while failing on `react-dom`'s own
+ * dependency — so the check is a real `node_modules/<pkg>/package.json` walk,
+ * which is what "installed here" means to a user.
+ */
+async function requireReact(dir: string, file: string): Promise<void> {
+	if ((await installed("react", dir)) && (await installed("react-dom", dir))) return;
+	throw new Error(
+		`${basename(file)} has a default export, so crust mounts it with React, but react and ` +
+			`react-dom are not installed above ${dir} — run "bun add react react-dom" there, or ` +
+			"drop the default export and render the page yourself",
+	);
 }
 
 /** Resolve `react`/`react-dom` from the user's project, not from the wrapper's directory. */
@@ -259,14 +271,20 @@ interface BuildLog {
 	position?: { file?: string; line?: number; column?: number } | null;
 }
 
-function bundleFailure(logs: readonly BuildLog[]): Error {
+/**
+ * `Bun.build` reports a syntax error by *throwing* an `AggregateError` whose
+ * `errors` are the same `BuildMessage` objects a `success: false` result
+ * carries. Both shapes are formatted here, so a rebuild failure always names a
+ * file, a position and the compiler's own sentence rather than "Bundle failed".
+ */
+function bundleFailure(logs: readonly BuildLog[], reason: string): Error {
 	const rows = logs.map((log) => {
 		const at = log.position;
 		const where =
 			at?.file === undefined ? "" : `${at.file}:${at.line ?? 0}:${at.column ?? 0}  `;
 		return `${where}${log.message}`;
 	});
-	return new Error(rows.length > 0 ? rows.join("\n") : "the bundle produced no output");
+	return new Error(rows.length > 0 ? rows.join("\n") : reason);
 }
 
 /**
@@ -284,7 +302,7 @@ export async function buildPage(app: SingleApp, options: { dev: boolean }): Prom
 
 	const source = await Bun.file(app.file).text();
 	const react = hasDefaultExport(source);
-	if (react) requireReact(app.dir, app.file);
+	if (react) await requireReact(app.dir, app.file);
 
 	let entrypoint = app.file;
 	if (react) {
@@ -295,18 +313,27 @@ export async function buildPage(app: SingleApp, options: { dev: boolean }): Prom
 		entrypoint = wrapperPath;
 	}
 
-	const result = await Bun.build({
-		entrypoints: [entrypoint],
-		outdir: outDir,
-		target: "browser",
-		format: "esm",
-		splitting: false,
-		minify: false,
-		sourcemap: options.dev ? "inline" : "none",
-		naming: PAGE_ENTRY,
-		plugins: [resolveFromProject(app.dir)],
-	});
-	if (!result.success) throw bundleFailure(result.logs as BuildLog[]);
+	let result: Awaited<ReturnType<typeof Bun.build>>;
+	try {
+		result = await Bun.build({
+			entrypoints: [entrypoint],
+			outdir: outDir,
+			target: "browser",
+			format: "esm",
+			splitting: false,
+			minify: false,
+			sourcemap: options.dev ? "inline" : "none",
+			naming: PAGE_ENTRY,
+			plugins: [resolveFromProject(app.dir)],
+		});
+	} catch (error) {
+		// A syntax error throws; a resolution error returns `success: false`.
+		const reason = error instanceof Error ? error.message : String(error);
+		const logs = error instanceof AggregateError ? (error.errors as BuildLog[]) : [];
+		throw bundleFailure(logs, reason);
+	}
+	if (!result.success)
+		throw bundleFailure(result.logs as BuildLog[], "the bundle produced no output");
 
 	await writeFile(
 		join(outDir, "index.html"),
