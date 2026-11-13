@@ -67,7 +67,7 @@ That tag matters for the scaffold you get. Template sizes differ between release
 ## bunx, with nothing installed
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.6 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.7 init my-app
 ```
 
 `bunx` is `bun x`: it resolves the specifier, caches the result, and runs `bin/crust` out of it. Nothing is added to your `PATH`, and nothing needs to be, which is why this is the fastest way to try crust. Note the tag. A bare `github:JeffreyJYZ/crust` names no version at all — it means "whatever this machine's cache already resolved" — so the same page gives different readers different crust:
@@ -76,7 +76,7 @@ bunx github:JeffreyJYZ/crust#v0.1.6 init my-app
 | --- | --- | --- |
 | `github:JeffreyJYZ/crust` | `0.1.5`, Next template 8 files | `0.1.0`, and `--next` refused |
 | `github:JeffreyJYZ/crust#main` | `main`'s head, `0.1.5` | `0.1.0`, Next template 7 files |
-| `github:JeffreyJYZ/crust#v0.1.6` | `0.1.5`, 8 files | `0.1.5`, 8 files |
+| `github:JeffreyJYZ/crust#v0.1.7` | `0.1.5`, 8 files | `0.1.5`, 8 files |
 
 **The trap is the cache, and it is not a bug in crust.** bunx keys its cache on the specifier string, so a bare `github:JeffreyJYZ/crust` keeps serving whatever commit it first resolved, indefinitely. A reader whose cache predates a feature sees a command fail for a reason that has nothing to do with the code they are running:
 
@@ -90,7 +90,7 @@ Measured on this machine, twice, before touching the cache: `0.1.0` from both th
 
 Two cures, in order of preference:
 
-1. **Name a tag.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#v0.1.6 init my-app --next` resolves fresh the first time and answers `0.1.5` with the 8-file Next template. A tag is the one ref whose answer cannot drift, because the commit it names does not move (a re-tagged release is the only way it could).
+1. **Name a tag.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#v0.1.7 init my-app --next` resolves fresh the first time and answers `0.1.5` with the 8-file Next template. A tag is the one ref whose answer cannot drift, because the commit it names does not move (a re-tagged release is the only way it could).
 2. **Clear the two cache directories.** Both are safe to delete, nothing else lives in them:
 
 ```sh
@@ -144,7 +144,7 @@ These five decide what you can build; all are stated in [README.md](../README.md
 | --- | --- | --- |
 | `crust: unknown option --next` (or any newer flag) | a stale bunx cache serving an older commit | name a tag, or delete the two cache directories above |
 | `brew install` says there is no formula | your tap copy was cloned before the formula landed on `main` | `brew update` |
-| a scaffold has 7 files where the docs say 8 | you are on 0.1.1 or older, whose Next template has no `tsconfig.json`, or a stale bunx cache served it | check `crust --version`; name `#v0.1.6` |
+| a scaffold has 7 files where the docs say 8 | you are on 0.1.1 or older, whose Next template has no `tsconfig.json`, or a stale bunx cache served it | check `crust --version`; name `#v0.1.7` |
 | `Cannot find module '@/config'` from a packed install | a 0.1.0-era tarball shipped without the `tsconfig.json` that defines the `@/` alias | reinstall at 0.1.1 or later |
 | `dev url [fail]` in `crust doctor` | the frontend dev server is not running, or is on another port | start it (`bun run dev`), and keep the port pinned — the bridge allows exactly the origin `dev.url` names |
 | `assets [fail]` in `crust doctor` on a `--next` scaffold | `out/` does not exist yet | `bun install && bun --bun ./node_modules/.bin/next build`, then `crust build` |
