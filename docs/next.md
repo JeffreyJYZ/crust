@@ -57,6 +57,8 @@ Building is one command. `crust build` runs the Next export, then embeds it:
 bun run build        # crust build → `next build` → out/ → embed out/ → dist/<App>.app
 ```
 
+`crust doctor` answers the two failure modes a Next project hits before `crust dev` even starts, because both are silent otherwise: it probes the port `dev.url` names — 3000 here — and reports one of four states (free; held by a pid that already answers the URL, which is a dev server you left running and is fine; held by a pid that answers nothing, which is the `strictPort` failure and a `crust dev` that would wait 30 s for a page nothing serves; or answering with nothing listening locally, which is a proxy). The same run prints a dev-watch note for page-side `.ts` files: `crust dev` skips `.tsx`, `.jsx` and `.css` for a `dev.url` project but not `.ts`, because the backend entry is one, so saving one restarts the Bun backend and rotates the bridge token — rename it `.tsx`, or keep it under a skipped directory such as `public/`. `.next/` and `out/` are skipped, so `next dev` writing its own output does not restart anything.
+
 Read the config in that order:
 
 ```ts
