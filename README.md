@@ -162,7 +162,7 @@ bun run src/cli/index.ts build --dir examples/hello
 "examples/hello/dist/Hello crust.app/Contents/MacOS/crust-app"
 ```
 
-`crust build` compiles a generated entry that embeds the config, the backend `main.ts`, **every file under `public/`**, **and the C shim as text** — inside a compiled binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it: 85.11 MiB binary, 85.12 MiB bundle for this example.
+`crust build` compiles a generated entry that embeds the config, the backend `main.ts`, **every file under `public/`**, **and the C shim as text** — inside a compiled binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it. For `examples/hello` that is an 84.75 MiB binary, measured by `bun run e2e`.
 
 Running the binary inside the bundle directly, never `open` — that routes through LaunchServices and Gatekeeper, and it is not the launch path that reports exit 0:
 
@@ -216,7 +216,7 @@ Ten methods, three of which are not yours to call. `command`, `on`, `run`, `quit
 
 Measured on this machine, Bun 1.4.4, macOS 27.0.1, arm64 (DESIGN.md §1 and §10, `research/`):
 
-- **Size — 85 MiB.** The compiled binary for `examples/hello` measured **85.08 MiB** (89,209,442 bytes), the assembled `.app` **85.09 MiB** (89,219,072 bytes). A bare hello-world is 89,159,906 bytes (85.03 MiB); adding three thousand functions moved it 161 KiB. `--trim` is a no-op on stable 1.4.4.
+- **Size — about 85 MiB.** `bun run e2e` compiles `examples/hello` and prints the number: **84.75 MiB** (88,871,520 bytes) at 0.1.5 on 2026-11-13. It drifts with crust's own code, because the runtime is inside the binary — an earlier commit measured 85.08 MiB — so the figure `e2e` prints is the truth and this line is the order of magnitude. `--trim` is a no-op on stable 1.4.4.
 - **Window visible — 299.5 ms** after process start, measured at `isVisible=1` on the spike's 1100×760 window. `WKWebView` alloc+init alone is 165 ms.
 - **Page painted — 925.2 ms** after window creation, measured as the page's own report arriving at the server. Most of that is WebKit's web-process launch.
 - **Cold start — median 5.76 ms** for the whole process on the compiled binary, **4.37 ms to a listening `Bun.serve`**, measured without a webview.
