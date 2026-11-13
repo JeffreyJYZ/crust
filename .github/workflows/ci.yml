@@ -160,6 +160,15 @@ jobs:
         if: steps.window.outputs.available == 'true'
         run: bun run e2e:window
 
+      # The repo's widest example: notes on disk through `fs` called from the page, the
+      # window title, a tray menu, and a folder-picker sheet. The page's own
+      # DOGEAR_SELFCHECK output is the evidence, and the ten step names are asserted
+      # exactly so a step that stops running fails instead of shrinking to nine PASS
+      # lines. Needs network for the scratch `bun install`; about 6 s here.
+      - name: e2e dogear
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:dogear
+
       # Same mode, but driven by the compiled binary from the `standalone binary` step
       # above, with no Bun on PATH — that is the claim the step exists to keep true.
       # Windowed like its neighbours, and it reuses dist/crust, so it needs the earlier
