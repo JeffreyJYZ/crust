@@ -173,7 +173,7 @@ bun run src/cli/index.ts build --dir examples/hello
 "examples/hello/dist/Hello crust.app/Contents/MacOS/crust-app"
 ```
 
-`crust build` compiles a generated entry that embeds the config, the backend `main.ts`, **every file under `public/`**, **and the C shim as text** — inside a compiled binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it. For `examples/hello` that is an 84.77 MiB binary, measured by `bun run e2e`.
+`crust build` compiles a generated entry that embeds the config, the backend `main.ts`, **every file under `public/`**, **and the C shim as text** — inside a compiled binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it. For `examples/hello` that is 85.27 MiB on stable Bun 1.4.4, and 52.79 MiB when the build runs on a Bun that has `bun compile`: AOT plus `--trim` (55,360,800 bytes, measured by `bun run e2e` with that interpreter on `PATH`).
 
 Running the binary inside the bundle directly, never `open` — that routes through LaunchServices and Gatekeeper, and it is not the launch path that reports exit 0:
 
@@ -227,7 +227,7 @@ Ten methods, three of which are not yours to call. `command`, `on`, `run`, `quit
 
 Measured on this machine, Bun 1.4.4, macOS 27.0.1, arm64 (DESIGN.md §1 and §10, `research/`):
 
-- **Size — about 85 MiB.** `bun run e2e` compiles `examples/hello` and prints the number: **84.77 MiB** (88,887,936 bytes) on `main` on 2026-11-13. It drifts with crust's own code, because the runtime is inside the binary — an earlier commit measured 85.08 MiB — so the figure `e2e` prints is the truth and this line is the order of magnitude. `--trim` is a no-op on stable 1.4.4.
+- **Size — 85 MiB on stable, 53 MiB when the builder can AOT.** The binary is the Bun interpreter plus your bundle, so the interpreter decides. Stable 1.4.4: **85.27 MiB** (89,407,586 bytes), and `--trim` there is byte-identical, measured. A Bun carrying `bun compile` (canary 1.4.5 today, 1.5 when it ships): **52.79 MiB** (55,360,800 bytes), because AOT plus `--trim` strips the interpreter down. AOT is not faster — 215.2 ms against 211.9 ms on a 300M-iteration loop — so this is bought for size. `--aot-allow-code-from-disk` costs another 4.14 MiB and is passed only on a retry, when a build's entry really does `import()` at run time.
 - **Window visible — 299.5 ms** after process start, measured at `isVisible=1` on the spike's 1100×760 window. `WKWebView` alloc+init alone is 165 ms.
 - **Page painted — 925.2 ms** after window creation, measured as the page's own report arriving at the server. Most of that is WebKit's web-process launch.
 - **Cold start — median 5.76 ms** for the whole process on the compiled binary, **4.37 ms to a listening `Bun.serve`**, measured without a webview.

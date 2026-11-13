@@ -70,10 +70,56 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	}
 	await mkdir(outDir, { recursive: true });
 
-	// No `--trim`, deliberately: see the module comment. The outfile keeps the
-	// binary's name, which becomes `CFBundleExecutable` and the path
-	// `Contents/MacOS/<binary>` that must be run directly to test a launch.
-	await runOrThrow(["bun", "build", "--compile", "--outfile", binaryPath, options.entry]);
+	// `--trim` always; whether it bites depends on the interpreter. Stable 1.4.4 has
+	// `--trim` but strips nothing (byte-identical output, measured), so the floor there is
+	// the interpreter itself. A Bun carrying `bun compile` — canary 1.4.5, and 1.5 when it
+	// ships — compiles ahead of time, and `--trim` there is worth 85.27 MiB to 53.10 MiB on
+	// examples/hello (measured). AOT is not faster (215.2 ms vs 211.9 ms on a
+	// 300M-iteration loop), so this buys size alone.
+	//
+	// `--aot-allow-code-from-disk` costs 4.14 MiB, so it is not passed by default: an app
+	// whose entry imports are statically bundled does not need it. It is added on a retry
+	// when AOT refuses a dynamic `import()`, which is the only case it exists for — a real
+	// app that loads code at run time still builds, and everyone else keeps the 4 MiB.
+	const aot =
+		Bun.spawnSync(["bun", "compile", "--help"], {
+			stdout: "ignore",
+			stderr: "ignore",
+		}).exitCode === 0;
+
+	if (!aot) {
+		await runOrThrow([
+			"bun",
+			"build",
+			"--compile",
+			"--trim",
+			"--outfile",
+			binaryPath,
+			options.entry,
+		]);
+	} else {
+		const args = ["compile", "--trim", "--outfile", binaryPath, options.entry];
+		const first = Bun.spawnSync(["bun", ...args], { stdout: "inherit", stderr: "pipe" });
+		const complaint = first.stderr ? new TextDecoder().decode(first.stderr) : "";
+		if (first.exitCode === 0) {
+			// nothing further
+		} else if (/dynamic (import|path)|aot-allow-code-from-disk/.test(complaint)) {
+			console.log(
+				"  aot       the entry imports code at run time, so this build allows it from disk (+4.1 MiB)",
+			);
+			await runOrThrow([
+				"bun",
+				"compile",
+				"--trim",
+				"--aot-allow-code-from-disk",
+				"--outfile",
+				binaryPath,
+				options.entry,
+			]);
+		} else {
+			throw new Error(`bun compile failed (exit ${first.exitCode}):\n${complaint.trim()}`);
+		}
+	}
 
 	const binaryBytes = (await stat(binaryPath)).size;
 	const assembled = await assembleApp({ ...options.app, binary: binaryPath, outDir });
