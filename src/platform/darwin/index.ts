@@ -728,7 +728,12 @@ export class DarwinPlatform implements Platform {
 	 * platform knows about, not only what is on screen.
 	 */
 	windowLabels(): string[] {
-		return [...this.#windows.keys()];
+		// Only windows AppKit still holds. A closed window's native object survives on
+		// purpose (the liveness read needs it), so the map alone reports windows that
+		// are gone — and a page that closed a window and asked for the list saw it back.
+		return [...this.#windows.entries()]
+			.filter(([, entry]) => this.#windowIsOpen(entry.win))
+			.map(([label]) => label);
 	}
 
 	/** The native `NSWindow *` behind a tracked label; undefined when never created. */

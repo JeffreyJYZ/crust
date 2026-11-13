@@ -184,7 +184,7 @@ Five built-in names exist, and `config.plugins` absent or empty registers all of
 
 | plugin | commands | works today? |
 | --- | --- | --- |
-| `fs` | `readTextFile`, `writeTextFile` | **yes**, real file I/O |
+| `fs` | `readTextFile`, `writeTextFile`, `list`, `stat`, `remove`, `rename` | **yes**, real file I/O; a missing path is `not-found` |
 | `dialog` | `openPanel` | **yes on macOS**, via `darwinDialogAdapter()`; a non-blocking sheet with `filters` applied, `-runModal` only when there is no window to attach to |
 | `window` | `close`, `focus`, `setTitle`, `list`, `isOpen` | **yes on macOS**, via `darwinWindowAdapter(platform)`; `not-implemented` headless |
 | `tray` | `setTitle`, `setMenu`, `show`, `hide`, `destroy` | **yes on macOS**, via `createStatusBar()` in `src/platform/darwin/status-bar.ts`; `not-implemented` headless |

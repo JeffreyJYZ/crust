@@ -152,14 +152,29 @@ interface RuntimeOptions {
  * start loses the race against Vite's first listen and the page never appears.
  */
 async function waitForDevServer(url: string, timeoutMs: number): Promise<boolean> {
+	const target = new URL(url);
+	const hostname = target.hostname;
+	const port = Number(target.port || (target.protocol === "https:" ? 443 : 80));
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		try {
-			await fetch(url, { signal: AbortSignal.timeout(1000) });
-			return true;
-		} catch {
-			await Bun.sleep(100);
-		}
+		// A TCP connect, never an HTTP request: fetching the page would run the dev
+		// server's own transforms before `.crust/dev.json` exists, and the Vite client
+		// then prints "no window.crust" for a page that is about to be injected properly.
+		const up = await Bun.connect({
+			hostname,
+			port,
+			socket: {
+				data() {},
+				open(socket) {
+					socket.end();
+				},
+			},
+		}).then(
+			() => true,
+			() => false,
+		);
+		if (up) return true;
+		await Bun.sleep(100);
 	}
 	return false;
 }

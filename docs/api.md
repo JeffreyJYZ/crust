@@ -505,7 +505,7 @@ Behaviour worth knowing even so, because `App` depends on it:
 - `pump(intervalMs)` throws unless the interval is a finite positive number.
 - `createWindow` throws on an empty label and on a duplicate label.
 - `window(label)` returns `undefined` once that window has closed. Liveness is the measured rule in `windowLiveness`: visible, or miniaturised, or the app hidden — never `-windowNumber`, which keeps its value after `-close`, and never a plain visibility test, because a minimised window is still open.
-- `windowLabels()` is a macOS extra, outside the interface: the labels the platform still tracks, including one whose window has closed and not yet been pruned by `window(label)`. The `window` plugin's `list` reads it.
+- `windowLabels()` is a macOS extra, outside the interface: the labels whose windows AppKit still holds. A closed window's native object survives on purpose, because the liveness check needs it, so this filters by `windowLiveness` rather than returning every label ever created. The `window` plugin's `list` reads it, which is why a page that closes a window does not see it come back in the next listing.
 - `quit()` exits the process (`DESIGN.md` §3 explains why the pump must own the loop instead of `[NSApp run]`).
 
 Why the seam exists and what it costs to add a second platform is `DESIGN.md` §6.
@@ -518,7 +518,7 @@ Five names exist, in `src/plugins/`. `config.plugins` selects among them; `start
 
 | plugin | commands | answers |
 | --- | --- | --- |
-| `fs` | `readTextFile`, `writeTextFile` | file text; `{ bytes }`. A missing file is `not-found` (404), a non-string path `bad-request` (400) |
+| `fs` | `readTextFile`, `writeTextFile`, `list`, `stat`, `remove`, `rename` | file text, `{ bytes }`, `{ entries: [{ name, path, directory, size }] }`, `{ path, directory, size, modified }`, `{ removed, path }`, `{ path }`. A missing path is `not-found` (404), a non-string path `bad-request` (400). `list` returns absolute paths and sorts by name; `remove` deletes a non-empty directory only with `recursive: true` |
 | `dialog` | `openPanel` | `{ paths: string[] }`, and `[]` means the user cancelled — never an error and never `not-implemented` from a real adapter |
 | `window` | `close`, `focus`, `setTitle`, `list`, `isOpen` | `{ ok: true, … }` or `{ ok: false, code: "unknown-window" \| "invalid-label" \| "handler-error", message, label? }` |
 | `tray` | `setTitle`, `setMenu`, `show`, `hide`, `destroy` | `{ ok: true, … }` or `{ ok: false, code: "invalid-text" \| "invalid-menu" \| "unknown-adapter" \| "destroyed" \| "handler-error", message }` |
