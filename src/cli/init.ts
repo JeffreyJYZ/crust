@@ -3,8 +3,19 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { crustRoot, fail, line, type CliOptions } from "./util.ts";
 
-/** The scaffold source. Copied, never assembled from strings in this file. */
-const TEMPLATE_DIR = resolve(crustRoot, "templates/default");
+/** The scaffold sources. Copied, never assembled from strings in this file. */
+const TEMPLATES = {
+	vanilla: "templates/default",
+	react: "templates/react",
+} as const;
+
+type TemplateName = keyof typeof TEMPLATES;
+
+/** `crust init` options: the shared CLI options plus the template flag. */
+export interface InitOptions extends CliOptions {
+	/** `--react`: copy the React + Vite template instead of the vanilla one. */
+	react?: boolean;
+}
 
 /** A directory name become a package name: lowercase, dots and dashes kept. */
 function packageName(raw: string): string {
@@ -31,7 +42,7 @@ async function templateFiles(dir: string, prefix = ""): Promise<string[]> {
 }
 
 /**
- * `crust init [dir]` — copy `templates/default/` into an empty directory.
+ * `crust init [dir] [--react]` — copy a template into an empty directory.
  *
  * The template ships as real files rather than string literals so a user can
  * read exactly what they will get, and so this command has nothing to keep in
@@ -39,11 +50,16 @@ async function templateFiles(dir: string, prefix = ""): Promise<string[]> {
  * dependency, which is what makes `bun install && bunx crust dev` work from a
  * checkout without publishing the package first.
  *
+ * `--react` selects `templates/react/` (React + Vite, assets built into
+ * `dist/web/`); without it the vanilla template is copied exactly as before.
+ *
  * A non-empty directory is refused rather than merged: a scaffold that silently
  * overwrites someone's `public/index.html` is worse than one that stops.
  */
-export async function init(options: CliOptions): Promise<number> {
+export async function init(options: InitOptions): Promise<number> {
 	const target = resolve(options.dir);
+	const templateName: TemplateName = options.react ? "react" : "vanilla";
+	const templateDir = resolve(crustRoot, TEMPLATES[templateName]);
 
 	const info = await stat(target).catch(() => undefined);
 	if (info && !info.isDirectory()) {
@@ -63,11 +79,11 @@ export async function init(options: CliOptions): Promise<number> {
 		}
 	}
 
-	const template = await stat(TEMPLATE_DIR).catch(() => undefined);
+	const template = await stat(templateDir).catch(() => undefined);
 	if (!template?.isDirectory()) {
 		return fail(
 			"init",
-			`the crust installation has no templates/default (expected ${TEMPLATE_DIR}) — ` +
+			`the crust installation has no ${TEMPLATES[templateName]} (expected ${templateDir}) — ` +
 				"the package was installed without its templates/ directory",
 		);
 	}
@@ -94,13 +110,14 @@ export async function init(options: CliOptions): Promise<number> {
 	};
 
 	console.log(`crust init — ${target}`);
-	const files = await templateFiles(TEMPLATE_DIR);
+	line("template", `${TEMPLATES[templateName]}/`);
+	const files = await templateFiles(templateDir);
 	const created: string[] = [];
 	for (const relative of files) {
 		// npm renames a nested `.gitignore` to `.npmignore` when packing, so the
 		// template keeps it under a plain name and it is renamed on copy.
 		const destination = relative === "gitignore" ? ".gitignore" : relative;
-		const source = join(TEMPLATE_DIR, relative);
+		const source = join(templateDir, relative);
 		const bytes = await readFile(source);
 		const out = join(target, destination);
 		await Bun.write(out, bytes.includes(0) ? bytes : Buffer.from(applyTokens(bytes, tokens)));
@@ -108,7 +125,11 @@ export async function init(options: CliOptions): Promise<number> {
 	}
 
 	for (const file of created) line("created", file);
-	console.log(`\nnext:\n  cd ${target}\n  bun install\n  bunx crust dev\n`);
+	const next = ["", "next:", `  cd ${target}`, "  bun install", "  bunx crust dev"];
+	if (options.react) {
+		next.push("  bun run build          (Vite build, then crust build, into dist/)");
+	}
+	console.log(`${next.join("\n")}\n`);
 	return 0;
 }
 

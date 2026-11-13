@@ -31,6 +31,12 @@ export interface DevConfig {
 
 export interface BuildConfig {
 	beforeBuildCommand?: string;
+	/**
+	 * Directory whose tree `crust build` embeds, relative to the project. Defaults
+	 * to `public`; a frontend that builds elsewhere names its output (e.g.
+	 * `dist/web` for Vite). Whoever sets it is promising an `index.html` there.
+	 */
+	assets?: string;
 	/** LSMinimumSystemVersion in Info.plist. */
 	minimumSystemVersion?: string;
 }
@@ -155,7 +161,7 @@ const ROOT_KEYS = ["app", "windows", "dev", "build", "plugins", "security"] as c
 const APP_KEYS = ["id", "name", "version", "icon"] as const;
 const WINDOW_KEYS = ["label", "url", "width", "height", "minWidth", "title"] as const;
 const DEV_KEYS = ["url", "beforeDevCommand"] as const;
-const BUILD_KEYS = ["beforeBuildCommand", "minimumSystemVersion"] as const;
+const BUILD_KEYS = ["beforeBuildCommand", "assets", "minimumSystemVersion"] as const;
 const SECURITY_KEYS = ["csp"] as const;
 
 /**
@@ -213,6 +219,7 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 			if (build) {
 				v.only(build, "build", BUILD_KEYS);
 				v.string(build, "beforeBuildCommand", "build", false);
+				v.string(build, "assets", "build", false);
 				v.string(build, "minimumSystemVersion", "build", false);
 			}
 		}

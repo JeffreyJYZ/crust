@@ -18,10 +18,12 @@ bridge serving the page, and a typed `invoke` path from the page into Bun code.
 `crust build` compiles that app and assembles `X.app`, ad-hoc signed. The
 example in `examples/hello` is the whole path end to end.
 
-`crust init <dir>` scaffolds an app from `templates/default/`. A built app
-embeds the whole `public/` tree — separate JS, CSS, fonts and images included —
-and serves a path with no extension from `index.html`, so a client-side route
-works.
+`crust init <dir>` scaffolds an app from `templates/default/`, and
+`crust init <dir> --react` scaffolds a React + Vite app from
+`templates/react/`. A built app embeds the configured asset directory —
+`public/` by default, a frontend's build output when `build.assets` names it —
+separate JS, CSS, fonts and images included, and serves a path with no extension
+from `index.html`, so a client-side route works.
 
 What is still missing: Windows and Linux, Developer ID signing, and the
 `dialog`, `tray` and `notification` plugins.
@@ -48,6 +50,29 @@ a cache path that will not survive.
 `dev` and `build` scripts call `crust`. The files are copied from
 `templates/default/`, and a directory that is not empty is refused with the
 entries it found rather than overwritten.
+
+### React
+
+```sh
+bunx github:JeffreyJYZ/crust init my-app --react
+cd my-app
+bun install
+bunx crust dev            # Vite on :5173; the window loads it
+bun run build             # vite build → dist/web, then crust build → dist/my-app.app
+```
+
+`templates/react/` is six files: `package.json` (react, react-dom, vite,
+`@vitejs/plugin-react`), `vite.config.ts` (the react plugin plus `crust()` from
+`crust/vite`, port pinned to 5173), `crust.config.ts` (`dev.url` on that port,
+`build.assets: "dist/web"`), `index.html` (the mount point and the module
+script), `src/main.tsx` (one component, inline styles, one `invoke("greet")` in
+an effect, dark by default and readable through `prefers-color-scheme`) and
+`main.ts` (one command, `app.run()`).
+
+`src/main.tsx` calls `window.crust.invoke("greet", { name })` on mount, so a
+built app proves the whole path — window, embedded bundle, bridge, handler — with
+no click. Built from the scaffold on 2026-11-13: **2 files from `dist/web/`**, an
+85.45 MiB binary, the page's call answered, exit 0.
 
 Verified on 2026-11-13 from an empty directory with no checkout present:
 
@@ -134,6 +159,7 @@ export default {
 	app: { id: "land.jyz.example", name: "Example", version: "0.1.0" },
 	windows: [{ label: "main", url: "/", width: 1100, height: 760, title: "Example" }],
 	dev: { url: "http://localhost:5173", beforeDevCommand: "bun run dev" },
+	build: { assets: "dist/web", beforeBuildCommand: "bun x vite build" },
 	plugins: ["crust:fs"],
 } satisfies CrustConfig;
 ```
@@ -142,6 +168,15 @@ export default {
 `beforeDevCommand` is started (not awaited) by `crust dev`. Without `dev.url`,
 the bridge serves `public/index.html` and injects its own token, which is the
 path the example takes.
+
+`build.assets` names the directory `crust build` embeds — `public/` when absent,
+`dist/web` for the React template. A named directory must hold `index.html`;
+missing or empty stops the build naming that directory and saying the frontend
+has not been built, rather than packaging stale bytes. `build.beforeBuildCommand`
+runs first with stdio inherited, so the frontend's own output is visible, and a
+non-zero exit aborts the build naming the command and its exit code. A built app
+ignores `dev.url`: the generated entry drops that key, because a bundle has no
+dev server and must load the embedded document.
 
 Every key is validated at startup; a bad config names the key and the shape it
 expected, e.g. `windows[0].width — expected a positive integer, got "wide"`.
@@ -199,11 +234,12 @@ Chromium.
   other machine. Recipients run `xattr -dr com.apple.quarantine "Hello
   crust.app"` or right-click → Open. A Developer ID is `crust sign`'s job and
   needs a certificate this repository does not ship.
-- **A built app embeds the whole `public/` tree.** `.html`, `.js`, `.css`,
-  `.json`, `.svg`, `.png`, `.woff2` and `.wasm` are served with their own content
-  types, and a path with no extension falls back to `index.html` so a
-  client-side route works. A frontend that a dev server builds outside `public/`
-  still needs its own build step.
+- **A built app embeds the whole asset directory.** By default that is
+  `public/`; `build.assets` can name a frontend's output (`dist/web` for the
+  React template). `.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.woff2` and
+  `.wasm` are served with their own content types, and a path with no extension
+  falls back to `index.html` so a client-side route works. A frontend that a dev
+  server builds outside the asset directory still needs its own build step.
 - **`fs` and `dialog` work.** `fs` reads and writes files for real. `dialog`
   opens a real `NSOpenPanel` through a darwin adapter; its modal path blocks the
   JavaScript thread and the pump for the duration of the pick. File-type filters
@@ -241,5 +277,6 @@ src/packaging/      binary compile, .app assembly, signing, dmg, icon
 src/plugins/        definePlugin and the four v1 plugins
 src/platform/       the macOS implementation (shim.c compiled at launch by cc())
 templates/default/  the app `crust init` copies
+templates/react/    the React + Vite app `crust init --react` copies
 examples/hello/     the minimal app this README runs
 ```

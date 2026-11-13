@@ -14,6 +14,8 @@ export interface CliOptions {
 	config?: string;
 	/** Backend entry, relative to `dir`. */
 	entry?: string;
+	/** The positional a `dev`/`build` invocation got; a single-file entry. */
+	single?: string;
 }
 
 const LABEL_WIDTH = 9;

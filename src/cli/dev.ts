@@ -8,14 +8,21 @@
  * window closing must not take the watcher down with it.
  */
 import { watch } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
 import { crustRoot, fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
 
 /** Where the runtime module lives inside this package. */
 const RUNTIME_ENTRY = resolve(crustRoot, "src/runtime.ts");
 
 export async function dev(options: CliOptions): Promise<number> {
+	const detected = await detectSingle(options);
+	if (detected.kind === "error") return fail("dev", detected.message);
+	if (detected.kind === "app") return devSingle(detected.app);
+
 	const loaded = await loadConfig({ dir: options.dir, configPath: options.config });
 	console.log(`crust dev — ${loaded.path}`);
 	const config = loaded.config;
@@ -171,4 +178,103 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		if (stopping) return 0;
 		child = spawnRuntime(options);
 	}
+}
+
+/**
+ * `crust dev app.tsx` — one file, no config, one window.
+ *
+ * The page bundle is written to `<dir>/.crust/single` and served by the bridge
+ * from disk, so a rebuild replaces files and the window reloads itself; the
+ * runtime process is never restarted for a page edit. A build failure prints
+ * and leaves the last good bundle in place, which is why the window survives a
+ * half-typed file.
+ *
+ * Only the entry file is watched. A file it imports is not, and that is the
+ * documented limit of this convenience (`docs/single-file.md`).
+ */
+async function devSingle(app: SingleApp): Promise<number> {
+	console.log(`crust dev — ${app.file} (one file)`);
+
+	// The first build is the one that can stop the launch: with no good bundle
+	// there is nothing to serve, and a window on a broken page is worse than a
+	// message naming the error.
+	const page = await buildPage(app, { dev: true });
+
+	const temp = await mkdtemp(join(tmpdir(), "crust-single-"));
+	const runner = join(temp, "run.ts");
+	await writeFile(runner, devRunnerSource(app, page.dir), "utf8");
+
+	line("page", join(page.dir, "index.html"));
+	line("bundle", `${page.entry} (rebuilt on every change)`);
+	line("window", `${app.config.windows[0]?.width}x${app.config.windows[0]?.height}`);
+	line("invoke", 'window.crust.invoke("info") answers from the framework');
+	console.log("");
+
+	const child = Bun.spawn({
+		cmd: ["bun", runner],
+		cwd: app.dir,
+		stdio: ["inherit", "inherit", "inherit"],
+	});
+
+	let stopping = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let building = false;
+	let again = false;
+
+	const rebuild = async (): Promise<void> => {
+		if (stopping) return;
+		if (building) {
+			again = true;
+			return;
+		}
+		building = true;
+		try {
+			await buildPage(app, { dev: true });
+			line("page", "rebuilt — the window reloads itself");
+		} catch (error) {
+			// The written page is untouched by a failed build, so the window keeps
+			// the last good bundle and only this message appears.
+			console.error("  page      build failed — the last good page stays");
+			const text = error instanceof Error ? error.message : String(error);
+			for (const row of text.split("\n")) console.error(`            ${row}`);
+		} finally {
+			building = false;
+			if (again) {
+				again = false;
+				void rebuild();
+			}
+		}
+	};
+
+	const name = basename(app.file);
+	const watcher = watch(app.dir, { recursive: false }, (_event, filename) => {
+		if (stopping) return;
+		const seen = String(filename ?? "");
+		if (seen !== name && !seen.endsWith(`/${name}`)) return;
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			void rebuild();
+		}, 120);
+	});
+
+	const stop = (): void => {
+		stopping = true;
+		clearTimeout(timer);
+		watcher.close();
+		child.kill();
+	};
+	process.once("SIGINT", stop);
+	process.once("SIGTERM", stop);
+
+	const code = await child.exited;
+	watcher.close();
+	clearTimeout(timer);
+	await rm(temp, { recursive: true, force: true }).catch(() => undefined);
+
+	if (code === 0) {
+		line("app", "window closed; crust dev stopped");
+		return 0;
+	}
+	line("app", `runtime exited with ${code}`);
+	return code ?? 1;
 }
