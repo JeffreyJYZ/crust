@@ -106,6 +106,19 @@ Run `bun scripts/verify-package.ts` — a new `exports` entry is picked up from 
 
 A new template directory is the one thing that needs the script too: it walks `default`, `react` and `next` by name, and a fourth template added to `templates/` without a line here would ship unverified. Add its name to the list rather than widening the check to every directory — the point is to assert the templates a user is offered, and a new template that `crust init` cannot select yet is exactly the case worth a deliberate edit.
 
+## Cutting a release
+
+```sh
+bun run release --patch --dry    # print the plan, change nothing
+bun run release --patch          # 0.1.7 -> 0.1.8, tag, tap PR
+```
+
+One command, because the mechanical steps are where this project's release mistakes happened: a tag pushed before the version bump (`v0.1.2` pointed at a tree that still said `0.1.1`), a formula pinned to a tag older than the fixes it advertised, and three PRs for one afternoon of work.
+
+It refuses to start on a dirty tree or off `main`, runs `bun check` and the unit suite, bumps `package.json` and every `#vX` install pin, commits, tags, pushes `main` and the tag, computes the tarball's sha256 from the tag archive (retrying while GitHub serves it), then moves the formula in the tap clone, pushes a `crust-<version>` branch and opens the PR. It never merges: the tap's `main` is protected and the review is the point.
+
+`CRUST_TAP` overrides the tap clone's path. The e2e suites are not run here — they need a desktop session and minutes; run them by hand before releasing, and CI runs them on the PR.
+
 ## Publishing itself
 
 Nothing in this repo publishes. `npm publish` needs the account's second factor, so it is a human step: bump the version, run the verifier, publish, then `bun add crust@<version>` in an empty directory and confirm `crust --help` prints its usage. That last command is the same assertion the script makes before a publish; after one, it is the only thing that proves the registry copy and the tarball are the same package.
