@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { extname, join, relative, resolve } from "node:path";
 import { cc, FFIType } from "bun:ffi";
 import { startBridge } from "@/bridge/server.ts";
+import { isIgnoredWatchPath } from "@/cli/ignore";
 import { findConfig, loadConfig, type CrustConfig } from "@/config";
 import { describeSignature } from "@/packaging/sign";
 import { buildPage, detectSingle, type SingleApp, type SingleDetection } from "@/single";
@@ -238,6 +239,154 @@ async function checkBridge(appId: string | undefined): Promise<Check> {
 	} finally {
 		await bridge.stop();
 	}
+}
+
+/** Hostnames whose ports are this machine's to report on. */
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"]);
+
+export type DevUrlTarget = { hostname: string; port: number } | "remote" | "unreadable";
+
+/**
+ * The port a `dev.url` names, when that URL is a loopback name doctor can probe.
+ *
+ * A remote URL's port belongs to that host, so there is nothing local to check,
+ * and `new URL` rejects strings a config can still carry. Both are told apart
+ * from a real target so each gets its own one-line note rather than a failure.
+ */
+export function devUrlTarget(url: string): DevUrlTarget {
+	let target: URL;
+	try {
+		target = new URL(url);
+	} catch {
+		return "unreadable";
+	}
+	if (!LOOPBACK_HOSTNAMES.has(target.hostname.toLowerCase())) return "remote";
+	const port = Number(target.port || (target.protocol === "https:" ? 443 : 80));
+	return Number.isInteger(port) && port > 0 ? { hostname: target.hostname, port } : "unreadable";
+}
+
+/**
+ * Whether a TCP connection to `hostname:port` is accepted.
+ *
+ * This is the client half of "is that port free": a refused connection answers
+ * in a millisecond on loopback, and the timeout only bounds a host that drops.
+ */
+async function portAccepts(hostname: string, port: number): Promise<boolean> {
+	const connect = Bun.connect({
+		hostname,
+		port,
+		socket: {
+			data() {},
+			open(socket) {
+				socket.end();
+			},
+		},
+	}).then(
+		() => true,
+		() => false,
+	);
+	return await Promise.race([connect, Bun.sleep(750).then(() => false)]);
+}
+
+/** The pid holding a listening TCP port, from `lsof`; absent when unreadable. */
+async function portHolder(port: number): Promise<number | undefined> {
+	const text = await shellOutput(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+	const first = text?.split("\n")[0]?.trim();
+	if (first === undefined || first.length === 0) return undefined;
+	const pid = Number.parseInt(first, 10);
+	return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+export interface DevPortFacts {
+	url: string;
+	port: number;
+	/** A TCP connection to the port was accepted. */
+	listening: boolean;
+	/** An HTTP request to `url` answered, with any status. */
+	answered: boolean;
+	/** The listening pid, when `lsof` could read it. */
+	holder?: number;
+}
+
+/**
+ * Turn the port probe into one line.
+ *
+ * A busy port is not a broken project: a dev server the user already has open
+ * is exactly what `dev.url` describes. Only a holder that answers nothing on
+ * that URL is fatal, because `strictPort` then refuses to start and `crust dev`
+ * waits 30 s for a page nothing will serve.
+ */
+export function classifyDevPort(facts: DevPortFacts): Check {
+	const { url, port, listening, answered, holder } = facts;
+	const who =
+		holder === undefined ? "a process lsof cannot read (another user)" : `pid ${holder}`;
+	if (!listening && !answered) {
+		return { name: "dev port", status: "ok", detail: `port ${port} is free for ${url}` };
+	}
+	if (listening && answered) {
+		return {
+			name: "dev port",
+			status: "note",
+			detail:
+				`port ${port} is held by ${who} and already answers ${url} — an existing dev server is fine; ` +
+				"free it or change dev.url to run a second one",
+		};
+	}
+	if (listening) {
+		return {
+			name: "dev port",
+			status: "fail",
+			detail:
+				`port ${port} is held by ${who}, which does not answer ${url} — a strictPort dev server cannot ` +
+				"start there, and crust dev would wait 30 s for a page nothing serves; free the port or change dev.url",
+		};
+	}
+	return {
+		name: "dev port",
+		status: "note",
+		detail: `${url} answers but nothing is listening on port ${port} locally — a proxy or a remote host is serving it`,
+	};
+}
+
+/** A config, test or declaration file is not page code, whatever its extension. */
+const NOT_PAGE_CODE = /\.(?:config|test|spec|d)\.ts$/i;
+
+/**
+ * Page-side `.ts` modules the backend watcher will treat as backend code.
+ *
+ * `crust dev` skips frontend extensions (`.tsx`, `.jsx`, `.css`, …) for a
+ * `dev.url` project, but `.ts` is deliberately not among them because the
+ * backend entry is one. A page module written as `.ts` therefore restarts the
+ * runtime on every save and rotates the bridge token. The entry, config, test,
+ * declaration and watched-out paths are excluded; what remains is the trap.
+ */
+export async function pageSideTypeScript(dir: string, entry?: string): Promise<string[]> {
+	const root = resolve(dir);
+	const entryPath = entry === undefined ? undefined : resolve(root, entry);
+	const found: string[] = [];
+	for (const relative of await projectSources(root)) {
+		if (extname(relative).toLowerCase() !== ".ts") continue;
+		if (NOT_PAGE_CODE.test(relative)) continue;
+		if (isIgnoredWatchPath(relative)) continue;
+		if (entryPath !== undefined && resolve(root, relative) === entryPath) continue;
+		found.push(relative);
+	}
+	return found.sort();
+}
+
+/** The watcher note: a count and the first few names, never a lecture. */
+export function watcherNote(files: string[]): Check {
+	const shown = files.slice(0, 3).join(", ");
+	const rest = files.length > 3 ? `, +${files.length - 3} more` : "";
+	const plural = files.length === 1 ? "" : "s";
+	return {
+		name: "dev watch",
+		status: "note",
+		detail:
+			`${files.length} page-side .ts file${plural} (${shown}${rest}) — the watcher skips .tsx/.jsx/.css ` +
+			"but not .ts, so saving one restarts the backend and rotates the bridge token; rename them .tsx, " +
+			"or move them under a skipped directory such as public/",
+	};
 }
 
 const SOURCE_EXTENSIONS = new Set([
@@ -501,8 +650,9 @@ async function detectConfiglessSingle(options: CliOptions): Promise<SingleDetect
 /**
  * `crust doctor` — report the state of everything the app needs, in the order
  * a failure actually happens: platform, runtime, config (or the single file),
- * shim, bridge on the app's own port, entry, window layer, the known-fatal
- * traps, what a build would embed, the scaffolding, bundle.
+ * shim, bridge on the app's own port, the dev server's port and URL, entry, the
+ * watcher's `.ts` trap, window layer, the known-fatal traps, what a build would
+ * embed, the scaffolding, bundle.
  */
 export async function doctor(options: CliOptions): Promise<number> {
 	const checks: Check[] = [];
@@ -583,32 +733,72 @@ export async function doctor(options: CliOptions): Promise<number> {
 	const bridge = await checkBridge(config?.app.id ?? single?.config.app.id);
 	push(bridge.name, bridge.status, bridge.detail);
 
-	// Dev server reachability, only when the config names one.
+	// Dev server port and reachability, only when the config names one. The port
+	// is checked first because it is the failure a `strictPort` server reports
+	// from its own command, after crust has already handed it the terminal.
 	if (config?.dev?.url) {
 		const url = config.dev.url;
+		const target = devUrlTarget(url);
+		const listening =
+			target === "remote" || target === "unreadable"
+				? false
+				: await portAccepts(target.hostname, target.port);
+		const holder =
+			target !== "remote" && target !== "unreadable" && listening
+				? await portHolder(target.port)
+				: undefined;
 		const response = await fetch(url, { signal: AbortSignal.timeout(1500) }).catch(() => null);
+		if (target === "unreadable") {
+			push("dev port", "note", `dev.url ${url} is not a URL, so it names no port to check`);
+		} else if (target === "remote") {
+			push(
+				"dev port",
+				"note",
+				`${url} is not loopback, so its port belongs to that host — nothing local to check`,
+			);
+		} else {
+			const port = classifyDevPort({
+				url,
+				port: target.port,
+				listening,
+				answered: response !== null,
+				holder,
+			});
+			push(port.name, port.status, port.detail);
+		}
 		if (response) push("dev url", "ok", `${url} answered ${response.status}`);
 		else push("dev url", "fail", `${url} did not answer — is the frontend dev server running?`);
 	}
 
 	// Backend entry: `src/main.ts` or `main.ts`, the same rule the CLI uses. A
 	// single file is its own entry, since that mode has no backend module.
+	const backendEntry = single ? undefined : await resolveBackendEntry(options.dir, options.entry);
 	if (single) {
 		push(
 			"backend",
 			"ok",
 			`${relative(resolve(options.dir), single.file)} (the page is the entry — no backend module)`,
 		);
+	} else if (backendEntry) {
+		push("backend", "ok", backendEntry.path);
 	} else {
-		const backend = await resolveBackendEntry(options.dir, options.entry);
-		if (backend) push("backend", "ok", backend.path);
-		else
-			push(
-				"backend",
-				"fail",
-				resolve(options.dir, options.entry ?? "src/main.ts") +
-					" does not exist — expected src/main.ts or main.ts",
-			);
+		push(
+			"backend",
+			"fail",
+			resolve(options.dir, options.entry ?? "src/main.ts") +
+				" does not exist — expected src/main.ts or main.ts",
+		);
+	}
+
+	// A dev-server project whose page code is `.ts`: the watcher does not skip
+	// that extension, so every save restarts the runtime and rotates the bridge
+	// token. A note, because the app runs — it just loses the loaded page.
+	if (config?.dev?.url) {
+		const pageSide = await pageSideTypeScript(options.dir, backendEntry?.path);
+		if (pageSide.length > 0) {
+			const note = watcherNote(pageSide);
+			push(note.name, note.status, note.detail);
+		}
 	}
 
 	// The page bundle a single file produces, built the way `crust dev` builds it:
