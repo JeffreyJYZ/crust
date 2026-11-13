@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      # Bun is the whole toolchain: no Rust, no Node, no bundled Chromium.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun check
+
+      - run: bun run test
+
+      # The end-to-end proof builds a real .app and runs its binary, which opens
+      # an NSWindow with a WKWebView and reaches a command through it. That needs
+      # an Aqua session. A runner without one skips the proof and says why in the
+      # log, instead of failing for the shape of the machine or passing silently.
+      - name: window session (macOS)
+        id: window
+        if: runner.os == 'macOS'
+        run: |
+          uid="$(id -u)"
+          if launchctl print "gui/$uid" >/dev/null 2>&1 && pgrep -x WindowServer >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Aqua session and WindowServer are present; the app can open a window."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No Aqua session (gui/$uid) or no WindowServer on this runner, so a Cocoa window cannot open."
+          fi
+
+      - name: e2e (macOS)
+        if: runner.os == 'macOS' && steps.window.outputs.available == 'true'
+        run: bun run e2e
+
+      - name: e2e skipped (macOS, no window session)
+        if: runner.os == 'macOS' && steps.window.outputs.available != 'true'
+        run: |
+          echo "::notice title=e2e skipped::No Aqua session on this runner, so the built app cannot open a window. Run 'bun run e2e' on a Mac with a desktop session to prove the bundle."
+          echo "skipped: no window session (see the 'window session (macOS)' step above)"
