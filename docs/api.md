@@ -1,6 +1,8 @@
 # crust API reference
 
-`crust` 0.1.0, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`) and the second entry point (`import … from "crust/plugin"`). Nothing here is aspirational: each signature, default and error message was read from the source file named beside it, and every behavioural claim (what throws, what the wire returns) was checked by running it against this checkout on 2026-11-13.
+`crust` 0.1.1, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
+
+Each signature, default and error message below was read from the source file named beside it in this working tree. What was *run* is narrower, and [Unverified](#unverified) lists the five claims this page deliberately does not make. The Next build path, a dialog sheet or completed pick, a tray item seen on screen and a delivered notification have not been observed at all; the single-file commands have been run headlessly only. All five are described as the code's intent, never as working.
 
 Design rationale and measurements live in [DESIGN.md](../DESIGN.md); link targets are cited as `DESIGN.md §n` rather than restated.
 
@@ -38,7 +40,16 @@ import {
 } from "crust/plugin";
 ```
 
-Nothing in this package is imported by a page. Page code uses the global `window.crust` the bridge injects; see [plugins.md](plugins.md).
+The third entry point, `src/vite.ts`, is a Vite plugin — the only way a page served by a dev server gets `window.crust`:
+
+```ts
+import { crust, BRIDGE_URL_VAR, BRIDGE_TOKEN_VAR } from "crust/vite";
+import type { CrustOptions } from "crust/vite";
+```
+
+All three are real `exports` entries in `package.json`, so they resolve in an installed project with no build step.
+
+Nothing in this package is imported by *page* code. A page uses the global `window.crust` the bridge injects; `crust/vite` is imported by `vite.config.ts`, never by the page. See [plugins.md](plugins.md) for the page-side surface.
 
 A second warning before anything else: `app` is the **backend** object. The page-side `window.crust.invoke` is a different function with a different signature, documented in [plugins.md](plugins.md#how-an-invoke-reaches-a-handler).
 
@@ -78,7 +89,55 @@ The same command as `examples/hello/main.ts`, without its `console.log` line.
 
 - `app.command("", …)` throws `crust: command name must not be empty` at registration time, whatever the handler would have done.
 - Registering the same name twice throws `crust: command "greet" is already registered`. There is no unregister and no overwrite.
+- Registering after `run()` has started throws `crust: cannot register command "greet" after app.run() has started`. `main.ts` registers everything before its `await app.run()`, and the throw is what makes a late registration a startup failure instead of a command the bridge's handler table never learned about.
 - A handler that throws *while running* does not throw at registration: it rejects `app.invoke`, and over the bridge it becomes a `handler-error` (HTTP 500) carrying the thrown message.
+
+### `app.use(plugin)`
+
+```ts
+use(plugin: PluginDefinition): this
+```
+
+Mounts a plugin of your own, so a page reaches it as `window.crust.invoke("<name>", "<command>", args)`. This is the whole third-party extension path: there is no config field and nothing to import from `src/bridge/`.
+
+```ts
+import { app } from "crust";
+import { clock } from "./plugins/clock.ts";
+
+app.use(clock);
+
+await app.run();
+```
+
+The argument is the value `definePlugin` returns, and `use` re-runs `definePlugin`'s shape checks on it, so a hand-built object with a bad name or a non-function command fails here with the same `bad-request` messages. Two checks come before that and three after:
+
+| input | message | kind |
+| --- | --- | --- |
+| mounted after `run()` | `crust: cannot mount a plugin after app.run() has started` | plain `Error` |
+| not an object | `app.use: not a plugin definition (expected { name, commands })` | `bad-request` |
+| the reserved `app` namespace | `app.use: "app" is the reserved app namespace` | `bad-request` |
+| a built-in name (`fs`, `dialog`, `notification`, `tray`, `window`) | `app.use: "fs" is a built-in plugin — a name is a namespace, so pick another` | `bad-request` |
+| the same name mounted twice | `app.use: plugin "clock" is already mounted` | `bad-request` |
+
+A name is a namespace, and the bridge keys every handler as `"<plugin>.<command>"`, so a collision is refused rather than silently shadowing a built-in. `window` is reserved even when `config.plugins` does not select it. Returns `this`.
+
+Why the mount must precede `run()`: the bridge's `"<plugin>.<command>"` table is built when the bridge starts, which is the first `run()` (`startApp` defers that creation for exactly this reason — see [`app.run()`](#apprun)). Anything mounted later would be a handler the served page cannot reach.
+
+### `app.plugins()`
+
+```ts
+plugins(): readonly PluginDefinition[]
+```
+
+Every plugin mounted with `app.use`, in mount order. `startApp` registers these after the core and native plugins, so a project plugin can never displace a built-in. Public because it is the only way to read the mount list without starting the app; an app does not normally call it.
+
+### `app.deferBridge(factory)` — internal
+
+```ts
+deferBridge(factory: (config: CrustConfig) => string): this
+```
+
+Hands `App` a bridge factory to call on the first `run()` instead of starting a server now. `startApp` uses it so a plugin mounted by `main.ts` is already registered when the bridge snapshots its handler table; the factory runs at most once and its return value is the URL windows load from. Throws `crust: cannot start a bridge for a running app` after `run()`. Not a user-facing option.
 
 ### `app.on(event, listener)`
 
@@ -119,9 +178,17 @@ app.on("window-all-closed", () => {
 run(): Promise<void>
 ```
 
-Starts the app: `platform.start()`, one `platform.createWindow(…)` per `config.windows` entry, emit `ready`, then `platform.pump(16)` (`PUMP_INTERVAL_MS`). Resolves once the app is up; the process stays alive on the pump timer and the bridge afterwards. There is no "run until closed" promise to await — completion is observed through `quit()` or process exit.
+Starts the app: the deferred bridge (if `startApp` supplied one), `platform.start()`, one `platform.createWindow(…)` per `config.windows` entry, emit `ready`, then `platform.pump(16)` (`PUMP_INTERVAL_MS`). Resolves once the app is up; the process stays alive on the pump timer and the bridge afterwards. There is no "run until closed" promise to await — completion is observed through `quit()` or process exit.
 
 With nothing attached, `run()` loads the config from the current directory and lazily imports `src/platform/darwin/index.ts`, which is what keeps the AppKit layer out of a process that never opens a window.
+
+**The bridge is created here, not earlier.** Through `startApp`, `App.deferBridge` holds a factory and `run()` calls it before creating any window; the factory registers the core plugins the config selected, the platform's native adapters, every `app.use` plugin, and the `app` namespace, then binds. That ordering is the reason a plugin mounted in `main.ts` is reachable from the first page load.
+
+**The port is derived from `app.id`, so the page origin is stable.** `preferredPortFor` in `src/runtime.ts` hashes the id (FNV-1a) into `45000 + (hash % 4000)`. The bridge tries `preferred + offset` for offsets 0…19 and binds `0` — letting the OS choose — on the 21st attempt, so a taken port is never a startup failure. Two launches of the same app normally share one origin, which is what keeps `localStorage`, `IndexedDB`, service workers and per-origin caches alive across a restart. The guarantee is "stable unless the port is occupied": when the walk moves, that launch has a different origin, and nothing in the runtime migrates old state.
+
+The token is still per launch (`crypto.randomUUID()`), so a page loaded before a restart must reload before its invokes work again.
+
+With `dev.url` set, the same factory also publishes the bridge to the dev server: it writes `.crust/dev.json` (`{ "url", "token" }`) in the project directory and sets `CRUST_BRIDGE_URL` / `CRUST_BRIDGE_TOKEN` in its own environment. The file is the carrier that matters — the runtime owns that environment and the dev server is a sibling process — so [`crust/vite`](#crustvite) reads the variables first and falls back to the file on every document request. A failed write prints `bridge    could not publish the dev handshake: …` and the launch continues; the window is loaded from the dev server, so the page simply has no client.
 
 Window URLs are resolved per window (`windowUrl` in `src/app.ts`):
 
@@ -129,7 +196,7 @@ Window URLs are resolved per window (`windowUrl` in `src/app.ts`):
 2. otherwise `bridgeUrl + window.url` (default `/`);
 3. otherwise `run()` throws.
 
-**Failure modes**, all measured against this checkout:
+**Failure modes**, as the literal strings in `src/app.ts` and `src/runtime.ts`:
 
 | call | error |
 | --- | --- |
@@ -181,7 +248,7 @@ Throws `crust: cannot attach a platform to a running app` after `run()` has star
 ## `App`, `createApp`, `PUMP_INTERVAL_MS`
 
 ```ts
-class App { /* command, on, run, quit, invoke, attach */ }
+class App { /* command, use, plugins, on, run, quit, invoke, attach, deferBridge */ }
 function createApp(platform: Platform, config: CrustConfig, bridgeUrl?: string): App
 const PUMP_INTERVAL_MS = 16;
 ```
@@ -214,7 +281,7 @@ const plugin = definePlugin({
 });
 ```
 
-Mounted with `app.use(plugin)` before `run()`; the page then calls `invoke("clock", "now")`. A duplicate name, a built-in name or the reserved `app` namespace is refused with a message naming the collision, and mounting after `run()` throws. See [plugins.md](plugins.md#a-third-party-plugin-in-your-own-project).
+Mounted with `app.use(plugin)` before `run()`; the page then calls `invoke("clock", "now")`. A duplicate name, a built-in name or the reserved `app` namespace is refused with a message naming the collision, and mounting after `run()` throws. See [`app.use`](#appuseplugin) and [plugins.md](plugins.md#a-plugin-in-your-own-project).
 
 **Failure modes** — every one throws `CrustError` with `code: "bad-request"`:
 
@@ -280,6 +347,42 @@ type Schema = SchemaOf<[typeof clock]>;
 
 ---
 
+## `crust/vite`
+
+The dev-server half of the bridge. With `dev.url` set, the window loads a document the dev server serves, so the bootstrap the bridge injects into *its own* document never reaches that page and `window.crust` does not exist. This plugin puts it there.
+
+```ts
+function crust(options?: CrustOptions): Plugin
+
+const BRIDGE_URL_VAR = "CRUST_BRIDGE_URL";
+const BRIDGE_TOKEN_VAR = "CRUST_BRIDGE_TOKEN";
+
+interface CrustOptions {
+	urlVar?: string;   // default BRIDGE_URL_VAR
+	tokenVar?: string; // default BRIDGE_TOKEN_VAR
+}
+```
+
+```ts
+// vite.config.ts
+import { crust } from "crust/vite";
+
+export default defineConfig({
+	server: { port: 5173, strictPort: true },
+	plugins: [crust()],
+});
+```
+
+- **Serve-only** (`apply: "serve"`). A build has no bridge, and a token shipped in built HTML is exactly what production must not carry.
+- **Read per document request**, not at config time, because the dev server is spawned before the runtime's bridge binds. It tries `process.env[urlVar]` / `process.env[tokenVar]` first, then `process.env.CRUST_DEV_FILE` or `<cwd>/.crust/dev.json` — the handshake `startApp` writes (`src/runtime.ts`).
+- **Injects two `<script>` tags into `<head>`**: `window.__CRUST__ = {"url":…,"token":…}` and the page client (`pageClientSource()` in `src/bridge/client.ts`, the same `installCrust` source the bridge serves, so there is no second copy of the invoke path). Both call forms therefore work on a dev-server page: `invoke("greet", {…})` two-argument and `invoke("fs", "readTextFile", {…})` three-argument.
+- **Warns once and injects nothing** when neither source has a pair: `[crust] CRUST_BRIDGE_URL/CRUST_BRIDGE_TOKEN are unset, so this page gets no window.crust. Start the dev server through \`crust dev\`, which exports both for it.` A page with no `window.crust` fails loudly on its first call; a client pointed at a guessed address would fail quietly.
+- **The port must not drift.** The bridge allows exactly the origin `dev.url` names (plus its own two loopback origins), so `strictPort` is required — Vite otherwise moves to the next free port and every invoke is refused `bad-origin`.
+
+Verified by hand against a Vite 8.3.8 + React 19 app: the served document carried both tags and the two-argument call answered from the backend ([existing-react.md](existing-react.md)). There is no Next.js equivalent yet; in `next dev` the page reports `window.crust is not installed` ([next.md](next.md)).
+
+---
+
 ## Config
 
 `src/config/schema.ts` defines the object; `src/config/load.ts` reads it. Both `crust.config.ts` (default export) and `crust.json` are accepted, in that order, and the TS form may also export the object as `config`.
@@ -299,7 +402,7 @@ The validator fills in nothing — it only rejects. The "default" column is what
 
 | key | required | default | notes |
 | --- | --- | --- | --- |
-| `app.id` | yes | — | reverse-DNS `CFBundleIdentifier` written to `Info.plist` |
+| `app.id` | yes | — | reverse-DNS `CFBundleIdentifier` written to `Info.plist`; also seeds the bridge port, so the page origin is stable across launches (`src/runtime.ts`, `preferredPortFor`) |
 | `app.name` | yes | — | app name; also names platform failures |
 | `app.version` | yes | — | `CFBundleShortVersionString` |
 | `app.icon` | no | unset | resolved against `--dir` by `crust build`; a missing file fails the build |
@@ -308,16 +411,19 @@ The validator fills in nothing — it only rejects. The "default" column is what
 | `windows[].url` | no | `"/"` | appended to the bridge URL (`src/app.ts`, `windowUrl`) |
 | `windows[].width` | no | `1100` | applied by `DarwinPlatform.createWindow` |
 | `windows[].height` | no | `760` | same |
-| `windows[].minWidth` | no | — | accepted by the schema and carried in `WindowOptions`, but **no implementation reads it**: the macOS window ignores it |
+| `windows[].minWidth` | no | unset | applied as the window's minimum size, and the configured `height` is reused as the minimum *height* too (`shim_window_set_min_size` in `src/platform/darwin/index.ts`) |
 | `windows[].title` | no | unset | applied from C and read back; a mismatch throws |
-| `dev.url` | no | unset | when set, every window loads it verbatim and `windows[].url` is ignored |
-| `dev.beforeDevCommand` | no | unset | started (not awaited) by `crust dev` via `sh -c`, in the project directory |
-| `build.beforeBuildCommand` | no | unset | run by `crust build` via `sh -c`; a non-zero exit aborts the build |
+| `dev.url` | no | unset | when set, every window loads it verbatim and `windows[].url` is ignored; its origin is also the one extra origin the bridge allows for CORS |
+| `dev.beforeDevCommand` | no | unset | started (not awaited) by `crust dev` via `sh -c`, in the project directory, with inherited stdio. It inherits the bridge pair only if `crust dev` already had both variables; otherwise the `.crust/dev.json` handshake is what `crust/vite` reads |
+| `build.beforeBuildCommand` | no | unset | run **first**, before the asset directory is read, via `sh -c` in the project directory with inherited stdio; a non-zero exit aborts the build with a message naming the command and its exit code |
+| `build.assets` | no | `public` | directory `crust build` embeds, relative to `--dir`. A *named* directory must exist and hold `index.html`, or the build stops; it may not resolve to `dist/`, where `crust build` writes, because a second build would embed its own binary |
 | `build.minimumSystemVersion` | no | `"13.0"` | `LSMinimumSystemVersion`; default in `src/cli/build.ts` |
 | `plugins` | no | all five built-ins | `crust:` prefix optional; naming any restricts registration to exactly those named |
 | `security.csp` | no | `DEFAULT_CSP` | `src/bridge/server.ts`; must keep `connect-src 'self'` or every invoke becomes a CSP violation |
 
-`plugins` deserves the extra sentence: absent or `[]` means `fs`, `dialog`, `notification`, `tray` and `window` are all registered. `["crust:fs"]` registers `fs` only — every other plugin name then answers `unknown-command` on the bridge. An unknown name fails startup with `crust: unknown plugin "nope" — v1 ships fs, dialog, notification, tray, window`. The `app` namespace is always registered, whatever `plugins` says.
+`build.assets` and `build.beforeBuildCommand` are the pair a built frontend needs, and the order is the point: the command runs to completion, then the directory is read, then it is checked for `index.html`. A framework app therefore never ships whatever happened to be in its output directory from an earlier run. With `assets` absent the old behaviour stands — `public/` is embedded when it exists, and a project with no frontend directory still builds.
+
+`plugins` deserves the extra sentence: absent or `[]` means `fs`, `dialog`, `notification`, `tray` and `window` are all registered. `["crust:fs"]` registers `fs` only — every other plugin name then answers `unknown-command` on the bridge. An unknown name fails startup with `crust: unknown plugin "nope" — v1 ships fs, dialog, notification, tray, window`. The `app` namespace is always registered, whatever `plugins` says, and a plugin mounted with `app.use` is always registered too — `plugins` selects built-ins only.
 
 ### Reading and validating
 
@@ -381,17 +487,69 @@ interface WindowOptions {
 interface WindowHandle { label: string }
 ```
 
-Exported because `App.attach` takes one and tests pass a fake, not because it is a supported extension point. v1 has exactly one implementation, `src/platform/darwin/`, and there is no registration mechanism for a second: the only construction site is `app.run()`'s lazy import, which builds `darwin.createPlatform({ appName })`.
+Exported because `App.attach` takes one and tests pass a fake, not because it is a supported extension point. v1 has exactly one implementation, `src/platform/darwin/`, and there is no registration mechanism for a second. Two sites construct it: `startApp` builds it before any plugin (`src/runtime.ts`), and `app.run()` does the same lazily when nothing is attached, which is what keeps AppKit out of a process that never opens a window.
 
 Behaviour worth knowing even so, because `App` depends on it:
 
 - `start()` is idempotent within an instance and throws when any preflighted selector is missing, naming every one at once.
 - `pump(intervalMs)` throws unless the interval is a finite positive number.
 - `createWindow` throws on an empty label and on a duplicate label.
-- `window(label)` returns `undefined` once that window has closed; on macOS liveness is `-windowNumber !== 0`, never visibility, because a minimised window is still open.
+- `window(label)` returns `undefined` once that window has closed. Liveness is the measured rule in `windowLiveness`: visible, or miniaturised, or the app hidden — never `-windowNumber`, which keeps its value after `-close`, and never a plain visibility test, because a minimised window is still open.
+- `windowLabels()` is a macOS extra, outside the interface: the labels the platform still tracks, including one whose window has closed and not yet been pruned by `window(label)`. The `window` plugin's `list` reads it.
 - `quit()` exits the process (`DESIGN.md` §3 explains why the pump must own the loop instead of `[NSApp run]`).
 
 Why the seam exists and what it costs to add a second platform is `DESIGN.md` §6.
+
+---
+
+## The built-in plugin surface
+
+Five names exist, in `src/plugins/`. `config.plugins` selects among them; `startApp` replaces `dialog`, `tray` and `notification` with the platform's native adapters and always appends `window`. Two failure shapes reach a page and page code must handle both: a returned `NotImplemented` becomes a `501 not-implemented` rejection, while `window` and `tray` answer a typed `{ ok: false, code, message }` inside an ordinary `200`. Wire bodies and the full per-plugin reasoning are in [plugins.md](plugins.md#the-built-in-plugins-today).
+
+| plugin | commands | answers |
+| --- | --- | --- |
+| `fs` | `readTextFile`, `writeTextFile` | file text; `{ bytes }`. A missing file is `not-found` (404), a non-string path `bad-request` (400) |
+| `dialog` | `openPanel` | `{ paths: string[] }`, and `[]` means the user cancelled — never an error and never `not-implemented` from a real adapter |
+| `window` | `close`, `focus`, `setTitle`, `list`, `isOpen` | `{ ok: true, … }` or `{ ok: false, code: "unknown-window" \| "invalid-label" \| "handler-error", message, label? }` |
+| `tray` | `setTitle`, `setMenu`, `show`, `hide`, `destroy` | `{ ok: true, … }` or `{ ok: false, code: "invalid-text" \| "invalid-menu" \| "unknown-adapter" \| "destroyed" \| "handler-error", message }` |
+| `notification` | `requestPermission`, `notify` | `notify` → `{ delivered: boolean, reason: string }`; `requestPermission` → `not-implemented` whenever a real adapter is present |
+
+Three of those deserve one sentence each, because the shape is not obvious from the command name:
+
+- **`dialog`** is a sheet, not a modal, whenever a window exists: the panel is started with `beginSheetModalForWindow:completionHandler:`, the C completion handler records `NSModalResponse`, and `awaitSheetResult` polls the done flag on a 16 ms timer — so the pump and in-flight invokes keep running while the picker is up. With no key window it falls back to `-runModal`, which blocks the JavaScript thread for the whole pick. `filters` is flattened to one comma-separated extension list and applied through the deprecated `-setAllowedFileTypes:`, because macOS 27's `allowedContentTypes` needs UTType objects that cannot cross `bun:ffi`. `multiple` and `directory` map to `allowsMultipleSelection` / `canChooseDirectories`. Neither a sheet on screen nor a completed pick has been observed — see [Unverified](#unverified). (`plugins.md`'s dialog row still says "modal pick only, filters ignored" — that sentence predates the sheet adapter in `src/platform/darwin/index.ts`.)
+- **`tray`** is one `NSStatusItem` per process with a title and a menu; a second `createStatusBar()` throws until the first is destroyed, because the ObjC runtime holds a single click IMP. A page cannot send a function, so every row click is also emitted as the `tray:click` event carrying `{ index, label }`.
+- **`notification`** reports the OS's own status: `delivered` is true only when the adapter's status is 0. Statuses 1 (authorization pending or denied), 2 (a class or selector is missing) and 3 (the API errored) all come back as `delivered: false` with the reason intact, so a missing permission is never a silent success. Two answers have been measured, and neither delivered anything: unbundled (`crust dev`) the process has no bundle identifier, so `UNUserNotificationCenter` is never entered and the reason names the absent `NSUserNotification` selector; inside a built `.app` the modern centre *is* entered and authorization comes back denied, `{"delivered":false,"reason":"UNUserNotificationCenter: authorization was denied"}`. The cause of that denial is unidentified; [README](../README.md#limits-stated-plainly) carries the two explanations that were ruled out.
+
+---
+
+## The command line
+
+`src/cli/index.ts` is the `crust` binary.
+
+| command | does |
+| --- | --- |
+| `crust init <dir> [--react \| --next]` | scaffold into an empty directory: plain HTML by default, React + Vite with `--react`, Next.js with `--next` |
+| `crust dev [file]` | watch the backend, restart it on change, keep the frontend with its own dev server; with a `.tsx`/`.jsx`/`.ts`/`.js` positional, run that one file as the app |
+| `crust build [file]` | compile the binary, assemble `X.app`, ad-hoc sign it; with a positional, build the single-file app |
+| `crust sign` | Developer ID signing (needs a certificate) |
+| `crust dmg` | drag-to-Applications disk image |
+| `crust doctor` | report why the app did not open |
+
+Options: `--dir <path>` (project directory, default the current directory), `--config <path>` and `--entry <path>` (both relative to `--dir`), `--react` / `--next` (init only, and mutually exclusive — passing both is refused before anything is written), `--help`/`-h`, `--version`/`-v`. An unknown option, a second positional, or a template flag anywhere but `init` is an error, not a fallback.
+
+**The config-free mode.** `crust dev app.tsx` and `crust build app.tsx` take one file and no config at all: the app id is `crust.single.<slug>`, the name and window title come from the basename, the version is `0.0.0`, and the one window is 900×700. The page is bundled with `Bun.build` — `<dir>/.crust/single` in dev, `<dir>/dist/single` in a build — and the backend is the framework itself, which registers `info` and `echo` so `window.crust.invoke("info")` proves the round trip. A file whose source contains `export default` is mounted as a React component; any other file is loaded for its own side effects. A `crust.config.ts` beside the file is refused rather than guessed at. The whole contract, including what it does not support, is [single-file.md](single-file.md).
+
+---
+
+## Unverified
+
+These are the claims this page does not make. Each is code that exists, exercised only in part.
+
+1. **The Next.js build path.** `build.assets: "out"` with `beforeBuildCommand: "next build"` is the intended pipeline, and the code now runs the command before reading the directory, so the ordering it needs is real. `crust init --next` copies `templates/next/` (seven files, tokens substituted), but that template has never been installed, built or opened — see [next.md](next.md), which says so itself.
+2. **A dialog sheet shown, and a pick a human completed.** The sheet's polling loop is tested against fake readings, and every selector it needs is preflighted. The one automated run that reached the sheet path got a safe refusal rather than a panel, so neither a sheet on screen nor a click in a real `NSOpenPanel` has been observed — and the `-runModal` fallback and the `filters` extension list have never been exercised against a real panel at all.
+3. **A tray item seen on screen.** An item was created, titled, shown, hidden and destroyed in a run, and AppKit readback reported its title, `isVisible: true`, a button window on the menu-bar row and the occlusion bit — state, not pixels. The screen capture contained no menu bar, because the active Space was a fullscreen app, and a menu click needs a human.
+4. **A delivered notification.** Authorisation *has* been observed, and it was denied: inside a built `.app` the modern centre is entered and the callback fires with `granted = false`, so `notify` answers `{"delivered":false,"reason":"UNUserNotificationCenter: authorization was denied"}`. No run has ever produced `delivered: true`. The cause of the denial is unidentified; the app's signing identity is the untested candidate.
+5. **The single-file modes.** `crust dev app.tsx` and `crust build app.tsx` were exercised headlessly — the bundle, the generated runner and the built output — but no script in this repo covers them (`scripts/e2e*.ts` proves the project path only), and the windowed runs predate the current rebuild-error path.
 
 ---
 

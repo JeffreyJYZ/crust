@@ -1,6 +1,6 @@
 # Architecture
 
-One page for someone changing this codebase. It explains the four moving parts, where the boundary between them sits, and which files encode the traps that will bite anyone who edits them.
+One page for someone changing this codebase. It explains the moving parts — runtime, bridge, plugins, the `app` surface, the platform seam, and the two frontend shims — where the boundaries between them sit, and which files encode the traps that will bite anyone who edits them.
 
 Measurements are deliberately not repeated here. Every number, and the command that produced it, is in [DESIGN.md](../DESIGN.md): §1 size, §2 the AppKit constraints and traps, §3 the run loop, §4 the bridge, §6 the platform seam, §9 risks, §10 milestones.
 
@@ -9,10 +9,12 @@ Measurements are deliberately not repeated here. Every number, and the command t
 ```
 bun (one process, one JavaScript thread)
 │
-├── src/runtime.ts        startApp(): config → plugins → bridge → platform → import main.ts
-│   ├── src/bridge/       Bun.serve on 127.0.0.1:<ephemeral>, one token, invoke + SSE
+├── src/runtime.ts        startApp(): config → platform → plugins → defer bridge → import main.ts
+│   ├── src/bridge/       Bun.serve on 127.0.0.1:<port>, one token, invoke + SSE
 │   ├── src/plugins/      definePlugin, the registry, the five built-ins
 │   ├── src/app.ts        `app` — the surface main.ts uses; owns the Platform seam
+│   ├── src/vite.ts       `crust/vite` — injects the page client into a dev-server document
+│   ├── src/single.ts     the config-free mode: one file, bundled page, generated runner
 │   └── src/platform/darwin/
 │        ├── index.ts     the only Platform implementation, selectors, guards
 │        ├── shim.c       window, webview, application; compiled at launch by cc()
@@ -22,17 +24,23 @@ bun (one process, one JavaScript thread)
 └── WKWebView             the page, loaded from the bridge or a dev server
 ```
 
-Two entry points matter. `src/cli/index.ts` is the `crust` command. `src/runtime.ts` is the process that actually runs the app: `crust dev` spawns it (`src/cli/dev.ts`, through `Bun.spawn`), and a built binary's generated wrapper calls `startApp()` with an embedded config and an `entryModule`. Both paths converge on `startApp`. One detail to know before trusting the environment: `dev.ts` sets `CRUST_DEV_URL` on the child, but nothing in `src/` reads it — the dev URL the app uses is `config.dev.url`, resolved inside `startApp`.
+The bridge's port is not ephemeral any more: it is derived from `app.id`, so a page's origin survives a restart and `localStorage` with it. [The bridge](#the-bridge-token-origin-and-port) has the derivation and the fallback.
 
-`startApp` does five things in a fixed order, and the order matters:
+Three shapes launch the same runtime. `src/cli/index.ts` is the `crust` command: `crust dev` spawns `src/runtime.ts` through `Bun.spawn` (`src/cli/dev.ts`), and a built binary's generated wrapper calls `startApp()` with an embedded config and an `entryModule` (`src/cli/build.ts`). The third is the config-free mode: `crust dev app.tsx` writes a generated runner to a temp directory that imports `startApp` with a literal config (`devRunnerSource` in `src/single.ts`), and `crust build app.tsx` compiles an equivalent wrapper. All of them converge on `startApp`.
 
-1. load and validate the config (`loadConfig` / `validateConfig`);
+One detail to know before trusting the environment: `dev.ts` sets `CRUST_DEV_URL` on the child, but nothing in `src/` reads it — the dev URL the app uses is `config.dev.url`, resolved inside `startApp`. What a dev *server* needs is the other pair: with `dev.url` set, `startApp` writes `.crust/dev.json` (`{ url, token }`) and exports `CRUST_BRIDGE_URL` / `CRUST_BRIDGE_TOKEN`, which `src/vite.ts` reads per document request. The file exists because the dev server is spawned before the bridge binds.
+
+`startApp` does its work in a fixed order, and the order matters:
+
+1. load and validate the config (`loadConfig` / `validateConfig`), or validate the embedded one a built app passes;
 2. construct the platform — `window`'s adapter reads labels and native pointers from that same instance, so it exists before any plugin is built;
-3. attach the platform and the config to the `app` singleton;
-4. import the user's entry, which registers commands, mounts plugins with `app.use`, and calls `app.run()`;
-5. `run()` starts the bridge with the registry — the core plugins the config selected, the platform's native adapters for `dialog`, `tray` and `notification`, `window`, the user's mounted plugins, and the `app` namespace — then creates windows, emits `ready` and starts the pump.
+3. build the plugin set: the core four, with `dialog`, `tray` and `notification` replaced by the platform's native adapters and `window` appended;
+4. resolve the frontend: `options.root` or `<project>/public` when that directory exists, and the document from `options.assets["/index.html"]` first, then disk;
+5. `app.deferBridge(...)` with a factory, then `app.attach(platform, config)` — the bridge is not started here;
+6. import the user's entry, which registers commands, mounts plugins with `app.use`, and calls `app.run()`;
+7. `run()` calls the deferred factory, which registers the config's core selection, the mounted plugins and the `app` namespace, binds the port, and returns the URL; then windows, `ready`, pump.
 
-The bridge starts at `run()`, not before the import, because a user plugin mounted in `main.ts` has to be in the registry before the server accepts requests. `App.deferBridge` is what allows that ordering without `startApp` owning the server; `src/runtime.ts` is where both facts are encoded.
+The bridge starts at `run()`, not before the import, because a user plugin mounted in `main.ts` has to be in the registry before the server accepts requests. `App.deferBridge` is what allows that ordering without `startApp` owning the server; `src/runtime.ts` is where both facts are encoded. An entry that never calls `run()` still gets a bridge — `startApp` calls the same factory at the end, which is what keeps a headless bridge test simple.
 
 ## The Platform seam
 
@@ -50,13 +58,25 @@ interface Platform {
 
 - **`start()`** brings the application up: compile the shim, preflight every selector, `NSApplicationLoad`, `sharedApplication`, activation policy, resolve the run-loop mode. It is idempotent per instance and throws a single error listing every missing selector rather than aborting on the first.
 - **`pump(intervalMs)`** starts the Cocoa run loop pump on a timer. It throws unless the interval is a finite positive number, and re-arming is the implementation's business, not `App`'s.
-- **`createWindow(options)`** opens a window and returns `{ label }`. Throws on an empty label and on a duplicate label. `minWidth` is carried in `WindowOptions` but no implementation applies it.
+- **`createWindow(options)`** opens a window and returns `{ label }`. Throws on an empty label and on a duplicate label. `minWidth` is applied as the window's minimum size (`shim_window_set_min_size`), with the configured `height` reused as the minimum height; `width`/`height` default to 1100×760.
 - **`window(label)`** is the liveness query: the handle while the window is open, `undefined` once it has closed. `run()`'s `window-all-closed` watcher depends on it, and on macOS a closed window stays addressable because it was created with `setReleasedWhenClosed: NO`. Note that the `window` plugin's `list` does *not* filter this way: `Platform.windowLabels()` (a macOS extra, not part of the interface) returns every tracked label, including one whose window has closed and not yet been pruned by `window(label)`.
 - **`quit()`** ends the application. On macOS it stops the pump, sends `terminate:`, and exits the process.
 
-Only `src/app.ts` and `src/platform/darwin/index.ts` implement or consume this. The lazy `import("@/platform/darwin")` in `App.#loadPlatform` is what lets the bridge, the config and `bun check` load on a machine with no AppKit, and what keeps the shim uncompiled in a process that never opens a window.
+Only `src/app.ts` and `src/platform/darwin/index.ts` implement or consume this. Two things keep AppKit optional: `startApp` imports the layer only when it attaches a platform, and `App.#loadPlatform` does it lazily, so the bridge, the config and `bun check` load on a machine with no AppKit and a process that never opens a window never compiles the shim.
 
 Adding a second platform is meant to be a decision made in one directory. Be honest about the cost: WebView2 is COM and WebKitGTK is GTK's object system, so a second implementation will probably need a compiled shim and therefore a relaxation of the no-native-artifact rule — `DESIGN.md` §6 says the seam exists to localise that decision, not to promise pure FFI scales.
+
+## The plugins and their native halves
+
+A plugin owns no framework. Each file in `src/plugins/` declares a name, a command map, and an interface for its native half (`DialogNative`, `WindowNative`, `TrayNative`, `NotificationAdapter`); the implementation lives in `src/platform/darwin/` and `startApp` substitutes it (`nativePlugins` in `src/runtime.ts`). Without a platform, or off macOS, the plugin still registers under its own name and every command answers a typed `NotImplemented` naming what is missing — which is what keeps `config.plugins` matching in a headless process. `fs` needs no adapter at all.
+
+Three of the five have a real native half, and their shapes differ for reasons worth keeping:
+
+- **`dialog`** is a sheet (`beginSheetModalForWindow:completionHandler:`) whenever a key window exists, and `awaitSheetResult` polls the C-side done flag on a 16 ms timer so the pump and in-flight invokes keep running. With no window it falls back to `-runModal`, the one path that blocks the JavaScript thread. `filters` becomes one comma-separated extension list applied through the deprecated `-setAllowedFileTypes:`; `multiple` and `directory` map to `allowsMultipleSelection` / `canChooseDirectories`.
+- **`tray`** is one `NSStatusItem` per process with a title and a menu. `createStatusBar()` throws while another item is alive, because the ObjC runtime class holds a single click IMP and a single target; `destroy()` frees the slot. `readback()` reports what AppKit says about the item — title, `isVisible`, button window number, frame, occlusion, active space — which is state, never evidence that it was drawn.
+- **`notification`** takes a `post` adapter that answers an OS status: `0` delivered, `1` authorization pending or denied, `2` a class or selector missing, `3` an error. The plugin maps only status `0` to `delivered: true`, so a missing permission is never a silent success. `requestPermission` answers `not-implemented` whenever the adapter can post, because the OS reveals authorization only through the completion handler `notify` already consumes.
+
+Two rules hold for all of them. A failure is a **value**, not an exception: `WindowAdapterError` and `TrayAdapterError` are caught inside the plugin and returned as `{ ok: false, code, message }`, and a `NotImplemented` value is converted to a `501 not-implemented` at the registry/bridge boundary. And the C units guard every selector and report a status code instead of throwing, because an uncaught ObjC exception is a `SIGABRT` with no JavaScript error to catch.
 
 ## The C shim: why it exists, and why it is compiled at launch
 
@@ -81,18 +101,20 @@ Every native call is made through a C unit compiled at runtime by `cc()` from `b
 
 The slice length, not the tick, is what decides tick fidelity; `DESIGN.md` §3 has the delivery table and why a longer slice is worse than not pumping at all. Two consequences a contributor must keep in mind:
 
-- **Blocking JavaScript blocks drawing.** Anything long belongs on a `Worker`. The bridge and the plugins are async for this reason, and the modal `NSOpenPanel` path is documented as blocking on purpose.
+- **Blocking JavaScript blocks drawing.** Anything long belongs on a `Worker`. The bridge and the plugins are async for this reason, and the one knowingly blocking native path is the dialog's `-runModal` fallback, used only when there is no window to attach a sheet to.
 - **Re-entrancy is real.** A Cocoa callback fires inside a pump tick, so anything it calls back into JavaScript runs nested inside a timer.
 
 The run-loop mode is resolved once by `shim_mode()` and verified by `shim_mode_ok()`, because a wrong mode is a silent no-op: `kCFRunLoopDefaultMode` is a data symbol that cannot be called through `bun:ffi`, so the shim builds a constant `CFString` and compares its contents.
 
-## The bridge: token and origin rules
+## The bridge: token, origin and port
 
-`src/bridge/server.ts` is `Bun.serve` on `127.0.0.1` with `port: 0`, so the port is ephemeral and two instances cannot collide. The security posture and its measurements are `DESIGN.md` §4; this is what the code enforces.
+`src/bridge/server.ts` is `Bun.serve` on `127.0.0.1`, one token per launch, one origin check. The security posture and its measurements are `DESIGN.md` §4; this is what the code enforces.
 
-**Token.** One per launch, `crypto.randomUUID()`. It is injected into the served document as part of the bootstrap script, which is `installCrust.toString()` called with the config (`bootstrapSource` in `src/bridge/client.ts`). The page therefore holds it and other local processes do not. The client sends it as `Authorization: Bearer <token>`; the event stream cannot set headers, so `GET /_crust/events` also accepts `?token=`.
+**Port.** The bridge takes a `port` option (`0`, the OS's choice, is the default at the `startBridge` layer), but the runtime always passes one: `preferredPortFor(app.id)` in `src/runtime.ts` hashes the id into the range 45000–48999, and the factory tries `preferred + offset` for offsets 0…19 before falling back to `0` on the 21st attempt. The reason is stated in that function and it is not tidiness: an ephemeral port makes the page's origin change every launch, which discards `localStorage`, `IndexedDB`, service workers and every per-origin cache. A derived port keeps the origin stable; the walk keeps a busy port from being a startup failure. A launch that walks to another port has a different origin, and nothing migrates the old one.
 
-**What is token-free.** The document and its assets, and nothing else: any `GET`/`HEAD` whose path does not start with `/_crust/`. That is unavoidable — the page cannot present a token before it has been served — and it is why the token protects IPC, not the HTML/JS/CSS the page is made of.
+**Token.** One per launch, `crypto.randomUUID()`. It is injected into the served document as part of the bootstrap script, which is `installCrust.toString()` called with the config (`bootstrapSource` in `src/bridge/client.ts`). The page therefore holds it and other local processes do not. The client sends it as `Authorization: Bearer <token>`; the event stream cannot set headers, so `GET /_crust/events` also accepts `?token=`. A restart is a new token, so a page loaded before it must reload.
+
+**What is token-free.** The document and its assets, and nothing else: any `GET`/`HEAD` whose path does not start with `/_crust/`. That is unavoidable — the page cannot present a token before it has been served — and it is why the token protects IPC, not the HTML/JS/CSS the page is made of. Assets are read from an embedded `AssetTable` first and from `root` second, and an extensionless path that matches no file is answered with the document, so a client-side route survives a reload.
 
 **Origin.** For every `/_crust/*` request the server requires an `Origin` header and refuses an absent one:
 
@@ -101,6 +123,8 @@ The run-loop mode is resolved once by `shim_mode()` and verified by `shim_mode_o
 - anything else, including no header at all, is `403 bad-origin`.
 
 Refusing an absent `Origin` is the point: a local non-browser client sends none, and skipping the check when the header is missing would let any local process drive the bridge. The `Origin` check runs before the token check, so a browser error is `bad-origin`, not `unauthorized`.
+
+**A dev-server page.** With `dev.url` set, the document comes from the dev server, so neither the bootstrap nor the invoke shim is in it. `startApp` publishes the pair the dev server needs — `.crust/dev.json` plus `CRUST_BRIDGE_URL` / `CRUST_BRIDGE_TOKEN` — and `src/vite.ts` injects `window.__CRUST__` and `pageClientSource()` into the document it serves. That is one client implementation with two carriers, not a second copy: `pageClientSource()` is the same `installCrust` source the bridge ships, and it installs from the pre-set global.
 
 **Everything else on the wire.** `DEFAULT_CSP` is applied to documents and overridable by `security.csp`; it must keep `connect-src 'self'` or every invoke becomes a CSP violation. Bodies over 2 MiB are refused (`too-large`, 413) before parsing. `idleTimeout: 0` disables Bun's 10 s default, which would cut an idle event stream. `emit` writes `event: <name>\ndata: <json>\n\n` to every subscriber and drops a subscriber whose enqueue throws.
 
@@ -115,18 +139,45 @@ Each of these has already cost a debugging session. The file beside each one is 
 
 These are properties of `bun:ffi`, not of the window shim: `status_bar.c` and `notifications.c` obey the same four rules, build their strings with `-initWithBytes:length:encoding:`, and never hand an object across the boundary. A new C unit that breaks one of them will fail the same way, in the same place — at a later send, not at the mistake.
 
+## Where a frontend comes from
+
+Three paths, one bridge, and each one is a different file's business:
+
+| frontend | how the document reaches the page | file |
+| --- | --- | --- |
+| no dev server | the bridge serves `public/index.html` and its assets from disk | `src/runtime.ts` (`root`) |
+| a dev server (`dev.url`) | the window loads the dev server's document, and `crust/vite` injects the client | `src/vite.ts`, `src/runtime.ts` (handshake) |
+| one file | `Bun.build` bundles the page, the bridge serves the bundle directory | `src/single.ts`, `src/cli/dev.ts` |
+
+A built app replaces the first path's disk read with an embedded table: `crust build` walks `build.assets` (default `public`) and generates `dist/crust-assets.ts`, which the wrapper imports and `startApp` passes as `options.assets` — the bridge checks it before `root`. The walk runs **after** `build.beforeBuildCommand`, and the named directory must exist and hold `index.html`, so a framework's stale output can never be packaged in place of a fresh one (`resolveAssets` in `src/cli/build.ts`).
+
+The config-free mode is smaller than a project by design: no config file, a config built in memory (`crust.single.<slug>`, version `0.0.0`, one 900×700 window), and a page convention that is a regular expression over the source — `export default` means a React component to mount, anything else is loaded for its own side effects. `crust dev` writes a generated runner into a temp directory and watches only the entry file; `crust build` embeds the bundle and passes a `root` that cannot exist, so every request is answered from the table. The user-facing contract is [single-file.md](single-file.md).
+
 ## Where to change what
 
 | change | file |
 | --- | --- |
 | a new app-surface method or event | `src/app.ts` (`App`, `AppEvent`) |
 | how the app boots | `src/runtime.ts` (`startApp`) |
-| a new plugin | `src/plugins/`, then add it to `corePlugins` **and** the runtime's selection if it needs a native half |
-| invoke/SSE behaviour, CSP, CORS | `src/bridge/server.ts` |
-| the page-side client | `src/bridge/client.ts` — keep `installCrust` self-contained; the served bootstrap is its own source text |
+| the bridge's port derivation, dev handshake, plugin selection | `src/runtime.ts` (`preferredPortFor`, `startBridgeFor`, `nativePlugins`, `selectedPlugins`) |
+| a new plugin | `src/plugins/`, then add it to `corePlugins` **and** `nativePlugins` if it needs a native half — and to `RESERVED_PLUGIN_NAMES`' source list in `src/app.ts` |
+| invoke/SSE behaviour, CSP, CORS, asset serving | `src/bridge/server.ts` |
+| the page-side client | `src/bridge/client.ts` — keep `installCrust` self-contained; the served bootstrap and `crust/vite`'s injected client are both its own source text |
+| a dev-server page's client | `src/vite.ts` — the two injected tags, the env/file lookup and the one warning |
+| the config-free mode | `src/single.ts` (detection, bundle, document, runner) plus the single-file branch in `src/cli/dev.ts` / `src/cli/build.ts` |
+| what a build embeds | `src/cli/build.ts` (`resolveAssets`, `assetsModuleSource`) |
 | a new AppKit call | `src/platform/darwin/shim.c` plus a symbol in `compile()`, plus a `PREFLIGHT` entry — or a new C unit following `status_bar.c` if it is its own framework |
-| window/application lifecycle | `src/platform/darwin/index.ts` (`DarwinPlatform`) |
+| window/application lifecycle | `src/platform/darwin/index.ts` (`DarwinPlatform`, `windowLiveness`) |
 | a new config key | `src/config/schema.ts` (validator, `*_KEYS`, interface) — extra keys are rejected, so the allowlist is part of the schema |
 | CLI behaviour | `src/cli/`, packaging in `src/packaging/` |
 
-Two invariants worth restating because breaking them fails quietly: `app` command handlers are looked up, never snapshotted, which is why `main.ts` can register after the bridge starts; and the `app` namespace is registered independently of `config.plugins`, which is why app commands keep working when the plugin list is narrowed.
+Two invariants worth restating because breaking them fails quietly. The `app` namespace is a plugin whose handler calls `app.invoke`, so app commands resolve at invoke time rather than being snapshotted into the bridge's table — which is why the namespace is registered independently of `config.plugins`. And `app.command`, `app.use` and `App.deferBridge` all refuse once `run()` has started, so `main.ts` must finish registering before its `await app.run()`; that refusal is the invariant, not an inconvenience.
+
+## What this page does not claim
+
+The code described above exists and is tested where a test can reach it; four things it is not:
+
+- **The Next.js export path** (`build.assets: "out"` with `beforeBuildCommand: "next build"`) has never been run. The ordering it needs is now in `resolveAssets`; `templates/next/` is scaffoldable with `crust init --next` but unbuilt.
+- **A dialog sheet shown, or a pick a human completed,** has never been observed. The sheet's polling loop is tested against fake readings and the shim's selectors are preflighted, but the one automated run that reached the sheet path got a safe refusal, and neither the `-runModal` fallback nor the `filters` extension list has met a real `NSOpenPanel`.
+- **A tray item seen on screen** has never been captured. An item was created, titled, shown, hidden and destroyed; AppKit readback reported a title, `isVisible: true`, a button window on the menu-bar row and the occlusion bit, while the screen capture contained no menu bar because the active Space was a fullscreen app. That is state, not pixels.
+- **A delivered notification** has never been observed. Authorisation has been, and it was denied: inside a built `.app` the modern `UNUserNotificationCenter` path is entered and the callback fires with `granted = false`, so `notify` answers `delivered: false` with `UNUserNotificationCenter: authorization was denied`. The cause is unidentified; the app's signing identity is the untested candidate.
