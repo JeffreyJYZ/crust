@@ -1,13 +1,14 @@
 /**
- * A drag-to-Applications disk image, built with `hdiutil` alone.
+ * A drag-to-Applications disk image.
+ *
+ * Built with `diskutil image create from` (the supported path on macOS 27) and
+ * falling back to `hdiutil create -srcfolder`, which is deprecated there and was
+ * measured failing with "No space left on device" on a volume with 40 GiB free.
  *
  * No Finder scripting, and that is a deliberate limit rather than an oversight:
- * an AppleScript-passed window layout (icon positions, a background picture,
- * a fixed window size) needs Finder to be running, needs Automation consent on
- * the build machine, and fails silently in CI. `hdiutil create -srcfolder` is
- * deterministic and needs no GUI session at all. The cost is real: the mounted
- * image opens with the icon wherever Finder feels like putting it. Adding the
- * layout later is a Finder-scripting pass over the mounted volume, and it
+ * an AppleScript-passed window layout needs Finder running, Automation consent on
+ * the build machine, and fails silently in CI. The cost is real: the mounted
+ * image opens with the icon wherever Finder feels like putting it. A layout pass
  * belongs behind an opt-in flag, not in the default build.
  */
 
@@ -60,21 +61,40 @@ export async function buildDmg(options: DmgOptions): Promise<DmgResult> {
 		await symlink("/Applications", join(stage, "Applications"));
 
 		await mkdir(resolve(dmgPath, ".."), { recursive: true });
-		// `-ov` overwrites an existing image at the same path; `UDZO` is the
-		// compressed read-only format every download ships in. `-srcfolder`
-		// copies the staging tree and nothing else — no stray files.
-		await runOrThrow([
-			"hdiutil",
-			"create",
-			"-volname",
-			volumeName,
-			"-srcfolder",
-			stage,
-			"-ov",
-			"-format",
-			"UDZO",
-			dmgPath,
-		]);
+		// `diskutil image create from` is the supported path on macOS 27.
+		// `hdiutil create -srcfolder` is deprecated there and was measured failing
+		// with "No space left on device" on a volume holding 40 GiB free, so it is
+		// only the fallback for an older system.
+		try {
+			await runOrThrow([
+				"diskutil",
+				"image",
+				"create",
+				"from",
+				"--format",
+				"UDZO",
+				"--volumeName",
+				volumeName,
+				stage,
+				dmgPath,
+			]);
+		} catch {
+			await rm(dmgPath, { force: true });
+			// `-ov` overwrites an existing image at the same path; `UDZO` is the
+			// compressed read-only format every download ships in.
+			await runOrThrow([
+				"hdiutil",
+				"create",
+				"-volname",
+				volumeName,
+				"-srcfolder",
+				stage,
+				"-ov",
+				"-format",
+				"UDZO",
+				dmgPath,
+			]);
+		}
 	} finally {
 		// The stage holds a second copy of an 85 MiB bundle; leaving it behind
 		// doubles the disk cost of every dmg build.
