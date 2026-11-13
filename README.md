@@ -13,67 +13,97 @@ command, is in [DESIGN.md](DESIGN.md).
 
 ## Status
 
-The package shell is here: config loading, the `app` surface, the CLI, packaging,
-plugins and the bridge. The macOS window layer (`src/platform/darwin`) is still
-landing, so `crust dev` starts the backend and passes the frontend URL through
-but does not open a window yet. `crust build` already produces a working `.app`
-on arm64; the app inside it needs that window layer to show anything.
+`crust dev` runs a real app: one `NSWindow` with a `WKWebView`, a loopback
+bridge serving the page, and a typed `invoke` path from the page into Bun code.
+`crust build` compiles that app and assembles `X.app`, ad-hoc signed. The
+example in `examples/hello` is the whole path end to end.
 
-Do not read this as a finished product. It is the ten-minute path being built,
-and the README records the real numbers rather than the hopeful ones.
+What is still missing: Windows and Linux, Developer ID signing, the `dialog`,
+`tray` and `notification` plugins, and embedding frontend files other than
+`index.html` into a built app.
 
-## Ten minutes
+## Run the example
 
-### 1. Install
+From the crust checkout:
 
 ```sh
-bun add crust
+bun install                      # one dev dependency: @types/bun
+bun run src/cli/index.ts dev --dir examples/hello
 ```
 
-No build step, no native toolchain, no Xcode requirement. The package ships
-TypeScript source and Bun runs it directly. (Not on npm yet — while the window
-layer lands, link this directory instead: `bun link` from the crust checkout.)
+There is nothing to build and nothing to install globally. The example is three
+files: `crust.config.ts`, `main.ts`, and `public/index.html` — plain HTML with
+an inline script, no bundler.
 
-### 2. Write `crust.config.ts`
+What you get:
+
+- a 900×640 window titled by the page as **Hello crust**, on a dark canvas
+- the page calls `window.crust.invoke("greet", { name: "jyz" })` and renders
+  **hello jyz** underneath the heading
+- the terminal prints the bridge URL, `greet hello jyz (page call answered)`
+  and `window Hello crust is open — 900x640`
+
+Close the window and the app exits; `crust dev` exits 0 with it. Edit
+`examples/hello/main.ts` and the runtime process restarts. A change under
+`public/` restarts nothing — the bridge serves that file fresh on the next page
+load, and a real dev server's HMR owns its own frontend.
+
+The window title is applied from C: config `title` goes through a shim function
+that builds the `NSString` on the native side, because a short ASCII `NSString`
+is a tagged pointer that cannot cross `bun:ffi` (DESIGN.md §2). The window reads
+back `Hello crust`, and a mismatch throws rather than silently staying blank.
+
+## Build the example
+
+```sh
+bun run src/cli/index.ts build --dir examples/hello
+open "examples/hello/dist/Hello crust.app"
+```
+
+`crust build` compiles a generated entry that embeds the config, the backend
+`main.ts`, `public/index.html`, **and the C shim as text** — inside a compiled
+binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file
+at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it:
+85.11 MiB binary, 85.12 MiB bundle for this example.
+
+Running the binary inside the bundle directly, never `open` (which routes through
+LaunchServices and Gatekeeper):
+
+```
+$ "examples/hello/dist/Hello crust.app/Contents/MacOS/crust-app"
+  bridge    http://127.0.0.1:63151
+  window    Hello crust is open — 900x640
+  greet     hello jyz (page call answered)
+EXIT=0
+```
+
+The bundle is the shipping unit: a bare executable is not double-clickable, and a
+quarantined one is killed by the kernel with no message.
+
+## The config surface
+
+`crust.config.ts` (or `crust.json`, same object):
 
 ```ts
 import type { CrustConfig } from "crust";
 
 export default {
-	app: { id: "land.jyz.example", name: "Example", version: "0.1.0", icon: "assets/icon.png" },
-	windows: [
-		{ label: "main", url: "/", width: 1100, height: 760, minWidth: 720, title: "Example" },
-	],
+	app: { id: "land.jyz.example", name: "Example", version: "0.1.0" },
+	windows: [{ label: "main", url: "/", width: 1100, height: 760, title: "Example" }],
 	dev: { url: "http://localhost:5173", beforeDevCommand: "bun run dev" },
-	build: { beforeBuildCommand: "bun run build", minimumSystemVersion: "13.0" },
-	plugins: ["crust:fs", "crust:dialog", "crust:notification"],
-	security: { csp: "default-src 'self'" },
+	plugins: ["crust:fs"],
 } satisfies CrustConfig;
 ```
 
-`crust.json` works too, with the same object. Every key is validated at startup;
-a bad config names the key and the shape it expected, e.g.
-`windows[0].width — expected a positive integer, got "wide"`.
+`dev.url` points the window at an existing dev server instead of the bridge;
+`beforeDevCommand` is started (not awaited) by `crust dev`. Without `dev.url`,
+the bridge serves `public/index.html` and injects its own token, which is the
+path the example takes.
 
-| key                          | required | shape                                            |
-| ---------------------------- | -------- | ------------------------------------------------ |
-| `app.id`                     | yes      | reverse-DNS bundle identifier                     |
-| `app.name`                   | yes      | display name, also the `.app` filename            |
-| `app.version`                | yes      | short version string                             |
-| `app.icon`                   | no       | `.png` ≥ 1024px or `.icns`, relative to the project |
-| `windows[].label`            | yes      | string, the key `app.window(label)` uses         |
-| `windows[].url`              | no       | path the window loads, defaults to `/`           |
-| `windows[].width`/`height`   | no       | positive integers                                |
-| `windows[].minWidth`         | no       | positive integer                                 |
-| `windows[].title`            | no       | window title                                     |
-| `dev.url`                    | no       | dev server origin; required by `crust dev`       |
-| `dev.beforeDevCommand`       | no       | starts the frontend dev server                   |
-| `build.beforeBuildCommand`   | no       | builds the frontend before packaging              |
-| `build.minimumSystemVersion` | no       | `LSMinimumSystemVersion`, defaults to `13.0`     |
-| `plugins`                    | no       | array of plugin names                            |
-| `security.csp`               | no       | explicit Content-Security-Policy for the page    |
+Every key is validated at startup; a bad config names the key and the shape it
+expected, e.g. `windows[0].width — expected a positive integer, got "wide"`.
 
-### 3. Write `src/main.ts`
+## The app surface
 
 ```ts
 import { app } from "crust";
@@ -83,80 +113,69 @@ app.on("ready", () => console.log("windows open"));
 await app.run();
 ```
 
-The page calls the handler with `window.crust.invoke<string>("greet", { name: "jyz" })`.
+Five members: `command`, `on`, `run`, `quit`, `invoke`. The page calls a command
+by name (`invoke("greet", { name })`); plugin commands use the three-argument
+form (`invoke("fs", "readTextFile", { path })`). An unknown name returns the
+bridge's structured error to the page — a rejected promise with `code` and
+`message` — never a process crash.
 
-### 4. Run it
-
-```sh
-bunx crust dev
-```
-
-A backend edit restarts the app process. A frontend edit is the dev server's
-HMR, so UI state survives. The window loads `dev.url` directly.
-
-### 5. Build it
-
-```sh
-bunx crust build
-open dist/Example.app
-```
-
-`crust build` compiles the backend with Bun, assembles the bundle, and ad-hoc
-signs it. `crust dmg` then makes a drag-to-Applications image.
-
-## Commands
-
-```
-crust dev      watch backend, restart the app process, follow the frontend URL
-crust build    compile the binary, assemble X.app, ad-hoc sign
-crust sign     Developer ID signing; fails clearly without CRUST_SIGNING_IDENTITY
-crust dmg      drag-to-Applications disk image from the built bundle
-crust doctor   report why the app did not open
-```
-
-Every command fails non-zero with a message naming the missing piece, never a
-silent default.
+`app.run()` needs no manual wiring. Called through `crust dev` or a built app
+the platform, config and bridge are attached first; called bare
+(`bun src/main.ts`) it loads the config from the working directory and imports
+the macOS platform on demand, so no window code is linked into a process that
+never opens one.
 
 ## The numbers
 
-Measured on this machine, Bun 1.4.4, macOS 27.0.1, arm64:
+Measured on this machine, Bun 1.4.4, macOS 27.0.1, arm64 (DESIGN.md §1 and §10,
+`research/`):
 
-- **Size — 85 MiB.** A hello-world `bun build --compile` is 89,159,906 bytes
-  (85.03 MiB); the assembled `.app` for this README's example was 89,169,920
-  bytes (85.04 MiB). Three thousand extra functions moved the binary 161 KiB.
-  `--trim` is a no-op on stable 1.4.4.
+- **Size — 85 MiB.** The compiled binary for `examples/hello` measured
+  **85.08 MiB** (89,209,442 bytes), the assembled `.app` **85.09 MiB**
+  (89,219,072 bytes). A bare hello-world is 89,159,906 bytes (85.03 MiB); adding
+  three thousand functions moved it 161 KiB. `--trim` is a no-op on stable 1.4.4.
+- **Window visible — 299.5 ms** after process start, measured at `isVisible=1`
+  on the spike's 1100×760 window. `WKWebView` alloc+init alone is 165 ms.
+- **Page painted — 925.2 ms** after window creation, measured as the page's own
+  report arriving at the server. Most of that is WebKit's web-process launch.
 - **Cold start — median 5.76 ms** for the whole process on the compiled binary,
-  **4.37 ms to a listening `Bun.serve`**, measured without a webview. WebView
-  creation and web-process launch are the part still unmeasured.
+  **4.37 ms to a listening `Bun.serve`**, measured without a webview.
 - **IPC — 0.119 ms median, 1.276 ms p99** over 200 invoke round trips; a reused
   connection is 0.045 ms.
 
-The honest size claim is **"no bundled Chromium"**. It is not "as small as
-Tauri": Tauri's floor is roughly 3–8 MB because it ships no JavaScript engine,
-so crust is about ten times bigger. That is the runtime, not your app, and it is
-the accepted cost of shipping neither Rust nor Chromium.
+The honest size claim is **"no bundled Chromium"**, never "as small as Tauri":
+Tauri's floor is 3–8 MB because it ships no JavaScript engine. That is the
+runtime, not your app, and it is the accepted cost of shipping neither Rust nor
+Chromium.
 
 ## Limits, stated plainly
 
-- **macOS arm64 only.** Intel Macs are not supported. Windows and Linux are
-  designed for, not written.
-- **No Developer ID yet**, so builds are ad-hoc signed. An ad-hoc signature
-  cannot be notarized, so Gatekeeper refuses the app on any other machine.
-  Recipients run `xattr -dr com.apple.quarantine Example.app`, or right-click
-  the app and choose Open. This is a documented consequence, not a bug.
-- **The window layer is not finished.** Everything else in this README runs;
-  nothing renders yet.
-- Only `fs` works among the v1 plugins. `dialog`, `tray` and `notification` fail
-  honestly until the AppKit and `UNUserNotificationCenter` work lands.
+- **macOS arm64 only.** Intel Macs, Windows and Linux are not supported.
+- **Ad-hoc signing only.** `codesign --sign -` works locally; `spctl` rejects
+  it (exit 3) and it cannot be notarized, so Gatekeeper refuses the app on any
+  other machine. Recipients run `xattr -dr com.apple.quarantine "Hello
+  crust.app"` or right-click → Open. A Developer ID is `crust sign`'s job and
+  needs a certificate this repository does not ship.
+- **A built app embeds `index.html` only.** Separate JS, CSS and image files
+  under `public/` are served in `dev` but are not embedded yet, so keep a
+  frontend self-contained or host it.
+- **`fs` is the only working plugin.** `dialog`, `tray` and `notification`
+  answer with a structured `not-implemented` error naming what they require.
+  Scripts also cannot be evaled from the page: no `dialog`.
+- **A blocking JavaScript call blocks drawing.** The Cocoa run loop is pumped
+  from a timer (16 ms tick, 0.25 ms slice); long synchronous work belongs on a
+  `Worker`.
 
 ## Layout
 
 ```
-src/app.ts          the app surface: command, on, run, invoke — and the Platform seam
+src/app.ts          the app surface: command, on, run, quit, invoke, + the Platform seam
+src/runtime.ts      startApp: config + bridge + platform + the user's main.ts
 src/config/         crust.config.ts / crust.json loading and validation
+src/bridge/         loopback invoke + SSE bridge, and the page-side client
 src/cli/            dev, build, sign, dmg, doctor
 src/packaging/      binary compile, .app assembly, signing, dmg, icon
 src/plugins/        definePlugin and the four v1 plugins
-src/bridge/         loopback invoke + SSE bridge
-src/platform/       the macOS implementation (in progress)
+src/platform/       the macOS implementation (shim.c compiled at launch by cc())
+examples/hello/     the minimal app this README runs
 ```

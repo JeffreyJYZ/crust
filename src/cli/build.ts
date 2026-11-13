@@ -3,7 +3,15 @@ import { resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { buildApp, formatBytes } from "@/packaging/build";
 import { signApp } from "@/packaging/sign";
-import { crustRoot, exists, fail, line, runShell, type CliOptions } from "./util.ts";
+import {
+	crustRoot,
+	exists,
+	fail,
+	line,
+	resolveBackendEntry,
+	runShell,
+	type CliOptions,
+} from "./util.ts";
 
 /** LSMinimumSystemVersion when the config does not name one. */
 const DEFAULT_MINIMUM_SYSTEM_VERSION = "13.0";
@@ -53,13 +61,16 @@ export async function build(options: CliOptions): Promise<number> {
 	console.log(`crust build — ${loaded.path}`);
 	const config = loaded.config;
 
-	const entry = resolve(options.dir, options.entry ?? "src/main.ts");
-	if (!(await exists(entry))) {
+	const backend = await resolveBackendEntry(options.dir, options.entry);
+	if (!backend) {
 		return fail(
 			"build",
-			`backend entry ${entry} does not exist — expected src/main.ts or pass --entry <path>`,
+			options.entry
+				? `backend entry ${options.entry} does not exist under ${options.dir}`
+				: `no backend entry in ${options.dir} — expected src/main.ts or main.ts`,
 		);
 	}
+	const entry = backend.path;
 
 	let iconPath: string | undefined;
 	if (config.app.icon) {

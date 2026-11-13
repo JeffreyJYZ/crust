@@ -104,8 +104,23 @@ async function isDirectory(path: string): Promise<boolean> {
 	}
 }
 
-/** The document the bridge will serve, from the binary's assets or from disk. */
-async function readIndex(
+/**
+ * The backend entry: an explicit path must exist; otherwise `src/main.ts` then
+ * `main.ts`, matching the CLI's rule so both entry points agree.
+ */
+async function resolveEntry(explicit: string | undefined): Promise<string | undefined> {
+	if (explicit) {
+		const path = resolve(explicit);
+		return (await Bun.file(path).exists()) ? path : undefined;
+	}
+	for (const candidate of ["src/main.ts", "main.ts"]) {
+		const path = resolve(candidate);
+		if (await Bun.file(path).exists()) return path;
+	}
+	return undefined;
+}
+
+/** The document the bridge will serve, from the binary's assets or from disk. */ async function readIndex(
 	root: string | undefined,
 	assets?: AssetTable,
 ): Promise<string | undefined> {
@@ -121,7 +136,23 @@ async function readIndex(
  * has opened its windows; the process then stays alive on the pump and the
  * bridge, which is the intended shape (there is no `run()` return to await).
  */
+let signalsRegistered = false;
+
+/**
+ * SIGINT/SIGTERM must end the process wherever `startApp` runs, including inside
+ * a compiled binary where `import.meta.main` never fires. Guarded, so a second
+ * call cannot install the handlers twice.
+ */
+function registerShutdownSignals(): void {
+	if (signalsRegistered) return;
+	signalsRegistered = true;
+	for (const signal of ["SIGINT", "SIGTERM"] as const) {
+		process.on(signal, () => process.exit(0));
+	}
+}
+
 export async function startApp(options: StartAppOptions = {}): Promise<void> {
+	registerShutdownSignals();
 	const config =
 		options.config !== undefined
 			? validateConfig(options.config, "embedded config")
@@ -173,19 +204,15 @@ export async function startApp(options: StartAppOptions = {}): Promise<void> {
 	}
 
 	const entry = options.entryModule;
-	if (entry === undefined) {
-		const entryPath = resolve(options.entry ?? "src/main.ts");
-		if (!(await Bun.file(entryPath).exists())) {
-			await bridge.stop();
-			throw new Error(
-				`crust: backend entry ${entryPath} does not exist — expected src/main.ts or --entry <path>`,
-			);
-		}
+	const entryPath = entry !== undefined ? undefined : await resolveEntry(options.entry);
+	if (entry === undefined && entryPath === undefined) {
+		await bridge.stop();
+		throw new Error(`crust: no backend entry — expected src/main.ts or main.ts, or pass entry`);
 	}
 
 	try {
 		if (entry !== undefined) await entry();
-		else await import(resolve(options.entry ?? "src/main.ts"));
+		else await import(entryPath as string);
 	} catch (error) {
 		await bridge.stop();
 		throw error;
@@ -207,9 +234,7 @@ if (import.meta.main) {
 	const args = parseRuntimeArgs(process.argv.slice(2));
 	// `crust dev` restarts by killing this process, and a window closing kills it
 	// from the platform side; both should end the process cleanly, not 130/143.
-	for (const signal of ["SIGINT", "SIGTERM"] as const) {
-		process.on(signal, () => process.exit(0));
-	}
+	registerShutdownSignals();
 	startApp(args).catch((error: unknown) => {
 		const text = error instanceof Error ? error.message : String(error);
 		console.error(`crust: ${text}`);

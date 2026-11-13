@@ -225,6 +225,29 @@ obj_t shim_window_new(double x, double y, double w, double h, long long style,
 	    defer);
 }
 
+// Titles are set from C as well: a short ASCII NSString is a tagged pointer and
+// cannot cross bun:ffi, so the string is built and consumed on this side.
+void shim_window_set_title(obj_t win, const char *title) {
+	if (!win || !title) return;
+	obj_t allocd = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
+	                                                        sel_registerName("alloc"));
+	if (!allocd) return;
+	obj_t s = ((obj_t (*)(void *, void *, const char *, unsigned long,
+	                      long long))objc_msgSend)(
+	    allocd, sel_registerName("initWithBytes:length:encoding:"), title,
+	    (unsigned long)shim_cstr_len(title), 4LL);
+	if (!s) return;
+	((void (*)(void *, void *, obj_t))objc_msgSend)(win, sel_registerName("setTitle:"), s);
+}
+
+// The window's own title, decoded back to C so JS can verify what was applied.
+const char *shim_window_title_utf8(obj_t win) {
+	if (!win) return "";
+	obj_t t = ((obj_t (*)(void *, void *))objc_msgSend)(win, sel_registerName("title"));
+	if (!t) return "";
+	return ((const char *(*)(void *, void *))objc_msgSend)(t, sel_registerName("UTF8String"));
+}
+
 // --- application ----------------------------------------------------------
 
 int shim_app_load(void) { return (int)NSApplicationLoad(); }

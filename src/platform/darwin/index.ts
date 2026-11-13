@@ -12,7 +12,16 @@
  */
 
 import { cc, FFIType, ptr } from "bun:ffi";
+import { createHash } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+
+// Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file
+// does not exist. The shim therefore travels inside the binary as text and is
+// materialised to a temp file before `cc()` is called.
+import shimSource from "./shim.c" with { type: "text" };
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -23,8 +32,17 @@ const CS = FFIType.cstring;
 
 /** Compile the shipped C shim. `cc()` compiles C only, and a framework must be linked. */
 function compile() {
+/** Materialise the embedded shim and return its path. Content-hashed, so a
+ * second launch reuses the same file and TinyCC's per-path cache. */
+function shimPath(): string {
+	const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
+	const path = join(tmpdir(), `crust-shim-${hash}.c`);
+	if (!existsSync(path)) writeFileSync(path, shimSource);
+	return path;
+}
+
 	return cc({
-		source: `${import.meta.dir}/shim.c`,
+		source: shimPath(),
 		flags: [
 			"-framework",
 			"AppKit",
@@ -72,6 +90,8 @@ function compile() {
 			shim_constraint_simple: { args: [P, I64, I64, F64], returns: P },
 			shim_frame_num: { args: [P, I32], returns: F64 },
 			shim_window_new: { args: [F64, F64, F64, F64, I64, I64, I32], returns: P },
+			shim_window_set_title: { args: [P, P], returns: V },
+			shim_window_title_utf8: { args: [P], returns: CS },
 
 			shim_app_load: { args: [], returns: I32 },
 			shim_pool_new: { args: [], returns: P },
@@ -131,6 +151,8 @@ export interface Shim {
 		shim_constraint_simple: LooseSymbol;
 		shim_frame_num: LooseSymbol;
 		shim_window_new: LooseSymbol;
+		shim_window_set_title: LooseSymbol;
+		shim_window_title_utf8: LooseSymbol;
 
 		shim_app_load: LooseSymbol;
 		shim_pool_new: LooseSymbol;
@@ -235,6 +257,8 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "setReleasedWhenClosed:"],
 	["NSWindow", "contentView"],
 	["NSWindow", "makeKeyAndOrderFront:"],
+	["NSWindow", "setTitle:"],
+	["NSWindow", "title"],
 	["NSWindow", "windowNumber"],
 	["WKWebView", "init"],
 	["WKWebView", "loadRequest:"],
@@ -419,6 +443,9 @@ interface NativeWindow {
 export class DarwinPlatform implements Platform {
 	readonly #appName: string;
 	#app = 0;
+	/** Activation happens at most once per process: repeating it makes the app
+	 * keep jumping into the foreground every time a window is re-created. */
+	#activated = false;
 	#mode = 0;
 	#started = false;
 	#pumping = false;
@@ -541,6 +568,15 @@ export class DarwinPlatform implements Platform {
 			const constraint = ptrValue(raw, "constraintWithItem:");
 			if (!constraint) throw new Error("constraintWithItem: returned null");
 			S.vb1(constraint, "setActive:", 1);
+		}
+
+		// The title is built and applied inside C: a short ASCII NSString is a
+		// tagged pointer and cannot be marshalled through bun:ffi.
+		if (options.title) {
+			shim().symbols.shim_window_set_title(win, cstr(options.title));
+			const applied = String(shim().symbols.shim_window_title_utf8(win) ?? "");
+			if (applied !== options.title)
+				throw new Error(`window title applied as ${JSON.stringify(applied)}`);
 		}
 
 		S.v1(win, "makeKeyAndOrderFront:", 0);

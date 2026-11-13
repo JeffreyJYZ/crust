@@ -10,7 +10,7 @@
 import { watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadConfig } from "@/config";
-import { crustRoot, exists, fail, line, type CliOptions } from "./util.ts";
+import { crustRoot, fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
 
 /** Where the runtime module lives inside this package. */
 const RUNTIME_ENTRY = resolve(crustRoot, "src/runtime.ts");
@@ -20,13 +20,16 @@ export async function dev(options: CliOptions): Promise<number> {
 	console.log(`crust dev — ${loaded.path}`);
 	const config = loaded.config;
 
-	const entry = resolve(options.dir, options.entry ?? "src/main.ts");
-	if (!(await exists(entry))) {
+	const backend = await resolveBackendEntry(options.dir, options.entry);
+	if (!backend) {
 		return fail(
 			"dev",
-			`backend entry ${entry} does not exist — expected src/main.ts or pass --entry <path>`,
+			options.entry
+				? `backend entry ${options.entry} does not exist under ${options.dir}`
+				: `no backend entry in ${options.dir} — expected src/main.ts or main.ts`,
 		);
 	}
+	const entry = backend.path;
 
 	const devUrl = config.dev?.url;
 	if (devUrl) line("frontend", `${devUrl} (HMR stays with the dev server)`);
@@ -89,8 +92,12 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 	let wake: (() => void) | undefined;
 	let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const watcher = watch(dirname(options.entry), { recursive: true }, () => {
+	const watcher = watch(dirname(options.entry), { recursive: true }, (_event, filename) => {
 		if (stopping || restarting) return;
+		// Frontend assets and build output are not backend code: `public/` is the
+		// bridge's to serve fresh, `dist/` is a build result, and both would
+		// otherwise restart the process for a change HMR should own.
+		if (/(^|[/\\])(public|dist|node_modules)([/\\]|$)/.test(String(filename ?? ""))) return;
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
 			if (wake) {

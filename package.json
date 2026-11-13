@@ -20,7 +20,8 @@
 		"typecheck": "bun check",
 		"format": "bun fmt src scripts",
 		"format:check": "bun fmt --check src scripts",
-		"test": "bun test"
+		"test": "bun test src/bridge src/plugins src/platform",
+		"verify": "bun check && bun test src/bridge src/plugins src/platform && bun fmt --check src"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"

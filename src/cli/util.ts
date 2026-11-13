@@ -53,6 +53,27 @@ export async function runShell(command: string, cwd: string): Promise<number> {
 	return await child.exited;
 }
 
+/**
+ * The backend entry, as the CLI resolves it: an explicit `--entry` must exist,
+ * otherwise `src/main.ts` and then `main.ts` are tried. Both are accepted so a
+ * minimal app can be three files at the project root (`crust.config.ts`,
+ * `main.ts`, `public/`), while a layered app keeps `src/main.ts`.
+ */
+export async function resolveBackendEntry(
+	dir: string,
+	entry?: string,
+): Promise<{ path: string; explicit: boolean } | undefined> {
+	if (entry) {
+		const path = resolve(dir, entry);
+		return (await exists(path)) ? { path, explicit: true } : undefined;
+	}
+	for (const candidate of ["src/main.ts", "main.ts"]) {
+		const path = resolve(dir, candidate);
+		if (await exists(path)) return { path, explicit: false };
+	}
+	return undefined;
+}
+
 /** The first `.app` directory in `<dir>/dist`, if any. */
 export async function findAppBundle(dir: string): Promise<string | undefined> {
 	const dist = resolve(dir, "dist");
