@@ -4,11 +4,14 @@
  * One function, `startApp`, does the same five things in both:
  *
  *   1. load and validate the config
- *   2. start the bridge with the four v1 plugins plus one `app` namespace
- *   3. attach the macOS platform and the bridge URL to the `app` singleton
- *   4. serve the page (the bridge injects its token; this module injects the
+ *   2. attach the macOS platform and the config to the `app` singleton
+ *   3. import the user's `main.ts` so it registers commands, mounts plugins and
+ *      calls `run()`
+ *   4. create the bridge on that first `run()`, with the core plugins, the
+ *      mounted ones and one `app` namespace, so the handler table it snapshots
+ *      already holds the project's plugins
+ *   5. serve the page (the bridge injects its token; this module injects the
  *      one-name `invoke` shim DESIGN.md §5 promises)
- *   5. import the user's `main.ts` so it registers commands and calls `run()`
  *
  * An invoke that matches no handler is the bridge's structured error, never a
  * crash: `app.invoke` throws a plain Error and the bridge serialises it.
@@ -18,10 +21,11 @@
  *   bun run src/runtime.ts --config <path> --entry <path>
  */
 import { dirname, join, resolve } from "node:path";
-import { app, type App, type CommandHandler } from "@/app.ts";
+import { APP_NAMESPACE, app, type App, type CommandHandler } from "@/app.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig, validateConfig } from "@/config";
-import { type PluginDefinition, PluginRegistry, definePlugin } from "@/plugins";
+import type { DarwinPlatform } from "@/platform/darwin";
+import { createWindowPlugin, type PluginDefinition, PluginRegistry, definePlugin } from "@/plugins";
 
 export interface StartAppOptions {
 	/** Config file, relative to the working directory. */
@@ -46,9 +50,6 @@ export interface StartAppOptions {
 	/** Skip the platform, for tests and for a headless bridge. */
 	attachPlatform?: boolean;
 }
-
-/** The `app` namespace: `window.crust.invoke("greet", { name })` lands here. */
-const APP_NAMESPACE = "app";
 
 /**
  * The page-side shim, installed after the bridge's own bootstrap.
@@ -99,24 +100,43 @@ function selectedPlugins(
 /**
  * Swap in the platform's native plugins.
  *
- * `dialog` is the only core plugin with a native half in v1. Its default export
- * answers `not-implemented`; on macOS the real answer needs an AppKit adapter,
- * which arrives through the plugin's own `createDialogPlugin` hook. No adapter
- * means the honest answer stays, so a headless bridge and a non-macOS platform
- * are unchanged. The name is preserved, so `selectedPlugins` still matches it.
+ * `dialog` and `window` are the two plugins with a native half in v1. Each
+ * default export answers `not-implemented`; the real answer needs AppKit,
+ * which arrives through that plugin's own `create*Plugin` hook. The window
+ * plugin additionally needs the running platform to read labels from, which is
+ * why it is appended here rather than living in `corePlugins`.
+ *
+ * No platform, or not macOS, means the honest answers stay: a headless bridge
+ * and a non-macOS platform are unchanged, and the plugin is still registered
+ * under its own name so `selectedPlugins` matches `config.plugins`.
  */
 async function nativePlugins(
 	core: readonly PluginDefinition[],
-	attachPlatform: boolean,
+	platform: DarwinPlatform | undefined,
 ): Promise<PluginDefinition[]> {
-	if (!attachPlatform || process.platform !== "darwin") return [...core];
-	const [{ createDialogPlugin }, darwin] = await Promise.all([
-		import("@/plugins"),
-		import("@/platform/darwin"),
-	]);
-	return core.map((plugin) =>
-		plugin.name === "dialog" ? createDialogPlugin(darwin.darwinDialogAdapter()) : plugin,
-	);
+	const { createDialogPlugin, createNotificationPlugin, createTrayPlugin } =
+		await import("@/plugins");
+	if (!platform || process.platform !== "darwin") {
+		return [...core.filter((plugin) => plugin.name !== "window"), createWindowPlugin()];
+	}
+	const darwin = await import("@/platform/darwin");
+	const notifications = await import("@/platform/darwin/notifications");
+	const statusBar = await import("@/platform/darwin/status-bar");
+	return [
+		...core.map((plugin) => {
+			switch (plugin.name) {
+				case "dialog":
+					return createDialogPlugin(darwin.darwinDialogAdapter());
+				case "tray":
+					return createTrayPlugin(statusBar.createStatusBar());
+				case "notification":
+					return createNotificationPlugin(notifications.darwinNotificationAdapter());
+				default:
+					return plugin;
+			}
+		}),
+		createWindowPlugin(darwin.darwinWindowAdapter(platform)),
+	];
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -158,6 +178,7 @@ async function resolveEntry(explicit: string | undefined): Promise<string | unde
  * Start a crust app. Resolves once the user's entry has run and `app.run()`
  * has opened its windows; the process then stays alive on the pump and the
  * bridge, which is the intended shape (there is no `run()` return to await).
+ * The returned handle is the bridge that was started, so a test can stop it.
  */
 let signalsRegistered = false;
 
@@ -174,7 +195,7 @@ function registerShutdownSignals(): void {
 	}
 }
 
-export async function startApp(options: StartAppOptions = {}): Promise<void> {
+export async function startApp(options: StartAppOptions = {}): Promise<BridgeHandle> {
 	registerShutdownSignals();
 	const config =
 		options.config !== undefined
@@ -205,33 +226,48 @@ export async function startApp(options: StartAppOptions = {}): Promise<void> {
 
 	const core = (await import("@/plugins")).corePlugins;
 	const attachPlatform = options.attachPlatform !== false;
-	const plugins = await nativePlugins(core, attachPlatform);
-	const registry = new PluginRegistry().register(...selectedPlugins(config, plugins), appPlugin);
+	// The platform is built before the plugins because the window adapter reads
+	// labels and native pointers from the same instance `app.attach` receives.
+	// Constructing it starts nothing; `app.run()` calls `start()`.
+	const darwinPlatform = attachPlatform ? await import("@/platform/darwin") : undefined;
+	const platform = darwinPlatform?.createPlatform({ appName: config.app.name });
+	const plugins = await nativePlugins(core, platform);
 
 	const frontendRoot = (await isDirectory(root)) ? root : undefined;
 	const indexHtml = await readIndex(frontendRoot, options.assets);
 
-	const bridge = startBridge({
-		handlers: registry,
-		assets: options.assets,
-		root: frontendRoot,
-		indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
-		csp: config.security?.csp,
-	});
+	// The bridge exists from the first `run()`, not from here, because it
+	// snapshots its handler table at creation and the entry has not been
+	// imported yet. Plugins the entry mounted therefore land in that table;
+	// they sit after the built-ins, and the registry refuses a duplicate name,
+	// so a namespace conflict is an error rather than a silent shadow.
+	let bridge: BridgeHandle | undefined;
+	const startBridgeFor = (runConfig: CrustConfig): BridgeHandle => {
+		if (bridge !== undefined) return bridge;
+		const registry = new PluginRegistry().register(
+			...selectedPlugins(runConfig, plugins),
+			...app.plugins(),
+			appPlugin,
+		);
+		bridge = startBridge({
+			handlers: registry,
+			assets: options.assets,
+			root: frontendRoot,
+			indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
+			csp: runConfig.security?.csp,
+		});
+		console.log(
+			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
+		);
+		return bridge;
+	};
 
-	console.log(
-		`  bridge    ${bridge.url}${config.dev?.url ? `  (page from ${config.dev.url})` : ""}`,
-	);
-
-	if (attachPlatform) {
-		const darwin = await import("@/platform/darwin");
-		app.attach(darwin.createPlatform({ appName: config.app.name }), config, bridge.url);
-	}
+	app.deferBridge((runConfig) => startBridgeFor(runConfig).url);
+	if (platform) app.attach(platform, config);
 
 	const entry = options.entryModule;
 	const entryPath = entry !== undefined ? undefined : await resolveEntry(options.entry);
 	if (entry === undefined && entryPath === undefined) {
-		await bridge.stop();
 		throw new Error(`crust: no backend entry — expected src/main.ts or main.ts, or pass entry`);
 	}
 
@@ -239,9 +275,13 @@ export async function startApp(options: StartAppOptions = {}): Promise<void> {
 		if (entry !== undefined) await entry();
 		else await import(entryPath as string);
 	} catch (error) {
-		await bridge.stop();
+		await bridge?.stop();
 		throw error;
 	}
+
+	// An entry that never calls `run()` still gets a bridge, and the fallback
+	// keeps the old timing: it is listening by the time `startApp` resolves.
+	return startBridgeFor(config);
 }
 
 /** The one argument parser both this module and the CLI accept. */

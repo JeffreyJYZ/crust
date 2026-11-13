@@ -1,10 +1,10 @@
 # Plugins
 
-How a crust plugin is shaped, how a page call reaches one, what the built-ins do today, and what a third-party plugin can and cannot do in your own project.
+How a crust plugin is shaped, how a page call reaches one, what the built-ins do today, and how a project mounts a plugin of its own and reaches it from a page.
 
 Read [api.md](api.md) for the config and app surface. Measurements and design reasoning are in [DESIGN.md](../DESIGN.md) §4 (bridge) and §5 (API surface); this page does not repeat them.
 
-Everything below was read from `src/plugins/`, `src/bridge/`, `src/runtime.ts` and `src/platform/darwin/` in this working tree on 2026-11-13, and the JSON responses were produced by starting the real bridge in-process. Where this page and a source file disagree, the file is right — the plugin set was still moving while this was written.
+Everything below was read from `src/app.ts`, `src/plugins/`, `src/bridge/`, `src/runtime.ts` and `src/platform/darwin/` in this working tree on 2026-11-13, and the JSON responses were produced by starting the real bridge in-process. Where this page and a source file disagree, the file is right — the plugin set was still moving while this was written.
 
 ## The shape of a plugin
 
@@ -144,7 +144,7 @@ Never answer a missing implementation with an empty array or a resolved fake: fo
 
 ## The built-in plugins today
 
-Five names exist, and `config.plugins` absent or empty registers all of them. On macOS with a platform attached, `fs`, `dialog`, `window` and `tray` do real work, and `notification` reaches a real adapter whose answer on this machine is "not delivered, here is why". Headless (no platform), `dialog`, `window`, `tray` and `notification` answer `not-implemented`.
+Five built-in names exist, and `config.plugins` absent or empty registers all of them. On macOS with a platform attached, `fs`, `dialog`, `window` and `tray` do real work, and `notification` reaches a real adapter whose answer on this machine is "not delivered, here is why". Headless (no platform), `dialog`, `window`, `tray` and `notification` answer `not-implemented`.
 
 | plugin | commands | works today? |
 | --- | --- | --- |
@@ -164,11 +164,11 @@ Evidence for each row:
 
 Two failure shapes reach a page, and page code must handle both. A command that returns a `NotImplemented` value becomes a `501` rejection — that is how `dialog` fails, and how every plugin without an adapter fails. A command that returns a typed failure object (`window` and `tray` once an adapter is present) is an ordinary `200` response whose `result.ok` is `false`.
 
-Which ones are registered is `config.plugins`' business: absent or `[]` registers all five; naming any registers only the named ones (the `crust:` prefix is optional), and an unknown name fails startup. See [api.md](api.md#keys-and-defaults).
+Which built-ins are registered is `config.plugins`' business: absent or `[]` registers all five; naming any registers only the named ones (the `crust:` prefix is optional), and an unknown name fails startup. It selects built-ins only: a plugin mounted with `app.use` is always registered and never belongs in that list. See [api.md](api.md#keys-and-defaults).
 
-## A third-party plugin in your own project
+## A plugin in your own project
 
-This is the case the framework has never documented, so here is the honest version: **you can write a plugin and test it in-process today, but there is no public way to mount it on a running app.** Nothing below claims otherwise.
+Your project mounts a plugin with `app.use`, in `main.ts`, before `await app.run()`. There is no config field and no bridge import: the same `definePlugin` value the framework uses is the mount target.
 
 ### 1. Write it
 
@@ -188,7 +188,54 @@ export const clock = definePlugin({
 
 `crust/plugin` is a real entry point (`package.json` `exports`), so the import resolves in an installed project. No build step and no bundler config: it is the same TypeScript entry the framework itself imports.
 
-### 2. Test it
+### 2. Mount it
+
+`main.ts`, before `run()`:
+
+```ts
+import { app } from "crust";
+import { clock } from "./plugins/clock.ts";
+
+app.use(clock);
+
+await app.run();
+```
+
+`app.use` (`src/app.ts`) reuses `definePlugin`'s shape checks — non-empty name, no dot, a non-empty `commands` object whose every value is a function — and adds three refusals of its own:
+
+| refused | message |
+| --- | --- |
+| a second mount of the same name | `app.use: plugin "clock" is already mounted` |
+| a built-in name (`fs`, `dialog`, `notification`, `tray`, `window`) | `app.use: "fs" is a built-in plugin — a name is a namespace, so pick another` |
+| the reserved `app` namespace | `app.use: "app" is the reserved app namespace` |
+
+A fourth is the lifecycle rule `app.command` also enforces: mounting after `run()` has started throws `crust: cannot mount a plugin after app.run() has started`. A collision is never a silent override — two plugins sharing a name would overlap in one handler table.
+
+The mount must precede `run()` for a mechanical reason. The bridge snapshots its `"<plugin>.<command>"` table when it starts (`handlerMap` in `src/plugins/registry.ts`), and `startApp` creates that bridge on the first `run()`, after importing `main.ts`. Everything `main.ts` registers and mounts by then is in the table the served page talks to.
+
+### 3. Reach it from the page
+
+The plugin form is the three-argument call:
+
+```js
+await window.crust.invoke("clock", "now");
+// 200 {"ok":true,"result":"2026-11-13T09:41:07.812Z"}
+```
+
+The two-argument form `invoke("greet", { name })` is app commands only — the injected shim rewrites it into the `app` namespace — so a plugin command always uses three arguments. That form also works when `dev.url` points at a dev server and the shim is absent.
+
+`startApp` registers mounted plugins after the core and native ones, then the `app` namespace: `new PluginRegistry().register(...selectedPlugins(config, plugins), ...app.plugins(), appPlugin)`. `PluginRegistry.register` refuses a duplicate name, so a namespace conflict fails startup with `plugin "<name>" is already registered` rather than shadowing a built-in.
+
+An unknown name still fails at the bridge, and the code is `unknown-command` even for an unknown *plugin*, because the bridge flattens names before lookup. A command that returns `notImplemented` is `501`:
+
+```js
+await window.crust.invoke("clock", "zone");
+// 501 {"ok":false,"error":{"code":"not-implemented","message":"clock.zone needs a native time zone API","requires":"NSTimeZone"}}
+```
+
+(`unknown-plugin` exists only in `PluginRegistry.invoke`, which the bridge does not use.)
+
+### 4. Test it in-process
 
 `src/plugins/clock.test.ts`:
 
@@ -218,29 +265,12 @@ Run it with `bun test`. The same code was run against this checkout (imports by 
 
 `PluginRegistry` (`src/plugins/registry.ts`) is also the whole plugin registry: `register(...plugins)` refuses a duplicate name, `has`, `get`, `names`, `commandsOf`, `invoke`, and `handlers()` which flattens to the `"<plugin>.<command>"` table the bridge consumes.
 
-### 3. The gap: it does not reach the page
+### The worked example in this repo
 
-What a project cannot do today, with the evidence:
+`examples/hello/main.ts` mounts a `greeting` plugin beside its `greet` app command, and `examples/hello/public/app.js` calls both — two arguments for the app command, three for the plugin. Started with `bun run src/cli/index.ts dev --dir examples/hello`, the page's plugin call reached the handler and the backend printed:
 
-| attempt | result |
-| --- | --- |
-| register on `app` | `app` has `command`, `on`, `run`, `quit`, `invoke`, `attach` and nothing else (`src/app.ts`) |
-| name it in `config.plugins` | `crust: unknown plugin "clock" — v1 ships fs, dialog, notification, tray, window` (measured) |
-| import the bridge to mount it | `startBridge` and `startApp` are not exported from `crust` or `crust/plugin`; `exports` in `package.json` maps only `.` and `./plugin` |
-
-`startApp` builds its registry itself — `new PluginRegistry().register(...selectedPlugins(config, plugins), appPlugin)` — and `selectedPlugins` filters against the five core names. There is no plugin hook between the framework and your project.
-
-So the page call that *would* be the payoff currently fails:
-
-```js
-await window.crust.invoke("clock", "now");
-// 404 {"ok":false,"error":{"code":"unknown-command","message":"clock.now"}}
+```text
+  plugin    greeting.greet answered: hello jyz, from a plugin
 ```
 
-That last response is measured against the real bridge running the core registry only. It is the same shape an unknown name always produces: the message is `"<plugin>.<command>"`, and note that the code is `unknown-command` even for an unknown *plugin* — the bridge flattens names before lookup. (`unknown-plugin` exists only in `PluginRegistry.invoke`, which the bridge does not use.)
-
-### What it would take
-
-One public registration hook — a method on `app` or a config field that accepts `PluginDefinition`s — plus exporting the bridge/`startApp` path. Neither exists. Until then, a third-party plugin is a designed, typed, testable unit that cannot be shipped to a page, and the built-ins are the only plugins a page can reach.
-
-If you need the capability now, it belongs inside a core plugin or inside an `app.command`: an app command is always registered, and reachable through the two-argument form when the bridge serves the page (or `invoke("app", "invoke", { name, args })` when it does not).
+Same page, same bridge, same handler table as every built-in: the only difference is who wrote the plugin.

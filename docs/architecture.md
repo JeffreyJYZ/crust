@@ -27,12 +27,12 @@ Two entry points matter. `src/cli/index.ts` is the `crust` command. `src/runtime
 `startApp` does five things in a fixed order, and the order matters:
 
 1. load and validate the config (`loadConfig` / `validateConfig`);
-2. build the plugin registry — the core plugins the config selected, the `app` namespace, and the platform's native adapters for `dialog`, `tray` and `notification`, plus `window`;
-3. start the bridge with that registry as its handler source;
-4. attach the platform, the config and the bridge URL to the `app` singleton;
-5. import the user's entry, which registers commands and calls `app.run()`.
+2. construct the platform — `window`'s adapter reads labels and native pointers from that same instance, so it exists before any plugin is built;
+3. attach the platform and the config to the `app` singleton;
+4. import the user's entry, which registers commands, mounts plugins with `app.use`, and calls `app.run()`;
+5. `run()` starts the bridge with the registry — the core plugins the config selected, the platform's native adapters for `dialog`, `tray` and `notification`, `window`, the user's mounted plugins, and the `app` namespace — then creates windows, emits `ready` and starts the pump.
 
-The platform is constructed *before* the plugins because `window`'s adapter reads labels and native pointers from that same instance, and the bridge is started *before* the entry is imported so `main.ts` can register commands against an already-listening server. Both are comments in `src/runtime.ts`; both are load bearing.
+The bridge starts at `run()`, not before the import, because a user plugin mounted in `main.ts` has to be in the registry before the server accepts requests. `App.deferBridge` is what allows that ordering without `startApp` owning the server; `src/runtime.ts` is where both facts are encoded.
 
 ## The Platform seam
 

@@ -1,17 +1,23 @@
 /**
  * The public app surface.
  *
- * `main.ts` registers commands and listeners, then awaits `app.run()`. The
- * window machinery lives behind the `Platform` seam below, so the macOS
- * implementation can be plugged in without this file knowing AppKit exists.
+ * `main.ts` registers commands, mounts plugins and adds listeners, then awaits
+ * `app.run()`. The window machinery lives behind the `Platform` seam below, so
+ * the macOS implementation can be plugged in without this file knowing AppKit
+ * exists.
  *
  * `run()` works two ways. Through `startApp` (both `crust dev` and a built app)
- * the platform, the config and the bridge URL are attached before `main.ts` is
- * imported. Called bare (`bun src/main.ts`) it loads both itself: the config
- * from the project directory and the platform through a lazy import, so the
- * macOS layer is not linked into a process that never opens a window.
+ * the platform and the config are attached before `main.ts` is imported, and
+ * the bridge is created on the first `run()` rather than before it, so a plugin
+ * mounted by `main.ts` is in the handler table the bridge snapshots. Called
+ * bare (`bun src/main.ts`) it loads both itself: the config from the project
+ * directory and the platform through a lazy import, so the macOS layer is not
+ * linked into a process that never opens a window.
  */
+import { CrustError } from "@/bridge/errors";
 import { type CrustConfig, type WindowConfig, loadConfig } from "@/config";
+import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
+import { corePlugins, windowPlugin } from "./plugins/index.ts";
 
 /** Where a window points and how it is sized. Mirrors a config window entry. */
 export interface WindowOptions {
@@ -47,6 +53,29 @@ export type AppEvent = "ready" | "window-all-closed";
 export type AppListener = () => void | Promise<void>;
 export type CommandHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
 
+/**
+ * The namespace a two-argument `window.crust.invoke(name, args)` is rewritten
+ * into by the shim `startApp` injects. Reserved: no project plugin may claim it.
+ */
+export const APP_NAMESPACE = "app";
+
+/** Builds the bridge on demand and returns the URL its pages load from. */
+export type BridgeFactory = (config: CrustConfig) => string;
+
+/**
+ * Names a project plugin may not claim.
+ *
+ * The core four are `corePlugins`; `window` is appended by `startApp` and is
+ * therefore not in that list; `app` is the runtime's own namespace. A name is a
+ * namespace, so a duplicate is an overlap in the handler table rather than an
+ * override — refused instead of silently shadowing a built-in.
+ */
+const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
+	APP_NAMESPACE,
+	windowPlugin.name,
+	...corePlugins.map((plugin) => plugin.name),
+]);
+
 /** Cocoa pump tick, from DESIGN.md §3: a 16 ms tick with a 0.25 ms slice holds. */
 export const PUMP_INTERVAL_MS = 16;
 
@@ -76,10 +105,12 @@ function windowUrl(
 
 export class App {
 	readonly #commands = new Map<string, CommandHandler>();
+	readonly #plugins = new Map<string, PluginDefinition>();
 	readonly #listeners = new Map<AppEvent, Set<AppListener>>();
 	#platform?: Platform;
 	#config?: CrustConfig;
 	#bridgeUrl?: string;
+	#bridgeFactory?: BridgeFactory;
 	#started = false;
 	#closedNotified = false;
 	#windowCheck?: ReturnType<typeof setInterval>;
@@ -97,13 +128,71 @@ export class App {
 		return this;
 	}
 
+	/**
+	 * Create the bridge on the first `run()` instead of now.
+	 *
+	 * `startApp` calls this before importing the project's entry, because the
+	 * bridge snapshots its `"<plugin>.<command>"` table at creation: a plugin
+	 * mounted by that entry must already be registered. The factory runs at most
+	 * once, and its return value is the URL the windows load.
+	 */
+	deferBridge(factory: BridgeFactory): this {
+		if (this.#started) throw new Error("crust: cannot start a bridge for a running app");
+		this.#bridgeFactory = factory;
+		return this;
+	}
+
 	/** Register the handler behind `invoke("<name>")` on the page side. */
 	command(name: string, handler: CommandHandler): this {
 		if (!name) throw new Error("crust: command name must not be empty");
+		if (this.#started)
+			throw new Error(`crust: cannot register command "${name}" after app.run() has started`);
 		if (this.#commands.has(name))
 			throw new Error(`crust: command "${name}" is already registered`);
 		this.#commands.set(name, handler);
 		return this;
+	}
+
+	/**
+	 * Mount a plugin of your own, so a page reaches it as
+	 * `window.crust.invoke("<name>", "<command>", args)`.
+	 *
+	 * `definePlugin` already checks the shape, so this reuses it and adds the
+	 * two rules a mount needs: the name is a namespace and must be unused — a
+	 * duplicate, a built-in name (`fs`, `dialog`, `notification`, `tray`,
+	 * `window`) or the reserved `app` namespace is refused, never shadowed —
+	 * and the mount must happen before `run()`.
+	 */
+	use(plugin: PluginDefinition): this {
+		if (this.#started)
+			throw new Error("crust: cannot mount a plugin after app.run() has started");
+		if (typeof plugin !== "object" || plugin === null)
+			throw new CrustError(
+				"bad-request",
+				"app.use: not a plugin definition (expected { name, commands })",
+			);
+
+		const definition = definePlugin(plugin);
+		const name = definition.name;
+		if (name === APP_NAMESPACE) {
+			throw new CrustError("bad-request", `app.use: "${name}" is the reserved app namespace`);
+		}
+		if (RESERVED_PLUGIN_NAMES.has(name)) {
+			throw new CrustError(
+				"bad-request",
+				`app.use: "${name}" is a built-in plugin — a name is a namespace, so pick another`,
+			);
+		}
+		if (this.#plugins.has(name)) {
+			throw new CrustError("bad-request", `app.use: plugin "${name}" is already mounted`);
+		}
+		this.#plugins.set(name, definition);
+		return this;
+	}
+
+	/** Every mounted plugin, in mount order. `startApp` registers these last. */
+	plugins(): readonly PluginDefinition[] {
+		return [...this.#plugins.values()];
 	}
 
 	/** Listen for an app event. */
@@ -138,6 +227,11 @@ export class App {
 		const platform = this.#platform ?? (await this.#loadPlatform(config));
 		this.#config = config;
 		this.#platform = platform;
+		// A deferred bridge starts here, after the entry's plugins and commands
+		// are registered and before the first window is created.
+		if (this.#bridgeUrl === undefined && this.#bridgeFactory !== undefined) {
+			this.#bridgeUrl = this.#bridgeFactory(config);
+		}
 
 		this.#started = true;
 		await platform.start();

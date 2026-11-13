@@ -172,7 +172,7 @@ const greeting = await app.invoke("greet", { name: "jyz" });
 attach(platform: Platform, config: CrustConfig, bridgeUrl?: string): this
 ```
 
-Wires the platform, config and bridge URL into the instance. `startApp` calls it before importing `main.ts`; tests call it with a fake platform. Public because `App` is a class with no package-private access, but it is not a user-facing option: calling it yourself is only correct in a test.
+Wires the platform and the config into the instance. `startApp` calls it before importing `main.ts`; tests call it with a fake platform. Public because `App` is a class with no package-private access, but it is not a user-facing option: calling it yourself is only correct in a test.
 
 Throws `crust: cannot attach a platform to a running app` after `run()` has started.
 
@@ -214,7 +214,7 @@ const plugin = definePlugin({
 });
 ```
 
-Shown without a call site on purpose: `crust` has no public hook to mount your own plugin yet. Read [plugins.md](plugins.md#a-third-party-plugin-in-your-own-project) for exactly how far a project-local plugin gets today.
+Mounted with `app.use(plugin)` before `run()`; the page then calls `invoke("clock", "now")`. A duplicate name, a built-in name or the reserved `app` namespace is refused with a message naming the collision, and mounting after `run()` throws. See [plugins.md](plugins.md#a-third-party-plugin-in-your-own-project).
 
 **Failure modes** — every one throws `CrustError` with `code: "bad-request"`:
 
