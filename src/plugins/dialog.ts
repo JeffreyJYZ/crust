@@ -51,6 +51,19 @@ export interface SavePanelOptions {
 export type SavePanelResult = OpenPanelResult;
 
 /**
+ * What `cancel` answers.
+ *
+ * `paths` is always empty: a cancel is a cancel, and the panel it ends resolves
+ * the same empty list a human's Cancel button gives it. `cancelled` says whether
+ * a sheet was actually up — `false` means the page asked for a cancel that had
+ * nothing left to end, which is an ordinary race with the user, never an error.
+ */
+export interface CancelPanelResult {
+	cancelled: boolean;
+	paths: string[];
+}
+
+/**
  * The native half, supplied by the platform.
  *
  * Resolving `{ paths: [] }` means the user cancelled; a platform that cannot
@@ -63,10 +76,18 @@ export type SavePanelResult = OpenPanelResult;
  * `pickSave` is optional so an adapter written before the save panel existed
  * keeps type-checking; `savePanel` then answers `not-implemented` naming
  * `NSSavePanel`, which is the honest answer for that adapter.
+ *
+ * `cancel` is optional for the same reason, and it exists because a sheet is
+ * otherwise only dismissible by a human: a page that opened a pick by accident,
+ * or that is stuck behind one, needs a way out that is not "click something".
+ * With one sheet at a time it is also the answer to a refused `openPanel` or
+ * `savePanel` — that request has not started anything, so cancelling is what
+ * makes room for the next one.
  */
 export interface DialogNative {
 	pickOpen(options: OpenPanelOptions): Promise<OpenPanelResult>;
 	pickSave?(options: SavePanelOptions): Promise<SavePanelResult>;
+	cancel?(): Promise<CancelPanelResult>;
 }
 
 export function createDialogPlugin(native?: DialogNative): PluginDefinition<
@@ -74,6 +95,7 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 	{
 		openPanel: (options: OpenPanelOptions) => Promise<OpenPanelResult | NotImplemented>;
 		savePanel: (options: SavePanelOptions) => Promise<SavePanelResult | NotImplemented>;
+		cancel: () => Promise<CancelPanelResult | NotImplemented>;
 	}
 > {
 	return definePlugin({
@@ -106,6 +128,25 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 					);
 				}
 				return native.pickSave(options);
+			},
+			/**
+			 * End the sheet that is up, the way its Cancel button would, and
+			 * answer with what that panel resolves to.
+			 *
+			 * Nothing pending is `{ cancelled: false }` rather than
+			 * `not-implemented`: an adapter that has the selector simply found
+			 * no sheet to end, because the page raced the user's own click.
+			 * Only an adapter with no `cancel` at all is a gap, and that is the
+			 * one case reported as `not-implemented`.
+			 */
+			cancel: async (): Promise<CancelPanelResult | NotImplemented> => {
+				if (!native?.cancel) {
+					return notImplemented(
+						"dialog.cancel needs -[NSPanel cancel:], which the AppKit shim does not expose yet. Pass a DialogNative adapter with cancel to createDialogPlugin once it does.",
+						"cancel:",
+					);
+				}
+				return native.cancel();
 			},
 		},
 	});

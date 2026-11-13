@@ -367,6 +367,7 @@ int shim_pump(obj_t mode) { return CFRunLoopRunInMode(mode, 0.00025, 1); }
 #define SHIM_PANEL_UNSUPPORTED 2   // NSOpenPanel, or a selector it needs, is absent
 #define SHIM_PANEL_SHEET_STARTED 3 // beginSheet... accepted; poll shim_sheet_done()
 #define SHIM_PANEL_NO_WINDOW 4     // sheet asked for with no key window
+#define SHIM_PANEL_BUSY 5          // a sheet is already up; nothing was sent, nothing was touched
 
 #define SHIM_PANEL_MAX_PATHS 32
 #define SHIM_PANEL_PATH_BYTES 4096
@@ -408,6 +409,11 @@ static int panel_has_instance(const char *cls, const char *selname) {
 	return class_getInstanceMethod(c, sel_registerName(selname)) != 0;
 }
 
+// The shared storage above is taken over by a request that is actually going to
+// use it, never on entry: resetting first would clear a live sheet's pointer and
+// done flag, which is exactly how a second request used to wipe the first one's
+// answer. Every call site below sits next to the send it prepares, after every
+// guard that can refuse the request has already answered.
 static void panel_reset(void) {
 	panel_paths_used = 0;
 	panel_paths[0][0] = 0;
@@ -416,6 +422,16 @@ static void panel_reset(void) {
 	panel_sheet_done = 0;
 	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 }
+
+// One sheet at a time, and this is the whole reason a second request is
+// refused instead of started: the storage above holds exactly one panel, one
+// done flag and one path list, so starting a second sheet would overwrite the
+// first one's state and a page already awaiting the first pick would read the
+// second panel's answer. A request that lands while a sheet is up therefore
+// answers SHIM_PANEL_BUSY before anything is touched, which leaves the live
+// sheet — pointer, done flag and paths — exactly as it was. `dialog.cancel` in
+// the plugin is how a page gets out of a sheet it no longer wants.
+static int panel_sheet_busy(void) { return panel_sheet_panel != 0 && !panel_sheet_done; }
 
 static void panel_copy_path(const char *src) {
 	if (!src || panel_paths_used >= SHIM_PANEL_MAX_PATHS) return;
@@ -629,7 +645,10 @@ static int panel_sheet_target(obj_t *out) {
 //                 sending, which is what keeps the blocking path a fallback.
 int shim_open_panel(const char *title, const char *types, int allowDirectories, int allowMultiple,
                     int runModal) {
-	panel_reset();
+	// A request that cannot be honoured leaves the live sheet untouched. This
+	// checked nothing until now, and resetting first meant a second request
+	// wiped the first one's panel pointer, done flag and path storage.
+	if (panel_sheet_busy()) return SHIM_PANEL_BUSY;
 
 	// The panel class and its factory must exist before anything is built.
 	if (!objc_getClass("NSOpenPanel")) return SHIM_PANEL_UNSUPPORTED;
@@ -675,8 +694,10 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 
 	if (!runModal) {
 		if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
-		// Set the live panel before the send: the handler reads it to collect
-		// -URLs, and a sheet that ends immediately must still find it.
+		// Take over the shared storage only now: the live panel has to be set
+		// before the send, because the handler reads it to collect -URLs and a
+		// sheet that ends immediately must still find it.
+		panel_reset();
 		panel_sheet_panel = panel;
 		panel_sheet_done = 0;
 		panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
@@ -687,6 +708,9 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 	}
 
 	if (!panel_has_instance("NSOpenPanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
+	// Nothing can answer while -runModal blocks this thread, so the storage the
+	// collect below writes into may be cleared here, immediately before it.
+	panel_reset();
 	long long response =
 	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
 	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
@@ -714,7 +738,9 @@ const char *shim_open_panel_path(int index) {
 // the panel answers.
 int shim_save_panel(const char *title, const char *suggested_name, const char *types,
                     int runModal) {
-	panel_reset();
+	// Same one-sheet rule as shim_open_panel: refusing before any state changes
+	// is what keeps a pending open panel's answer readable.
+	if (panel_sheet_busy()) return SHIM_PANEL_BUSY;
 
 	if (!objc_getClass("NSSavePanel")) return SHIM_PANEL_UNSUPPORTED;
 	if (!shim_responds((obj_t)objc_getClass("NSSavePanel"), sel_registerName("savePanel")))
@@ -750,6 +776,7 @@ int shim_save_panel(const char *title, const char *suggested_name, const char *t
 
 	if (!runModal) {
 		if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
+		panel_reset();
 		panel_sheet_panel = panel;
 		panel_sheet_is_save = 1;
 		panel_sheet_done = 0;
@@ -761,6 +788,7 @@ int shim_save_panel(const char *title, const char *suggested_name, const char *t
 	}
 
 	if (!panel_has_instance("NSSavePanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
+	panel_reset();
 	long long response =
 	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
 	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
@@ -785,7 +813,14 @@ long long shim_sheet_response(void) { return panel_sheet_response; }
 // End the live sheet without a human: -cancel: is the panel's own cancel
 // action, so it runs the same path as clicking Cancel — the completion handler
 // fires, the response is recorded, and the sheet leaves the window. Returns 1
-// when the send happened, 0 when no sheet is up or the selector is absent.
+// when the send happened, 0 when no sheet is up (or it had already answered) or
+// the selector is absent, so a page that calls it twice cannot end a second
+// sheet by accident.
+//
+// This is the page-level cancel behind the plugin's `dialog.cancel`, and it is
+// also how a page gets out of a sheet it opened without meaning to: the release
+// is the completion handler's, so the state a later request resets is already
+// the one a user's click would have left.
 int shim_sheet_cancel(void) {
 	obj_t panel = panel_sheet_panel;
 	if (!panel || panel_sheet_done) return 0;
@@ -793,4 +828,13 @@ int shim_sheet_cancel(void) {
 	if (!panel_has_instance(clsname, "cancel:")) return 0;
 	((void (*)(void *, void *))objc_msgSend)(panel, sel_registerName("cancel:"));
 	return 1;
+}
+
+// Which class the live sheet is, so a refusal can name the panel that is
+// already up instead of saying "busy": 1 for NSOpenPanel, 2 for NSSavePanel, 0
+// when no sheet is waiting for an answer. A finished sheet is not blocking
+// anybody, so it reads 0 — the same rule panel_sheet_busy() applies.
+int shim_sheet_kind(void) {
+	if (!panel_sheet_busy()) return 0;
+	return panel_sheet_is_save ? 2 : 1;
 }

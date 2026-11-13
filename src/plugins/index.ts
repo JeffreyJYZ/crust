@@ -32,6 +32,7 @@ export {
 } from "./define";
 export {
 	createDialogPlugin,
+	type CancelPanelResult,
 	type DialogNative,
 	dialogPlugin,
 	type OpenPanelOptions,

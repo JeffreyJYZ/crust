@@ -3,12 +3,15 @@ import { ptr } from "bun:ffi";
 import {
 	DarwinPlatform,
 	NS_MODAL_RESPONSE,
+	PANEL_KIND,
 	PANEL_MAX_PATHS,
 	PANEL_STATUS,
 	PREFLIGHT,
 	awaitSheetResult,
+	busyRefusal,
 	darwinDialogAdapter,
 	extensionList,
+	type PanelShim,
 	preflightError,
 	shim,
 	type SheetReadings,
@@ -91,11 +94,14 @@ describe("darwin shim", () => {
 		expect(typeof symbols.shim_sheet_done).toBe("function");
 		expect(typeof symbols.shim_sheet_response).toBe("function");
 		expect(typeof symbols.shim_sheet_cancel).toBe("function");
+		expect(typeof symbols.shim_sheet_kind).toBe("function");
 
 		expect(Number(symbols.shim_sheet_done() ?? -1)).toBe(0);
 		// An i64 return arrives as a BigInt.
 		expect(Number(symbols.shim_sheet_response() ?? 0)).toBe(SHIM_PANEL_NO_RESPONSE);
 		expect(Number(symbols.shim_sheet_cancel() ?? -1)).toBe(0);
+		// No sheet is up, so nothing names a panel class.
+		expect(Number(symbols.shim_sheet_kind() ?? -1)).toBe(PANEL_KIND.none);
 	});
 
 	/**
@@ -257,6 +263,82 @@ describe("extension list", () => {
 	});
 });
 
+/**
+ * A stand-in for the C panel state, applying the same one-sheet rule the shim
+ * applies: a sheet that is up and unanswered refuses a second request with
+ * `busy` and leaves every read exactly as it was.
+ *
+ * This is the seam that makes the defect testable without a window. The real
+ * storage lives in `shim.c`, so the C half of the same rule is proved by the
+ * bounded windowed run; what is proved here is that the adapter honours a
+ * refusal instead of reading the wrong panel's state.
+ */
+class FakePanel implements PanelShim {
+	/** Which class the live sheet is; `PANEL_KIND.none` with none. */
+	kind: number = PANEL_KIND.none;
+	done = false;
+	response = SHIM_PANEL_NO_RESPONSE;
+	paths: string[] = [];
+	/** Sheets actually started, which is how a refusal is proved to send nothing. */
+	sheets = 0;
+	/** Calls that took the blocking `-runModal` fallback. */
+	modalCalls = 0;
+
+	private start(kind: number): number {
+		if (this.kind !== PANEL_KIND.none && !this.done) return PANEL_STATUS.busy;
+		this.kind = kind;
+		this.done = false;
+		this.response = SHIM_PANEL_NO_RESPONSE;
+		this.paths = [];
+		this.sheets++;
+		return PANEL_STATUS.sheetStarted;
+	}
+
+	openPanel(): number {
+		return this.start(PANEL_KIND.open);
+	}
+
+	savePanel(): number {
+		return this.start(PANEL_KIND.save);
+	}
+
+	panelCount(): number {
+		return this.paths.length;
+	}
+
+	panelPath(index: number): string {
+		return this.paths[index] ?? "";
+	}
+
+	sheetDone(): boolean {
+		return this.done;
+	}
+
+	sheetResponse(): number {
+		return this.response;
+	}
+
+	sheetCancel(): number {
+		// The same guard the shim has: a sheet that already answered is not
+		// something -cancel: can send to.
+		if (this.kind === PANEL_KIND.none || this.done) return 0;
+		this.done = true;
+		this.response = NS_MODAL_RESPONSE.cancel;
+		return 1;
+	}
+
+	sheetKind(): number {
+		return this.done ? PANEL_KIND.none : this.kind;
+	}
+
+	/** The user answered the live sheet with a pick. */
+	answer(picked: string[]): void {
+		this.paths = [...picked];
+		this.response = NS_MODAL_RESPONSE.ok;
+		this.done = true;
+	}
+}
+
 describe("dialog adapter", () => {
 	test("exposes the plugin's hooks and the commands' names", () => {
 		const adapter = darwinDialogAdapter();
@@ -264,6 +346,94 @@ describe("dialog adapter", () => {
 		expect(adapter.openPanel).toBe(adapter.pickOpen);
 		expect(typeof adapter.pickSave).toBe("function");
 		expect(adapter.pickSave).toBe(adapter.savePanel);
+		expect(typeof adapter.cancel).toBe("function");
+	});
+
+	/**
+	 * The defect this exists for: the C globals hold one panel, and starting a
+	 * second sheet used to wipe the first one's done flag, panel pointer and
+	 * path storage — so the page awaiting the first pick would eventually read
+	 * the second panel's answer. A refusal must therefore leave the live sheet
+	 * untouched, and the first request must still answer with its own pick.
+	 */
+	test("a second request is refused, and the first pick still answers", async () => {
+		const fake = new FakePanel();
+		const adapter = darwinDialogAdapter(fake);
+
+		const first = adapter.pickOpen({ title: "one" });
+		expect(fake.sheets).toBe(1);
+
+		await expect(adapter.pickSave({ suggestedName: "note.md" })).rejects.toThrow(
+			/refused \(busy\); an NSOpenPanel sheet is already up/,
+		);
+
+		// Nothing was sent, nothing was reset: the live sheet is still the open
+		// panel, still unanswered, and there was no modal fallback either.
+		expect(fake.sheets).toBe(1);
+		expect(fake.modalCalls).toBe(0);
+		expect(fake.sheetKind()).toBe(PANEL_KIND.open);
+		expect(fake.sheetDone()).toBe(false);
+		expect(fake.sheetResponse()).toBe(SHIM_PANEL_NO_RESPONSE);
+
+		fake.answer(["/tmp/one.md"]);
+		expect(await first).toEqual({ paths: ["/tmp/one.md"] });
+	});
+
+	/** A refused save panel says so with the open panel's name, not a bare "busy". */
+	test("the refusal names the panel that is already up", async () => {
+		const fake = new FakePanel();
+		const adapter = darwinDialogAdapter(fake);
+		const first = adapter.pickSave({ suggestedName: "note.md" });
+
+		await expect(adapter.pickOpen({})).rejects.toThrow(
+			/refused \(busy\); an NSSavePanel sheet is already up/,
+		);
+		const message = busyRefusal("openPanel", PANEL_KIND.save);
+		expect(message).toContain("dialog.cancel");
+		expect(message).toContain("NSSavePanel");
+		expect(message).toContain("NSOpenPanel for another");
+
+		fake.answer(["/tmp/note.md"]);
+		expect(await first).toEqual({ paths: ["/tmp/note.md"] });
+	});
+
+	/**
+	 * Cancel is the way out of the one-sheet rule: it ends the sheet through the
+	 * path a user's Cancel button takes, settles the page's own pick with the
+	 * empty list a cancel means, and releases the state so the next pick starts
+	 * a fresh sheet instead of being refused.
+	 */
+	test("cancel ends the pending sheet, and the next pick starts clean", async () => {
+		const fake = new FakePanel();
+		const adapter = darwinDialogAdapter(fake);
+
+		const first = adapter.pickOpen({});
+		expect(await adapter.cancel()).toEqual({ cancelled: true, paths: [] });
+		expect(await first).toEqual({ paths: [] });
+		expect(fake.sheets).toBe(1);
+
+		// The state a user's cancel leaves: the next request is accepted.
+		const second = adapter.pickOpen({});
+		expect(fake.sheets).toBe(2);
+		fake.answer(["/tmp/two.md"]);
+		expect(await second).toEqual({ paths: ["/tmp/two.md"] });
+	});
+
+	/** Nothing up is an ordinary answer, never an error. */
+	test("cancel with no sheet answers cancelled:false", async () => {
+		const adapter = darwinDialogAdapter(new FakePanel());
+		expect(await adapter.cancel()).toEqual({ cancelled: false, paths: [] });
+	});
+
+	/** A sheet the user already answered is not something cancel can end. */
+	test("cancel after the user's own answer answers cancelled:false", async () => {
+		const fake = new FakePanel();
+		const adapter = darwinDialogAdapter(fake);
+		const first = adapter.pickOpen({});
+		fake.answer(["/tmp/one.md"]);
+		expect(await first).toEqual({ paths: ["/tmp/one.md"] });
+
+		expect(await adapter.cancel()).toEqual({ cancelled: false, paths: [] });
 	});
 
 	test("the plugin still answers not-implemented without an adapter", async () => {

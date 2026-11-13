@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import type {
+	CancelPanelResult,
 	DialogNative,
 	OpenPanelOptions,
 	OpenPanelResult,
@@ -126,10 +127,12 @@ function compile() {
 			shim_save_panel: { args: [P, P, P, I32], returns: I32 },
 
 			// The sheet's answer, polled while the pump keeps running. -cancel:
-			// is the test's way to end a sheet with no human.
+			// is the page's way to end a sheet with no human; -kind names the
+			// panel that is up, so a second request can say which one refused it.
 			shim_sheet_done: { args: [], returns: I32 },
 			shim_sheet_response: { args: [], returns: I64 },
 			shim_sheet_cancel: { args: [], returns: I32 },
+			shim_sheet_kind: { args: [], returns: I32 },
 		},
 	}) as unknown as Shim;
 }
@@ -206,6 +209,7 @@ export interface Shim {
 		shim_sheet_done: LooseSymbol;
 		shim_sheet_response: LooseSymbol;
 		shim_sheet_cancel: LooseSymbol;
+		shim_sheet_kind: LooseSymbol;
 	};
 }
 
@@ -881,6 +885,23 @@ export const PANEL_STATUS = {
 	sheetStarted: 3,
 	/** A sheet was asked for with no key window; nothing was sent. */
 	noWindow: 4,
+	/**
+	 * A sheet is already up; nothing was sent and the live sheet was left
+	 * untouched. The page answers or cancels that one first — `dialog.cancel`
+	 * is the page-level cancel — because the C side holds exactly one panel's
+	 * state.
+	 */
+	busy: 5,
+} as const;
+
+/**
+ * What `shim_sheet_kind` answers: the class of the sheet that is up, which is
+ * what lets a refusal name the panel instead of saying "busy".
+ */
+export const PANEL_KIND = {
+	none: 0,
+	open: 1,
+	save: 2,
 } as const;
 
 /** `NSModalResponse`, the value the sheet's completion handler records. */
@@ -934,10 +955,16 @@ export interface SheetReadings {
  *
  * Cancel resolves `{ paths: [] }`, which is exactly what a user clicking Cancel
  * means — the two are never confused, and neither is ever `not-implemented`.
+ *
+ * `abandoned` is the page's own cancel reaching the wait: once it answers true
+ * the poll stops reading and resolves the same empty list, instead of reading
+ * state the *next* request has already reset. The check comes before every
+ * read, so a sheet that is cancelled and immediately replaced can never report
+ * the replacement's answer as its own.
  */
 export async function awaitSheetResult(
 	readings: SheetReadings,
-	options: { intervalMs?: number; command?: string } = {},
+	options: { intervalMs?: number; command?: string; abandoned?: () => boolean } = {},
 ): Promise<OpenPanelResult> {
 	const intervalMs = options.intervalMs ?? SHEET_POLL_INTERVAL_MS;
 	const command = options.command ?? "openPanel";
@@ -946,6 +973,7 @@ export async function awaitSheetResult(
 	}
 
 	while (!readings.done()) {
+		if (options.abandoned?.() === true) return { paths: [] };
 		await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
 	}
 
@@ -1022,23 +1050,113 @@ export function extensionList(filters: OpenPanelOptions["filters"]): string {
 export interface DarwinDialogAdapter extends DialogNative {
 	openPanel(options: OpenPanelOptions): Promise<OpenPanelResult>;
 	savePanel(options: SavePanelOptions): Promise<SavePanelResult>;
+	pickSave(options: SavePanelOptions): Promise<SavePanelResult>;
+	cancel(): Promise<CancelPanelResult>;
 }
 
-/** The native reads `awaitSheetResult` polls, bound to the compiled shim. */
-function sheetReadings(native: Shim): SheetReadings {
-	const symbols = native.symbols;
+/**
+ * How long `dialog.cancel` waits for the sheet's completion handler after
+ * `-cancel:` was sent. The dismissal animation is a fraction of a second; two
+ * seconds is a hang, not a slow window, and answering "cancelled" before the
+ * handler ran would let the next request reset state the sheet still owns.
+ */
+export const SHEET_CANCEL_TIMEOUT_MS = 2000;
+
+/**
+ * The refusal a `busy` status becomes.
+ *
+ * Pure so the message is asserted without a window: it has to name the panel
+ * that is already up, because "busy" alone tells a page nothing it can act on,
+ * and it has to name the way out, because the page's only other option is a
+ * human.
+ */
+export function busyRefusal(command: string, kind: number): string {
+	const up =
+		kind === PANEL_KIND.open
+			? "an NSOpenPanel sheet is already up"
+			: kind === PANEL_KIND.save
+				? "an NSSavePanel sheet is already up"
+				: "a sheet is already up";
+	const cls = command === "savePanel" ? "NSSavePanel" : "NSOpenPanel";
+	return (
+		`crust: ${command} refused (busy); ${up}, and only one panel can be open at a time — ` +
+		`answer it, or call dialog.cancel, before asking ${cls} for another`
+	);
+}
+
+/**
+ * The panel half of the compiled shim, named so a test can drive the adapter
+ * with a fake and wide enough that the real one is the same shape.
+ *
+ * Every method binds `shim()` when it is called, not when this object is built,
+ * so the C file still compiles on the first pick rather than at import.
+ */
+export interface PanelShim {
+	openPanel(
+		title: string,
+		types: string,
+		directories: number,
+		multiple: number,
+		runModal: number,
+	): number;
+	savePanel(title: string, suggestedName: string, types: string, runModal: number): number;
+	panelCount(): number;
+	panelPath(index: number): string;
+	sheetDone(): boolean;
+	sheetResponse(): number;
+	sheetCancel(): number;
+	sheetKind(): number;
+}
+
+/** The real panel shim: one call per method, C string buffers built here. */
+export function darwinPanelShim(): PanelShim {
 	return {
-		done: () => Number(symbols.shim_sheet_done() ?? 0) === 1,
-		response: () => Number(symbols.shim_sheet_response() ?? -1),
-		count: () => Number(symbols.shim_open_panel_count() ?? 0),
-		path: (index: number) => String(symbols.shim_open_panel_path(index) ?? ""),
+		openPanel: (title, types, directories, multiple, runModal) =>
+			Number(
+				shim().symbols.shim_open_panel(
+					cstr(title),
+					cstr(types),
+					directories,
+					multiple,
+					runModal,
+				) ?? -1,
+			),
+		savePanel: (title, suggestedName, types, runModal) =>
+			Number(
+				shim().symbols.shim_save_panel(
+					cstr(title),
+					cstr(suggestedName),
+					cstr(types),
+					runModal,
+				) ?? -1,
+			),
+		panelCount: () => Number(shim().symbols.shim_open_panel_count() ?? 0),
+		panelPath: (index: number) => String(shim().symbols.shim_open_panel_path(index) ?? ""),
+		sheetDone: () => Number(shim().symbols.shim_sheet_done() ?? 0) === 1,
+		sheetResponse: () => Number(shim().symbols.shim_sheet_response() ?? -1),
+		sheetCancel: () => Number(shim().symbols.shim_sheet_cancel() ?? 0),
+		sheetKind: () => Number(shim().symbols.shim_sheet_kind() ?? 0),
+	};
+}
+
+/** The native reads `awaitSheetResult` polls. */
+function sheetReadings(native: PanelShim): SheetReadings {
+	return {
+		done: () => native.sheetDone(),
+		response: () => native.sheetResponse(),
+		count: () => native.panelCount(),
+		path: (index: number) => native.panelPath(index),
 	};
 }
 
 /** Build the dialog adapter. The shim compiles on the first pick, not before. */
-export function darwinDialogAdapter(): DarwinDialogAdapter {
+export function darwinDialogAdapter(
+	/** The panel shim; overridable so a test can drive this with fakes. */
+	native: PanelShim = darwinPanelShim(),
+): DarwinDialogAdapter {
 	/** Decode a status the shim answered with synchronously. */
-	const immediate = (native: Shim, status: number, command = "openPanel"): OpenPanelResult => {
+	const immediate = (status: number, command = "openPanel"): OpenPanelResult => {
+		if (status === PANEL_STATUS.busy) throw new Error(busyRefusal(command, native.sheetKind()));
 		if (status === PANEL_STATUS.cancelled) return { paths: [] };
 		if (status !== PANEL_STATUS.picked) {
 			const name =
@@ -1048,38 +1166,55 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 			throw new Error(`crust: ${command} failed (${name}); ${cls} could not be shown`);
 		}
 
-		const count = Number(native.symbols.shim_open_panel_count() ?? 0);
+		const count = native.panelCount();
 		const paths: string[] = [];
-		for (let index = 0; index < count; index++) {
-			paths.push(String(native.symbols.shim_open_panel_path(index) ?? ""));
-		}
+		for (let index = 0; index < count; index++) paths.push(native.panelPath(index));
 		return { paths };
 	};
 
+	/**
+	 * The page's way out of the sheet it has in flight, if any.
+	 *
+	 * It is one slot because the C side is one sheet: a second request answers
+	 * `busy` instead of starting, so there is never more than one to abandon.
+	 */
+	let pending: { abandon(): void } | null = null;
+
+	/** Await one started sheet, stoppable by `cancel` before the next read. */
+	const awaitSheet = (command: string): Promise<OpenPanelResult> => {
+		const request = { abandoned: false };
+		const abandon = (): void => {
+			request.abandoned = true;
+		};
+		pending = { abandon };
+		return awaitSheetResult(sheetReadings(native), {
+			command,
+			abandoned: () => request.abandoned,
+		}).finally(() => {
+			if (pending?.abandon === abandon) pending = null;
+		});
+	};
+
 	const pickOpen = async (options: OpenPanelOptions = {}): Promise<OpenPanelResult> => {
-		const native = shim();
 		/** One call into `shim_open_panel`; `runModal` picks the sheet or the fallback. */
 		const send = (runModal: number): number =>
-			Number(
-				native.symbols.shim_open_panel(
-					cstr(options.title ?? ""),
-					cstr(extensionList(options.filters)),
-					options.directory ? 1 : 0,
-					options.multiple ? 1 : 0,
-					runModal,
-				) ?? -1,
+			native.openPanel(
+				options.title ?? "",
+				extensionList(options.filters),
+				options.directory ? 1 : 0,
+				options.multiple ? 1 : 0,
+				runModal,
 			);
 
 		// The sheet path first: it returns at once, with the answer to come.
 		const sheet = send(0);
-		if (sheet === PANEL_STATUS.sheetStarted)
-			return await awaitSheetResult(sheetReadings(native), { command: "openPanel" });
+		if (sheet === PANEL_STATUS.sheetStarted) return await awaitSheet("openPanel");
 
 		// No window to attach a sheet to, so the only way to show a panel at all
 		// is -runModal, which blocks this thread until the user answers.
-		if (sheet === PANEL_STATUS.noWindow) return immediate(native, send(1));
+		if (sheet === PANEL_STATUS.noWindow) return immediate(send(1));
 
-		return immediate(native, sheet);
+		return immediate(sheet);
 	};
 
 	/**
@@ -1087,26 +1222,56 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 	 * replacing an existing file; nothing here suppresses that or asks again.
 	 */
 	const pickSave = async (options: SavePanelOptions = {}): Promise<SavePanelResult> => {
-		const native = shim();
 		const send = (runModal: number): number =>
-			Number(
-				native.symbols.shim_save_panel(
-					cstr(options.title ?? ""),
-					cstr(options.suggestedName ?? ""),
-					cstr(extensionList(options.filters)),
-					runModal,
-				) ?? -1,
+			native.savePanel(
+				options.title ?? "",
+				options.suggestedName ?? "",
+				extensionList(options.filters),
+				runModal,
 			);
 
 		const sheet = send(0);
-		if (sheet === PANEL_STATUS.sheetStarted)
-			return await awaitSheetResult(sheetReadings(native), { command: "savePanel" });
-		if (sheet === PANEL_STATUS.noWindow) return immediate(native, send(1), "savePanel");
+		if (sheet === PANEL_STATUS.sheetStarted) return await awaitSheet("savePanel");
+		if (sheet === PANEL_STATUS.noWindow) return immediate(send(1), "savePanel");
 
-		return immediate(native, sheet, "savePanel");
+		return immediate(sheet, "savePanel");
 	};
 
-	return { pickOpen, pickSave, openPanel: pickOpen, savePanel: pickSave };
+	/**
+	 * End the sheet that is up, the way its Cancel button would.
+	 *
+	 * Nothing pending is `{ cancelled: false }`, not an error: a page races the
+	 * user's own click all the time, so "the sheet was already gone" is an
+	 * ordinary state it acts on. An error would make a completed pick look like
+	 * a broken cancel, and there is nothing to retry or report.
+	 */
+	const cancel = async (): Promise<CancelPanelResult> => {
+		if (native.sheetCancel() !== 1) return { cancelled: false, paths: [] };
+
+		// -cancel: ends the sheet through the same path the Cancel button takes,
+		// but the answer arrives in the completion handler. Waiting for it is
+		// what makes the release real: until that handler runs, the state the
+		// next request resets is still the live sheet's.
+		const deadline = Date.now() + SHEET_CANCEL_TIMEOUT_MS;
+		while (!native.sheetDone()) {
+			if (Date.now() >= deadline) {
+				throw new Error(
+					`crust: cancel sent -cancel: but the sheet had not ended ` +
+						`${SHEET_CANCEL_TIMEOUT_MS} ms later`,
+				);
+			}
+			await new Promise<void>((resolve) => setTimeout(resolve, SHEET_POLL_INTERVAL_MS));
+		}
+
+		// An empty list is exactly what a cancel means, so the page's own pick
+		// answers with the same value a human's cancel gives it. Abandoning it
+		// rather than settling it keeps one path to an answer: the poll checks
+		// this before its next read, so it cannot report the next panel's state.
+		pending?.abandon();
+		return { cancelled: true, paths: [] };
+	};
+
+	return { pickOpen, pickSave, openPanel: pickOpen, savePanel: pickSave, cancel };
 }
 
 // --- window adapter --------------------------------------------------------

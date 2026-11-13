@@ -208,11 +208,16 @@ export async function runSelfCheck(report: Reporter, dir: string): Promise<void>
 	}
 
 	// 10. The save panel, asked the way the Save as… button asks it: a suggested
-	//     name and the markdown extensions. Same rule as the folder picker — the
-	//     sheet is the evidence, and a cancel is reported as a cancel. Neither
-	//     branch writes a file: the pick would be a human's, and the check has
-	//     no business guessing one.
+	//     name and the markdown extensions. The folder sheet from step 9 is still
+	//     up and the platform opens one sheet at a time, so it is cancelled first —
+	//     the same `dialog.cancel` a page would call, which also proves it exists.
+	//     Then the same rule as the folder picker: the sheet is the evidence, and a
+	//     cancel is reported as a cancel. Neither branch writes a file.
 	try {
+		const cleared = await plugin<{ cancelled: boolean }>("dialog", "cancel", {});
+		if (!cleared.cancelled) {
+			throw new Error("dialog.cancel found nothing pending after the folder sheet");
+		}
 		const panel = plugin<{ paths: string[] }>("dialog", "savePanel", {
 			title: "Save a copy of the note",
 			suggestedName: suggestedName(note.name),
