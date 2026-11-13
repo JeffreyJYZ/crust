@@ -59,7 +59,9 @@ import { join, resolve } from "node:path";
 import { clearSurvivors, runCommand, survivorsOf, Verdict } from "./e2e-harness.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
-const CLI = join(REPO_ROOT, "src/cli/index.ts");
+// CRUST_BIN lets the same suite judge a *shipped* crust — an installed tarball or a
+// compiled binary — rather than this checkout. Default is the checkout.
+const CLI = process.env.CRUST_BIN ?? join(REPO_ROOT, "src/cli/index.ts");
 
 /**
  * The port and origin the scaffold pins. `vite.config.ts` sets `strictPort: true`

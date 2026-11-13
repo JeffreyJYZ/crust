@@ -39,7 +39,9 @@ import { formatBytes } from "../src/packaging/build.ts";
 import { runCommand, Verdict } from "./e2e-harness.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
-const CLI = join(REPO_ROOT, "src/cli/index.ts");
+// CRUST_BIN lets the same suite judge a *shipped* crust — an installed tarball or a
+// compiled binary — rather than this checkout. Default is the checkout.
+const CLI = process.env.CRUST_BIN ?? join(REPO_ROOT, "src/cli/index.ts");
 const EXAMPLE_DIR = join(REPO_ROOT, "examples/hello");
 
 /** `CFBundleExecutable` that `crust build` pins. Same constant as `e2e.ts`. */
