@@ -204,9 +204,13 @@ Chromium.
   types, and a path with no extension falls back to `index.html` so a
   client-side route works. A frontend that a dev server builds outside `public/`
   still needs its own build step.
-- **`fs` is the only working plugin.** `dialog`, `tray` and `notification`
+- **Two plugins work: `fs` and `dialog`.** `fs` reads and writes files for real.
+  `dialog` opens a real `NSOpenPanel` through a darwin adapter; its modal path
+  blocks the JavaScript thread and the pump for the duration of the pick, and
+  file-type filters are not applied yet. The sheet path refused safely in the
+  only automated run that reached it, so a sheet and a completed pick are
+  **unverified** — the modal pick needs a human. `tray` and `notification` still
   answer with a structured `not-implemented` error naming what they require.
-  Scripts also cannot be evaled from the page: no `dialog`.
 - **A blocking JavaScript call blocks drawing.** The Cocoa run loop is pumped
   from a timer (16 ms tick, 0.25 ms slice); long synchronous work belongs on a
   `Worker`.
