@@ -97,12 +97,16 @@ try {
 	const bundle = await Array.fromAsync(
 		new Bun.Glob("dist/*.app").scan({ cwd: app, onlyFiles: false }),
 	);
-	if (bundle.length !== 1) fail("bundle", `${bundle.length} bundles in dist/: ${bundle.join(", ")}`);
+	if (bundle.length !== 1)
+		fail("bundle", `${bundle.length} bundles in dist/: ${bundle.join(", ")}`);
 	else pass("bundle", bundle[0]!);
 
 	const binary = bundle[0]
 		? await Array.fromAsync(
-				new Bun.Glob("Contents/MacOS/*").scan({ cwd: join(app, bundle[0]), onlyFiles: true }),
+				new Bun.Glob("Contents/MacOS/*").scan({
+					cwd: join(app, bundle[0]),
+					onlyFiles: true,
+				}),
 			).then((entries) => entries[0] && join(app, bundle[0]!, entries[0]))
 		: undefined;
 
@@ -114,8 +118,18 @@ try {
 		const launched = await launch(binary, 20_000);
 		const answered = launched.log.includes("page call answered");
 		if (launched.code === 0 && answered)
-			pass("window", launched.log.split("\n").find((row) => row.includes("page call answered"))?.trim() ?? "");
-		else fail("window", `exit ${launched.code}, answered ${answered}\n${launched.log.slice(-600)}`);
+			pass(
+				"window",
+				launched.log
+					.split("\n")
+					.find((row) => row.includes("page call answered"))
+					?.trim() ?? "",
+			);
+		else
+			fail(
+				"window",
+				`exit ${launched.code}, answered ${answered}\n${launched.log.slice(-600)}`,
+			);
 	}
 } catch (error) {
 	fail("chain", error instanceof Error ? error.message : String(error));

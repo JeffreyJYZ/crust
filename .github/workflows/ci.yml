@@ -131,24 +131,20 @@ jobs:
         if: steps.window.outputs.available == 'true' && steps.multi.outputs.run == 'true'
         run: bun run e2e:notes
 
-      # PLACEHOLDER — the single-file mode proof (`crust dev app.tsx` and
-      # `crust build app.tsx`) is `scripts/e2e-single.ts`. That script is landing
-      # separately and is not in this tree yet, so there is no `run:` line here and no
-      # `e2e:single` package script to call: adding either now would fail the job.
-      # The step belongs exactly here, after `e2e notes`, and it goes behind the same
-      # window probe, because both modes end by launching a windowed app like the other
-      # two — re-check that when the script lands, and drop the gate only if a mode
-      # really runs headless.
-      # When the script lands: add `"e2e:single": "bun run scripts/e2e-single.ts"` to
-      # package.json, then add
-      #
-      #   - name: e2e single
-      #     if: steps.window.outputs.available == 'true'
-      #     run: bun run e2e:single
-      #
-      # with a cost line like the ones above (it builds and launches, so expect the
-      # `e2e` ballpark) and a line in the "e2e skipped" notice below only if it can
-      # fail for a reason other than the missing window.
+      # Single-file mode: `crust dev app.tsx` and `crust build app.tsx` — the positional
+      # path a newcomer tries first. It builds and launches, so it costs the same order
+      # as `e2e` (about 5 s locally: three window launches, one per phase).
+      - name: e2e single
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:single
+
+      # Same mode, but driven by the compiled binary from the `standalone binary` step
+      # above, with no Bun on PATH — that is the claim the step exists to keep true.
+      # Windowed like its neighbours, and it reuses dist/crust, so it needs the earlier
+      # step to have run.
+      - name: e2e single from binary
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:dev:binary
       # This note exists so the ordering — after the install, after `bun check`, behind
       # the window probe — does not have to be rediscovered.
 

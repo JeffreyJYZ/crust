@@ -14,10 +14,38 @@ import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
-import { frameworkRoot } from "./framework.ts";
+import { frameworkRoot, inExecutable } from "./framework.ts";
 import { fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
 
-/** Where the runtime module lives inside this package. */
+/**
+ * The interpreter a runtime child is started with.
+ *
+ * `dev` runs the app in a child, so it needs a JavaScript engine. A compiled crust
+ * already carries one: `BUN_BE_BUN=1 <executable> <script>` makes the executable behave
+ * as the `bun` command, so `crust dev` works with no Bun installed anywhere. That is
+ * checked before anything else, but an installed Bun wins when PATH has one, because it
+ * is the interpreter the user's own project was installed with.
+ *
+ * `process.execPath` is not an interpreter on its own — inside a compiled executable it
+ * is crust itself, which is exactly why the variable has to be set.
+ */
+interface Interpreter {
+	command: readonly string[];
+	env: Record<string, string>;
+}
+
+let resolved: Interpreter | undefined;
+
+function interpreter(): Interpreter {
+	if (resolved !== undefined) return resolved;
+	const onPath = Bun.which("bun");
+	if (onPath !== null) resolved = { command: [onPath], env: {} };
+	else if (inExecutable()) resolved = { command: [process.execPath], env: { BUN_BE_BUN: "1" } };
+	// A checkout is started by Bun (`bun src/cli/index.ts`), so execPath is a bun even
+	// when PATH cannot see one — an absolute `crust` on an empty PATH still runs.
+	else resolved = { command: [process.execPath], env: {} };
+	return resolved;
+}
 
 export async function dev(options: CliOptions): Promise<number> {
 	const detected = await detectSingle(options);
@@ -94,9 +122,10 @@ interface RuntimeOptions {
 }
 
 async function spawnRuntime(options: RuntimeOptions) {
+	const run = interpreter();
 	return Bun.spawn({
 		cmd: [
-			"bun",
+			...run.command,
 			join(await frameworkRoot(), "src/runtime.ts"),
 			"--config",
 			options.configPath,
@@ -105,7 +134,12 @@ async function spawnRuntime(options: RuntimeOptions) {
 		],
 		cwd: options.projectDir,
 		stdio: ["inherit", "inherit", "inherit"],
-		env: { ...process.env, ...options.env, CRUST_DEV_URL: options.devUrl ?? "" },
+		env: {
+			...process.env,
+			...run.env,
+			...options.env,
+			CRUST_DEV_URL: options.devUrl ?? "",
+		},
 	});
 }
 
@@ -211,9 +245,13 @@ async function devSingle(app: SingleApp): Promise<number> {
 	// message naming the error.
 	const page = await buildPage(app, { dev: true });
 
+	// The runner imports the framework by absolute path, so the path has to be the
+	// one a *child* can read: inside a compiled executable that is the materialised
+	// copy in `$TMPDIR`, never `/$bunfs`, which is only mounted in this process.
+	const root = await frameworkRoot();
 	const temp = await mkdtemp(join(tmpdir(), "crust-single-"));
 	const runner = join(temp, "run.ts");
-	await writeFile(runner, devRunnerSource(app, page.dir), "utf8");
+	await writeFile(runner, devRunnerSource(app, page.dir, root), "utf8");
 
 	line("page", join(page.dir, "index.html"));
 	line("bundle", `${page.entry} (rebuilt on every change)`);
@@ -221,10 +259,12 @@ async function devSingle(app: SingleApp): Promise<number> {
 	line("invoke", 'window.crust.invoke("info") answers from the framework');
 	console.log("");
 
+	const run = interpreter();
 	const child = Bun.spawn({
-		cmd: ["bun", runner],
+		cmd: [...run.command, runner],
 		cwd: app.dir,
 		stdio: ["inherit", "inherit", "inherit"],
+		env: { ...process.env, ...run.env },
 	});
 
 	let stopping = false;

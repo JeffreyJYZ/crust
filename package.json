@@ -30,6 +30,8 @@
 		"e2e": "bun run scripts/e2e.ts",
 		"e2e:notes": "bun run scripts/e2e-notes.ts",
 		"e2e:dev": "bun run scripts/e2e-dev.ts",
+		"e2e:single": "bun run scripts/e2e-single.ts",
+		"e2e:dev:binary": "bun run scripts/e2e-dev-binary.ts",
 		"verify:package": "bun run scripts/verify-package.ts",
 		"build:standalone": "bun run scripts/build-standalone.ts",
 		"verify:first-run": "bun run scripts/first-run.ts",

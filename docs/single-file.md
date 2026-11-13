@@ -51,6 +51,10 @@ The check is a regular expression over the source, not a parser. An `export defa
 | `crust dev app.tsx` | `<dir>/.crust/single/{index.html,page.js}`, a generated runner in `$TMPDIR/crust-single-*` | the runner directory on exit; the bundle is left for the next run |
 | `crust build app.tsx` | `<dir>/dist/single/{index.html,page.js}`, `dist/crust-assets.ts`, `dist/crust-entry.ts`, `dist/<name>.app` | nothing — it is build output |
 
+## Verified by a script
+
+`bun run e2e:single` covers this whole page in 19 assertions, and runs in the gate: the page answering `invoke` in dev, `.crust/single/{index.html,page.js}` written, a clean SIGTERM with no surviving runtime child, `crust build` producing a signed bundle that answers with `/` as cwd, and — the part prose cannot hold — a save that rebuilds `page.js` and moves the reload marker while the runtime is never restarted, then a half-typed file that prints `build failed`, leaves the last good bundle byte-identical, and keeps the window alive.
+
 ## When to graduate
 
 Add `crust.config.ts` and `main.ts` the moment the app needs its own commands, a second window, an icon, a different size, or a watched tree. The single file was the shortest path to a window on a page; it is not a project layout.
