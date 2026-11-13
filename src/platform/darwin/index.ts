@@ -115,6 +115,12 @@ function compile() {
 			shim_open_panel: { args: [P, P, I32, I32, I32], returns: I32 },
 			shim_open_panel_count: { args: [], returns: I32 },
 			shim_open_panel_path: { args: [I32], returns: CS },
+
+			// The sheet's answer, polled while the pump keeps running. -cancel:
+			// is the test's way to end a sheet with no human.
+			shim_sheet_done: { args: [], returns: I32 },
+			shim_sheet_response: { args: [], returns: I64 },
+			shim_sheet_cancel: { args: [], returns: I32 },
 		},
 	}) as unknown as Shim;
 }
@@ -186,6 +192,10 @@ export interface Shim {
 		shim_open_panel: LooseSymbol;
 		shim_open_panel_count: LooseSymbol;
 		shim_open_panel_path: LooseSymbol;
+
+		shim_sheet_done: LooseSymbol;
+		shim_sheet_response: LooseSymbol;
+		shim_sheet_cancel: LooseSymbol;
 	};
 }
 
@@ -306,6 +316,10 @@ const internalClassSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSString", "alloc"],
 	["NSURL", "URLWithString:"],
 	["NSURLRequest", "requestWithURL:"],
+	// The open panel's C section builds every object it sends to, so these are
+	// verified here rather than at a call site JS can see.
+	["NSOpenPanel", "openPanel"],
+	["NSMutableArray", "array"],
 ];
 
 const internalInstanceSelectors: ReadonlyArray<readonly [string, string]> = [
@@ -315,6 +329,27 @@ const internalInstanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "valueForKey:"],
 	["NSValue", "getValue:"],
 	["NSView", "valueForKey:"],
+	// NSOpenPanel. `-beginSheetModalForWindow:completionHandler:` is the reason
+	// the pick no longer blocks; `-cancel:` is what ends a sheet with no human.
+	["NSOpenPanel", "setCanChooseFiles:"],
+	["NSOpenPanel", "setCanChooseDirectories:"],
+	["NSOpenPanel", "setAllowsMultipleSelection:"],
+	["NSOpenPanel", "setTitle:"],
+	["NSOpenPanel", "setAllowedFileTypes:"],
+	["NSOpenPanel", "beginSheetModalForWindow:completionHandler:"],
+	["NSOpenPanel", "runModal"],
+	["NSOpenPanel", "cancel:"],
+	["NSOpenPanel", "URLs"],
+	// The window a sheet attaches to, and the reads the fallback path makes.
+	["NSApplication", "keyWindow"],
+	["NSApplication", "mainWindow"],
+	["NSApplication", "windows"],
+	["NSMutableArray", "addObject:"],
+	// -URLs is an NSArray; each element's -path is copied into C storage.
+	["NSArray", "count"],
+	["NSArray", "objectAtIndex:"],
+	["NSURL", "path"],
+	["NSString", "UTF8String"],
 ];
 
 export const PREFLIGHT: readonly PreflightEntry[] = [
@@ -790,17 +825,112 @@ export function createPlatform(options: { appName?: string } = {}): DarwinPlatfo
  * `unsupported` rather than sending it and aborting the process.
  */
 export const PANEL_STATUS = {
-	/** A modal pick finished with at least one path. */
+	/** A pick finished with at least one path. */
 	picked: 0,
-	/** A modal pick finished with no path — the user cancelled. */
+	/** A pick finished with no path — the user cancelled. */
 	cancelled: 1,
 	/** `NSOpenPanel`, or a selector it needs, is absent on this system. */
 	unsupported: 2,
-	/** The sheet is on screen. Nothing in this adapter ever observes its result. */
+	/** The sheet is on screen: poll `shim_sheet_done` until it answers. */
 	sheetStarted: 3,
 	/** A sheet was asked for with no key window; nothing was sent. */
 	noWindow: 4,
 } as const;
+
+/** `NSModalResponse`, the value the sheet's completion handler records. */
+export const NS_MODAL_RESPONSE = {
+	ok: 1,
+	cancel: 0,
+} as const;
+
+/** Mirrors `SHIM_PANEL_MAX_PATHS`: the most paths one pick can store. */
+export const PANEL_MAX_PATHS = 32;
+
+/**
+ * How often the sheet's done flag is read. One frame at 60 Hz: a 300 ms pick
+ * costs ~19 reads, and the promise settles on the next frame after the click.
+ * A timer, not a loop, is the point — every wait yields, so the app's own pump
+ * keeps running and the bridge keeps answering invokes while the sheet is up.
+ */
+export const SHEET_POLL_INTERVAL_MS = 16;
+
+/**
+ * The native reads a sheet poll needs, named so a test can supply them.
+ *
+ * `response()` only means anything once `done()` is true; the shim answers
+ * `SHIM_PANEL_NO_RESPONSE` (-1) before that, so "cancel" and "no answer yet"
+ * are never the same value.
+ */
+export interface SheetReadings {
+	done(): boolean;
+	response(): number;
+	count(): number;
+	path(index: number): string;
+}
+
+/**
+ * Await a sheet that is already on screen, without blocking.
+ *
+ * This is the half that makes the sheet path real. `-runModal` stops the
+ * JavaScript thread, and with it the Cocoa pump and every in-flight invoke, for
+ * as long as the panel is up; a sheet plus this poll leaves both running. The
+ * await is a `setTimeout` chain, so the pump's own timer gets its turn between
+ * reads.
+ *
+ * Rejections are the malformed answers, never a user's choice:
+ *
+ *   - a response that is neither `NSModalResponseOK` nor `NSModalResponseCancel`
+ *     (a panel that reports something else is not something to guess about);
+ *   - a path count outside `0…PANEL_MAX_PATHS`, which cannot come from the C
+ *     storage and means the read is not the one that was written;
+ *   - an OK whose path list is empty, or contains an empty string, because OK
+ *     means "the user picked" and an empty answer contradicts it.
+ *
+ * Cancel resolves `{ paths: [] }`, which is exactly what a user clicking Cancel
+ * means — the two are never confused, and neither is ever `not-implemented`.
+ */
+export async function awaitSheetResult(
+	readings: SheetReadings,
+	options: { intervalMs?: number } = {},
+): Promise<OpenPanelResult> {
+	const intervalMs = options.intervalMs ?? SHEET_POLL_INTERVAL_MS;
+	if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+		throw new Error(`crust: awaitSheetResult needs a positive interval, got ${intervalMs}`);
+	}
+
+	while (!readings.done()) {
+		await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+	}
+
+	const response = readings.response();
+	if (response === NS_MODAL_RESPONSE.cancel) return { paths: [] };
+	if (response !== NS_MODAL_RESPONSE.ok) {
+		throw new Error(
+			`crust: openPanel sheet ended with NSModalResponse ${response}, which is neither ` +
+				`OK (${NS_MODAL_RESPONSE.ok}) nor cancel (${NS_MODAL_RESPONSE.cancel})`,
+		);
+	}
+
+	const count = readings.count();
+	if (!Number.isInteger(count) || count < 0 || count > PANEL_MAX_PATHS) {
+		throw new Error(
+			`crust: openPanel sheet reported ${count} paths, outside 0…${PANEL_MAX_PATHS}`,
+		);
+	}
+	if (count === 0) {
+		throw new Error("crust: openPanel sheet answered OK with no paths");
+	}
+
+	const paths: string[] = [];
+	for (let index = 0; index < count; index++) {
+		const path = readings.path(index);
+		if (path.length === 0) {
+			throw new Error(`crust: openPanel sheet answered OK with an empty path at ${index}`);
+		}
+		paths.push(path);
+	}
+	return { paths };
+}
 
 /**
  * The native half of `crust:dialog` on macOS.
@@ -809,12 +939,14 @@ export const PANEL_STATUS = {
  * under the name the plugin's command is called by, so either shape reads
  * correctly at the call site.
  *
- * **The pick blocks.** `-runModal` enters AppKit's own run loop and does not
- * return until the user answers, so this Promise is already settled by the time
- * it resolves — the JavaScript thread, and with it the Cocoa pump and every
- * in-flight invoke, is stopped for as long as the panel is on screen. That is
- * the accepted cost of a real file picker in v1 (DESIGN.md §9, item 7), stated
- * rather than disguised as non-blocking work.
+ * **The pick does not block while a window is open.** The panel is started as a
+ * sheet (`beginSheetModalForWindow:completionHandler:`), the C-side completion
+ * handler records the answer, and this adapter awaits it by polling the done
+ * flag on a timer — so the JavaScript thread, the Cocoa pump and every in-flight
+ * invoke keep running while the sheet is on screen. A sheet needs a window to
+ * attach to; with none, the pick falls back to `-runModal`, which does block for
+ * the whole pick. That fallback is the only blocking path and is chosen by the
+ * shim's `SHIM_PANEL_NO_WINDOW`, never by this adapter guessing.
  *
  * `filters` are applied as extension strings: a filter list is flattened, each
  * entry stripped of a leading `*.` or `.`, de-duplicated, and handed to C as one
@@ -830,7 +962,10 @@ function extensionList(filters: OpenPanelOptions["filters"]): string {
 	const seen = new Set<string>();
 	for (const filter of filters) {
 		for (const raw of filter.extensions) {
-			const ext = raw.trim().replace(/^\*?\.?/, "").toLowerCase();
+			const ext = raw
+				.trim()
+				.replace(/^\*?\.?/, "")
+				.toLowerCase();
 			if (ext.length > 0) seen.add(ext);
 		}
 	}
@@ -841,20 +976,21 @@ export interface DarwinDialogAdapter extends DialogNative {
 	openPanel(options: OpenPanelOptions): Promise<OpenPanelResult>;
 }
 
+/** The native reads `awaitSheetResult` polls, bound to the compiled shim. */
+function sheetReadings(native: Shim): SheetReadings {
+	const symbols = native.symbols;
+	return {
+		done: () => Number(symbols.shim_sheet_done() ?? 0) === 1,
+		response: () => Number(symbols.shim_sheet_response() ?? -1),
+		count: () => Number(symbols.shim_open_panel_count() ?? 0),
+		path: (index: number) => String(symbols.shim_open_panel_path(index) ?? ""),
+	};
+}
+
 /** Build the dialog adapter. The shim compiles on the first pick, not before. */
 export function darwinDialogAdapter(): DarwinDialogAdapter {
-	const pickOpen = async (options: OpenPanelOptions = {}): Promise<OpenPanelResult> => {
-		const native = shim();
-		const status = Number(
-			native.symbols.shim_open_panel(
-				cstr(options.title ?? ""),
-				cstr(extensionList(options.filters)),
-				options.directory ? 1 : 0,
-				options.multiple ? 1 : 0,
-				1,
-			) ?? 0,
-		);
-
+	/** Decode a status the shim answered with synchronously. */
+	const immediate = (native: Shim, status: number): OpenPanelResult => {
 		if (status === PANEL_STATUS.cancelled) return { paths: [] };
 		if (status !== PANEL_STATUS.picked) {
 			const name =
@@ -869,6 +1005,32 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 			paths.push(String(native.symbols.shim_open_panel_path(index) ?? ""));
 		}
 		return { paths };
+	};
+
+	const pickOpen = async (options: OpenPanelOptions = {}): Promise<OpenPanelResult> => {
+		const native = shim();
+		/** One call into `shim_open_panel`; `runModal` picks the sheet or the fallback. */
+		const send = (runModal: number): number =>
+			Number(
+				native.symbols.shim_open_panel(
+					cstr(options.title ?? ""),
+					cstr(extensionList(options.filters)),
+					options.directory ? 1 : 0,
+					options.multiple ? 1 : 0,
+					runModal,
+				) ?? -1,
+			);
+
+		// The sheet path first: it returns at once, with the answer to come.
+		const sheet = send(0);
+		if (sheet === PANEL_STATUS.sheetStarted)
+			return await awaitSheetResult(sheetReadings(native));
+
+		// No window to attach a sheet to, so the only way to show a panel at all
+		// is -runModal, which blocks this thread until the user answers.
+		if (sheet === PANEL_STATUS.noWindow) return immediate(native, send(1));
+
+		return immediate(native, sheet);
 	};
 
 	return { pickOpen, openPanel: pickOpen };

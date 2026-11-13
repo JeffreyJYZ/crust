@@ -359,7 +359,7 @@ int shim_pump(obj_t mode) { return CFRunLoopRunInMode(mode, 0.00025, 1); }
 #define SHIM_PANEL_PICKED 0        // modal pick finished with >= 1 path
 #define SHIM_PANEL_CANCELLED 1     // modal pick finished with no path
 #define SHIM_PANEL_UNSUPPORTED 2   // NSOpenPanel, or a selector it needs, is absent
-#define SHIM_PANEL_SHEET_STARTED 3 // beginSheet... accepted; nothing waits for it
+#define SHIM_PANEL_SHEET_STARTED 3 // beginSheet... accepted; poll shim_sheet_done()
 #define SHIM_PANEL_NO_WINDOW 4     // sheet asked for with no key window
 
 #define SHIM_PANEL_MAX_PATHS 32
@@ -367,6 +367,18 @@ int shim_pump(obj_t mode) { return CFRunLoopRunInMode(mode, 0.00025, 1); }
 
 static char panel_paths[SHIM_PANEL_MAX_PATHS][SHIM_PANEL_PATH_BYTES];
 static int panel_paths_used;
+
+// The sheet's answer, written by the completion handler and read from JS by
+// polling: a blocking -runModal stops the JavaScript thread and with it every
+// in-flight invoke, while a sheet plus a done flag leaves both running.
+//
+// SHIM_PANEL_NO_RESPONSE is the "not answered yet" value, chosen because it is
+// neither NSModalResponseOK (1) nor NSModalResponseCancel (0).
+#define SHIM_PANEL_NO_RESPONSE -1
+
+static obj_t panel_sheet_panel; // live panel while its sheet is up, else 0
+static volatile int panel_sheet_done;
+static volatile long long panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 
 // One NSString, built and consumed on this side. Encoding 4 is
 // NSUTF8StringEncoding, and `-initWithBytes:length:encoding:` is what the
@@ -392,6 +404,9 @@ static int panel_has_instance(const char *cls, const char *selname) {
 static void panel_reset(void) {
 	panel_paths_used = 0;
 	panel_paths[0][0] = 0;
+	panel_sheet_panel = 0;
+	panel_sheet_done = 0;
+	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 }
 
 static void panel_copy_path(const char *src) {
@@ -422,6 +437,74 @@ static void panel_collect(obj_t panel) {
 		    path, sel_registerName("UTF8String"));
 		panel_copy_path(utf8);
 	}
+}
+
+// --- sheet completion: a hand-built global block ---------------------------
+//
+// `beginSheetModalForWindow:completionHandler:` takes a block, and a sheet
+// started with a NULL one can only ever be started — which is exactly what this
+// path did until now. A block is plain memory:
+//
+//   { isa, flags, reserved, invoke, descriptor }
+//
+// A GLOBAL block (isa `__NSGlobalBlock__`, BLOCK_IS_GLOBAL set) needs no copy or
+// dispose helper and no heap, which is what makes it constructible from C with
+// no compiler support; `Block_copy` on it is a documented no-op, so a static
+// instance outlives the call that hands it to AppKit. `notifications.c` builds
+// its two handlers the same way and they are measured working.
+//
+// Bit 28 is BLOCK_IS_GLOBAL. Bit 30 is BLOCK_HAS_SIGNATURE, and setting that
+// without a real signature in the descriptor makes the runtime read past this
+// hand-built struct — so it is deliberately never set. The isa comes from
+// objc_getClass rather than the `_NSConcreteGlobalBlock` data symbol, so a
+// missing symbol cannot break linking.
+#define SHIM_BLOCK_IS_GLOBAL (1 << 28)
+
+typedef struct {
+	unsigned long reserved;
+	unsigned long size;
+} shim_block_descriptor;
+
+// (^)(NSModalResponse response) — NSInteger, so long long on arm64. The block
+// itself is the hidden first argument, exactly as the runtime sends it.
+typedef struct {
+	void *isa;
+	int flags;
+	int reserved;
+	void (*invoke)(void *, long long);
+	void *descriptor;
+} shim_sheet_block_t;
+
+static shim_block_descriptor panel_sheet_desc;
+static shim_sheet_block_t panel_sheet_block;
+static int panel_sheet_block_ready;
+
+static void panel_sheet_invoke(void *block, long long response);
+
+static int panel_sheet_block_init(void) {
+	if (panel_sheet_block_ready) return 1;
+	obj_t isa = objc_getClass("__NSGlobalBlock__");
+	if (!isa) return 0;
+	panel_sheet_desc.reserved = 0;
+	panel_sheet_desc.size = sizeof(shim_sheet_block_t);
+	panel_sheet_block.isa = isa;
+	panel_sheet_block.flags = SHIM_BLOCK_IS_GLOBAL;
+	panel_sheet_block.reserved = 0;
+	panel_sheet_block.invoke = panel_sheet_invoke;
+	panel_sheet_block.descriptor = &panel_sheet_desc;
+	panel_sheet_block_ready = 1;
+	return 1;
+}
+
+// Runs on the main thread when the sheet ends, by either route: the user's
+// click, or the -cancel: shim_sheet_cancel() sends. Recording the response
+// first and the done flag last is what makes a JS read after `done` always see
+// the response and the paths together. NSModalResponseOK is 1.
+static void panel_sheet_invoke(void *block, long long response) {
+	(void)block;
+	panel_sheet_response = response;
+	if (response == 1 && panel_sheet_panel) panel_collect(panel_sheet_panel);
+	panel_sheet_done = 1;
 }
 
 // The window a sheet attaches to. `-keyWindow` is nil whenever the process is
@@ -465,11 +548,14 @@ static obj_t panel_sheet_window(obj_t app) {
 //                 Called from JS that stops the JavaScript thread and the Cocoa
 //                 pump for the duration; accepted for a file picker, and stated
 //                 as blocking rather than dressed up as async.
-//   runModal = 0  calls -beginSheetModalForWindow:completionHandler: with a NULL
-//                 completion and returns at once. Nothing ever reports the
-//                 sheet's result, so it can only start one, never collect paths.
-//                 With no key window there is nothing to attach a sheet to and
-//                 this returns SHIM_PANEL_NO_WINDOW without sending.
+//   runModal = 0  calls -beginSheetModalForWindow:completionHandler: with a real
+//                 completion handler and returns at once, status
+//                 SHIM_PANEL_SHEET_STARTED. The handler records the
+//                 NSModalResponse, copies -URLs, and sets the done flag, so the
+//                 caller polls shim_sheet_done() while the pump and the bridge
+//                 keep running. With no key window there is nothing to attach a
+//                 sheet to and this returns SHIM_PANEL_NO_WINDOW without
+//                 sending, which is what keeps the blocking path a fallback.
 int shim_open_panel(const char *title, const char *types, int allowDirectories, int allowMultiple,
                     int runModal) {
 	panel_reset();
@@ -549,9 +635,15 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 	}
 
 	if (!runModal) {
+		if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
+		// Set the live panel before the send: the handler reads it to collect
+		// -URLs, and a sheet that ends immediately must still find it.
+		panel_sheet_panel = panel;
+		panel_sheet_done = 0;
+		panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
 		    panel, sel_registerName("beginSheetModalForWindow:completionHandler:"), sheet_window,
-		    (obj_t)0);
+		    (obj_t)&panel_sheet_block);
 		return SHIM_PANEL_SHEET_STARTED;
 	}
 
@@ -571,4 +663,28 @@ int shim_open_panel_count(void) { return panel_paths_used; }
 const char *shim_open_panel_path(int index) {
 	if (index < 0 || index >= panel_paths_used) return "";
 	return panel_paths[index];
+}
+
+// --- sheet result, for a caller that polls instead of blocking --------------
+
+// 1 once the sheet started by shim_open_panel(…, 0) has ended, 0 while it is up
+// (and 0 before any sheet). Answering this is the whole reason the sheet path
+// no longer needs a human: the promise settles on the frame after the click.
+int shim_sheet_done(void) { return panel_sheet_done; }
+
+// The NSModalResponse the sheet ended with: 1 is NSModalResponseOK and 0 is a
+// cancel. SHIM_PANEL_NO_RESPONSE (-1) means it has not ended yet, so a caller
+// that reads 0 can never confuse "cancel" with "no answer".
+long long shim_sheet_response(void) { return panel_sheet_response; }
+
+// End the live sheet without a human: -cancel: is the panel's own cancel
+// action, so it runs the same path as clicking Cancel — the completion handler
+// fires, the response is recorded, and the sheet leaves the window. Returns 1
+// when the send happened, 0 when no sheet is up or the selector is absent.
+int shim_sheet_cancel(void) {
+	obj_t panel = panel_sheet_panel;
+	if (!panel || panel_sheet_done) return 0;
+	if (!panel_has_instance("NSOpenPanel", "cancel:")) return 0;
+	((void (*)(void *, void *))objc_msgSend)(panel, sel_registerName("cancel:"));
+	return 1;
 }

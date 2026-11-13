@@ -35,9 +35,11 @@ export interface OpenPanelResult {
  * The native half, supplied by the platform.
  *
  * Resolving `{ paths: [] }` means the user cancelled; a platform that cannot
- * show a picker at all rejects instead, so the two are never confused. An
- * implementation built on `-runModal` blocks the JavaScript thread for as long
- * as the picker is open — see `darwinDialogAdapter` in `platform/darwin`.
+ * show a picker at all rejects instead, so the two are never confused. macOS
+ * shows the panel as a sheet and awaits it without blocking the JavaScript
+ * thread, so an invoke issued while the sheet is up is still answered; the one
+ * blocking path is the `-runModal` fallback used when there is no window to
+ * attach a sheet to — see `darwinDialogAdapter` in `platform/darwin`.
  */
 export interface DialogNative {
 	pickOpen(options: OpenPanelOptions): Promise<OpenPanelResult>;

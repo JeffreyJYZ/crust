@@ -2,17 +2,35 @@ import { describe, expect, test } from "bun:test";
 import { ptr } from "bun:ffi";
 import {
 	DarwinPlatform,
+	NS_MODAL_RESPONSE,
+	PANEL_MAX_PATHS,
 	PANEL_STATUS,
 	PREFLIGHT,
+	awaitSheetResult,
 	darwinDialogAdapter,
 	preflightError,
 	shim,
+	type SheetReadings,
 	windowLiveness,
 } from "@/platform/darwin/index.ts";
 import { createDialogPlugin } from "@/plugins/dialog.ts";
 import { isNotImplemented } from "@/plugins/define.ts";
 
 const SHIM_C = `${import.meta.dir}/shim.c`;
+
+/** `SHIM_PANEL_NO_RESPONSE` in `shim.c`: the sheet has not answered yet. */
+const SHIM_PANEL_NO_RESPONSE = -1;
+
+/** A sheet reading that is already finished, for the malformed-answer cases. */
+function finished(overrides: Partial<SheetReadings> = {}): SheetReadings {
+	return {
+		done: () => true,
+		response: () => NS_MODAL_RESPONSE.ok,
+		count: () => 1,
+		path: (index: number) => (index === 0 ? "/tmp/one.txt" : ""),
+		...overrides,
+	};
+}
 
 /** A `const char *` argument, since a JS string cannot cross into C. */
 function cstr(s: string): number {
@@ -36,6 +54,24 @@ describe("darwin shim", () => {
 		expect(typeof symbols.shim_open_panel).toBe("function");
 		expect(typeof symbols.shim_open_panel_count).toBe("function");
 		expect(typeof symbols.shim_open_panel_path).toBe("function");
+	});
+
+	/**
+	 * The sheet path's whole contract in three reads. Nothing has started a sheet
+	 * in this process, so "not answered yet" and "no panel to cancel" are the
+	 * answers — and -1 is deliberately not a valid NSModalResponse, so a caller
+	 * that reads it can never mistake it for cancel (0).
+	 */
+	test("exports the sheet reads, and they say 'nothing yet' with no sheet", () => {
+		const symbols = shim().symbols;
+		expect(typeof symbols.shim_sheet_done).toBe("function");
+		expect(typeof symbols.shim_sheet_response).toBe("function");
+		expect(typeof symbols.shim_sheet_cancel).toBe("function");
+
+		expect(Number(symbols.shim_sheet_done() ?? -1)).toBe(0);
+		// An i64 return arrives as a BigInt.
+		expect(Number(symbols.shim_sheet_response() ?? 0)).toBe(SHIM_PANEL_NO_RESPONSE);
+		expect(Number(symbols.shim_sheet_cancel() ?? -1)).toBe(0);
 	});
 
 	/**
@@ -81,6 +117,84 @@ describe("darwin shim", () => {
 		// Nothing was collected, so the path accessor is empty out of range.
 		expect(Number(shim().symbols.shim_open_panel_count() ?? -1)).toBe(0);
 		expect(String(shim().symbols.shim_open_panel_path(0))).toBe("");
+	});
+});
+
+describe("sheet polling", () => {
+	/**
+	 * The defect this exists for: `-runModal` stops the JavaScript thread and the
+	 * pump for the whole pick. A timer-driven poll leaves both running, which is
+	 * what makes an invoke answer while the sheet is up (measured in the one
+	 * windowed run: cancel at 300 ms, promise resolved `paths: []`, bridge invoke
+	 * answered during the sheet).
+	 */
+	test("resolves once the flag flips, with the paths the shim stored", async () => {
+		let done = false;
+		setTimeout(() => {
+			done = true;
+		}, 25);
+
+		const result = await awaitSheetResult(finished({ done: () => done }), { intervalMs: 5 });
+		expect(result).toEqual({ paths: ["/tmp/one.txt"] });
+	});
+
+	test("a cancel resolves an empty list, never a rejection", async () => {
+		const result = await awaitSheetResult(
+			finished({ response: () => NS_MODAL_RESPONSE.cancel, count: () => 0 }),
+		);
+		expect(result).toEqual({ paths: [] });
+	});
+
+	/**
+	 * The poll must yield, not block: a second timer has to keep firing while the
+	 * sheet is awaited. That is the property the old `-runModal` path could not
+	 * have, and the only one a headless test can prove.
+	 */
+	test("yields to the event loop between reads", async () => {
+		let done = false;
+		let ticks = 0;
+		const timer = setInterval(() => {
+			ticks++;
+		}, 5);
+		setTimeout(() => {
+			done = true;
+		}, 40);
+
+		try {
+			await awaitSheetResult(finished({ done: () => done }), { intervalMs: 5 });
+		} finally {
+			clearInterval(timer);
+		}
+		expect(ticks).toBeGreaterThan(1);
+	});
+
+	test("rejects a response that is neither OK nor cancel", async () => {
+		await expect(
+			awaitSheetResult(finished({ response: () => 7, count: () => 0 })),
+		).rejects.toThrow(/NSModalResponse 7/);
+		await expect(
+			awaitSheetResult(finished({ response: () => SHIM_PANEL_NO_RESPONSE, count: () => 0 })),
+		).rejects.toThrow(/NSModalResponse -1/);
+	});
+
+	test("rejects a path count the C storage cannot hold", async () => {
+		await expect(
+			awaitSheetResult(finished({ count: () => PANEL_MAX_PATHS + 1 })),
+		).rejects.toThrow(new RegExp(`outside 0…${PANEL_MAX_PATHS}`));
+		await expect(awaitSheetResult(finished({ count: () => -1 }))).rejects.toThrow(/outside 0…/);
+		await expect(awaitSheetResult(finished({ count: () => 1.5 }))).rejects.toThrow(
+			/outside 0…/,
+		);
+	});
+
+	test("rejects OK with no path, or an empty path", async () => {
+		await expect(awaitSheetResult(finished({ count: () => 0 }))).rejects.toThrow(/no paths/);
+		await expect(awaitSheetResult(finished({ path: () => "" }))).rejects.toThrow(/empty path/);
+	});
+
+	test("refuses a non-positive interval", async () => {
+		await expect(awaitSheetResult(finished(), { intervalMs: 0 })).rejects.toThrow(/positive/);
+		await expect(awaitSheetResult(finished(), { intervalMs: -5 })).rejects.toThrow(/positive/);
 	});
 });
 
