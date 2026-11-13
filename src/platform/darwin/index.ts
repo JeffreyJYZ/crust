@@ -305,6 +305,7 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "setReleasedWhenClosed:"],
 	["NSWindow", "contentView"],
 	["NSWindow", "makeKeyAndOrderFront:"],
+	["NSWindow", "orderFrontRegardless"],
 	["NSWindow", "setTitle:"],
 	["NSWindow", "title"],
 	["NSWindow", "setContentMinSize:"],
@@ -720,6 +721,12 @@ export class DarwinPlatform implements Platform {
 		}
 
 		S.v1(win, "makeKeyAndOrderFront:", 0);
+		// `makeKeyAndOrderFront:` raises the window but still depends on the app being able to
+		// activate, and macOS 14+ refuses that for an unbundled process — which is exactly how
+		// `crust dev` runs. The window then exists, the page loads, and nothing appears on
+		// screen, silently. This raises it above its siblings without needing activation, so a
+		// dev session and a bundle behave the same.
+		S.v0(win, "orderFrontRegardless");
 		this.activateOnce();
 
 		// A relative URL needs the bridge server, which the platform does not own;

@@ -255,6 +255,10 @@ export class App {
 				...window,
 				url: windowUrl(window, config.dev?.url, this.#bridgeUrl),
 			});
+			// A window that exists but never appears is the worst failure: the page runs, the
+			// bridge answers, and the screen is empty. Say what was created so a silent window
+			// is visible in the log rather than inferred from a user's "nothing happened".
+			console.log(`  window    ${window.label} created`);
 		}
 		await this.#emit("ready");
 		platform.pump(PUMP_INTERVAL_MS);
