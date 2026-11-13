@@ -7,7 +7,7 @@ This is a development convenience. It is deliberately smaller than a project, an
 ## What it does
 
 - **Detects the shape.** The positional must end in `.tsx`, `.jsx`, `.ts` or `.js`, must exist, and must sit in a directory with no `crust.config.ts` or `crust.json`. A config beside the file means a real project: crust says so and refuses instead of guessing.
-- **Builds the config in memory.** App id `crust.single.<name>`, app name and window title from the file's basename, version `0.0.0`, one window `900×700` at `/`. Nothing is written to disk as a config.
+- **Builds the config in memory.** App id `crust.single.<slug>`, app name and window title from the file's basename, version `0.0.0`, one window `900×700` at `/`. The slug is the basename lowercased with every run of non-alphanumerics turned into one dash (`my app.tsx` becomes `my-app`). Nothing is written to disk as a config.
 - **Bundles the page.** `Bun.build` with `target: "browser"`, ESM, no minify, never split. A dev bundle carries an inline sourcemap; a build has none.
 - **Serves the page.** `index.html` loads `page.js` as a module. In dev the directory is `<file dir>/.crust/single` and the bridge serves it from disk. In a build the same two files are embedded in the binary.
 - **Registers two commands.** There is no backend module, so the framework provides the round trip: `window.crust.invoke("info")` answers `{ app, file, single: true }` and logs a line on the backend, and `window.crust.invoke("echo", { … })` returns its argument unchanged. Every built-in plugin (`fs`, `dialog`, `window`, `tray`, `notification`) is still reachable in the three-argument form, e.g. `window.crust.invoke("window", "list", {})`.
@@ -38,7 +38,7 @@ The check is a regular expression over the source, not a parser. An `export defa
 
 - **No HMR.** A save is a full page reload. UI state is lost, exactly as in a browser refresh.
 - **Only the entry file is watched.** Imported local modules and CSS files are not; save the entry (or restart) to pick those up.
-- **No npm resolution beyond the project.** Imports resolve from the file's own `node_modules` (plus nothing else). There is no import map, no CDN and no install step.
+- **No install step.** Imports resolve through Bun from the file's own directory, with `node_modules` above it included. There is no import map, no CDN and no install step.
 - **No custom backend.** With one file there is no place to register your own commands. `info` and `echo` are the app namespace; a real backend needs `crust.config.ts` and `main.ts`, i.e. a project.
 - **No config surface.** The window size, title, app id and version are fixed by the rules above. No icon, no `dev.url`, no `beforeDevCommand`, no `beforeBuildCommand`, no `build.assets`, no plugins list, no CSP override.
 - **No type checking.** The file is transpiled by Bun, not checked. Only JSX/TSX syntax and module resolution failures are reported.
@@ -48,8 +48,8 @@ The check is a regular expression over the source, not a parser. An `export defa
 
 | Run | Written | Removed |
 | --- | --- | --- |
-| `crust dev app.tsx` | `<dir>/.crust/single/{index.html,page.js}`, a generated runner in `$TMPDIR/crust-single-*` | the runner directory on exit; the bundle is left for the next run |
-| `crust build app.tsx` | `<dir>/dist/single/{index.html,page.js}`, `dist/crust-assets.ts`, `dist/crust-entry.ts`, `dist/<name>.app` | nothing — it is build output |
+| `crust dev app.tsx` | `<dir>/.crust/single/{index.html,page.js,__crust_reload.txt}`, `<dir>/.crust/crust-single-entry.ts` (only when the file has a default export), a generated runner in `$TMPDIR/crust-single-*` | the runner directory on exit; the bundle is left for the next run |
+| `crust build app.tsx` | `<dir>/dist/single/{index.html,page.js}`, `dist/crust-single-entry.ts` (only when the file has a default export), `dist/crust-assets.ts`, `dist/crust-entry.ts`, `dist/<name>.app` | nothing — it is build output |
 
 ## Verified by a script
 

@@ -174,7 +174,7 @@ again, because `desktop/` is outside `include`. If your tsconfig has no `include
 
 **2. The backend watcher covers the entry's directory.** `crust dev` watches
 `dirname(entry)` recursively and restarts the runtime on any change there
-(`public/`, `dist/` and `node_modules/` excepted). An entry under `src/` means
+(`public/`, `dist/`, `node_modules/`, `.next/`, `out/` and `.crust/` excepted). An entry under `src/` means
 every UI edit restarts the backend — and a restart rotates the bridge token, so a
 page loaded before it starts answering `CrustInvokeError: missing or bad bearer
 token` until it reloads. `desktop/` keeps HMR entirely on Vite's side, which is
@@ -290,9 +290,7 @@ walk its own binary.
   directory Vite produced and the window loads it from disk. There is no server
   rendering step, no server bundle, and no place for `getServerSideProps`-style
   code to run.
-- **Anything that is not Vite is untested.** CRA (`react-scripts`), Next.js,
-  Webpack, Rspack and Parcel were not run against crust, so this page does not
-  claim them: the only integration that exists is `crust/vite`.
+- **Anything that is not Vite is untested.** CRA (`react-scripts`), Webpack, Rspack and Parcel were not run against crust, so this page does not claim them: the only dev-server integration that exists is `crust/vite`. Next.js is supported on a different path — a static export embedded at build time, with no dev-server client — and [next.md](next.md) is that contract and its measurement.
 - **A backend restart invalidates the loaded page's token.** The bridge issues a
   new token per launch, and the page's copy came from the document it was served.
   Until the page reloads, `invoke` rejects with `missing or bad bearer token`.

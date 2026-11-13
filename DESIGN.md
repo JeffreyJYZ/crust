@@ -140,7 +140,7 @@ So the pump is not a choice among alternatives. With no native owner of the thre
 └───────────────────────┘        events            └──────────────────┘
 ```
 
-`Bun.serve` bound to `127.0.0.1` on port `0`, so the port is ephemeral and never collides. A per-launch token (`crypto.randomUUID()`) is injected into the served HTML as a bootstrap script, so page code has it and other local processes do not.
+`Bun.serve` bound to `127.0.0.1` on a port derived from the app id (`45000 + FNV-1a(id) % 4000`), walking upward up to 20 times and falling back to `0` only when every candidate is taken. The port is not ephemeral any more, and that is deliberate: an ephemeral port changes the page origin on every launch, which throws away per-origin storage (`localStorage`, IndexedDB, cookies) each time the app starts. A walk-up that does land elsewhere costs exactly that, which is why `doctor` reports it as a note rather than silence. A per-launch token (`crypto.randomUUID()`) is injected into the served HTML as a bootstrap script, so page code has it and other local processes do not.
 
 - `POST /_crust/invoke` — `{ plugin, command, args }` with `Authorization: Bearer <token>`; responds with the handler's result or a structured error.
 - `GET /_crust/events` — server-sent events carrying pushes from Bun to the page.
@@ -148,23 +148,23 @@ So the pump is not a choice among alternatives. With no native owner of the thre
 
 Rejected because they were worse for this design: a custom URL scheme handler (needs `WKURLSchemeHandler` with its own runtime-created delegate and gives up ordinary HTTP tooling), and `evaluateJavaScript` in both directions (no request/response model, awkward for streaming).
 
-Security posture: ephemeral port plus bearer token plus an `Origin` check plus an explicit CSP. Loopback is reachable by any local process, so the token is what actually protects it. The server must never serve a request without the token except for the initial document and its assets, and must refuse any request whose `Origin` is not the page's own.
+Security posture: a port derived from the app id plus bearer token plus an `Origin` check plus an explicit CSP. Loopback is reachable by any local process, so the token is what actually protects it. The server must never serve a request without the token except for the initial document and its assets, and must refuse any request whose `Origin` is not the page's own.
 
 Two isolation ideas worth taking from Electrobun: it ships two compiled preloads and the untrusted one carries no bridge, no key and no port, which is a stronger boundary than one page with a token; and it validates the sender on every inbound event. On the other axis crust is ahead — Electrobun has no `Origin` check at all, and its entire authorisation is a small integer plus the key.
 
 ### Measured on this machine
 
-The bridge is fast enough that it is not a design constraint: an invoke round-trip over 200 calls has a median of **0.119 ms** and a p99 of 1.276 ms, against a same-process call at 0.0005 ms. The socket accounts for 99.6% of that cost, so a reused connection (0.045 ms) is worth having. Binding an ephemeral port takes 0.11 ms.
+The bridge is fast enough that it is not a design constraint: an invoke round-trip over 200 calls has a median of **0.119 ms** and a p99 of 1.276 ms, against a same-process call at 0.0005 ms. The socket accounts for 99.6% of that cost, so a reused connection (0.045 ms) is worth having. Binding a fixed port was measured at 0.11 ms; the walk-up only runs when the preferred port is busy.
 
 Security checks behave: a missing or wrong token gets `401` and the correct one `200`; own origin `200`, absent `Origin` **`403`**, foreign origin `403`. SSE delivered 20 of 20 frames in order with a 20.38 ms median gap and no coalescing. One-megabyte bodies take 2.4 ms as JSON and 1.8 ms as binary. A stopped server rebinds the same port in 0.45 ms and a child process exits clean in 12 ms.
 
 Development has the shape predicted: from a Vite origin the bridge answers `204/200/200` with an echoed `Access-Control-Allow-Origin` and `Vary: origin`, while a foreign origin stays `403` even with the dev origin configured.
 
-### Origin stability, an unfixed design gap
+### Origin stability, resolved
 
-The bridge binds port `0`, so its URL — and therefore the page's origin — changes on every launch. Anything origin-scoped is then thrown away each run: `localStorage`, `IndexedDB`, cookies, service workers, and WebKit's per-origin caches. That is invisible for a hello-world and fatal for a client that wants to persist state, which is exactly what the M5 plan found.
+The bridge used to bind port `0`, so its URL — and therefore the page's origin — changed on every launch, and anything origin-scoped was thrown away each run: `localStorage`, `IndexedDB`, cookies, service workers, WebKit's per-origin caches. The chosen fix is the first of the three candidates: **a port derived from the app id**, `45000 + FNV-1a(id) % 4000`, walking upward up to 20 times on a collision and falling back to `0` only when every candidate is taken.
 
-Three candidate fixes, none measured yet: bind a port derived from the app id (stable, but a collision is possible and must be retried), serve the page from a custom `crust://` scheme via `WKURLSchemeHandler` (a stable origin with no port at all, at the cost of a runtime-created delegate and the HTTP tooling the current design leans on), or keep `port 0` and move persistence into a native store behind a plugin. The third is the smallest change and the largest loss of web-platform familiarity, so this is a decision to make before M5 rather than during it.
+Measured: the same app id lands on the same port across rebuilds — `dist/crust` rebuilt an app and both launches bound `48642`. A walk-up is visible rather than silent: `doctor` reports it as a note naming the old and new port and the origin-scoped state that is lost. The other two candidates stay on the record as rejected for this version — `WKURLSchemeHandler` costs a runtime-created delegate and the HTTP tooling the bridge leans on, and moving persistence into a native store loses web-platform familiarity for a smaller change than it looks.
 
 ### App Transport Security
 
@@ -345,7 +345,7 @@ The remaining startup cost is WebKit's own process launch, so the sub-300 ms cla
 
 **M5 — dogfood. NOT STARTED.** The opencode client has not been run on crust. This remains the milestone that decides whether the design is right.
 
-**M6 — ship story. PARTIAL, and installable today.** `brew install JeffreyJYZ/tap/crust` installs a source formula — crust is TypeScript Bun runs, so there is nothing to bottle — and 0.1.4 is what it serves. `crust dmg` produces a 38.70 MiB image through `diskutil image create from`. `bun run build:standalone` also compiles crust into one 89.9 MB executable that scaffolds all three templates, runs `doctor` and runs `dev` with no Bun and no checkout, because the child is the binary re-executed under `BUN_BE_BUN=1`. The Developer ID path is written but has never been exercised, because no certificate exists here.
+**M6 — ship story. PARTIAL, and installable today.** `brew install JeffreyJYZ/tap/crust` installs a source formula — crust is TypeScript Bun runs, so there is nothing to bottle — and 0.1.5 is what it serves. `crust dmg` produces a 38.73 MiB image (40,610,304 bytes) that `hdiutil verify` accepts, asserted by `e2e:package` along with the `crust sign` refusal. `bun run build:standalone` also compiles crust into one 89.9 MB executable that scaffolds all three templates, runs `doctor` and runs `dev` with no Bun and no checkout, because the child is the binary re-executed under `BUN_BE_BUN=1`. The Developer ID path is written but has never been exercised, because no certificate exists here.
 
 A stranger's path is now measured end to end in one script: `bun run verify:first-run` scaffolds, installs, builds, launches and requires the page's `invoke` to answer — and it caught a scaffold that installed but could not build (`bun x vite build` ran vite under the user's Node, which fails outright on Node 27). What "published" still needs is npm distribution, or a Developer ID for distributable apps; the first waits on 2FA and the second on a certificate.
 

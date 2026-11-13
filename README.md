@@ -18,9 +18,9 @@ Three ways in, all detailed in [docs/install.md](docs/install.md) — what each 
 | nothing installed at all | `bunx github:JeffreyJYZ/crust#v0.1.5 init my-app` |
 | a checkout you can edit | `bun install && bun run start` |
 
-**Homebrew** merged into `JeffreyJYZ/homebrew-tap` on 2026-11-13 and installs `crust 0.1.4`: 95 files, 681.5 KB, with `bun` pulled in as a dependency. It is a source install, not a bottle — `src/`, `templates/`, `docs/`, `package.json`, `tsconfig.json` and `DESIGN.md` go into `/opt/homebrew/Cellar/crust/0.1.4/libexec/`, the `README.md` the formula also lists is moved by Homebrew's metafile pass up to `/opt/homebrew/Cellar/crust/0.1.4/README.md`, and `/opt/homebrew/bin/crust` is a wrapper that execs the brewed `bun` on `libexec/src/cli/index.ts`. Nothing is compiled at install time: the shim compiles at launch, from the Cellar, and `crust doctor` is the check that it does. The formula's caveat asks for `xcode-select --install`, but measured, nothing needs it: the shim has no `#include` at all — every Objective-C symbol is a hand-written `extern` — and `cc()` compiled it with an empty environment, `PATH` holding only `bun`, and `SDKROOT=/nonexistent/sdk`. No compiler is ever executed either way, and the formula tracks the newest tag rather than `main`, so a brewed `crust` is exactly that release.
+**Homebrew** merged into `JeffreyJYZ/homebrew-tap` on 2026-11-13 and currently installs `crust 0.1.5`: 95 files, 671.3 KiB (687,432 bytes), with `bun` pulled in as a dependency. It is a source install, not a bottle — `src/`, `templates/`, `docs/`, `package.json`, `tsconfig.json` and `DESIGN.md` go into `/opt/homebrew/Cellar/crust/0.1.5/libexec/`, the `README.md` the formula also lists is moved by Homebrew's metafile pass up to `/opt/homebrew/Cellar/crust/0.1.5/README.md`, and `/opt/homebrew/bin/crust` is a wrapper that execs the brewed `bun` on `libexec/src/cli/index.ts`. Nothing is compiled at install time: the shim compiles at launch, from the Cellar, and `crust doctor` is the check that it does. The formula's caveat asks for `xcode-select --install`, but measured, nothing needs it: the shim has no `#include` at all — every Objective-C symbol is a hand-written `extern` — and `cc()` compiled it with an empty environment, `PATH` holding only `bun`, and `SDKROOT=/nonexistent/sdk`. No compiler is ever executed either way, and the formula tracks the newest tag rather than `main`, so a brewed `crust` is exactly that release.
 
-**bunx** needs Bun and nothing else — no `PATH` entry, no global install. Its one sharp edge is the cache: bunx keys on the specifier string, so a bare `github:JeffreyJYZ/crust` names no version and keeps serving whatever commit it first resolved. Measured on this machine, that bare spec and `#main` both answer `0.1.0`; one of those cached 0.1.0 commits refuses `--next` while a fresh cache answers `0.1.4` — a reader who sees `crust: unknown option --next` is on a stale cache, not a bug in crust, and two readers of this page can get different scaffolds. Name a tag (`github:JeffreyJYZ/crust#v0.1.5`, the one specifier whose answer cannot drift) or delete `~/.bun/install/cache/.bunx-501/crust@github@*` and `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*`.
+**bunx** needs Bun and nothing else — no `PATH` entry, no global install. Its one sharp edge is the cache: bunx keys on the specifier string, so a bare `github:JeffreyJYZ/crust` names no version and keeps serving whatever commit it first resolved. Measured on this machine, that bare spec and `#main` both answer `0.1.0`; one of those cached 0.1.0 commits refuses `--next` while a fresh cache answers `0.1.5` — a reader who sees `crust: unknown option --next` is on a stale cache, not a bug in crust, and two readers of this page can get different scaffolds. Name a tag (`github:JeffreyJYZ/crust#v0.1.5`, the one specifier whose answer cannot drift) or delete `~/.bun/install/cache/.bunx-501/crust@github@*` and `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*`.
 
 **From a checkout**, `bun install` pulls two dev dependencies (`@types/bun`, and `vite` for the React template's build) and `bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag below: `bun run start dev --dir examples/hello`. A scaffold made there pins `crust` as `link:<checkout>`, so a local edit is picked up without republishing; every other install pins the bare `github:JeffreyJYZ/crust`, and `bun install` in the app resolves it to `main`'s head — a different commit from the tag the formula installed, and at the same version number.
 
@@ -54,7 +54,7 @@ bun install
 bunx crust dev
 ```
 
-Inside the project, `bunx crust dev` runs the `crust` in `node_modules/.bin`, so the app runs the copy it pinned rather than the CLI that scaffolded it. Name a tag (`github:JeffreyJYZ/crust#v0.1.1`) if you want the release rather than `main`.
+Inside the project, `bunx crust dev` runs the `crust` in `node_modules/.bin`, so the app runs the copy it pinned rather than the CLI that scaffolded it. Name a tag (`github:JeffreyJYZ/crust#v0.1.5`) if you want the release rather than `main`.
 
 `crust init` refuses a directory that is not empty, naming the entries it found, rather than merging into it — nothing of yours is overwritten.
 
@@ -139,7 +139,7 @@ One TSX file, no `crust.config.ts` and no `main.ts`: crust builds the config in 
 From the crust checkout:
 
 ```sh
-bun install                      # one dev dependency: @types/bun
+bun install                      # two dev dependencies: @types/bun and vite
 bun run src/cli/index.ts dev --dir examples/hello
 ```
 
@@ -208,7 +208,7 @@ app.on("ready", () => console.log("windows open"));
 await app.run();
 ```
 
-Nine methods, three of which are not yours to call. `command`, `on`, `run`, `quit` and `invoke` are the surface every app writes; `use` mounts a plugin and `plugins` reads the mount list; `attach` and `deferBridge` are what `startApp` calls, and the only reason they are public is that the runtime lives in a different module. [api.md](docs/api.md) documents each one. The page calls a command by name (`invoke("greet", { name })`); plugin commands use the three-argument form (`invoke("fs", "readTextFile", { path })`). An unknown name returns the bridge's structured error to the page — a rejected promise with `code` and `message` — never a process crash.
+Ten methods, three of which are not yours to call. `command`, `on`, `run`, `quit` and `invoke` are the surface every app writes; `use` mounts a plugin and `plugins` reads the mount list; `attach`, `deferBridge` and `configure` are what `startApp` calls, and the only reason they are public is that the runtime lives in a different module. [api.md](docs/api.md) documents each one. The page calls a command by name (`invoke("greet", { name })`); plugin commands use the three-argument form (`invoke("fs", "readTextFile", { path })`). An unknown name returns the bridge's structured error to the page — a rejected promise with `code` and `message` — never a process crash.
 
 `app.run()` needs no manual wiring. Called through `crust dev` or a built app the platform, config and bridge are attached first; called bare (`bun src/main.ts`) it loads the config from the working directory and imports the macOS platform on demand, so no window code is linked into a process that never opens one.
 

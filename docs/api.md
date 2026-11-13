@@ -1,6 +1,6 @@
 # crust API reference
 
-`crust` 0.1.1, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
+`crust` 0.1.5, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
 
 Each signature, default and error message below was read from the source file named beside it in this working tree. What was *run* is narrower, and [Unverified](#unverified) lists the four claims this page deliberately does not make: a dialog sheet or completed pick, a tray item seen on screen, and a delivered notification have not been observed at all, and the Next static-export path is observed only through `crust build`, never through a human clicking around the exported app. Everything else below, including the Next build pipeline and both single-file modes, has a script or a recorded run behind it.
 
@@ -243,12 +243,22 @@ Wires the platform and the config into the instance. `startApp` calls it before 
 
 Throws `crust: cannot attach a platform to a running app` after `run()` has started.
 
+### `app.configure(config)` — internal
+
+```ts
+configure(config: CrustConfig): this
+```
+
+Hands the instance the config without a platform. `startApp` calls it instead of `attach` when it attaches no platform (a headless bridge, or a non-macOS process), so `run()` has a config and never falls back to `loadConfig()`. Public for the same reason as `attach`: `App` has no package-private access. Calling it yourself is only correct in a test.
+
+Throws `crust: cannot configure a running app` after `run()` has started.
+
 ---
 
 ## `App`, `createApp`, `PUMP_INTERVAL_MS`
 
 ```ts
-class App { /* command, use, plugins, on, run, quit, invoke, attach, deferBridge */ }
+class App { /* command, use, plugins, on, run, quit, invoke, attach, configure, deferBridge */ }
 function createApp(platform: Platform, config: CrustConfig, bridgeUrl?: string): App
 const PUMP_INTERVAL_MS = 16;
 ```

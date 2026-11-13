@@ -4,7 +4,7 @@
 
 ## What ships
 
-`files` is `src`, `templates`, `docs`, `README.md`, `DESIGN.md` and `tsconfig.json`, with `!src/**/*.test.ts` excluded; `package.json` is always included. That is 47 source files and 162.2 KiB at `0.1.0` — a tarball small enough that nobody notices a file missing from it until an install fails, which is why it is packed and installed on every change rather than eyeballed.
+`files` is `src`, `templates`, `docs`, `README.md`, `DESIGN.md` and `tsconfig.json`, with `!src/**/*.test.ts` excluded; `package.json` is always included. That is 78 files, 47 of them TypeScript source, and 184.1 KiB at `0.1.5` — a tarball small enough that nobody notices a file missing from it until an install fails, which is why it is packed and installed on every change rather than eyeballed. (At `0.1.0` it was 47 source files and 162.2 KiB.)
 
 | Path | Ships | Why |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Three phases, in the order a user meets them:
 
 One `PASS`/`FAIL` line per assertion, a verdict line with the tarball size, and a non-zero exit on any gap. A passing `--help` is the load-bearing check: a specifier that only resolves inside this repo fails there instead of in the user's first command.
 
-The script runs as `bun run verify:package`. It is not in CI yet — no `.github/workflows/` exists — but nothing in it is macOS-specific (`tar`, `bun pm pack`, `bun add` and a temp directory), so a workflow step would work as it stands.
+The script runs as `bun run verify:package`. It is in CI: `.github/workflows/ci.yml` runs it on every push to `main` and every pull request, in the `verify package` step, ahead of the standalone build and the e2e suites.
 
 ## What it found, and what closed it
 
@@ -53,7 +53,7 @@ The two `exports` entries that worked were the two subtrees with no alias import
 
 Closed by shipping `tsconfig.json` — one line in `files` — which was measured before the edit: copying it into `node_modules/crust/` made `crust --help` print its usage and `import "crust"` return the app exports. The alternative, rewriting `@/x` to relative imports, removes the dependency on the alias ever travelling; it was not taken because the alias is 16 files wide and the config is one line. The script now reads the shipped files for alias imports, so an install that carries one without its `paths` fails the check.
 
-`verify-package` passes 32 of 32 at `0.1.1`, tarball 162.2 KiB.
+`verify-package` passes 32 of 32 at `0.1.5`, tarball 184.1 KiB (162.2 KiB at `0.1.1`).
 
 ## Shipping crust as one binary
 
@@ -78,7 +78,7 @@ Verified end to end from a compiled crust with no checkout: `crust build` on `ex
 
 Two embedding shapes are not symmetric, which cost an hour: `--asset=<dir>` keeps the directory's own name and everything below it (`--asset=src/platform/darwin` yields `darwin/shim.c`, not `src/platform/darwin/shim.c`), while `--asset=<file>` keeps only the basename. A lookup therefore falls back to the basename, and only when exactly one embedded file carries it.
 
-**What still needs a checkout** is `dev` and `build`: the entry they generate imports the framework's own sources (`src/runtime.ts`, `src/single.ts`) at absolute paths, and a child `bun build --compile` cannot read a path inside another executable. The fix is the trick the shim already uses — embed those sources as text and materialise them next to the generated entry — which is not done yet.
+**Neither `dev` nor `build` needs a checkout any more.** The entry they generate imports the framework's own sources (`src/runtime.ts`, `src/single.ts`) at absolute paths, and a child `bun build` cannot read a path inside another executable, so the embedded tree is materialised into `$TMPDIR/crust-framework-<version>` first (`src/cli/framework.ts`). `dev` is proven from a compiled binary on a bare `PATH` (`/usr/bin:/bin`), in both the single-file and project shapes, by `bun run e2e:dev:binary`. `build` reads that same tree and was measured end to end from a compiled crust (above), but `buildApp` still spawns `bun build --compile` (`src/packaging/build.ts`), so it needs a `bun` on `PATH` — which the Homebrew formula guarantees and a bare standalone binary does not.
 
 **AOT**, measured on canary 1.4.5 (`bun compile` is `bun build --compile --aot`):
 
@@ -92,7 +92,7 @@ AOT is not faster — a 300M-iteration loop ran 215.2 ms against 211.9 ms, so no
 
 ## Reading a stale copy
 
-`bunx github:JeffreyJYZ/crust` caches its resolution under a hash of the specifier, so a bare spec can keep serving the commit it first resolved — a command added on `main` then reports `crust: unknown option`. Two cache directories are involved and both are safe to delete: `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*` (the resolved git package) and `~/.bun/install/cache/.bunx-501/crust@github@*` (the bunx install of it). Naming a ref (`#main`, or a commit) is a different specifier and resolves fresh; it goes stale the same way afterwards. The durable fix is publishing to npm, where a version is a version.
+`bunx github:JeffreyJYZ/crust` caches its resolution under a hash of the specifier, so a bare spec can keep serving the commit it first resolved — a command added on `main` then reports `crust: unknown option`. Two cache directories are involved and both are safe to delete: `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*` (the resolved git package) and `~/.bun/install/cache/.bunx-501/crust@github@*` (the bunx install of it). Naming a ref (`#main`, or a commit) is a different specifier and therefore a new cache entry the first time; it goes stale the same way afterwards, which is why `#main` on this machine still answers `0.1.0` while fresh resolves `main`'s head. The durable fix is publishing to npm, where a version is a version.
 
 ## The scaffold's dependency pin
 
