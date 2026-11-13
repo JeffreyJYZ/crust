@@ -20,10 +20,27 @@ export const TRAY_ITEMS = ["Save now", "Close window", "Reopen window", "Quit Do
 
 export const EXTENSION = ".md";
 
+/**
+ * What the save panel offers to write: markdown, and nothing else. One list, so
+ * the UI and the self-check cannot drift into two different panels.
+ */
+export const MARKDOWN_FILTERS = [
+	{ name: "Markdown", extensions: [EXTENSION.slice(1), "markdown"] },
+];
+
 /** The window title: the open note, plus a dot while the editor holds unsaved text. */
 export function noteTitle(name: string | undefined, dirty = false): string {
 	if (name === undefined) return "Dogear";
 	return `Dogear — ${name}${dirty ? " •" : ""}`;
+}
+
+/**
+ * The name the save panel starts with, e.g. `welcome.md`. A bare file name: the
+ * panel owns the folder, and the user can change both before answering.
+ */
+export function suggestedName(name: string | undefined): string {
+	const stem = (name ?? "note").replace(/\.md$/, "");
+	return `${stem}${EXTENSION}`;
 }
 
 export type NameCheck = { ok: true; name: string } | { ok: false; why: string };

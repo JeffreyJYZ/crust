@@ -25,6 +25,11 @@ seeds `welcome.md` on first run.
   the `tray:click` event, so the meaning of each row lives in the page.
 - **The native folder picker.** `dialog.openPanel` opens an `NSOpenPanel` as a
   sheet and answers with the absolute path the user chose.
+- **The native save panel.** **Save as…** calls `dialog.savePanel` with the open
+  note's name and a markdown extension list, then writes the editor's text to
+  whatever path it answers with through the same `fs.writeTextFile` the plain
+  Save uses. An empty `paths` — the user cancelling — writes nothing and says so
+  in the status bar; it is not an error and never an empty file.
 - **A real bundler front end.** React 19 through Vite, with `crust/vite` putting
   `window.crust` into the document Vite serves. `build.assets` points at
   `dist/web` so `crust build` embeds the built page and never its own output.
@@ -94,6 +99,7 @@ DOGEAR_SELFCHECK=1 DOGEAR_NOTES_DIR=/tmp/dogear-notes \
   page      PASS rename — _selfcheck.md → _selfcheck-renamed.md
   page      PASS remove — _selfcheck-renamed.md removed from /tmp/dogear-notes
   page      PASS dialog sheet — NSOpenPanel is up; a pick needs a human, so it stays pending
+  page      PASS save panel — NSSavePanel is up; a pick needs a human, so it stays pending
   page      done
 ```
 
@@ -103,11 +109,12 @@ absolute; it is the one input that lets a scripted run use a scratch folder inst
 of `~/Documents/Dogear`. The same lines appear in the **Diagnostics** panel, which
 also has a **Run self-check** button.
 
-The folder picker is the honest exception: the sheet starts and the invoke stays
-pending, and only a human can choose a folder or cancel. That check reports the
-sheet, not a pick, and no run here has ever completed one. Likewise, no menu-bar
-click was produced — the menu's state is read back, and the `tray:click` handler
-is a switch on the label.
+The file panels are the honest exceptions: each sheet starts and its invoke stays
+pending, and only a human can choose a path or cancel. Those checks report the
+sheet, not a pick, and no run here has ever completed one — a completed save pick
+is impossible in a scripted run, which is why the save step writes nothing even
+when it is handed a path. Likewise, no menu-bar click was produced — the menu's
+state is read back, and the `tray:click` handler is a switch on the label.
 
 ## Two things that cost a debugging session
 

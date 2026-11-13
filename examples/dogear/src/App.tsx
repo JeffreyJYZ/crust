@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appCommand, bridge, bridgeInfo, describe, plugin } from "./bridge";
-import { noteFileName, notePath, noteTitle, sortNotes, TRAY_ITEMS, type Note } from "./notes";
+import {
+	MARKDOWN_FILTERS,
+	noteFileName,
+	notePath,
+	noteTitle,
+	sortNotes,
+	suggestedName,
+	TRAY_ITEMS,
+	type Note,
+} from "./notes";
 import { runSelfCheck, type Reporter } from "./selfcheck";
 
 const WINDOW = "main";
@@ -139,6 +148,51 @@ export function App() {
 			setStatus({ kind: "bad", text: `save: ${describe(error)}` });
 		}
 	}, [activePath, text, refresh, setNoteTitle]);
+
+	/**
+	 * Save a copy where the user says.
+	 *
+	 * `dialog.savePanel` owns the folder and the name; this only writes the
+	 * editor's text to whatever path it answers with, through the same
+	 * `fs.writeTextFile` the plain Save uses. An empty `paths` is the user
+	 * cancelling: nothing is written, nothing is removed and nothing throws.
+	 */
+	const saveAs = useCallback(async () => {
+		if (activePath === null) {
+			setStatus({ kind: "bad", text: "nothing to save — open a note first" });
+			return;
+		}
+		setStatus({ kind: "idle", text: "waiting for the save panel…" });
+		try {
+			const answer = await plugin<{ paths: string[] }>("dialog", "savePanel", {
+				title: "Save a copy of the note",
+				suggestedName: suggestedName(active?.name),
+				filters: MARKDOWN_FILTERS,
+			});
+			const target = answer?.paths?.[0];
+			if (target === undefined) {
+				setStatus({ kind: "idle", text: "save panel cancelled — nothing was written" });
+				return;
+			}
+			const written = await plugin<{ bytes: number }>("fs", "writeTextFile", {
+				path: target,
+				contents: text,
+			});
+			if (target === activePath) {
+				// Saving over the open note settles its draft, dot included.
+				setSaved((prev) => ({ ...prev, [activePath]: text }));
+				await setNoteTitle(active?.name, false);
+			}
+			const folder = dir.replace(/\/+$/, "");
+			if (folder !== "" && target.startsWith(`${folder}/`)) await refresh();
+			setStatus({
+				kind: "ok",
+				text: `saved ${target.split("/").pop()} · ${written.bytes} bytes`,
+			});
+		} catch (error) {
+			setStatus({ kind: "bad", text: `savePanel: ${describe(error)}` });
+		}
+	}, [activePath, active?.name, text, dir, refresh, setNoteTitle]);
 
 	const openFolder = useCallback(async () => {
 		setStatus({ kind: "idle", text: "waiting for the folder picker…" });
@@ -429,6 +483,14 @@ export function App() {
 						disabled={activePath === null}
 					>
 						Save
+					</button>
+					<button
+						type="button"
+						onClick={() => void saveAs()}
+						disabled={activePath === null}
+						title="Write a copy wherever the native save panel points"
+					>
+						Save as…
 					</button>
 					<span className="hint">⌘S</span>
 				</div>

@@ -8,17 +8,17 @@
  * its README, so any of those could rot without a gate noticing.
  *
  * The page already asserts its own surface: `DOGEAR_SELFCHECK=1` makes it run
- * ten steps through `window.crust` and print `PASS`/`FAIL` per step plus a `done`
+ * eleven steps through `window.crust` and print `PASS`/`FAIL` per step plus a `done`
  * line through the backend's `log` command. This script does not re-derive those
  * steps — it builds the app, launches it the way a bundle is launched (cwd `/`),
  * and judges the page's own lines.
  *
  * The false pass this is built to avoid: matching `PASS` without reading the
- * step names. A step that stops running would leave nine PASS lines and still
- * exit 0, so the set of names is asserted exactly and in order. The dialog step
- * is the honest exception — no run completes a pick, so what passes is the sheet
- * being *up and still pending*, and the assertion says so rather than reading a
- * pending invoke as a choice.
+ * step names. A step that stops running would leave ten PASS lines and still
+ * exit 0, so the set of names is asserted exactly and in order. The two panel
+ * steps are the honest exception — no run completes a pick, so what passes is the
+ * sheet being *up and still pending*, and those assertions say so rather than
+ * reading a pending invoke as a choice.
  *
  * The example is copied to a scratch tree first, because two facts make the
  * in-repo directory the wrong thing to build: it has no `node_modules` (an
@@ -48,7 +48,7 @@ const BINARY_NAME = "crust-app";
 /**
  * Every step the page reports, in the order `src/selfcheck.ts` runs them. This
  * list is the guard: a step that stops running shrinks the page's output, and
- * the comparison below fails instead of accepting nine of ten.
+ * the comparison below fails instead of accepting ten of eleven.
  */
 const STEPS = [
 	"notes listed",
@@ -61,9 +61,10 @@ const STEPS = [
 	"rename",
 	"remove",
 	"dialog sheet",
+	"save panel",
 ] as const;
 
-/** The page's last line, after the dialog step. */
+/** The page's last line, after the save-panel step. */
 const DONE = /^\s+page\s+done\s*$/m;
 
 /** One `  page      PASS <step> — <detail>` line. Step names hold no em dash. */
@@ -83,6 +84,7 @@ const AFTER_BUILD = [
 	"steps pass",
 	"tray reported",
 	"sheet pending",
+	"save sheet pending",
 	"done",
 	"exit 0",
 	"no survivors",
@@ -96,6 +98,7 @@ const AFTER_RUN = [
 	"steps pass",
 	"tray reported",
 	"sheet pending",
+	"save sheet pending",
 	"done",
 	"exit 0",
 	"no survivors",
@@ -296,7 +299,7 @@ async function proof(
 
 	const steps = pageSteps(run.stdout);
 
-	// ---- 5. the page reported exactly the ten steps, in order --------------
+	// ---- 5. the page reported exactly the eleven steps, in order -----------
 	// Set equality alone would accept a reordered run, and a count alone would
 	// accept a rename. Comparing the sequence is the whole guard.
 	const reported = steps.map((entry) => entry.step);
@@ -338,24 +341,30 @@ async function proof(
 			trayOk ? tray : `the page printed ${JSON.stringify(tray) || "no tray line"}`,
 		);
 
-		// ---- 8. the sheet is up, and stays pending ------------------------
+		// ---- 8. both sheets are up, and stay pending ----------------------
 		// A pick needs a human, so a run that reports one means something other
 		// than this app answered — and a run that reports cancellation is a
 		// different fact than the sheet being up. Only "still pending" is this
-		// proof's pass.
-		const dialog = detailOf(steps, "dialog sheet") ?? "";
-		const pending = dialog.includes("stays pending");
-		verdict.check(
-			"sheet pending",
-			pending,
-			pending
-				? `NSOpenPanel is up and unresolved, as the app reports it: ${JSON.stringify(dialog)}`
-				: `page reported ${JSON.stringify(dialog) || "no dialog line"} — expected the sheet to stay pending`,
-		);
+		// proof's pass, for the open panel and the save panel alike.
+		const sheets = [
+			{ step: "dialog sheet", check: "sheet pending", cls: "NSOpenPanel" },
+			{ step: "save panel", check: "save sheet pending", cls: "NSSavePanel" },
+		] as const;
+		for (const sheet of sheets) {
+			const detail = detailOf(steps, sheet.step) ?? "";
+			const pending = detail.includes("stays pending");
+			verdict.check(
+				sheet.check,
+				pending,
+				pending
+					? `${sheet.cls} is up and unresolved, as the app reports it: ${JSON.stringify(detail)}`
+					: `page reported ${JSON.stringify(detail) || `no ${sheet.step} line`} — expected the sheet to stay pending`,
+			);
+		}
 	} else {
 		skip(
 			verdict,
-			["steps pass", "tray reported", "sheet pending"],
+			["steps pass", "tray reported", "sheet pending", "save sheet pending"],
 			"not checked — the page did not report every step",
 		);
 		// The page's own lines are the evidence for the failure above.

@@ -6,12 +6,13 @@
  * the `log` command, so a scripted run's stdout is evidence of what the page
  * saw. It touches one scratch file and no user note.
  *
- * The folder dialog is the exception: `dialog.openPanel` starts an AppKit sheet
- * and resolves only when a human answers it, so the last check reports that the
- * sheet is up rather than pretending a pick happened.
+ * The two file panels are the exception: `dialog.openPanel` and
+ * `dialog.savePanel` each start an AppKit sheet and resolve only when a human
+ * answers it, so those checks report that the sheet is up rather than pretending
+ * a pick happened. Nothing here writes a path the save panel answered with.
  */
 import { describe, plugin } from "./bridge";
-import { noteTitle, TRAY_ITEMS } from "./notes";
+import { MARKDOWN_FILTERS, noteTitle, suggestedName, TRAY_ITEMS } from "./notes";
 
 export type Reporter = (line: string) => void;
 
@@ -204,6 +205,33 @@ export async function runSelfCheck(report: Reporter, dir: string): Promise<void>
 		}
 	} catch (error) {
 		fail("dialog sheet", describe(error));
+	}
+
+	// 10. The save panel, asked the way the Save as… button asks it: a suggested
+	//     name and the markdown extensions. Same rule as the folder picker — the
+	//     sheet is the evidence, and a cancel is reported as a cancel. Neither
+	//     branch writes a file: the pick would be a human's, and the check has
+	//     no business guessing one.
+	try {
+		const panel = plugin<{ paths: string[] }>("dialog", "savePanel", {
+			title: "Save a copy of the note",
+			suggestedName: suggestedName(note.name),
+			filters: MARKDOWN_FILTERS,
+		});
+		const raced = await settle(panel, 1500);
+		if (!raced.done) {
+			pass("save panel", "NSSavePanel is up; a pick needs a human, so it stays pending");
+		} else {
+			const picked = raced.value.paths[0];
+			pass(
+				"save panel",
+				picked === undefined
+					? "NSSavePanel answered with no path (cancelled); nothing was written"
+					: `NSSavePanel answered ${picked}; the check wrote nothing`,
+			);
+		}
+	} catch (error) {
+		fail("save panel", describe(error));
 	}
 
 	report("done");

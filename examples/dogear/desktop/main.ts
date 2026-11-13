@@ -20,6 +20,7 @@ A note is a markdown file on disk. This one lives where the app keeps its notes.
 - **Save** writes the editor through \`fs.writeTextFile\`, from the page.
 - **Rename** and **Delete** are \`fs.rename\` and \`fs.remove\`.
 - **Open folder…** asks AppKit for a directory with \`dialog.openPanel\`.
+- **Save as…** asks it for a file with \`dialog.savePanel\`, then writes there.
 - **Quit** is a menu-bar item; a click arrives as a \`tray:click\` event.
 - The window title is rewritten with \`window.setTitle\` on every switch.
 `;
