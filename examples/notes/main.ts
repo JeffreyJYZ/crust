@@ -65,6 +65,10 @@ app.command("notes.list", async (): Promise<Ok<{ names: string[] }> | Failure> =
 			.filter((entry) => entry.isFile() && entry.name.endsWith(NOTE_EXTENSION))
 			.map((entry) => entry.name.slice(0, -NOTE_EXTENSION.length))
 			.sort((left, right) => left.localeCompare(right));
+		// The page calls this on load, so the line proves a built app served its
+		// own JS and the answer reached a window. It prints only past the readdir
+		// and the checks above: a failure below this point cannot look like this.
+		console.log(`  notes     listed ${names.length} (page call answered)`);
 		return { ok: true, value: { names } };
 	} catch (error) {
 		return fail("io-error", `notes.list: ${error instanceof Error ? error.message : String(error)}`);

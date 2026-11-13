@@ -25,6 +25,7 @@
 		"format:check": "bun fmt --check src scripts",
 		"test": "bun test src/bridge src/plugins src/platform",
 		"e2e": "bun run scripts/e2e.ts",
+		"e2e:notes": "bun run scripts/e2e-notes.ts",
 		"e2e:dev": "bun run scripts/e2e-dev.ts",
 		"verify": "bun check && bun test src/bridge src/plugins src/platform && bun fmt --check src"
 	},
