@@ -306,19 +306,19 @@ Three things the spike settled the hard way, all now traps in §2: `[[NSWindow a
 
 The remaining startup cost is WebKit's own process launch, so the sub-300 ms claim holds for *window visible*, not for *page painted*.
 
-**M1 — bridge.** `Bun.serve` on an ephemeral port, token injection, `invoke` request/response, SSE events, bundled frontend assets embedded in the binary.
+**M1 — bridge. DONE, 2026-11-13.** Ephemeral port, token injection, invoke, SSE, assets embedded in the binary. Measured: 0.064 ms median invoke, 0.142 ms p99 on a reused connection; 47 tests over bridge and plugins; every rejection rule asserted.
 
-**M2 — packaging.** `crust build` producing a working `.app`, correct `Info.plist`, icon generation, ad-hoc signing, `crust doctor` explaining the common failures.
+**M2 — packaging. DONE, 2026-11-13.** `crust build` emits an 85.12 MiB ad-hoc-signed `.app` whose binary runs directly and exits 0; `Info.plist` carries both ATS keys; `crust doctor` runs nine checks and exits 1 naming the failure. Icon generation exists; it has only been proven on its rejection path, since no ≥1024 source was available.
 
-**M3 — dev workflow.** `crust dev` with backend restart and Vite HMR, CORS for the dev origin, token injection through a Vite plugin.
+**M3 — dev workflow. PARTIAL.** `crust dev` restarts the backend process and passes `CRUST_DEV_URL`, and the bridge answers a Vite origin with the dev CORS shape. A real Vite HMR session has not been exercised.
 
-**M4 — plugins.** `fs`, `dialog`, then `tray`, then `notification` if constraint 5 allows it. Plugin resolution, per-plugin type generation if it stays cheap.
+**M4 — plugins. PARTIAL.** `fs` reads and writes for real. `dialog` opens a real `NSOpenPanel` through a darwin adapter; its modal path blocks the JavaScript thread and its sheet path is unverified. Page-driven window control is in progress. `tray` and `notification` are not implemented and answer with a structured `not-implemented`.
 
-**M5 — dogfood.** The opencode client runs on crust. This is the milestone that decides whether the design is right. Success: it opens, it renders, the IPC round trip is not perceptibly slower than the current client, and idle RAM is lower.
+**M5 — dogfood. NOT STARTED.** The opencode client has not been run on crust. This remains the milestone that decides whether the design is right.
 
-**M6 — ship story.** `crust dmg`, the Developer ID path exercised once with real credentials, `crust doctor` covering every failure actually encountered.
+**M6 — ship story. PARTIAL.** `crust dmg` produces a 38.70 MiB image through `diskutil image create from`. The Developer ID path is written but has never been exercised, because no certificate exists here.
 
-Published means M6 plus someone who is not the author getting a window open in under ten minutes.
+A stranger has already done the ten-minute path: `bunx github:JeffreyJYZ/crust init`, `bun install`, `bunx crust dev` from an empty directory, with the window open and the page's invoke answered. What "published" still needs is either npm distribution or a Developer ID, and both wait on credentials.
 
 ---
 
