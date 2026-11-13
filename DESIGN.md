@@ -288,6 +288,19 @@ Signing now: ad-hoc (`codesign --sign -`). That works locally and produces an ap
 
 Signing later: hardened runtime plus `com.apple.security.cs.allow-jit`. The entitlement is kept, but its necessity is **unproven for Bun's own runtime** — `new Function` executed correctly under `--options runtime` with no entitlement at all. The `WKWebView` WebContent process is the case that has not been measured, and it is the one most likely to need it. Developer ID `codesign`, then `notarytool submit --wait`, then `stapler staple`. The build pipeline gets a signing identity and notarization credentials from the environment; `crust sign` fails with a clear message when they are absent.
 
+### Installing crust itself
+
+Three paths, and they differ in what they need on the machine:
+
+`brew install JeffreyJYZ/tap/crust` installs a **source formula**: crust is TypeScript that Bun runs, and its runtime compiles the bundled `.c` shim at launch with the TinyCC inside Bun, so there is no build step and nothing to bottle. Bun is a dependency, the way Python is for a Python tool. Measured on macOS 27 arm64: 87 files, 589 KB in `/opt/homebrew/Cellar/crust/0.1.1`, `bin/crust` a wrapper around `libexec/src/cli/index.ts`, and `crust doctor` in a `--next` scaffold reporting the shim compiling out of the Cellar with the bridge answering `pong` — which is the part a wrong `libexec` layout breaks.
+
+`bunx github:JeffreyJYZ/crust` needs no install, and it caches its resolution under a hash of the specifier: a bare spec keeps serving the commit it first resolved, so a command added on `main` reports `unknown option`. Naming a ref resolves fresh; it goes stale the same way afterwards. This is a bunx property, not a crust one, and it is why a version bump does not fix it.
+
+The npm tarball path exists (`bun pm pack`) and is checked by `bun run verify:package`, which packs, unpacks, installs into a temp directory and runs `crust --help` and `crust init probe --react` from the installed copy alone: 32 checks, 162.2 KiB. That check is not ceremony — 0.1.0 shipped without the `tsconfig.json` that defines the `@/` alias, and an installed copy could not start at all until the file set included it.
+
+**Open question, being measured:** whether `bun build --compile` can replace the formula's Bun dependency with one standalone binary. The three things that could break are `bun:ffi`'s `cc` compiling the shim inside a compiled executable, `Bun.build` running from it, and reaching `templates/` with no repo on disk. If it holds, the install story becomes one file and no interpreter; the cost is 60–90 MiB where the formula is 589 KB plus the Bun the user already has.
+
+
 ---
 
 ## 9. Risks, ranked
