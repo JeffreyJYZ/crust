@@ -155,6 +155,17 @@ Close the window and the app exits; `crust dev` exits 0 with it. Edit `examples/
 
 The window title is applied from C: config `title` goes through a shim function that builds the `NSString` on the native side, because a short ASCII `NSString` is a tagged pointer that cannot cross `bun:ffi` (DESIGN.md §2). The window reads back `Hello crust`, and a mismatch throws rather than silently staying blank.
 
+### A real one: `examples/dogear`
+
+The hello app proves the bridge in one line. [examples/dogear](examples/dogear/) is what the same framework looks like when the app has state: markdown notes in a folder, an editor, rename and delete, a window title that follows the current note, and a tray menu.
+
+```sh
+bun run src/cli/index.ts dev --dir examples/dogear     # dev server on 5173
+DOGEAR_SELFCHECK=1 bun run src/cli/index.ts dev --dir examples/dogear
+```
+
+The second form runs the app's own ten-step self-check — list, stat, read, title, tray menu, save, read back, rename, remove, dialog sheet — and prints `PASS`/`FAIL` per step, which is how it was verified. Its README records the two traps it hit: the backend entry belongs under `desktop/` because the watcher is the entry's directory, and page-supplied `fs` paths must be absolute because a built app runs with `/` as cwd.
+
 ## Build the example
 
 ```sh
