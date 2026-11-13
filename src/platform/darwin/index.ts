@@ -112,7 +112,7 @@ function compile() {
 
 			// The open panel: an int status in, and the chosen paths read back
 			// one at a time as C strings. No object and no struct crosses.
-			shim_open_panel: { args: [P, I32, I32, I32], returns: I32 },
+			shim_open_panel: { args: [P, P, I32, I32, I32], returns: I32 },
 			shim_open_panel_count: { args: [], returns: I32 },
 			shim_open_panel_path: { args: [I32], returns: CS },
 		},
@@ -816,10 +816,27 @@ export const PANEL_STATUS = {
  * the accepted cost of a real file picker in v1 (DESIGN.md §9, item 7), stated
  * rather than disguised as non-blocking work.
  *
- * `filters` is not applied: it needs an `allowedContentTypes` array of UTType
- * objects, which is a second object graph inside C and is not implemented here.
- * The paths come back, the filter does not.
+ * `filters` are applied as extension strings: a filter list is flattened, each
+ * entry stripped of a leading `*.` or `.`, de-duplicated, and handed to C as one
+ * comma-separated string, because a JS array cannot cross the boundary. macOS 27
+ * deprecates `-setAllowedFileTypes:` in favour of `allowedContentTypes` UTType
+ * objects, which would be a second object graph inside C; the deprecated setter
+ * still works and is guarded like every other selector.
  */
+
+/** Filters as one comma-separated extension list — the only shape C can take. */
+function extensionList(filters: OpenPanelOptions["filters"]): string {
+	if (!filters) return "";
+	const seen = new Set<string>();
+	for (const filter of filters) {
+		for (const raw of filter.extensions) {
+			const ext = raw.trim().replace(/^\*?\.?/, "").toLowerCase();
+			if (ext.length > 0) seen.add(ext);
+		}
+	}
+	return [...seen].join(",");
+}
+
 export interface DarwinDialogAdapter extends DialogNative {
 	openPanel(options: OpenPanelOptions): Promise<OpenPanelResult>;
 }
@@ -831,6 +848,7 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 		const status = Number(
 			native.symbols.shim_open_panel(
 				cstr(options.title ?? ""),
+				cstr(extensionList(options.filters)),
 				options.directory ? 1 : 0,
 				options.multiple ? 1 : 0,
 				1,

@@ -470,7 +470,8 @@ static obj_t panel_sheet_window(obj_t app) {
 //                 sheet's result, so it can only start one, never collect paths.
 //                 With no key window there is nothing to attach a sheet to and
 //                 this returns SHIM_PANEL_NO_WINDOW without sending.
-int shim_open_panel(const char *title, int allowDirectories, int allowMultiple, int runModal) {
+int shim_open_panel(const char *title, const char *types, int allowDirectories, int allowMultiple,
+                    int runModal) {
 	panel_reset();
 
 	// The panel class and its factory must exist before anything is built.
@@ -516,6 +517,35 @@ int shim_open_panel(const char *title, int allowDirectories, int allowMultiple, 
 	if (title && title[0] && panel_has_instance("NSOpenPanel", "setTitle:")) {
 		obj_t t = panel_nsstring(title);
 		if (t) ((void (*)(void *, void *, obj_t))objc_msgSend)(panel, sel_registerName("setTitle:"), t);
+	}
+
+	// File-type filters, comma-separated because a JS array cannot cross the
+	// boundary. `-setAllowedFileTypes:` is deprecated but present on macOS 27; a
+	// missing selector leaves the panel unfiltered rather than aborting the pick.
+	if (types && types[0] && panel_has_instance("NSOpenPanel", "setAllowedFileTypes:")) {
+		obj_t array = 0;
+		obj_t cls = objc_getClass("NSMutableArray");
+		if (cls) array = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("array"));
+		if (array) {
+			const char *cursor = types;
+			while (*cursor) {
+				char item[64];
+				long n = 0;
+				while (*cursor && *cursor != ',' && n < (long)sizeof(item) - 1)
+					item[n++] = *cursor++;
+				item[n] = 0;
+				if (*cursor == ',') cursor++;
+				const char *ext = item;
+				while (*ext == '*' || *ext == '.') ext++;
+				if (!*ext) continue;
+				obj_t s = panel_nsstring(ext);
+				if (s)
+					((void (*)(void *, void *, obj_t))objc_msgSend)(
+					    array, sel_registerName("addObject:"), s);
+			}
+			((void (*)(void *, void *, obj_t))objc_msgSend)(
+			    panel, sel_registerName("setAllowedFileTypes:"), array);
+		}
 	}
 
 	if (!runModal) {

@@ -268,17 +268,24 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			csp: runConfig.security?.csp,
 			devOrigin: runConfig.dev?.url ? originOf(runConfig.dev.url) : undefined,
 		});
-		// A dev server serves its own pages, so the bridge's port and token cannot
-		// arrive through the injected document. They go to a file the Vite plugin
-		// reads per request, and to the environment for anything spawned later.
-		const handshakeDir = join(projectDir, ".crust");
-		mkdirSync(handshakeDir, { recursive: true });
-		writeFileSync(
-			join(handshakeDir, "dev.json"),
-			JSON.stringify({ url: bridge.url, token: bridge.token }),
-		);
-		process.env[BRIDGE_URL_VAR] = bridge.url;
-		process.env[BRIDGE_TOKEN_VAR] = bridge.token;
+		// The handshake only exists for a dev server, which a built app never has.
+		// A built app runs with cwd `/`, so writing it there would throw and kill
+		// `run()` before a window exists — measured as e2e's missing greet.
+		if (runConfig.dev?.url) {
+			try {
+				const handshakeDir = join(projectDir, ".crust");
+				mkdirSync(handshakeDir, { recursive: true });
+				writeFileSync(
+					join(handshakeDir, "dev.json"),
+					JSON.stringify({ url: bridge.url, token: bridge.token }),
+				);
+				process.env[BRIDGE_URL_VAR] = bridge.url;
+				process.env[BRIDGE_TOKEN_VAR] = bridge.token;
+			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				console.warn(`  bridge    could not publish the dev handshake: ${reason}`);
+			}
+		}
 		console.log(
 			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
 		);

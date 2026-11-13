@@ -206,19 +206,22 @@ Chromium.
   still needs its own build step.
 - **`fs` and `dialog` work.** `fs` reads and writes files for real. `dialog`
   opens a real `NSOpenPanel` through a darwin adapter; its modal path blocks the
-  JavaScript thread and the pump for the duration of the pick, and file-type
-  filters are not applied yet. The sheet path refused safely in the only
-  automated run that reached it, so a sheet and a completed pick are
-  **unverified** — the modal pick needs a human.
+  JavaScript thread and the pump for the duration of the pick. File-type filters
+  are applied through the deprecated `-setAllowedFileTypes:`, which still exists
+  on macOS 27. The sheet path refused safely in the only automated run that
+  reached it, so a sheet and a completed pick are **unverified** — the modal pick
+  needs a human.
 - **`tray` exists but nobody has seen it.** It builds a real menu-bar status
   item with a clickable menu, created, titled, shown, hidden and destroyed in a
   run. The run landed on a fullscreen space where the menu bar is hidden, so
   visual presence is unproven and a menu click needs a human.
-- **`notification` reports status `2` here and says why.** An unbundled process
-  has no bundle identifier, so the modern `UNUserNotificationCenter` path is
-  gated and never sends the aborting selector; macOS 27 has also removed the
-  deprecated `NSUserNotification` setters. Inside a built `.app` the modern path
-  is reachable but **unexercised**.
+- **`notification` is entered inside a bundle and refused by the OS.** Unbundled
+  it reports status `2` — no bundle identifier, so the modern path is gated.
+  Inside a built `.app` the modern `UNUserNotificationCenter` path **is** entered
+  and answers `{"delivered":false,"reason":"UNUserNotificationCenter:
+  authorization was denied"}`, because an ad-hoc signed bundle cannot be granted
+  notification authorisation. No fake success: `delivered` is true only when the
+  OS reported delivery.
 - **A blocking JavaScript call blocks drawing.** The Cocoa run loop is pumped
   from a timer (16 ms tick, 0.25 ms slice); long synchronous work belongs on a
   `Worker`.
