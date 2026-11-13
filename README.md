@@ -235,6 +235,19 @@ Measured on this machine, Bun 1.4.4, macOS 27.0.1, arm64 (DESIGN.md §1 and §10
 
 The honest size claim is **"no bundled Chromium"**, never "as small as Tauri": Tauri's floor is 3–8 MB because it ships no JavaScript engine. That is the runtime, not your app, and it is the accepted cost of shipping neither Rust nor Chromium.
 
+## Two checks only a person can do
+
+Everything else in this README has a script behind it. Two things need hands on the keyboard, and each is a couple of minutes:
+
+```sh
+bun run demo          # crust dev --dir examples/dogear
+```
+
+- **A completed folder pick.** Click **Choose…** in the app (or the tray's `Open folder`), then pick the `notes/` folder in the panel and hit **Open**. A sheet is up until you answer it; crust cannot click it, which is why every automated run only proves the sheet *appeared* and cancelled it. Success looks like the note list refreshing from the folder you picked, and `panel — picked <path>` in the terminal.
+- **A tray click.** Click the crust icon in the menu bar and choose **Save now**. The tray item is on the menu bar, so this needs a normal Space — on a fullscreen Space macOS draws no menu bar at all, which is why nobody had seen the item either. Success looks like the status line saying the note was saved, plus `tray click — Save now` in the terminal.
+
+If either behaves differently from that, the line to send is the terminal output around it; both paths log what they received before they act on it.
+
 ## Limits, stated plainly
 
 - **macOS 13+ on arm64.** Intel Macs, Windows and Linux are not supported.

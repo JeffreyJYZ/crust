@@ -207,6 +207,10 @@ export function App() {
 				return;
 			}
 			const listed = await refresh(picked);
+			// A completed pick is the one thing no script can produce, so it is recorded
+			// where a person can see it: the README's "two checks only a person can do"
+			// tells the reader to look for this line.
+			appCommand("log", { line: `panel — picked ${picked}` }).catch(() => undefined);
 			setStatus({ kind: "ok", text: `${listed.length} note(s) in ${picked}` });
 		} catch (error) {
 			setStatus({ kind: "bad", text: `openPanel: ${describe(error)}` });
@@ -460,6 +464,9 @@ export function App() {
 	useEffect(() => {
 		try {
 			return bridge().listen<{ index: number; label: string }>("tray:click", ({ label }) => {
+				// The click leg has no other witness: the page cannot see the menu bar, so the
+				// terminal line is what proves a human clicked a row.
+				appCommand("log", { line: `tray click — ${label}` }).catch(() => undefined);
 				if (label === "Save now") void actions.current.save();
 				else if (label === "Cancel panel") void actions.current.cancelPanel();
 				else if (label === "Close window") void actions.current.closeWindow();
