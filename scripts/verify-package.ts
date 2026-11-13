@@ -22,6 +22,7 @@
  * Usage:
  *   bun scripts/verify-package.ts            # pack, verify, clean up
  *   bun scripts/verify-package.ts --keep     # leave the workspace on disk
+ *   bun scripts/verify-package.ts ~/tagged   # another checkout, e.g. a tag export
  *
  * Deliberately cheap and offline: the tarball is installed by path, crust has
  * no runtime dependencies, and nothing here publishes anything.
@@ -33,7 +34,14 @@ import { join, resolve } from "node:path";
 import { formatBytes } from "../src/packaging/build";
 import { run } from "../src/packaging/exec";
 
-const ROOT = resolve(import.meta.dir, "..");
+const ROOT = ((): string => {
+	// A positional path lets the same checks run against a tag or a release
+	// tarball's source, which is the only way "passes at 0.1.8" is a fact rather
+	// than a claim about whatever the working tree happened to hold.
+	const candidate = process.argv[2];
+	if (candidate !== undefined && !candidate.startsWith("-")) return resolve(candidate);
+	return resolve(import.meta.dir, "..");
+})();
 
 /** One reason the received package is not what the checkout promises. */
 interface Gap {
@@ -254,7 +262,9 @@ async function main(): Promise<number> {
 			'no "@/" import is left unresolved by the package itself',
 			aliased.length === 0 || aliasDefined,
 			`${aliased.length} of ${sources.length} shipped source files import "@/" but the tarball ships no tsconfig "paths" (first: ${aliased[0]})`,
-			`no alias imports across ${sources.length} source files`,
+			aliased.length === 0
+				? "no alias imports"
+				: `${aliased.length} of ${sources.length} files import "@/", and the shipped tsconfig defines "paths"`,
 		);
 
 		// ---- install ------------------------------------------------------

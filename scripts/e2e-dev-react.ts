@@ -35,11 +35,12 @@
  * path are all provable without the window. Only "edit reload" needs a page that
  * is alive, so a dead window costs one failure rather than a skipped run.
  *
- * The fixture also serves the app once before the proof starts (see `warm`):
- * `crust dev` hands the window its URL before `beforeDevCommand` is listening,
- * and a cold Vite loses that race silently. That startup ordering is reported
- * rather than asserted here, so what these assertions judge is which document
- * the window is given.
+ * No warm-up, deliberately: the cold start is part of the proof. `crust dev` used
+ * to hand the window its URL before `beforeDevCommand` was listening, and a cold
+ * Vite (measured 0.66-1.08 s to first listen) lost that race silently — 0 of 4
+ * fresh-scratch runs ever reached the page. `dev.ts` now waits for `dev.url` to
+ * accept a connection before the runtime is spawned, so the un-warmed run is
+ * what proves that fix instead of papering over it.
  *
  * The scaffold is built with `crust init <dir> --react` rather than by copying
  * `templates/react` here. Copying is the more fragile choice: it would have to
@@ -395,16 +396,6 @@ async function pollHandshake(path: string, timeoutMs: number): Promise<Handshake
 	}
 }
 
-/** Wait for nothing to be listening on the scaffold's port, or give up. */
-async function waitFree(timeoutMs: number): Promise<boolean> {
-	const deadline = performance.now() + timeoutMs;
-	for (;;) {
-		if ((await listeners(DEV_PORT)).length === 0) return true;
-		if (performance.now() >= deadline) return false;
-		await delay(100);
-	}
-}
-
 /** One GET, as text plus status; a refused connection is not an exception here. */
 async function get(url: string): Promise<{ status: number; body: string } | null> {
 	try {
@@ -450,11 +441,12 @@ async function main(): Promise<number> {
 	try {
 		return await proof(verdict, scratch);
 	} finally {
-		// Every process this run starts names the scratch directory on its argv —
-		// the CLI (`--dir <scratch>`), the runtime (`--config <scratch>/…`) and the
-		// dev server (`<scratch>/node_modules/.bin/vite`) — so a leaked one is
-		// clearable by path. The survivor check uses pid identity as well, because
-		// a `pgrep -f vite` would match every Vite on the machine.
+		// The CLI (`dev --dir <scratch>`) and the runtime (`--config <scratch>/…`)
+		// both name the scratch directory on their argv, so either is clearable by
+		// path. The dev server does not — it runs as `bun --bun
+		// ./node_modules/.bin/vite` with the project as its cwd — which is why the
+		// survivor check also holds every child's pid: a `pgrep -f vite` would match
+		// every Vite on the machine, and a bare path pattern would miss this one.
 		await clearSurvivors(scratch).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 	}

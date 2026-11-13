@@ -8,12 +8,13 @@
  * dev server's document: `transformIndexHtml` adds `window.__CRUST__` and the
  * page-side client, which installs itself from that global.
  *
- * The values belong to the environment, not to the plugin: `crust dev` exports
- * `CRUST_BRIDGE_URL` and `CRUST_BRIDGE_TOKEN` for the dev-server child, so the
- * page and the bridge cannot disagree about which port or token is live.
- * Absent, the plugin prints one warning and injects nothing — a page without
- * `window.crust` fails loudly on its first call, and a guessed address would
- * fail quietly against a bridge that is not there.
+ * The values come from the bridge, never from the plugin: on the first `run()`
+ * the runtime writes them to `.crust/dev.json` (or `CRUST_DEV_FILE`), and the
+ * plugin reads that file per document — `CRUST_BRIDGE_URL` and
+ * `CRUST_BRIDGE_TOKEN` are the explicit override on top. Absent, it prints one
+ * warning and injects nothing: a page without `window.crust` fails loudly on
+ * its first call, and a guessed address would fail quietly against a bridge
+ * that is not there.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

@@ -72,13 +72,13 @@ export async function dev(options: CliOptions): Promise<number> {
 	else line("frontend", "served by the bridge (public/index.html, no dev server)");
 
 	// A dev-server page is not the bridge's document, so the client has to
-	// arrive through the page itself: `crust/vite` injects `window.__CRUST__`
-	// from these two variables. The runtime owns the port and the token, so it
-	// is the process that publishes them; this is the one place that hands the
-	// No warning here: the bridge's port and token cannot be known before the
-	// runtime binds, so they reach a dev server through `.crust/dev.json`, which
-	// the Vite plugin reads per request. `crust/vite` warns if neither source
-	// exists, which is the only place that can tell.
+	// arrive through the page itself: `crust/vite` injects `window.__CRUST__`.
+	// The bridge's port and token cannot be known before the runtime binds, so
+	// they reach the dev server through `.crust/dev.json`, which the plugin
+	// reads per request — `crust/vite` is the only place that can warn when
+	// neither that file nor an explicit environment holds them. These two are
+	// forwarded when a shell already has them, so an operator can point the
+	// page at a bridge by hand.
 	const env = bridgeEnv(devUrl);
 
 	const projectDir = resolve(options.dir);
