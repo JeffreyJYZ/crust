@@ -15,12 +15,12 @@ Three ways in, all detailed in [docs/install.md](docs/install.md) — what each 
 | you want | command |
 | --- | --- |
 | Homebrew, macOS arm64 | `brew install JeffreyJYZ/tap/crust` |
-| nothing installed at all | `bunx github:JeffreyJYZ/crust#v0.1.7 init my-app` |
+| nothing installed at all | `bunx github:JeffreyJYZ/crust#v0.1.8 init my-app` |
 | a checkout you can edit | `bun install && bun run start` |
 
 **Homebrew** merged into `JeffreyJYZ/homebrew-tap` on 2026-11-13 and currently installs `crust 0.1.5`: 95 files, 671.3 KiB (687,432 bytes), with `bun` pulled in as a dependency. It is a source install, not a bottle — `src/`, `templates/`, `docs/`, `package.json`, `tsconfig.json` and `DESIGN.md` go into `/opt/homebrew/Cellar/crust/0.1.5/libexec/`, the `README.md` the formula also lists is moved by Homebrew's metafile pass up to `/opt/homebrew/Cellar/crust/0.1.5/README.md`, and `/opt/homebrew/bin/crust` is a wrapper that execs the brewed `bun` on `libexec/src/cli/index.ts`. Nothing is compiled at install time: the shim compiles at launch, from the Cellar, and `crust doctor` is the check that it does. The formula's caveat asks for `xcode-select --install`, but measured, nothing needs it: the shim has no `#include` at all — every Objective-C symbol is a hand-written `extern` — and `cc()` compiled it with an empty environment, `PATH` holding only `bun`, and `SDKROOT=/nonexistent/sdk`. No compiler is ever executed either way, and the formula tracks the newest tag rather than `main`, so a brewed `crust` is exactly that release.
 
-**bunx** needs Bun and nothing else — no `PATH` entry, no global install. Its one sharp edge is the cache: bunx keys on the specifier string, so a bare `github:JeffreyJYZ/crust` names no version and keeps serving whatever commit it first resolved. Measured on this machine, that bare spec and `#main` both answer `0.1.0`; one of those cached 0.1.0 commits refuses `--next` while a fresh cache answers `0.1.5` — a reader who sees `crust: unknown option --next` is on a stale cache, not a bug in crust, and two readers of this page can get different scaffolds. Name a tag (`github:JeffreyJYZ/crust#v0.1.7`, the one specifier whose answer cannot drift) or delete `~/.bun/install/cache/.bunx-501/crust@github@*` and `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*`.
+**bunx** needs Bun and nothing else — no `PATH` entry, no global install. Its one sharp edge is the cache: bunx keys on the specifier string, so a bare `github:JeffreyJYZ/crust` names no version and keeps serving whatever commit it first resolved. Measured on this machine, that bare spec and `#main` both answer `0.1.0`; one of those cached 0.1.0 commits refuses `--next` while a fresh cache answers `0.1.5` — a reader who sees `crust: unknown option --next` is on a stale cache, not a bug in crust, and two readers of this page can get different scaffolds. Name a tag (`github:JeffreyJYZ/crust#v0.1.8`, the one specifier whose answer cannot drift) or delete `~/.bun/install/cache/.bunx-501/crust@github@*` and `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*`.
 
 **From a checkout**, `bun install` pulls two dev dependencies (`@types/bun`, and `vite` for the React template's build) and `bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag below: `bun run start dev --dir examples/hello`. A scaffold made there pins `crust` as `link:<checkout>`, so a local edit is picked up without republishing; every other install pins the bare `github:JeffreyJYZ/crust`, and `bun install` in the app resolves it to `main`'s head — a different commit from the tag the formula installed, and at the same version number.
 
@@ -48,13 +48,13 @@ The only requirement is Bun. Pick a scaffold by what you already have; the flag 
 `crust` in that table is whichever install you chose above, so from anywhere with nothing installed the first scaffold is:
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.7 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.8 init my-app
 cd my-app
 bun install
 bunx crust dev
 ```
 
-Inside the project, `bunx crust dev` runs the `crust` in `node_modules/.bin`, so the app runs the copy it pinned rather than the CLI that scaffolded it. Name a tag (`github:JeffreyJYZ/crust#v0.1.7`) if you want the release rather than `main`.
+Inside the project, `bunx crust dev` runs the `crust` in `node_modules/.bin`, so the app runs the copy it pinned rather than the CLI that scaffolded it. Name a tag (`github:JeffreyJYZ/crust#v0.1.8`) if you want the release rather than `main`.
 
 `crust init` refuses a directory that is not empty, naming the entries it found, rather than merging into it — nothing of yours is overwritten.
 
@@ -68,7 +68,7 @@ Four limits hold for all three scaffolds, and each one changes what you plan to 
 ### Plain HTML — the default
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.7 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.8 init my-app
 cd my-app
 bun install
 bunx crust dev
@@ -80,7 +80,7 @@ bun run build             # crust build → dist/my-app.app
 Verified on 2026-11-13 from an empty directory with no checkout present:
 
 ```
-$ bunx github:JeffreyJYZ/crust#v0.1.7 init my-app
+$ bunx github:JeffreyJYZ/crust#v0.1.8 init my-app
 $ cd my-app && bun install
   + crust@github:JeffreyJYZ/crust#e0ce2a4
 $ bunx crust dev
@@ -98,7 +98,7 @@ That pin is the stale one, and it is what the run printed: `e0ce2a4` predates `-
 ### React — `--react`
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.7 init my-app --react
+bunx github:JeffreyJYZ/crust#v0.1.8 init my-app --react
 cd my-app
 bun install
 bunx crust dev            # Vite on :5173; the window loads it
@@ -112,7 +112,7 @@ bun run build             # vite build → dist/web, then crust build → dist/m
 ### Next.js — `--next`
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.7 init my-app --next
+bunx github:JeffreyJYZ/crust#v0.1.8 init my-app --next
 cd my-app
 bun install
 bunx crust dev            # `crust dev` starts `next dev -p 3000`; the window loads it
@@ -128,8 +128,8 @@ Measured on 2026-11-13, from a scaffold: `bun run build` ran `next build`, embed
 ### One file — no scaffold
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.7 dev app.tsx     # one 900×700 window
-bunx github:JeffreyJYZ/crust#v0.1.7 build app.tsx   # → dist/app.app, ad-hoc signed
+bunx github:JeffreyJYZ/crust#v0.1.8 dev app.tsx     # one 900×700 window
+bunx github:JeffreyJYZ/crust#v0.1.8 build app.tsx   # → dist/app.app, ad-hoc signed
 ```
 
 One TSX file, no `crust.config.ts` and no `main.ts`: crust builds the config in memory, bundles the page and serves it. A file whose source contains `export default` is mounted as a React component, so `react` and `react-dom` must be installed beside it; any other file is loaded for its own side effects. There is no backend of your own — `info` and `echo` are the app namespace, and every plugin is still reachable in the three-argument form. [docs/single-file.md](docs/single-file.md) is the whole contract, including what it deliberately lacks: HMR, watching imports, a config surface and your own commands. Add `crust.config.ts` and `main.ts` the moment you need any of those.
