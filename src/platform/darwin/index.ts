@@ -92,6 +92,7 @@ function compile() {
 			shim_constraint_simple: { args: [P, I64, I64, F64], returns: P },
 			shim_frame_num: { args: [P, I32], returns: F64 },
 			shim_window_new: { args: [F64, F64, F64, F64, I64, I64, I32], returns: P },
+			shim_window_set_min_size: { args: [P, F64, F64], returns: V },
 			shim_window_set_title: { args: [P, P], returns: V },
 			shim_window_title_utf8: { args: [P], returns: CS },
 			shim_window_number: { args: [P], returns: I64 },
@@ -164,6 +165,7 @@ export interface Shim {
 		shim_constraint_simple: LooseSymbol;
 		shim_frame_num: LooseSymbol;
 		shim_window_new: LooseSymbol;
+		shim_window_set_min_size: LooseSymbol;
 		shim_window_set_title: LooseSymbol;
 		shim_window_title_utf8: LooseSymbol;
 		shim_window_number: LooseSymbol;
@@ -281,6 +283,7 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "makeKeyAndOrderFront:"],
 	["NSWindow", "setTitle:"],
 	["NSWindow", "title"],
+	["NSWindow", "setContentMinSize:"],
 	["NSWindow", "windowNumber"],
 	["NSWindow", "isVisible"],
 	["NSWindow", "isMiniaturized"],
@@ -604,6 +607,11 @@ export class DarwinPlatform implements Platform {
 		// titled(1) | closable(2) | miniaturizable(4) | resizable(8)
 		const win = Number(shim().symbols.shim_window_new(120, 120, width, height, 15n, 2n, 0));
 		if (!win) throw new Error("shim_window_new returned null");
+		// minWidth was validated and carried but read by nobody; it lands here, where
+		// the window exists and the size is still ours to constrain.
+		if (options.minWidth !== undefined) {
+			shim().symbols.shim_window_set_min_size(win, options.minWidth, height);
+		}
 
 		// A closed window must stay addressable: `-close` does not release it,
 		// and the liveness read afterwards needs the object alive. Released, the

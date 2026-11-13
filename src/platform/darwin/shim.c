@@ -294,6 +294,19 @@ int shim_window_is_miniaturized(obj_t win) {
 	    win, sel_registerName("isMiniaturized"));
 }
 
+// A minimum content size, so a window cannot be dragged smaller than the config
+// allows. NSSize is two doubles and stays on the C stack.
+typedef struct {
+	double w, h;
+} shim_size;
+
+void shim_window_set_min_size(obj_t win, double w, double h) {
+	if (!win) return;
+	shim_size s = {w, h};
+	((void (*)(void *, void *, shim_size))objc_msgSend)(win,
+	                                                   sel_registerName("setContentMinSize:"), s);
+}
+
 // --- application ----------------------------------------------------------
 
 int shim_app_load(void) { return (int)NSApplicationLoad(); }

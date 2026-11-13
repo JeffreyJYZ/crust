@@ -20,11 +20,13 @@
  *
  *   bun run src/runtime.ts --config <path> --entry <path>
  */
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { APP_NAMESPACE, app, type App, type CommandHandler } from "@/app.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig, validateConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
+import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 import { createWindowPlugin, type PluginDefinition, PluginRegistry, definePlugin } from "@/plugins";
 
 export interface StartAppOptions {
@@ -137,6 +139,15 @@ async function nativePlugins(
 		}),
 		createWindowPlugin(darwin.darwinWindowAdapter(platform)),
 	];
+}
+
+/** The origin a dev server serves from, or undefined when the URL is unusable. */
+function originOf(url: string): string | undefined {
+	try {
+		return new URL(url).origin;
+	} catch {
+		return undefined;
+	}
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -255,7 +266,19 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			root: frontendRoot,
 			indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
 			csp: runConfig.security?.csp,
+			devOrigin: runConfig.dev?.url ? originOf(runConfig.dev.url) : undefined,
 		});
+		// A dev server serves its own pages, so the bridge's port and token cannot
+		// arrive through the injected document. They go to a file the Vite plugin
+		// reads per request, and to the environment for anything spawned later.
+		const handshakeDir = join(projectDir, ".crust");
+		mkdirSync(handshakeDir, { recursive: true });
+		writeFileSync(
+			join(handshakeDir, "dev.json"),
+			JSON.stringify({ url: bridge.url, token: bridge.token }),
+		);
+		process.env[BRIDGE_URL_VAR] = bridge.url;
+		process.env[BRIDGE_TOKEN_VAR] = bridge.token;
 		console.log(
 			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
 		);

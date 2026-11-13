@@ -4,7 +4,7 @@ How a crust plugin is shaped, how a page call reaches one, what the built-ins do
 
 Read [api.md](api.md) for the config and app surface. Measurements and design reasoning are in [DESIGN.md](../DESIGN.md) §4 (bridge) and §5 (API surface); this page does not repeat them.
 
-Everything below was read from `src/app.ts`, `src/plugins/`, `src/bridge/`, `src/runtime.ts` and `src/platform/darwin/` in this working tree on 2026-11-13, and the JSON responses were produced by starting the real bridge in-process. Where this page and a source file disagree, the file is right — the plugin set was still moving while this was written.
+Everything below was read from `src/app.ts`, `src/plugins/`, `src/bridge/`, `src/runtime.ts` and `src/platform/darwin/` in this working tree on 2026-11-13, and the JSON responses were produced by starting the real bridge in-process. The `crust/vite` section's two injected tags were observed in a served document, and its two-argument call was made from that page in a real browser against a real bridge started with `devOrigin`. Where this page and a source file disagree, the file is right — the plugin set was still moving while this was written.
 
 ## The shape of a plugin
 
@@ -77,7 +77,40 @@ const off = window.crust.listen("clock:tick", (ms) => console.log(ms));
 const first = await window.crust.once("clock:tick");
 ```
 
-**Trap, from the code path:** the two-argument rewrite is injected into the document *the bridge serves*. When `dev.url` points at a dev server, that page is loaded from the dev server and the shim is never injected, so `invoke("greet", {…})` reaches the bridge with `command: undefined` and is rejected `bad-request`. Use `invoke("app", "invoke", { name: "greet", args: {} })` in that mode. This repo ships no Vite plugin, and `DESIGN.md` §10 records the real Vite session as unexercised; treat the `dev.url` note as code-derived, not measured.
+**Trap, closed by `crust/vite`:** the two-argument rewrite used to live only in the document the bridge served. A `dev.url` page is loaded from the dev server, that shim never reached it, and `invoke("greet", {…})` arrived at the bridge as `command: {…}` — rejected `bad-request`. The rewrite now ships inside the client (`installCrust` in `src/bridge/client.ts`), so a page that has `window.crust` has both forms whoever served it, and `crust/vite` is what puts `window.crust` in a dev-server page.
+
+### A page from a dev server (`crust/vite`)
+
+`dev.url` means the window loads a document the dev server serves, so the bootstrap the bridge injects never reaches that page. `crust()` from `crust/vite` puts the same client in it:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { crust } from "crust/vite";
+
+export default defineConfig({
+	// The bridge allows exactly the origin dev.url names, so pin the port
+	// instead of letting Vite move to the next free one.
+	server: { port: 5173, strictPort: true },
+	plugins: [crust()],
+});
+```
+
+The plugin is serve-only (`apply: "serve"`): a build has no bridge, and a token in built HTML is the one thing production must not ship. It reads two environment variables on each document request and injects two `<script>` tags into `<head>`:
+
+```html
+<script>window.__CRUST__ = {"url":"http://127.0.0.1:54321","token":"…"};</script>
+<script>(function installCrust(config, target) { … })();</script>
+```
+
+| variable | value |
+| --- | --- |
+| `CRUST_BRIDGE_URL` | the bridge's absolute URL, `http://127.0.0.1:<port>` |
+| `CRUST_BRIDGE_TOKEN` | the per-launch token the bridge accepts |
+
+The second tag is `pageClientSource()`: `installCrust.toString()` called with no config, so the client installs from the pre-set `window.__CRUST__` instead of being handed one. The bridge's own document still passes its config explicitly (`bootstrapSource` in `src/bridge/server.ts`). One function, one invoke path, one two-argument rewrite — no second copy lives in the plugin.
+
+With either variable missing the plugin prints one warning and injects nothing. A page with no `window.crust` fails loudly on its first call; a client pointed at a port nobody is listening on fails quietly. `crust dev` hands the same pair to both children — the runtime and the `beforeDevCommand` child (`bridgeEnv` in `src/cli/dev.ts`) — so they cannot disagree about which bridge the window may call. The runtime owns the port and the token, so it is the process that publishes them; until it does, `crust dev` prints `CRUST_BRIDGE_URL/CRUST_BRIDGE_TOKEN unset` and the page gets no client. Starting the dev server with both exported is the path that works today.
 
 ### What comes back
 
@@ -222,7 +255,7 @@ await window.crust.invoke("clock", "now");
 // 200 {"ok":true,"result":"2026-11-13T09:41:07.812Z"}
 ```
 
-The two-argument form `invoke("greet", { name })` is app commands only — the injected shim rewrites it into the `app` namespace — so a plugin command always uses three arguments. That form also works when `dev.url` points at a dev server and the shim is absent.
+The two-argument form `invoke("greet", { name })` is app commands only — the client rewrites it into the `app` namespace — so a plugin command always uses three arguments. Both forms work on a `dev.url` page too, because `crust/vite` gives it the same client (see [A page from a dev server](#a-page-from-a-dev-server-crustvite)).
 
 `startApp` registers mounted plugins after the core and native ones, then the `app` namespace: `new PluginRegistry().register(...selectedPlugins(config, plugins), ...app.plugins(), appPlugin)`. `PluginRegistry.register` refuses a duplicate name, so a namespace conflict fails startup with `plugin "<name>" is already registered` rather than shadowing a built-in.
 
@@ -274,3 +307,5 @@ Run it with `bun test`. The same code was run against this checkout (imports by 
 ```
 
 Same page, same bridge, same handler table as every built-in: the only difference is who wrote the plugin.
+
+`examples/vite` is the dev-server half: a real Vite app whose `vite.config.ts` mounts `crust()`, whose `crust.config.ts` sets `dev.url`, and whose page calls `invoke("greet", { name: "vite" })` in two arguments. `bun run src/cli/index.ts dev --dir examples/vite` is the intended command; see the environment caveat above.

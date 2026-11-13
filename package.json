@@ -9,7 +9,8 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
-		"./plugin": "./src/plugins/index.ts"
+		"./plugin": "./src/plugins/index.ts",
+		"./vite": "./src/vite.ts"
 	},
 	"files": [
 		"src",
@@ -28,6 +29,7 @@
 		"verify": "bun check && bun test src/bridge src/plugins src/platform && bun fmt --check src"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"vite": "^8.3.8"
 	}
 }

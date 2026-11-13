@@ -12,5 +12,8 @@ research/*/repo/
 # Throwaway probe output
 research/*/probe/
 
+# Runtime handshake between the bridge and a dev server
+.crust/
+
 .DS_Store
 *.log

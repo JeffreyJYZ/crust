@@ -35,6 +35,16 @@ export async function dev(options: CliOptions): Promise<number> {
 	if (devUrl) line("frontend", `${devUrl} (HMR stays with the dev server)`);
 	else line("frontend", "served by the bridge (public/index.html, no dev server)");
 
+	// A dev-server page is not the bridge's document, so the client has to
+	// arrive through the page itself: `crust/vite` injects `window.__CRUST__`
+	// from these two variables. The runtime owns the port and the token, so it
+	// is the process that publishes them; this is the one place that hands the
+	// No warning here: the bridge's port and token cannot be known before the
+	// runtime binds, so they reach a dev server through `.crust/dev.json`, which
+	// the Vite plugin reads per request. `crust/vite` warns if neither source
+	// exists, which is the only place that can tell.
+	const env = bridgeEnv(devUrl);
+
 	const projectDir = resolve(options.dir);
 	const configPath = resolve(projectDir, loaded.path);
 
@@ -48,6 +58,7 @@ export async function dev(options: CliOptions): Promise<number> {
 			cmd: ["sh", "-c", beforeDevCommand],
 			cwd: projectDir,
 			stdio: ["inherit", "inherit", "inherit"],
+			env: { ...process.env, ...env },
 		});
 	}
 
@@ -56,6 +67,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		projectDir,
 		configPath,
 		devUrl,
+		env,
 	};
 
 	console.log("");
@@ -69,6 +81,8 @@ interface RuntimeOptions {
 	projectDir: string;
 	configPath: string;
 	devUrl?: string;
+	/** The bridge pair to publish, when a `dev.url` page needs it. */
+	env?: Record<string, string>;
 }
 
 function spawnRuntime(options: RuntimeOptions) {
@@ -76,8 +90,23 @@ function spawnRuntime(options: RuntimeOptions) {
 		cmd: ["bun", RUNTIME_ENTRY, "--config", options.configPath, "--entry", options.entry],
 		cwd: options.projectDir,
 		stdio: ["inherit", "inherit", "inherit"],
-		env: { ...process.env, CRUST_DEV_URL: options.devUrl ?? "" },
+		env: { ...process.env, ...options.env, CRUST_DEV_URL: options.devUrl ?? "" },
 	});
+}
+
+/**
+ * The pair `crust/vite` reads, taken from this process's own environment.
+ *
+ * Both are empty for a `dev.url` app whose runtime has not published a bridge
+ * address yet; the caller turns that into one line rather than a page that
+ * fails its first invoke with no explanation.
+ */
+function bridgeEnv(devUrl: string | undefined): Record<string, string> {
+	if (devUrl === undefined) return {};
+	const url = process.env.CRUST_BRIDGE_URL?.trim() ?? "";
+	const token = process.env.CRUST_BRIDGE_TOKEN?.trim() ?? "";
+	if (url.length === 0 || token.length === 0) return {};
+	return { CRUST_BRIDGE_URL: url, CRUST_BRIDGE_TOKEN: token };
 }
 
 /**

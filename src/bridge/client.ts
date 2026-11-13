@@ -19,6 +19,12 @@ import type { ArgsOf, CommandSchema, ResultOf } from "../plugins/define";
 export interface CrustConfig {
 	/** Absolute bridge URL in dev (`http://127.0.0.1:54321`); empty for the served page. */
 	baseUrl?: string;
+	/**
+	 * The same address under the name a dev server's injected global uses.
+	 * `crust/vite` writes `{ url, token }`, the bridge writes `{ baseUrl, token }`,
+	 * and the client reads either so both paths share one implementation.
+	 */
+	url?: string;
 	/** Per-launch token. The only credential the bridge accepts. */
 	token: string;
 	/** The port the bridge bound, for diagnostics. */
@@ -69,14 +75,26 @@ export interface CrustTarget {
  * Install `window.crust`. Everything it needs is inside this function, because
  * the served bootstrap is `installCrust.toString()`: a reference to module scope
  * would arrive in the page undefined. Keep it that way.
+ *
+ * Called with a config, it uses that. Called with none — which is what
+ * `crust/vite` injects — it installs from a pre-set `window.__CRUST__`, so a
+ * page whose document came from a dev server runs the same client as one the
+ * bridge served.
  */
 export function installCrust<Schema extends CommandSchema = CommandSchema>(
-	config: CrustConfig,
+	config?: CrustConfig,
 	target: CrustTarget = globalThis as unknown as CrustTarget,
 ): CrustApi<Schema> {
 	const scope = target as unknown as Record<string, any>;
-	const base = (config.baseUrl ?? "").replace(/\/+$/, "");
-	const token = config.token;
+	// A page that already has a client keeps it: a second install would open a
+	// second event stream and leave the first one's listeners orphaned.
+	if (scope.crust) return scope.crust as CrustApi<Schema>;
+	const resolved = config ?? scope.__CRUST__;
+	if (!resolved || typeof resolved.token !== "string") {
+		throw new Error("crust: no bridge config — window.__CRUST__ was never injected");
+	}
+	const base = (resolved.url ?? resolved.baseUrl ?? "").replace(/\/+$/, "");
+	const token = resolved.token;
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
 	const waiters = new Map<string, Array<(payload: unknown) => void>>();
 	const attached = new Set<string>();
@@ -167,7 +185,7 @@ export function installCrust<Schema extends CommandSchema = CommandSchema>(
 		}
 	}
 
-	const invoke = async (plugin: string, command: string, args?: unknown): Promise<unknown> => {
+	const call = async (plugin: string, command: string, args?: unknown): Promise<unknown> => {
 		const fetchImpl = scope.fetch ?? (globalThis as any).fetch;
 		if (typeof fetchImpl !== "function") {
 			throw new InvokeFailure("no-fetch", "this page has no fetch()", 0);
@@ -204,6 +222,18 @@ export function installCrust<Schema extends CommandSchema = CommandSchema>(
 		return body.result;
 	};
 
+	// Two call forms on one entry point, and the same code on every serving
+	// path. `invoke(plugin, command, args)` is the plugin form; a second
+	// argument that is not a string is the app form, `invoke(name, args)`, which
+	// routes through the always-registered `app` namespace. The name is written
+	// here rather than imported because this function's own source text is the
+	// page's copy of it.
+	const APP = "app";
+	const invoke = (name: string, command?: unknown, args?: unknown): Promise<unknown> => {
+		if (typeof command === "string") return call(name, command, args);
+		return call(APP, "invoke", { name: name, args: command === undefined ? {} : command });
+	};
+
 	const connect = () => {
 		const EventSourceImpl = scope.EventSource ?? (globalThis as any).EventSource;
 		if (typeof EventSourceImpl !== "function") return;
@@ -238,7 +268,7 @@ export function installCrust<Schema extends CommandSchema = CommandSchema>(
 		once,
 	};
 	scope.crust = api;
-	scope.__CRUST__ = config;
+	scope.__CRUST__ = resolved;
 	connect();
 	return api as CrustApi<Schema>;
 }
@@ -251,4 +281,14 @@ export function installCrust<Schema extends CommandSchema = CommandSchema>(
  */
 export function bootstrapSource(config: CrustConfig): string {
 	return `(${installCrust.toString()})(${JSON.stringify(config)}, window);`;
+}
+
+/**
+ * The client alone, for a page the bridge did not serve.
+ *
+ * `crust/vite` injects `window.__CRUST__` and then this, so a dev-server
+ * document installs the same client with no second copy of the invoke path.
+ */
+export function pageClientSource(): string {
+	return `(${installCrust.toString()})();`;
 }
