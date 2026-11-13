@@ -41,6 +41,7 @@ import statusBarSource from "./status_bar.c" with { type: "text" };
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
+const F64 = FFIType.f64;
 const V = FFIType.void;
 const CS = FFIType.cstring;
 
@@ -52,6 +53,13 @@ export const STATUS_BAR_SYMBOL_NAMES = [
 	"tray_title_copy",
 	"tray_title_capacity",
 	"tray_set_visible",
+	"tray_item_visible",
+	"tray_item_length",
+	"tray_button_window",
+	"tray_button_window_visible",
+	"tray_button_window_frame",
+	"tray_button_window_occlusion",
+	"tray_button_window_active_space",
 	"tray_menu_begin",
 	"tray_menu_add",
 	"tray_menu_end",
@@ -66,9 +74,9 @@ export type StatusBarSymbolName = (typeof STATUS_BAR_SYMBOL_NAMES)[number];
 // `bun:ffi` types a pointer as a nominal number and a `ptr` argument as
 // Pointer|TypedArray|bigint, while the runtime value here is always a plain
 // number. One cast at compile() keeps every call site honest numbers.
-type LooseSymbol = (
-	...args: Array<number | bigint | string | null | undefined>
-) => number | bigint | string | null | undefined;
+type LooseArg = number | bigint | string | null | undefined | ArrayBufferView;
+
+type LooseSymbol = (...args: LooseArg[]) => number | bigint | string | null | undefined;
 
 export interface StatusBarShim {
 	symbols: Record<StatusBarSymbolName, LooseSymbol>;
@@ -92,6 +100,13 @@ function compile(): StatusBarShim {
 			tray_title_copy: { args: [P], returns: CS },
 			tray_title_capacity: { args: [], returns: I32 },
 			tray_set_visible: { args: [P, I32], returns: I32 },
+			tray_item_visible: { args: [P], returns: I32 },
+			tray_item_length: { args: [P], returns: F64 },
+			tray_button_window: { args: [P], returns: I64 },
+			tray_button_window_visible: { args: [P], returns: I32 },
+			tray_button_window_frame: { args: [P, P], returns: I32 },
+			tray_button_window_occlusion: { args: [P], returns: I64 },
+			tray_button_window_active_space: { args: [P], returns: I32 },
 			tray_menu_begin: { args: [P], returns: I32 },
 			tray_menu_add: { args: [P, I64, I32], returns: I32 },
 			tray_menu_end: { args: [P], returns: I32 },
@@ -116,6 +131,10 @@ export function statusBar(): StatusBarShim {
 // gets an encoded buffer whose bytes stay reachable for the process lifetime.
 const buffers = new Set<Uint8Array>();
 const cbufCache = new Map<string, { p: number; len: number }>();
+
+// The frame out-buffer: `tray_button_window_frame` writes four doubles into it.
+// Module-level so the memory stays reachable across the FFI call.
+const frameBuffer = new Float64Array(4);
 
 function cbuf(s: string): { p: number; len: number } {
 	let cached = cbufCache.get(s);
@@ -151,6 +170,31 @@ export interface StatusBarMenuItem {
 	onClick?: () => void;
 }
 
+/**
+ * What AppKit reports about the live item. Every field is a primitive the C
+ * unit read back, so this is evidence of *state* and never of drawing: an item
+ * can be `visible: true` with a `windowNumber` and still be on a hidden menu
+ * bar (a fullscreen space), which is why a screenshot is reported beside it.
+ */
+export interface StatusBarReadback {
+	/** The applied title, read out of the item. */
+	title: string;
+	/** `-[NSStatusItem isVisible]`; null when this AppKit has no such selector. */
+	visible: boolean | null;
+	/** `-[NSStatusItem length]` in points; null when absent. */
+	length: number | null;
+	/** The button window's number, the id `screencapture -l` takes; 0 when none. */
+	windowNumber: number;
+	/** `-[NSWindow isVisible]` for that button window; null when there is none. */
+	windowVisible: boolean | null;
+	/** The button window's frame in screen points, origin bottom-left; null when none. */
+	frame: { x: number; y: number; width: number; height: number } | null;
+	/** Raw `-[NSWindow occlusionState]`; bit 2 means the WindowServer composites it. */
+	occlusion: number | null;
+	/** `-[NSWindow isOnActiveSpace]`; null when absent. */
+	onActiveSpace: boolean | null;
+}
+
 export interface StatusBar {
 	/** Replace the text beside the icon. Empty is legal and shows no text. */
 	setTitle(text: string): void;
@@ -162,6 +206,8 @@ export interface StatusBar {
 	setMenu(items: readonly StatusBarMenuItem[]): void;
 	/** Remove the item from the status bar. A second call is a no-op. */
 	destroy(): void;
+	/** What AppKit reports about the item right now. State, not pixels. */
+	readback(): StatusBarReadback;
 }
 
 let live: StatusBar | undefined;
@@ -277,6 +323,37 @@ export function createStatusBar(): StatusBar {
 			clickRoute = undefined;
 			native.symbols.tray_destroy(item);
 			live = undefined;
+		},
+
+		readback(): StatusBarReadback {
+			const target = requireLive("readback");
+			const visible = Number(native.symbols.tray_item_visible(target) ?? -1);
+			const length = Number(native.symbols.tray_item_length(target) ?? -1);
+			const windowNumber = Number(native.symbols.tray_button_window(target) ?? 0);
+			const windowVisible = Number(native.symbols.tray_button_window_visible(target) ?? -1);
+			const hasFrame =
+				Number(native.symbols.tray_button_window_frame(target, frameBuffer) ?? 0) === 1;
+			const occlusion = Number(native.symbols.tray_button_window_occlusion(target) ?? -1);
+			const activeSpace = Number(
+				native.symbols.tray_button_window_active_space(target) ?? -1,
+			);
+			return {
+				title: String(native.symbols.tray_title_copy(target) ?? ""),
+				visible: visible < 0 ? null : visible === 1,
+				length: length < 0 ? null : length,
+				windowNumber,
+				windowVisible: windowVisible < 0 ? null : windowVisible === 1,
+				frame: hasFrame
+					? {
+							x: frameBuffer[0] ?? 0,
+							y: frameBuffer[1] ?? 0,
+							width: frameBuffer[2] ?? 0,
+							height: frameBuffer[3] ?? 0,
+						}
+					: null,
+				occlusion: occlusion < 0 ? null : occlusion,
+				onActiveSpace: activeSpace < 0 ? null : activeSpace === 1,
+			};
 		},
 	};
 
