@@ -79,6 +79,15 @@ jobs:
       - name: standalone binary
         run: bun run build:standalone
 
+      # Packaging: `crust dmg` and the `crust sign` refusal, checked against the artefacts
+      # rather than the printed lines — hdiutil verify, a read-only attach with the app
+      # inside, and a refusal that leaves the bundle's binary byte-identical. No window is
+      # opened, so this runs ungated. Cost: measured 3.7 s here, dominated by the bundle
+      # build and the image; it leaves nothing mounted (detach is in a finally and is
+      # verified), so it cannot wedge a runner.
+      - name: e2e package
+        run: bun run e2e:package
+
       # A built app opens an NSWindow with a WKWebView, so the e2e run needs an Aqua
       # session and a WindowServer. Probe for both and record the answer; the steps
       # below use it instead of assuming this runner's shape.
