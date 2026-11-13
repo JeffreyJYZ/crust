@@ -8,6 +8,6 @@
 		"build": "crust build"
 	},
 	"dependencies": {
-		"crust": "link:{{crust_root}}"
+		"crust": "{{crust_dep}}"
 	}
 }

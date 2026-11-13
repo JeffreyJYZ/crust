@@ -28,22 +28,26 @@ What is still missing: Windows and Linux, Developer ID signing, and the
 
 ## Start an app
 
-From this checkout:
+The only requirement is Bun. From anywhere:
 
 ```sh
-bun run src/cli/index.ts init my-app
+bunx github:JeffreyJYZ/crust init my-app
 cd my-app
 bun install
 bunx crust dev
 ```
 
+From a crust checkout, the same thing through `bun run src/cli/index.ts init
+my-app`, which pins the dependency as `link:<checkout>` so a local edit is picked
+up without republishing. A scaffold made through `bunx` or a registry install
+pins `github:JeffreyJYZ/crust` instead, because the directory `init` runs from is
+a cache path that will not survive.
+
 `crust init` writes `crust.config.ts`, `main.ts`, `public/index.html`,
 `public/style.css`, `public/app.js`, `.gitignore` and a `package.json` whose
 `dev` and `build` scripts call `crust`. The files are copied from
 `templates/default/`, and a directory that is not empty is refused with the
-entries it found rather than overwritten. The generated `package.json` pins the
-crust installation that ran `init` as a `link:` dependency, so the scaffold
-works from a checkout with no publish step.
+entries it found rather than overwritten.
 
 ## Run the example
 

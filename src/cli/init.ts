@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { crustRoot, fail, line, type CliOptions } from "./util.ts";
@@ -84,6 +85,12 @@ export async function init(options: CliOptions): Promise<number> {
 			.replaceAll('"', "&quot;"),
 		"{{package}}": packageName(name),
 		"{{crust_root}}": crustRoot,
+		// A checkout pins the live directory; anything else (a `bunx` run, a
+		// registry install) has to name the package, because the directory it is
+		// running from is a cache path that will not survive.
+		"{{crust_dep}}": existsSync(join(crustRoot, ".git"))
+			? `link:${crustRoot}`
+			: "github:JeffreyJYZ/crust",
 	};
 
 	console.log(`crust init — ${target}`);
