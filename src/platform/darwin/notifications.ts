@@ -56,6 +56,15 @@ export const NOTIFICATION_STATUS = {
 export interface PostNotificationOptions {
 	title: string;
 	body?: string;
+	/**
+	 * How long to let the system permission prompt stay up, in milliseconds.
+	 *
+	 * A first post triggers that prompt, and the OS answers nothing until a human clicks.
+	 * The old fixed wait was 1500 ms — shorter than reading the dialog — so a first
+	 * `notify` always answered "not answered yet". 0 asks without waiting; the ceiling is
+	 * 120 s because this wait blocks the invoke.
+	 */
+	waitMs?: number;
 }
 
 export interface PostNotificationResult {
@@ -67,7 +76,7 @@ export interface PostNotificationResult {
 
 interface NotificationUnit {
 	symbols: {
-		crust_notification_post: (title: number, body: number) => number;
+		crust_notification_post: (title: number, body: number, waitMs: number) => number;
 		crust_notification_reason: () => string | null;
 		crust_notification_center: () => number;
 	};
@@ -94,7 +103,7 @@ function compile(): NotificationUnit {
 			"UserNotifications",
 		],
 		symbols: {
-			crust_notification_post: { args: [P, P], returns: I32 },
+			crust_notification_post: { args: [P, P, I32], returns: I32 },
 			crust_notification_reason: { args: [], returns: CS },
 			crust_notification_center: { args: [], returns: I32 },
 		},
@@ -173,7 +182,14 @@ export function postNotification(options: PostNotificationOptions): PostNotifica
 		};
 	}
 
-	const status = Number(compiled.symbols.crust_notification_post(cbuf(title), cbuf(body)) ?? -1);
+	const asked = options?.waitMs;
+	const waitMs =
+		typeof asked === "number" && Number.isFinite(asked)
+			? Math.max(0, Math.min(120_000, Math.trunc(asked)))
+			: 1500;
+	const status = Number(
+		compiled.symbols.crust_notification_post(cbuf(title), cbuf(body), waitMs) ?? -1,
+	);
 	const reason = String(compiled.symbols.crust_notification_reason() ?? "");
 	return {
 		status,

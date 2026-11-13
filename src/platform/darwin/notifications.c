@@ -163,10 +163,47 @@ static volatile int nf_auth_granted;
 static volatile int nf_job_done;
 static volatile int nf_job_failed;
 
+// What the OS said when it refused. "Denied" alone hides the difference between a user
+// declining and the system refusing an app it does not recognise — `UNErrorDomain code=1`
+// with no text is what an unsigned or unregistered bundle gets — so the code and the
+// localized description are kept and reported.
+static char nf_error_text[NF_REASON_BYTES];
+static char nf_error_domain[128];
+static int nf_error_code;
+
+static int nf_same(const char *a, const char *b) {
+	while (*a && *a == *b) {
+		a++;
+		b++;
+	}
+	return *a == *b;
+}
+
+static void nf_take_error(void *error) {
+	nf_error_text[0] = 0;
+	nf_error_domain[0] = 0;
+	nf_error_code = 0;
+	if (!error) return;
+	nf_error_code =
+	    (int)((long long (*)(void *, void *))objc_msgSend)(error, sel_registerName("code"));
+	void *domain = ((void *(*)(void *, void *))objc_msgSend)(error, sel_registerName("domain"));
+	if (domain) {
+		const char *utf8 =
+		    ((const char *(*)(void *, void *))objc_msgSend)(domain, sel_registerName("UTF8String"));
+		if (utf8) nf_set(nf_error_domain, sizeof nf_error_domain, utf8);
+	}
+	void *description =
+	    ((void *(*)(void *, void *))objc_msgSend)(error, sel_registerName("localizedDescription"));
+	if (!description) return;
+	const char *utf8 =
+	    ((const char *(*)(void *, void *))objc_msgSend)(description, sel_registerName("UTF8String"));
+	if (utf8) nf_set(nf_error_text, NF_REASON_BYTES, utf8);
+}
+
 static void nf_auth_invoke(void *block, int granted, void *error) {
 	(void)block;
-	(void)error;
 	nf_auth_granted = granted ? 1 : 0;
+	if (!granted) nf_take_error(error);
 	nf_auth_done = 1;
 }
 
@@ -242,7 +279,7 @@ static obj_t nf_identifier(void) {
 // Returns -1 when it cannot run at all (and says why in nf_skip), otherwise a
 // status. A -1 must fall through to the deprecated center; anything else is the
 // answer, because falling back after a denial would ask twice.
-static int nf_post_modern(const char *title, const char *body) {
+static int nf_post_modern(const char *title, const char *body, int auth_wait_ms) {
 	obj_t cls = objc_getClass("UNUserNotificationCenter");
 	obj_t content_cls = objc_getClass("UNMutableNotificationContent");
 	obj_t request_cls = objc_getClass("UNNotificationRequest");
@@ -297,7 +334,10 @@ static int nf_post_modern(const char *title, const char *body) {
 	((void (*)(void *, void *, unsigned long long, void *))objc_msgSend)(
 	    center, nf_sel("requestAuthorizationWithOptions:completionHandler:"),
 	    (unsigned long long)6, (void *)&nf_auth_block);
-	nf_wait(&nf_auth_done, NF_AUTH_WAIT_MS);
+	// The caller owns this wait: a first post triggers the system permission prompt, and
+	// 1500 ms — what this used to allow — is shorter than a person takes to read a dialog.
+	// Clamped, because a negative or absurd value would stall an invoke for no reason.
+	nf_wait(&nf_auth_done, auth_wait_ms < 0 ? 0 : auth_wait_ms > 120000 ? 120000 : auth_wait_ms);
 	if (!nf_auth_done) {
 		nf_cat(nf_reason, NF_REASON_BYTES,
 		       "UNUserNotificationCenter: authorization was requested and the OS has not answered "
@@ -305,7 +345,55 @@ static int nf_post_modern(const char *title, const char *body) {
 		return NF_AUTH;
 	}
 	if (!nf_auth_granted) {
-		nf_cat(nf_reason, NF_REASON_BYTES, "UNUserNotificationCenter: authorization was denied");
+		char line[NF_REASON_BYTES];
+		line[0] = 0;
+		nf_cat(line, NF_REASON_BYTES, "UNUserNotificationCenter: authorization was denied");
+		if (nf_error_code != 0 || nf_error_text[0]) {
+			// The OS's own words, not ours: `UNErrorDomain` says the system refused the app,
+			// `com.apple.usernotifications` says the user did, and the two need opposite
+			// responses — register or sign, versus ask again later.
+			char detail[NF_REASON_BYTES];
+			detail[0] = 0;
+			nf_cat(detail, sizeof detail, " (code ");
+			char digits[16];
+			int value = nf_error_code;
+			int at = 0;
+			if (value == 0) {
+				digits[at++] = '0';
+			} else {
+				if (value < 0) {
+					digits[at++] = '-';
+					value = -value;
+				}
+				char reversed[12];
+				int count = 0;
+				while (value > 0 && count < 11) {
+					reversed[count++] = (char)('0' + (value % 10));
+					value /= 10;
+				}
+				while (count > 0) digits[at++] = reversed[--count];
+			}
+			digits[at] = 0;
+			nf_cat(detail, sizeof detail, digits);
+			if (nf_error_text[0]) {
+				nf_cat(detail, sizeof detail, ": ");
+				nf_cat(detail, sizeof detail, nf_error_text);
+			}
+			nf_cat(detail, sizeof detail, ")");
+			nf_cat(line, NF_REASON_BYTES, detail);
+			// Apple's rule, measured here: an ad-hoc signature is refused outright. The three
+			// variants tried on 2026-11-13 — plain ad-hoc, registered with lsregister, re-signed
+			// with a distinct identifier, and copied into ~/Applications — all answered code 1
+			// in UNErrorDomain. Nothing a user can click changes that, so say what would.
+			if (nf_error_code == 1 && nf_same(nf_error_domain, "UNErrorDomain")) {
+				nf_cat(line, NF_REASON_BYTES,
+				       ". macOS refuses notifications to a bundle it does not trust: crust signs "
+				       "ad-hoc, and this surface needs a Developer ID signature (`crust sign` with "
+				       "CRUST_SIGNING_IDENTITY). Measured, not guessed — registering the bundle and "
+				       "re-signing ad-hoc both still answer this");
+			}
+		}
+		nf_set(nf_reason, NF_REASON_BYTES, line);
 		return NF_AUTH;
 	}
 
@@ -441,7 +529,7 @@ static int nf_post_deprecated(const char *title, const char *body) {
 // Post one notification. Status 0 delivered, 1 authorization pending or denied,
 // 2 symbol missing, 3 API error. `title` and `body` are NUL-terminated byte
 // buffers, never objects; `body` may be "" and must never be null from JS.
-int crust_notification_post(const char *title, const char *body) {
+int crust_notification_post(const char *title, const char *body, int auth_wait_ms) {
 	int status;
 	nf_reason[0] = 0;
 	nf_skip[0] = 0;
@@ -453,7 +541,7 @@ int crust_notification_post(const char *title, const char *body) {
 	}
 	if (!body) body = "";
 
-	status = nf_post_modern(title, body);
+	status = nf_post_modern(title, body, auth_wait_ms);
 	if (status < 0) status = nf_post_deprecated(title, body);
 
 	// Say why the real API was skipped, once, ahead of the answering path.

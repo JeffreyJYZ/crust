@@ -68,10 +68,27 @@ describe("notification plugin", () => {
 	});
 
 	test("a refused title is a TypeError, not a posted notification", async () => {
+		const seen: unknown[] = [];
 		const plugin = createNotificationPlugin({
-			post: () => ({ status: 0, reason: "unreachable" }),
+			post: (options) => {
+				seen.push(options);
+				return { status: 0, reason: "unreachable" };
+			},
 		});
 		await expect(plugin.commands.notify({ title: "" })).rejects.toThrow(TypeError);
+		expect(seen).toEqual([]);
+	});
+
+	test("waitMs reaches the adapter, because that wait is the whole prompt budget", async () => {
+		let received: { waitMs?: number } | undefined;
+		const plugin = createNotificationPlugin({
+			post: (options) => {
+				received = options as { waitMs?: number };
+				return { status: NOTIFICATION_STATUS.authorization, reason: "not answered yet" };
+			},
+		});
+		await plugin.commands.notify({ title: "hi", waitMs: 30_000 });
+		expect(received?.waitMs).toBe(30_000);
 	});
 
 	test("a denied result maps to delivered:false and keeps the reason", async () => {

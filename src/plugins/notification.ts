@@ -22,6 +22,15 @@ export interface NotifyOptions {
 	body?: string;
 	/** Caller-chosen dedupe key. */
 	id?: string;
+	/**
+	 * How long to wait for the system permission prompt, in milliseconds.
+	 *
+	 * The first `notify` on macOS raises that prompt and nothing is delivered until a human
+	 * answers it, so a caller that wants one call to work passes something human-sized
+	 * (30 000 is reasonable). The default, 1500 ms, asks and reports "not answered yet",
+	 * which is what every earlier version did on a first run.
+	 */
+	waitMs?: number;
 }
 
 /**
