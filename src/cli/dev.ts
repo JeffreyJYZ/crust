@@ -12,7 +12,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
-import { isIgnoredWatchPath } from "@/cli/ignore";
+import { isFrontendSource, isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
 import { frameworkRoot, inExecutable } from "./framework.ts";
 import { fail, line, missingInstall, resolveBackendEntry, type CliOptions } from "./util.ts";
@@ -111,6 +111,23 @@ export async function dev(options: CliOptions): Promise<number> {
 		env,
 	};
 
+	// The window loads `dev.url` once, when it is created, with no retry. On a cold
+	// start Vite needs 0.7–1.1 s to listen, while the window appears at 0.2–0.4 s, so the
+	// page request was issued into a closed port and nothing ever loaded it — measured at
+	// 4 of 8 runs, and 4 of 4 from a scratch directory with no pre-bundled dependencies.
+	if (devUrl !== undefined) {
+		const ready = await waitForDevServer(devUrl, 30_000);
+		if (!ready) {
+			frontend?.kill();
+			return fail(
+				"dev",
+				`${devUrl} did not accept a connection within 30 s — the window loads it once and ` +
+					"cannot retry, so nothing would render. Check the beforeDevCommand output above",
+			);
+		}
+		line("frontend", `${devUrl} answered`);
+	}
+
 	console.log("");
 	const code = await watchRuntime(runtime);
 	frontend?.kill();
@@ -124,6 +141,27 @@ interface RuntimeOptions {
 	devUrl?: string;
 	/** The bridge pair to publish, when a `dev.url` page needs it. */
 	env?: Record<string, string>;
+}
+
+/**
+ * Wait until a URL accepts a connection, or the deadline passes.
+ *
+ * A refused connection fails immediately, so a 100 ms poll costs almost nothing, and any
+ * answer counts — including a 404 — because the window only needs the server to be up.
+ * This exists because the window's load is issued exactly once: without the wait, a cold
+ * start loses the race against Vite's first listen and the page never appears.
+ */
+async function waitForDevServer(url: string, timeoutMs: number): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			await fetch(url, { signal: AbortSignal.timeout(1000) });
+			return true;
+		} catch {
+			await Bun.sleep(100);
+		}
+	}
+	return false;
 }
 
 async function spawnRuntime(options: RuntimeOptions) {
@@ -184,6 +222,11 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		// frontend should own — and a restart rotates the bridge token, so the
 		// loaded page then fails with a missing bearer token.
 		if (isIgnoredWatchPath(filename)) return;
+		// A dev-server project's backend entry sits at the project root, so the watch
+		// covers every UI file too. Editing one restarted the runtime — rotating the
+		// bridge token and rebuilding the window — while the dev server's own reload was
+		// already handling that file. Frontend extensions are its business, not ours.
+		if (options.devUrl !== undefined && isFrontendSource(filename)) return;
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
 			if (wake) {

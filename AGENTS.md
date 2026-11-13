@@ -13,8 +13,10 @@ live in `DESIGN.md`; research reports in `research/`.
 - **Every lane is `commandcode/deepseek/deepseek-v4.1-flash#high`** and pins it explicitly, since
   the global config sets no `model`.
 - **The gate is `bun check` && `bun run test` && `bun run e2e`**, plus `bun run e2e:notes` when the
-  multi-file path is touched and `bun run e2e:single` when the single-file mode is touched.
-  A green gate is the only proof a landing is safe.
+  multi-file path is touched, `bun run e2e:single` when the single-file mode is touched,
+  `bun run e2e:dev:react` when the dev-server path is touched (it drives a real Vite through
+  `crust dev`), and `bun run e2e:window` when the `window` plugin is touched. A green gate is
+  the only proof a landing is safe.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
 

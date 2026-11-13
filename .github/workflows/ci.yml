@@ -147,6 +147,19 @@ jobs:
         if: steps.window.outputs.available == 'true'
         run: bun run e2e:single
 
+      # The dev-server path with a real Vite: the window must load the dev document, the
+      # page's invoke must cross that origin, and an edit must reload without restarting
+      # the backend. About 4 s locally, plus a `bun install` of the scaffold.
+      - name: e2e dev react
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:dev:react
+
+      # The `window` plugin driven from a page: list, isOpen, setTitle, focus, close, and
+      # the structured rejections. Two windows, so it is the widest windowed run here.
+      - name: e2e window
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:window
+
       # Same mode, but driven by the compiled binary from the `standalone binary` step
       # above, with no Bun on PATH — that is the claim the step exists to keep true.
       # Windowed like its neighbours, and it reuses dist/crust, so it needs the earlier

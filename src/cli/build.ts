@@ -162,7 +162,8 @@ export type ResolvedAssets =
 	{ ok: true; files: AssetFile[]; label: string } | { ok: false; failure: string };
 
 /** The `run its build` half shared by the two "nothing to embed" failures. */
-const FRONTEND_HINT = "run its build (for Vite, `bun --bun x vite build`) then `crust build`";
+const FRONTEND_HINT =
+	"run its build (for Vite, `bun --bun ./node_modules/.bin/vite build`) then `crust build`";
 
 /**
  * Run `build.beforeBuildCommand` (if any), then read `build.assets`.

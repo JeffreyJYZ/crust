@@ -5,8 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "crust dev",
-		"build": "bun --bun x vite build && crust build",
-		"frontend": "bun --bun x vite build"
+		"build": "bun --bun ./node_modules/.bin/vite build && crust build",
+		"frontend": "bun --bun ./node_modules/.bin/vite build"
 	},
 	"dependencies": {
 		"crust": "{{crust_dep}}",

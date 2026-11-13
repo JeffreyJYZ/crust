@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { isIgnoredWatchPath } from "@/cli/ignore";
+import { isFrontendSource, isIgnoredWatchPath } from "@/cli/ignore";
 
 describe("isIgnoredWatchPath", () => {
 	test("ignores each frontend and build-output directory", () => {
@@ -39,5 +39,38 @@ describe("isIgnoredWatchPath", () => {
 		expect(isIgnoredWatchPath(null)).toBe(false);
 		expect(isIgnoredWatchPath(undefined)).toBe(false);
 		expect(isIgnoredWatchPath("")).toBe(false);
+	});
+});
+
+describe("isFrontendSource", () => {
+	test("claims the files a dev server reloads", () => {
+		for (const path of [
+			"src/main.tsx",
+			"src/App.tsx",
+			"src/styles.css",
+			"index.html",
+			"public/icon.svg",
+			"assets/logo.png",
+			"fonts/satoshi.woff2",
+		])
+			expect({ path, frontend: isFrontendSource(path) }).toEqual({ path, frontend: true });
+	});
+
+	test("never claims the backend entry or a command file", () => {
+		// `.ts` and `.js` are absent on purpose: `main.ts` is the backend entry, and a
+		// restart there is correct.
+		for (const path of [
+			"main.ts",
+			"src/main.ts",
+			"src/commands/notes.ts",
+			"lib/x.js",
+			"crust.config.ts",
+		])
+			expect({ path, frontend: isFrontendSource(path) }).toEqual({ path, frontend: false });
+	});
+
+	test("treats a missing filename as not frontend", () => {
+		expect(isFrontendSource(null)).toBe(false);
+		expect(isFrontendSource(undefined)).toBe(false);
 	});
 });

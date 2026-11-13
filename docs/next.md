@@ -60,23 +60,23 @@ bun run build        # crust build → `next build` → out/ → embed out/ → 
 Read the config in that order:
 
 ```ts
-dev: { url: "http://localhost:3000", beforeDevCommand: "bun --bun x next dev -p 3000" },
+dev: { url: "http://localhost:3000", beforeDevCommand: "bun --bun ./node_modules/.bin/next dev -p 3000" },
 windows: [{ label: "main", url: "/", width: 1100, height: 760, title: "{{name_text}}" }],
 build: {
 	// `crust build` runs `next build` first, which writes the export to out/,
 	// then embeds that directory instead of public/.
 	assets: "out",
-	beforeBuildCommand: "bun --bun x next build",
+	beforeBuildCommand: "bun --bun ./node_modules/.bin/next build",
 },
 ```
 
-`beforeBuildCommand` → `bun --bun x next build` → `output: "export"` writes `out/` → `build.assets: "out"` names the tree `crust build` embeds → the bridge inside the binary serves it.
+`beforeBuildCommand` → `bun --bun ./node_modules/.bin/next build` → `output: "export"` writes `out/` → `build.assets: "out"` names the tree `crust build` embeds → the bridge inside the binary serves it.
 
 The ordering is measured, not promised. `resolveAssets` runs the command with inherited stdio and only then reads `build.assets`, so the frontend's own output is the user's to read and a failure cannot ship stale bytes. When `next build` exited 1 during this verification, `crust build` printed `build.beforeBuildCommand \`next build\` exited with 1 — the frontend build failed, so nothing was packaged`, exited 1 itself, and left `dist/` absent. `out/` and `.next/` are both gitignored, and `.next/` is never embedded: the second build after a dev session embedded 21 files from `out/`, and that is exactly the 21 files in `out/`.
 
-Both hooks run through `sh -c` in the project directory. The template writes them as `bun --bun x next …`, so Bun resolves `next` through the project's `node_modules/.bin` and the version in `package.json` runs. A hook written as bare `next build` instead resolves from whatever `PATH` the crust process inherited: invoking `crust` by its absolute path (`./node_modules/.bin/crust dev`) leaves the global `PATH` alone, and a globally installed `next` then answers instead — on this machine `/opt/homebrew/bin/next` is v16.2.10 while the project has v16.4.6, so the window was served by a different Next than the one in `package.json`, with no warning anywhere.
+Both hooks run through `sh -c` in the project directory. The template writes them as `bun --bun ./node_modules/.bin/next …`, for two reasons: it names the project's own `next` instead of whatever `PATH` the crust process inherited, and `bun --bun` runs the file under Bun. `bun --bun x next` looked equivalent and measurably was not — `x` follows the bin's `#!` line, so the dev server ran under `node` (v27 alpha on this machine) rather than Bun. A hook written as bare `next build` is worse still: it resolves from inherited `PATH`, where `/opt/homebrew/bin/next` is v16.2.10 against the project's v16.4.6, so the window was served by a different Next than the one in `package.json`, with no warning anywhere.
 
-**A hook written as bare `next dev` runs under whatever `node` is first on `PATH`**, because `node_modules/.bin/next` carries a `#!/usr/bin/env node` shebang; the template's `bun --bun x next dev` runs it under Bun instead. The Node case matters: on this machine `node` is a `v27.0.0-alpha` build, and `next dev` under it answers **500 on every request** with `TypeError: rawHeaders.hasOwnProperty is not a function`, from `next`'s own code. The same app, same Next version, under Node `v26.7.0` answers `200` in 150 ms. Next's dev server is the constraint, not crust — but a Next app inherits it, so pin a stable Node for a bare `next dev` hook if `crust dev` serves an error page.
+**A hook written as bare `next dev` runs under whatever `node` is first on `PATH`**, because `node_modules/.bin/next` carries a `#!/usr/bin/env node` shebang; the template's `bun --bun ./node_modules/.bin/next dev` runs it under Bun instead. The Node case matters: on this machine `node` is a `v27.0.0-alpha` build, and `next dev` under it answers **500 on every request** with `TypeError: rawHeaders.hasOwnProperty is not a function`, from `next`'s own code. The same app, same Next version, under Node `v26.7.0` answers `200` in 150 ms. Next's dev server is the constraint, not crust — but a Next app inherits it, so pin a stable Node for a bare `next dev` hook if `crust dev` serves an error page.
 
 `next dev` also writes `AGENTS.md` and `next-env.d.ts` into the project on first run (Next 16 generates its own agent rules file). `.gitignore` covers neither, so decide whether they are yours to commit; `agentRules: false` in `next.config.mjs` stops the first.
 

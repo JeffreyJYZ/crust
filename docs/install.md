@@ -49,7 +49,7 @@ crust doctor — /private/tmp/my-app
   dev url   [fail] http://localhost:3000 did not answer — is the frontend dev server running?
   backend   [ok] /private/tmp/my-app/main.ts
   window    [ok] platform module loaded, 54 preflight entries
-  assets    [fail] build.assets "out" (/private/tmp/my-app/out) is missing — run the frontend build (`bun --bun x next build`) then crust build; a build now embeds no page
+  assets    [fail] build.assets "out" (/private/tmp/my-app/out) is missing — run the frontend build (`bun --bun ./node_modules/.bin/next build`) then crust build; a build now embeds no page
   templates [ok] /opt/homebrew/Cellar/crust/0.1.5/libexec/templates holds default, react, next
   bundle    [note] no .app in dist — run crust build first
 
@@ -147,7 +147,7 @@ These five decide what you can build; all are stated in [README.md](../README.md
 | a scaffold has 7 files where the docs say 8 | you are on 0.1.1 or older, whose Next template has no `tsconfig.json`, or a stale bunx cache served it | check `crust --version`; name `#v0.1.5` |
 | `Cannot find module '@/config'` from a packed install | a 0.1.0-era tarball shipped without the `tsconfig.json` that defines the `@/` alias | reinstall at 0.1.1 or later |
 | `dev url [fail]` in `crust doctor` | the frontend dev server is not running, or is on another port | start it (`bun run dev`), and keep the port pinned — the bridge allows exactly the origin `dev.url` names |
-| `assets [fail]` in `crust doctor` on a `--next` scaffold | `out/` does not exist yet | `bun install && bun --bun x next build`, then `crust build` |
+| `assets [fail]` in `crust doctor` on a `--next` scaffold | `out/` does not exist yet | `bun install && bun --bun ./node_modules/.bin/next build`, then `crust build` |
 | the app opens here, "is damaged" on another Mac | ad-hoc signature plus the quarantine attribute | `xattr -dr com.apple.quarantine "my-app.app"`, or right-click → Open |
 | `notification` reports `delivered: false` | known; inside a bundle the authorization answer is denied, and unbundled there is no bundle identifier to notify from | nothing to configure yet — see [README.md](../README.md#limits-stated-plainly) |
 | a built app is 85 MiB and you expected less | the Bun runtime, inside the binary | nothing; the honest claim is "no bundled Chromium", never "as small as Tauri" |
