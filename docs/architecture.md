@@ -191,9 +191,10 @@ Two invariants worth restating because breaking them fails quietly. The `app` na
 
 ## What this page does not claim
 
-The code described above exists and is tested where a test can reach it; four things it is not:
+The code described above exists and is tested where a test can reach it; five things it is not:
 
 - **The Next.js export path** (`build.assets: "out"` with `beforeBuildCommand: "bun --bun ./node_modules/.bin/next build"`) has been run once, end to end, through `crust build`: `next.md` records the export, the embedded files and the launch. What has not been observed is a person clicking around the exported app; client-side navigation and hydration are proven by the served markup and the `invoke` round trip, not by a human.
 - **A dialog pick a human completed.** The sheet machinery has been exercised in a real window — the panel reported `sheetStarted`, stayed pending, and `-cancel:` resolved `{ paths: [] }` through the poll, for both the open and save panels — but nobody has chosen a file, so the OK response, a real path and the overwrite prompt are unobserved, and the `-runModal` fallback has never been entered.
 - **A tray item seen on screen** has never been captured. An item was created, titled, shown, hidden and destroyed; AppKit readback reported a title, `isVisible: true`, a button window on the menu-bar row and the occlusion bit, while the screen capture contained no menu bar because the active Space was a fullscreen app. That is state, not pixels.
 - **A delivered notification** has never been observed. Authorisation has been, and it was denied: inside a built `.app` the modern `UNUserNotificationCenter` path is entered and the callback fires with `granted = false`, so `notify` answers `delivered: false` with `UNUserNotificationCenter: authorization was denied`. The cause is unidentified; the app's signing identity is the untested candidate.
+- **A window created by `window.create`, as automated proof.** The command, its tests and the macOS delegation exist, and `docs/plugins.md` records a bounded two-window run through it. `scripts/e2e-window.ts` still opens both of its windows from the config and never calls `create`, so nothing in this repo re-runs that measurement.

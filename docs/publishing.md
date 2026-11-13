@@ -4,7 +4,7 @@
 
 ## What ships
 
-`files` is `src`, `templates`, `docs`, `README.md`, `DESIGN.md` and `tsconfig.json`, with `!src/**/*.test.ts` excluded; `package.json` is always included. That is 78 files, 47 of them TypeScript source, and 184.1 KiB at `0.1.5` — a tarball small enough that nobody notices a file missing from it until an install fails, which is why it is packed and installed on every change rather than eyeballed. (At `0.1.0` it was 47 source files and 162.2 KiB.)
+`files` is `src`, `templates`, `docs`, `README.md`, `DESIGN.md` and `tsconfig.json`, with `!src/**/*.test.ts` excluded; `package.json` is always included. That is 78 files, 50 of them TypeScript source, and 188.9 KiB at `v0.1.8` — a tarball small enough that nobody notices a file missing from it until an install fails, which is why it is packed and installed on every change rather than eyeballed. (`v0.1.1` was 73 files, 47 of them source, and 154.3 KiB; there is no `v0.1.0` tag, so the pre-fix package exists only in the account further down.)
 
 | Path | Ships | Why |
 | --- | --- | --- |
@@ -12,7 +12,7 @@
 | `templates/{default,react,next}/` | yes | `crust init` copies real files, so a missing template is a failed scaffold |
 | `README.md`, `DESIGN.md` | yes | named in `files` |
 | `docs/*.md` | yes | `README.md` links into them, so an absent `docs/` is a set of dead links in an install |
-| `tsconfig.json` | yes | `paths` defines the `@/…` alias that 16 shipped files import through; an install without it cannot start |
+| `tsconfig.json` | yes | `paths` defines the `@/…` alias that 10 shipped files import through; an install without it cannot start |
 | `src/**/*.test.ts` | no | inert in an install, and the suite lives in the repo |
 | `research/`, `examples/`, `spike/` | no | recon and probes; deliberately left out |
 | `node_modules/`, `.crust/`, `.git/` | no | never packed, asserted so a stray `.npmignore` cannot change that |
@@ -22,6 +22,7 @@
 ```sh
 bun scripts/verify-package.ts          # pack, unpack, install, check, clean up
 bun scripts/verify-package.ts --keep   # leave the workspace for inspection
+bun scripts/verify-package.ts <dir>    # another checkout, e.g. an extracted tag
 ```
 
 Three phases, in the order a user meets them:
@@ -44,7 +45,7 @@ On `v0.1.8`: 7 named paths, wrapper, `0.1.8`, an 8-file Next scaffold including 
 
 ## What it found, and what closed it
 
-The first run of `verify-package` on `0.1.0` failed 7 of 32 checks, and every install-phase failure traced to one defect. Both are fixed; the account stays because the failure mode is the reason the script exists.
+The first run of `verify-package` on the tree that called itself `0.1.0` — no tag by that name exists — failed 7 of 32 checks, and every install-phase failure traced to one defect. Both are fixed; the account stays because the failure mode is the reason the script exists.
 
 **`docs/` was not shipped.** Every `docs/*.md` was missing, and `README.md` links into `docs/`, so every one of those links was dead in an installed package.
 
@@ -59,9 +60,13 @@ import "crust/vite"   → OK
 
 The two `exports` entries that worked were the two subtrees with no alias imports; the plugin and vite modules never pull in `app.ts`, `config` or the bridge. So the failure was not "the package is broken everywhere", it was "every path that reaches the runtime is broken", which is to say all of them.
 
-Closed by shipping `tsconfig.json` — one line in `files` — which was measured before the edit: copying it into `node_modules/crust/` made `crust --help` print its usage and `import "crust"` return the app exports. The alternative, rewriting `@/x` to relative imports, removes the dependency on the alias ever travelling; it was not taken because the alias is 16 files wide and the config is one line. The script now reads the shipped files for alias imports, so an install that carries one without its `paths` fails the check.
+Closed by shipping `tsconfig.json` — one line in `files` — which was measured before the edit: copying it into `node_modules/crust/` made `crust --help` print its usage and `import "crust"` return the app exports. The alternative, rewriting `@/x` to relative imports, removes the dependency on the alias ever travelling; it was not taken because the alias is 10 shipped files wide (20 across `src`, but the suite stopped shipping) and the config is one line. The script now reads the shipped files for alias imports, so an install that carries one without its `paths` fails the check.
 
-`verify-package` passes 32 of 32 at `0.1.5`, tarball 184.1 KiB (162.2 KiB at `0.1.1`).
+`verify-package` passes 32 of 32 at `v0.1.8` (188.9 KiB) and at `v0.1.1` (154.3 KiB). The positional argument is the checkout to pack, so a release is checked rather than remembered:
+
+```sh
+git archive v0.1.8 | tar -x -C "$(mktemp -d)" && bun scripts/verify-package.ts <that dir>
+```
 
 ## Shipping crust as one binary
 

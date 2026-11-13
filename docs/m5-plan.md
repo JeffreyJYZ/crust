@@ -41,8 +41,8 @@ So the port is not "translate 40 Tauri calls". It is "serve a page and hand it o
 
 | needed | crust today | name difference | settles it |
 | --- | --- | --- | --- |
-| window create, size, title | yes | `windows[]` config, not `WebviewWindowBuilder` | `src/platform/darwin/index.ts:599`, `docs/api.md:300` |
-| window close / focus / title / list / isOpen | yes, page-callable | `invoke("window","setTitle",{label,title})` vs Tauri `getCurrentWindow().setTitle()` | `src/plugins/window.ts:102,184` |
+| window create, size, title | yes at launch, and page-callable now (the adapter half is uncommitted) | `windows[]` config, not `WebviewWindowBuilder`; `create()` delegates to `DarwinPlatform.createWindow` and resolves a relative url against the bridge, so a new window inherits the same missing init-script channel | `src/platform/darwin/index.ts:654,1196`, `docs/api.md:300`, `src/plugins/window.ts:64,167` |
+| window close / focus / title / list / isOpen | yes, page-callable | `invoke("window","setTitle",{label,title})` vs Tauri `getCurrentWindow().setTitle()` | `src/plugins/window.ts:167,287` |
 | inject a global before page scripts | **no** | Tauri `initialization_script`; crust has none | `src/platform/darwin/shim.c:146` (only `loadRequest:`); no "initialization" anywhere in `src/` |
 | dialogs | yes, one command | `dialog.openPanel({directory})` vs `dialog.open({directory})`; modal only, `filters` ignored, blocks the JS thread | `src/plugins/dialog.ts:34-44,55`, `README.md:207-213` |
 | fs | partial | `fs.readTextFile` / `writeTextFile` only — no readDir/exists/remove, and no path scoping (Tauri scopes by capability) | `src/plugins/fs.ts:37` |
