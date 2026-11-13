@@ -17,6 +17,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+import type { DialogNative, OpenPanelOptions, OpenPanelResult } from "@/plugins/dialog";
 
 // Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file
 // does not exist. The shim therefore travels inside the binary as text and is
@@ -32,14 +33,14 @@ const CS = FFIType.cstring;
 
 /** Compile the shipped C shim. `cc()` compiles C only, and a framework must be linked. */
 function compile() {
-/** Materialise the embedded shim and return its path. Content-hashed, so a
- * second launch reuses the same file and TinyCC's per-path cache. */
-function shimPath(): string {
-	const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
-	const path = join(tmpdir(), `crust-shim-${hash}.c`);
-	if (!existsSync(path)) writeFileSync(path, shimSource);
-	return path;
-}
+	/** Materialise the embedded shim and return its path. Content-hashed, so a
+	 * second launch reuses the same file and TinyCC's per-path cache. */
+	function shimPath(): string {
+		const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
+		const path = join(tmpdir(), `crust-shim-${hash}.c`);
+		if (!existsSync(path)) writeFileSync(path, shimSource);
+		return path;
+	}
 
 	return cc({
 		source: shimPath(),
@@ -101,6 +102,12 @@ function shimPath(): string {
 			shim_mode: { args: [], returns: P },
 			shim_mode_ok: { args: [P], returns: I32 },
 			shim_pump: { args: [P], returns: I32 },
+
+			// The open panel: an int status in, and the chosen paths read back
+			// one at a time as C strings. No object and no struct crosses.
+			shim_open_panel: { args: [P, I32, I32, I32], returns: I32 },
+			shim_open_panel_count: { args: [], returns: I32 },
+			shim_open_panel_path: { args: [I32], returns: CS },
 		},
 	}) as unknown as Shim;
 }
@@ -162,6 +169,10 @@ export interface Shim {
 		shim_mode: LooseSymbol;
 		shim_mode_ok: LooseSymbol;
 		shim_pump: LooseSymbol;
+
+		shim_open_panel: LooseSymbol;
+		shim_open_panel_count: LooseSymbol;
+		shim_open_panel_path: LooseSymbol;
 	};
 }
 
@@ -641,4 +652,78 @@ export class DarwinPlatform implements Platform {
 /** Build the macOS platform. `appName` names failures, nothing in AppKit reads it. */
 export function createPlatform(options: { appName?: string } = {}): Platform {
 	return new DarwinPlatform(options);
+}
+
+// --- dialog adapter --------------------------------------------------------
+
+/**
+ * What `shim_open_panel` returns. Mirrors the `SHIM_PANEL_*` defines in
+ * `shim.c`; the shim guards every selector itself and reports an absent one as
+ * `unsupported` rather than sending it and aborting the process.
+ */
+export const PANEL_STATUS = {
+	/** A modal pick finished with at least one path. */
+	picked: 0,
+	/** A modal pick finished with no path — the user cancelled. */
+	cancelled: 1,
+	/** `NSOpenPanel`, or a selector it needs, is absent on this system. */
+	unsupported: 2,
+	/** The sheet is on screen. Nothing in this adapter ever observes its result. */
+	sheetStarted: 3,
+	/** A sheet was asked for with no key window; nothing was sent. */
+	noWindow: 4,
+} as const;
+
+/**
+ * The native half of `crust:dialog` on macOS.
+ *
+ * `pickOpen` is the plugin's adapter hook; `openPanel` is the same function
+ * under the name the plugin's command is called by, so either shape reads
+ * correctly at the call site.
+ *
+ * **The pick blocks.** `-runModal` enters AppKit's own run loop and does not
+ * return until the user answers, so this Promise is already settled by the time
+ * it resolves — the JavaScript thread, and with it the Cocoa pump and every
+ * in-flight invoke, is stopped for as long as the panel is on screen. That is
+ * the accepted cost of a real file picker in v1 (DESIGN.md §9, item 7), stated
+ * rather than disguised as non-blocking work.
+ *
+ * `filters` is not applied: it needs an `allowedContentTypes` array of UTType
+ * objects, which is a second object graph inside C and is not implemented here.
+ * The paths come back, the filter does not.
+ */
+export interface DarwinDialogAdapter extends DialogNative {
+	openPanel(options: OpenPanelOptions): Promise<OpenPanelResult>;
+}
+
+/** Build the dialog adapter. The shim compiles on the first pick, not before. */
+export function darwinDialogAdapter(): DarwinDialogAdapter {
+	const pickOpen = async (options: OpenPanelOptions = {}): Promise<OpenPanelResult> => {
+		const native = shim();
+		const status = Number(
+			native.symbols.shim_open_panel(
+				cstr(options.title ?? ""),
+				options.directory ? 1 : 0,
+				options.multiple ? 1 : 0,
+				1,
+			) ?? 0,
+		);
+
+		if (status === PANEL_STATUS.cancelled) return { paths: [] };
+		if (status !== PANEL_STATUS.picked) {
+			const name =
+				Object.entries(PANEL_STATUS).find(([, value]) => value === status)?.[0] ??
+				`status ${status}`;
+			throw new Error(`crust: openPanel failed (${name}); NSOpenPanel could not be shown`);
+		}
+
+		const count = Number(native.symbols.shim_open_panel_count() ?? 0);
+		const paths: string[] = [];
+		for (let index = 0; index < count; index++) {
+			paths.push(String(native.symbols.shim_open_panel_path(index) ?? ""));
+		}
+		return { paths };
+	};
+
+	return { pickOpen, openPanel: pickOpen };
 }

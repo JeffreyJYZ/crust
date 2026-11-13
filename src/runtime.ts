@@ -96,6 +96,29 @@ function selectedPlugins(
 	return core.filter((plugin) => wanted.includes(plugin.name));
 }
 
+/**
+ * Swap in the platform's native plugins.
+ *
+ * `dialog` is the only core plugin with a native half in v1. Its default export
+ * answers `not-implemented`; on macOS the real answer needs an AppKit adapter,
+ * which arrives through the plugin's own `createDialogPlugin` hook. No adapter
+ * means the honest answer stays, so a headless bridge and a non-macOS platform
+ * are unchanged. The name is preserved, so `selectedPlugins` still matches it.
+ */
+async function nativePlugins(
+	core: readonly PluginDefinition[],
+	attachPlatform: boolean,
+): Promise<PluginDefinition[]> {
+	if (!attachPlatform || process.platform !== "darwin") return [...core];
+	const [{ createDialogPlugin }, darwin] = await Promise.all([
+		import("@/plugins"),
+		import("@/platform/darwin"),
+	]);
+	return core.map((plugin) =>
+		plugin.name === "dialog" ? createDialogPlugin(darwin.darwinDialogAdapter()) : plugin,
+	);
+}
+
 async function isDirectory(path: string): Promise<boolean> {
 	try {
 		return (await Bun.file(path).stat()).isDirectory();
@@ -181,7 +204,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<void> {
 	});
 
 	const core = (await import("@/plugins")).corePlugins;
-	const registry = new PluginRegistry().register(...selectedPlugins(config, core), appPlugin);
+	const attachPlatform = options.attachPlatform !== false;
+	const plugins = await nativePlugins(core, attachPlatform);
+	const registry = new PluginRegistry().register(...selectedPlugins(config, plugins), appPlugin);
 
 	const frontendRoot = (await isDirectory(root)) ? root : undefined;
 	const indexHtml = await readIndex(frontendRoot, options.assets);
@@ -198,7 +223,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<void> {
 		`  bridge    ${bridge.url}${config.dev?.url ? `  (page from ${config.dev.url})` : ""}`,
 	);
 
-	if (options.attachPlatform !== false) {
+	if (attachPlatform) {
 		const darwin = await import("@/platform/darwin");
 		app.attach(darwin.createPlatform({ appName: config.app.name }), config, bridge.url);
 	}

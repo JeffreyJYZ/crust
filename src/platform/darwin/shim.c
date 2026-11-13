@@ -288,3 +288,198 @@ int shim_mode_ok(obj_t mode) {
 // The pump: one 0.25 ms slice. The slice length is what decides tick fidelity —
 // 4 ms delivered only 82.4% of a 16 ms tick (DESIGN.md §3).
 int shim_pump(obj_t mode) { return CFRunLoopRunInMode(mode, 0.00025, 1); }
+
+// --- open panel (NSOpenPanel) ---------------------------------------------
+//
+// No object of any kind crosses bun:ffi here. A file path is routinely short
+// ASCII, and a short ASCII NSString is a tagged pointer above 2^53, so the
+// panel's URLs are decoded and copied into C-side storage and JS reads an int
+// status plus a copied `const char *`. See the traps in DESIGN.md §2.
+//
+// Status codes, mirrored by PANEL_STATUS in index.ts:
+#define SHIM_PANEL_PICKED 0        // modal pick finished with >= 1 path
+#define SHIM_PANEL_CANCELLED 1     // modal pick finished with no path
+#define SHIM_PANEL_UNSUPPORTED 2   // NSOpenPanel, or a selector it needs, is absent
+#define SHIM_PANEL_SHEET_STARTED 3 // beginSheet... accepted; nothing waits for it
+#define SHIM_PANEL_NO_WINDOW 4     // sheet asked for with no key window
+
+#define SHIM_PANEL_MAX_PATHS 32
+#define SHIM_PANEL_PATH_BYTES 4096
+
+static char panel_paths[SHIM_PANEL_MAX_PATHS][SHIM_PANEL_PATH_BYTES];
+static int panel_paths_used;
+
+// One NSString, built and consumed on this side. Encoding 4 is
+// NSUTF8StringEncoding, and `-initWithBytes:length:encoding:` is what the
+// measured URL chain uses: `+stringWithUTF8String:` aborts Bun outright.
+static obj_t panel_nsstring(const char *s) {
+	if (!s || !s[0]) return 0;
+	obj_t allocd = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
+	                                                        sel_registerName("alloc"));
+	if (!allocd) return 0;
+	return ((obj_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
+	    allocd, sel_registerName("initWithBytes:length:encoding:"), s,
+	    (unsigned long)shim_cstr_len(s), 4LL);
+}
+
+// Guard for every selector this section sends. An uncaught ObjC exception
+// kills the process with no JS error, so nothing is sent unchecked.
+static int panel_has_instance(const char *cls, const char *selname) {
+	void *c = objc_getClass(cls);
+	if (!c) return 0;
+	return class_getInstanceMethod(c, sel_registerName(selname)) != 0;
+}
+
+static void panel_reset(void) {
+	panel_paths_used = 0;
+	panel_paths[0][0] = 0;
+}
+
+static void panel_copy_path(const char *src) {
+	if (!src || panel_paths_used >= SHIM_PANEL_MAX_PATHS) return;
+	char *dst = panel_paths[panel_paths_used];
+	long i = 0;
+	while (src[i] && i < SHIM_PANEL_PATH_BYTES - 1) {
+		dst[i] = src[i];
+		i++;
+	}
+	dst[i] = 0;
+	panel_paths_used++;
+}
+
+// -[NSOpenPanel URLs] -> each -path -> -UTF8String, copied into static storage.
+static void panel_collect(obj_t panel) {
+	obj_t urls = ((obj_t (*)(void *, void *))objc_msgSend)(panel, sel_registerName("URLs"));
+	if (!urls) return;
+	unsigned long long n = ((unsigned long long (*)(void *, void *))objc_msgSend)(
+	    urls, sel_registerName("count"));
+	for (unsigned long long i = 0; i < n; i++) {
+		obj_t url = ((obj_t (*)(void *, void *, unsigned long long))objc_msgSend)(
+		    urls, sel_registerName("objectAtIndex:"), i);
+		if (!url) continue;
+		obj_t path = ((obj_t (*)(void *, void *))objc_msgSend)(url, sel_registerName("path"));
+		if (!path) continue;
+		const char *utf8 = ((const char *(*)(void *, void *))objc_msgSend)(
+		    path, sel_registerName("UTF8String"));
+		panel_copy_path(utf8);
+	}
+}
+
+// The window a sheet attaches to. `-keyWindow` is nil whenever the process is
+// not the active app — which an unbundled `bun` process frequently is, because
+// macOS 14+ restricts self-activation — so falling back to the main window and
+// then the first visible window is what makes a picker work from the background
+// rather than answer "no window". A sheet on an off-screen window raises, so
+// the fallback only accepts a visible one.
+static obj_t panel_visible_window(obj_t app) {
+	if (!panel_has_instance("NSApplication", "windows")) return 0;
+	obj_t list =
+	    ((obj_t (*)(void *, void *))objc_msgSend)(app, sel_registerName("windows"));
+	if (!list) return 0;
+	int guarded = panel_has_instance("NSWindow", "isVisible");
+	unsigned long long n = ((unsigned long long (*)(void *, void *))objc_msgSend)(
+	    list, sel_registerName("count"));
+	for (unsigned long long i = 0; i < n; i++) {
+		obj_t w = ((obj_t (*)(void *, void *, unsigned long long))objc_msgSend)(
+		    list, sel_registerName("objectAtIndex:"), i);
+		if (!w) continue;
+		if (!guarded) return w;
+		if ((char)((char (*)(void *, void *))objc_msgSend)(w, sel_registerName("isVisible")))
+			return w;
+	}
+	return 0;
+}
+
+static obj_t panel_sheet_window(obj_t app) {
+	obj_t w = 0;
+	if (panel_has_instance("NSApplication", "keyWindow"))
+		w = ((obj_t (*)(void *, void *))objc_msgSend)(app, sel_registerName("keyWindow"));
+	if (!w && panel_has_instance("NSApplication", "mainWindow"))
+		w = ((obj_t (*)(void *, void *))objc_msgSend)(app, sel_registerName("mainWindow"));
+	if (!w) w = panel_visible_window(app);
+	return w;
+}
+
+// Opens an NSOpenPanel.
+//
+//   runModal = 1  calls -runModal and BLOCKS this thread until the user answers.
+//                 Called from JS that stops the JavaScript thread and the Cocoa
+//                 pump for the duration; accepted for a file picker, and stated
+//                 as blocking rather than dressed up as async.
+//   runModal = 0  calls -beginSheetModalForWindow:completionHandler: with a NULL
+//                 completion and returns at once. Nothing ever reports the
+//                 sheet's result, so it can only start one, never collect paths.
+//                 With no key window there is nothing to attach a sheet to and
+//                 this returns SHIM_PANEL_NO_WINDOW without sending.
+int shim_open_panel(const char *title, int allowDirectories, int allowMultiple, int runModal) {
+	panel_reset();
+
+	// The panel class and its factory must exist before anything is built.
+	if (!objc_getClass("NSOpenPanel")) return SHIM_PANEL_UNSUPPORTED;
+	if (!shim_responds((obj_t)objc_getClass("NSOpenPanel"),
+	                   sel_registerName("openPanel")))
+		return SHIM_PANEL_UNSUPPORTED;
+
+	// A sheet needs a window first: sending beginSheet… with a nil window is an
+	// AppKit exception, and an exception here is a crashed process.
+	obj_t sheet_window = 0;
+	if (!runModal) {
+		obj_t app = 0;
+		if (shim_responds((obj_t)objc_getClass("NSApplication"),
+		                  sel_registerName("sharedApplication"))) {
+			app = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSApplication"),
+			                                               sel_registerName("sharedApplication"));
+		}
+		if (!app) return SHIM_PANEL_NO_WINDOW;
+		if (!panel_has_instance("NSOpenPanel", "beginSheetModalForWindow:completionHandler:"))
+			return SHIM_PANEL_UNSUPPORTED;
+		sheet_window = panel_sheet_window(app);
+		if (!sheet_window) return SHIM_PANEL_NO_WINDOW;
+	}
+
+	obj_t panel = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSOpenPanel"),
+	                                                        sel_registerName("openPanel"));
+	if (!panel) return SHIM_PANEL_UNSUPPORTED;
+
+	// Selection shape. Both flags are BOOL parameters, sent as an int exactly
+	// like shim_send_vb1 does; every one is guarded first.
+	if (!panel_has_instance("NSOpenPanel", "setCanChooseFiles:") ||
+	    !panel_has_instance("NSOpenPanel", "setCanChooseDirectories:") ||
+	    !panel_has_instance("NSOpenPanel", "setAllowsMultipleSelection:"))
+		return SHIM_PANEL_UNSUPPORTED;
+	((void (*)(void *, void *, int))objc_msgSend)(
+	    panel, sel_registerName("setCanChooseFiles:"), allowDirectories ? 0 : 1);
+	((void (*)(void *, void *, int))objc_msgSend)(
+	    panel, sel_registerName("setCanChooseDirectories:"), allowDirectories ? 1 : 0);
+	((void (*)(void *, void *, int))objc_msgSend)(
+	    panel, sel_registerName("setAllowsMultipleSelection:"), allowMultiple ? 1 : 0);
+
+	if (title && title[0] && panel_has_instance("NSOpenPanel", "setTitle:")) {
+		obj_t t = panel_nsstring(title);
+		if (t) ((void (*)(void *, void *, obj_t))objc_msgSend)(panel, sel_registerName("setTitle:"), t);
+	}
+
+	if (!runModal) {
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    panel, sel_registerName("beginSheetModalForWindow:completionHandler:"), sheet_window,
+		    (obj_t)0);
+		return SHIM_PANEL_SHEET_STARTED;
+	}
+
+	if (!panel_has_instance("NSOpenPanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
+	long long response =
+	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
+	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
+
+	panel_collect(panel);
+	return panel_paths_used > 0 ? SHIM_PANEL_PICKED : SHIM_PANEL_CANCELLED;
+}
+
+int shim_open_panel_count(void) { return panel_paths_used; }
+
+// The path at `index`, or "" out of range. Static storage: valid until the next
+// shim_open_panel call, which is all a caller needs.
+const char *shim_open_panel_path(int index) {
+	if (index < 0 || index >= panel_paths_used) return "";
+	return panel_paths[index];
+}

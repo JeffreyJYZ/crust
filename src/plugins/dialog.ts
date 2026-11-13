@@ -2,10 +2,13 @@
  * `crust:dialog` — native open panels.
  *
  * `NSOpenPanel` is AppKit, and this module owns no AppKit. It takes the native
- * implementation as a parameter, so the day the shim exposes `NSOpenPanel` the
- * only change is passing one adapter in; until then `openPanel` returns a typed
- * `NotImplemented` naming the selector, and the registry turns that into a
- * `not-implemented` error. It never silently resolves an empty list.
+ * implementation as a parameter, so the platform half stays in
+ * `platform/darwin` and this file works unchanged on a platform that has none.
+ * macOS supplies `darwinDialogAdapter()` from there; without an adapter
+ * `openPanel` returns a typed `NotImplemented` naming the selector, and the
+ * registry turns that into a `not-implemented` error. It never silently
+ * resolves an empty list for a missing implementation — an empty list means the
+ * user cancelled, and nothing else.
  */
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
@@ -28,7 +31,14 @@ export interface OpenPanelResult {
 	paths: string[];
 }
 
-/** The AppKit half, supplied once `NSOpenPanel` is reachable. */
+/**
+ * The native half, supplied by the platform.
+ *
+ * Resolving `{ paths: [] }` means the user cancelled; a platform that cannot
+ * show a picker at all rejects instead, so the two are never confused. An
+ * implementation built on `-runModal` blocks the JavaScript thread for as long
+ * as the picker is open — see `darwinDialogAdapter` in `platform/darwin`.
+ */
 export interface DialogNative {
 	pickOpen(options: OpenPanelOptions): Promise<OpenPanelResult>;
 }
