@@ -58,6 +58,34 @@ Both fixes were measured rather than assumed:
 
 Either way the assertion already exists: the script reads the shipped files for alias imports and refuses to pass while the alias ships without its `paths`.
 
+## Shipping crust as one binary
+
+`bun build --compile --asset=<path>` embeds files in the executable and Bun exposes them both as `Bun.embeddedFiles` and at `/$bunfs/root/<path>`. `src/cli/assets.ts` reads disk first and falls back to the embedded copy, so the same code serves a checkout and a binary, and `crustRoot` finds the package root by looking for `templates/` instead of counting `..`.
+
+Measured with stable Bun 1.4.4, from the repo root:
+
+```sh
+bun build --compile --outfile dist/crust src/cli/index.ts \
+  --asset=templates --asset=docs --asset=src/platform/darwin \
+  --asset=tsconfig.json --asset=package.json
+```
+
+89,407,586 bytes. `crust --version` (0.1.1) and `crust init app --next` both work under `env -i PATH=/usr/bin:/bin`, and `crust doctor` in that scaffold reports shim, window and templates ok — the shim compiled from the embedded source, since there is no checkout to point at.
+
+Two embedding shapes are not symmetric, which cost an hour: `--asset=<dir>` keeps the directory's own name and everything below it (`--asset=src/platform/darwin` yields `darwin/shim.c`, not `src/platform/darwin/shim.c`), while `--asset=<file>` keeps only the basename. A lookup therefore falls back to the basename, and only when exactly one embedded file carries it.
+
+**What still needs a checkout** is `dev` and `build`: the entry they generate imports the framework's own sources (`src/runtime.ts`, `src/single.ts`) at absolute paths, and a child `bun build --compile` cannot read a path inside another executable. The fix is the trick the shim already uses — embed those sources as text and materialise them next to the generated entry — which is not done yet.
+
+**AOT**, measured on canary 1.4.5 (`bun compile` is `bun build --compile --aot`):
+
+| build | size | startup (60 runs) |
+| --- | --- | --- |
+| `bun compile` | 56.1 MB | 12.5 ms |
+| `bun compile --trim` | 38.2 MB | 10.6 ms |
+| `--no-aot` | 136.3 MB | 10.8 ms |
+
+AOT is not faster — a 300M-iteration loop ran 215.2 ms against 211.9 ms, so no-aot won by 1.5%, and JSC's JIT out-optimises the ahead-of-time output on this workload. Its value is size and memory, 2.4× smaller and 3.6× with `--trim`. One caveat decides crust's use of it: AOT refuses `import()` from disk (`Cannot load …: it isn't in this executable`), and crust loads the user's `crust.config.ts`, so `--aot-allow-code-from-disk` is mandatory — 3.9 MB, and then AOT's size advantage narrows.
+
 ## Reading a stale copy
 
 `bunx github:JeffreyJYZ/crust` caches its resolution under a hash of the specifier, so a bare spec can keep serving the commit it first resolved — a command added on `main` then reports `crust: unknown option`. Two cache directories are involved and both are safe to delete: `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*` (the resolved git package) and `~/.bun/install/cache/.bunx-501/crust@github@*` (the bunx install of it). Naming a ref (`#main`, or a commit) is a different specifier and resolves fresh; it goes stale the same way afterwards. The durable fix is publishing to npm, where a version is a version.
