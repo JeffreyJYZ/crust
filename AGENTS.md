@@ -21,6 +21,7 @@ live in `DESIGN.md`; research reports in `research/`.
   `fs`, the window title and the tray from a page. A green gate is the only proof a landing is safe.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
+- **After a probe that launches or activates a GUI app, hand focus back to Ghostty** (`open -a Ghostty`) — a probe that opens a test window leaves the human looking at it and switching back by hand (user, 2026-11-13). And capture *before* touching the shell: a screenshot taken after a command shows the terminal over the app, not the app.
 
 ## Things that cost a crash or a wrong answer
 
