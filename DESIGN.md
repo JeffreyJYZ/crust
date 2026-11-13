@@ -160,6 +160,12 @@ Security checks behave: a missing or wrong token gets `401` and the correct one 
 
 Development has the shape predicted: from a Vite origin the bridge answers `204/200/200` with an echoed `Access-Control-Allow-Origin` and `Vary: origin`, while a foreign origin stays `403` even with the dev origin configured.
 
+### Origin stability, an unfixed design gap
+
+The bridge binds port `0`, so its URL — and therefore the page's origin — changes on every launch. Anything origin-scoped is then thrown away each run: `localStorage`, `IndexedDB`, cookies, service workers, and WebKit's per-origin caches. That is invisible for a hello-world and fatal for a client that wants to persist state, which is exactly what the M5 plan found.
+
+Three candidate fixes, none measured yet: bind a port derived from the app id (stable, but a collision is possible and must be retried), serve the page from a custom `crust://` scheme via `WKURLSchemeHandler` (a stable origin with no port at all, at the cost of a runtime-created delegate and the HTTP tooling the current design leans on), or keep `port 0` and move persistence into a native store behind a plugin. The third is the smallest change and the largest loss of web-platform familiarity, so this is a decision to make before M5 rather than during it.
+
 ### App Transport Security
 
 `WKWebView` will refuse a plain-http load unless `Info.plist` carries an App Transport Security exemption, and the key that governs a webview is not the local-networking one:
