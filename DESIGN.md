@@ -24,13 +24,15 @@ Deliberate non-goals for v1: native widgets (webview only), Windows and Linux im
 
 ### The size truth
 
-Tauri's floor is roughly 3–8 MB because it ships no JavaScript engine. crust's floor is roughly **85 MiB**, measured on this machine with Bun 1.4.4, because Bun embeds JavaScriptCore and the whole runtime ships inside the binary. A hello-world compiled to exactly 89,159,906 bytes; a build with three thousand functions added only 161 KiB to it, so the app's own code is noise against the runtime.
+Tauri's floor is roughly 3–8 MB because it ships no JavaScript engine. crust's floor is roughly **85 MiB**, measured on this machine with Bun 1.4.4, because Bun embeds JavaScriptCore and the whole runtime ships inside the binary. A hello-world compiles to **89,407,586 bytes (85.27 MiB)** — `stat` on the file `bun build --compile` wrote — and a build with three thousand functions added only 161 KiB to it (spike, 2026-11-13), so the app's own code is noise against the runtime. The earlier figure in this document, 89,159,906 bytes, was the spike's own build and is superseded; the bundle ships a slightly smaller file again, because `codesign --sign -` rewrites the executable (§11).
 
 `--trim` is a **no-op on Bun 1.4.4 stable**: it is absent from `bun build --help`, unknown flags are accepted in silence, and the output is byte-identical with and without it. The 22.9 MiB figure circulating for compiled Bun binaries requires `--aot` on a canary build, and `--aot` does not exist in stable either.
 
 This is a real correction to the plan: the size claim crust can make is "no bundled Chromium", which holds — an Electron app is several times larger — but it is not "half of Tauri". Against Tauri it is roughly ten times bigger, and that is the runtime, not the app.
 
-Cold start is the good news, measured on the compiled binary without a webview: median 5.76 ms for the whole process, 4.37 ms to a listening `Bun.serve`. Webview creation is not in either figure and is the part still unknown.
+Cold start is the good news, and it is now measured with the webview rather than around it: on the built `examples/hello` bundle, launched directly from its `Contents/MacOS` path, the window is ordered in at a **median 203.8 ms** (worst 790.1 ms) and the page's first `invoke` is answered at a **median 448.8 ms** (worst 1.70 s), over ten runs (§11). The spike's 5.76 ms median for the whole process and 4.37 ms to a listening `Bun.serve` were the compiled binary with no webview, and they are not the number a user waits for.
+
+Idle is **101–102 MiB of physical footprint for the whole group** — the app binary plus WebKit's GPU, WebContent and Networking helpers — which is the honest running cost of a window. `ps` RSS reads 158–178 MiB for the same four processes because the 85 MiB executable and the WebKit frameworks are clean file-backed pages, shared and reclaimable; the app binary alone is 97–113 MiB of RSS against a 38 MiB footprint (§11).
 
 **Accepted, 2026-11-12**: 85 MiB stands as the cost of shipping neither Rust nor Chromium, on the reasoning that cold start is the number a user actually feels. The size claim in any readme is "no bundled Chromium", never "as small as Tauri".
 
@@ -154,7 +156,9 @@ Two isolation ideas worth taking from Electrobun: it ships two compiled preloads
 
 ### Measured on this machine
 
-The bridge is fast enough that it is not a design constraint: an invoke round-trip over 200 calls has a median of **0.119 ms** and a p99 of 1.276 ms, against a same-process call at 0.0005 ms. The socket accounts for 99.6% of that cost, so a reused connection (0.045 ms) is worth having. Binding a fixed port was measured at 0.11 ms; the walk-up only runs when the preferred port is busy.
+**2026-11-13, the shipped bridge.** 200 sequential invokes of a no-op handler through `src/bridge/server.ts`, one warm-up call first: **median 0.067 ms, p99 0.475 ms on a reused connection**, and median 0.149 ms, p99 0.361 ms when each request opens a fresh one. The measurement uses `fetch` from the same process, which is the client the page itself uses, so it is honest about the path but not comparable line-for-line with the raw-socket probe below.
+
+**2026-11-12, the spike's candidate server.** The bridge is fast enough that it is not a design constraint: an invoke round-trip over 200 calls has a median of **0.119 ms** and a p99 of 1.276 ms, against a same-process call at 0.0005 ms. The socket accounts for 99.6% of that cost, so a reused connection (0.045 ms) is worth having. Binding a fixed port was measured at 0.11 ms; the walk-up only runs when the preferred port is busy.
 
 Security checks behave: a missing or wrong token gets `401` and the correct one `200`; own origin `200`, absent `Origin` **`403`**, foreign origin `403`. SSE delivered 20 of 20 frames in order with a 20.38 ms median gap and no coalescing. One-megabyte bodies take 2.4 ms as JSON and 1.8 ms as binary. A stopped server rebinds the same port in 0.45 ms and a child process exits clean in 12 ms.
 
@@ -316,7 +320,7 @@ AOT is a separate axis and is not a speed win: canary `bun compile` produced 56.
 
 1. **Variadic `objc_msgSend` with no compiled artifact — resolved, with a trap.** `cc()` is measured working end to end, so no native artifact is needed and the ladder stays internal to the shim. The residual risk is ergonomic, not existential: every send goes through a fixed prototype, and a mistake returns wrong values with no error anywhere.
 2. **Runtime-created delegates with `JSCallback` IMPs.** Without them there is no window close event, no navigation policy, no download handling. Second thing to prove.
-3. **Sub-300 ms cold start.** Bun starts in tens of milliseconds and `WKWebView` creation plus web-process launch is the expensive part. If HTTP serving is the difference, fall back to `loadHTMLString` for single-file builds or a scheme handler for split assets.
+3. **Sub-300 ms cold start.** Bun starts in tens of milliseconds and `WKWebView` creation plus web-process launch is the expensive part. Measured 2026-11-13: the window is up at a median 204 ms, but the page's first `invoke` lands at a median 449 ms — the bar is met for *window visible* and missed for *page interactive*, and the gap is WebKit's own process launch, not HTTP serving. If the gap is ever worth closing, fall back to `loadHTMLString` for single-file builds or a scheme handler for split assets.
 4. **Struct-free AppKit is mandatory, not merely tidy.** Structs cannot be passed or returned across `bun:ffi` on 1.4.4, including through the indirect-result pointer. The rect is therefore built on the C stack and the initializer is called from C — `shim_window_new` in the spike does exactly that — while views are positioned by Auto Layout constraints. `setFrame:` appears nowhere. Note that `[[NSWindow alloc] init]` is not a shortcut for this: it aborts the process from AppKit's own event thread, measured below.
 5. **`UNUserNotificationCenter`** needs a bundle identity and may not be reachable from `libobjc` alone, which would block the `notification` plugin.
 6. **Windows and Linux** almost certainly need a compiled shim. Accepted as a later decision.
@@ -335,7 +339,7 @@ Three things the spike settled the hard way, all now traps in §2: `[[NSWindow a
 
 The remaining startup cost is WebKit's own process launch, so the sub-300 ms claim holds for *window visible*, not for *page painted*.
 
-**M1 — bridge. DONE, 2026-11-13.** Ephemeral port, token injection, invoke, SSE, assets embedded in the binary. Measured: 0.064 ms median invoke, 0.142 ms p99 on a reused connection; 47 tests over bridge and plugins; every rejection rule asserted.
+**M1 — bridge. DONE, 2026-11-13.** Ephemeral port, token injection, invoke, SSE, assets embedded in the binary. Measured: 0.064 ms median invoke, 0.142 ms p99 on a reused connection; 47 tests over bridge and plugins; every rejection rule asserted. §11 re-took the latency on the shipped bridge the same day: the median held (0.067 ms), the p99 did not (0.475 ms).
 
 **M2 — packaging. DONE, 2026-11-13.** `crust build` emits an 85.12 MiB ad-hoc-signed `.app` whose binary runs directly and exits 0; `Info.plist` carries both ATS keys; `crust doctor` runs nine checks and exits 1 naming the failure. Icon generation exists; it has only been proven on its rejection path, since no ≥1024 source was available.
 
@@ -351,13 +355,69 @@ A stranger's path is now measured end to end in one script: `bun run verify:firs
 
 ---
 
-## 11. Measurement plan
+## 11. Measurements
 
 Claims only count with numbers attached, and each number needs the command that produced it.
 
-- **Cold start** — timestamp at the first line of the Bun entry, timestamp inside the page at `window.crust.ready`, and the difference. Measure by running the binary inside the bundle directly, `App.app/Contents/MacOS/<bin>`, ten times, reporting median and worst. Never `hyperfine "open -W -a …"`: that times LaunchServices, not the app.
-- **Idle RAM** — the whole process group: the app binary, WebKit's `WebContent`, `GPU`, and `Networking` helpers. `ps` RSS overstates cost because the WebKit helpers share read-only framework pages, so report `vmmap --summary` physical footprint alongside RSS, as a range, never a single figure.
-- **Binary size** — the compiled binary and the assembled `.app` separately, and record that `--trim` changed nothing on Bun 1.4.4 rather than reporting it as applied.
-- **IPC latency** — in-page `performance.now()` before and after a no-op `invoke`, over a hundred calls, median and p99.
+Everything in this section was re-taken on 2026-11-13 against this checkout: macOS 27.0.1 on an M4 air, `bun --revision` → `1.4.4+38afee6c8`, project `examples/hello`. A second session was building in the same checkout during some of the runs; that is where the spread below comes from, and it is not crust.
+
+### Cold start
+
+Command: `cd / && "/…/examples/hello/dist/Hello crust.app/Contents/MacOS/crust-app"` — the bundle's own executable, launched from the working directory a double-clicked app gets, exactly as `e2e.ts` launches it. Timed from just before `spawn` to the app's own stdout lines — `window    Hello crust is open` (printed after `makeKeyAndOrderFront:`) and `greet     hello jyz (page call answered)`, which is the backend answering an invoke the page sent. The child is spawned detached so the whole group can be signalled: 15 s deadline, `SIGTERM` to the group, `SIGKILL` after 5 s, then `pgrep -fl` on the bundle path. Ten runs, every one exited 0, nothing left behind. Never `open`, which times LaunchServices instead of the app.
+
+| marker | best | median | worst |
+| --- | --- | --- | --- |
+| window ordered in | 188.7 ms | 203.8 ms | 790.1 ms |
+| page's first invoke answered | 435.3 ms | 448.8 ms | 1.70 s |
+
+The worst is always the first launch: an 85 MiB executable with no page cache. Three ten-run sets — two on a frozen copy of the signed bundle, one on the build that preceded it — gave medians of 180, 204 and 266 ms for the window (430, 449 and 516 ms for the invoke), so treat the median as ~200 ms / ~450 ms and the worst as "the first run after a copy".
+
+### Idle footprint
+
+Four processes: the app binary, and WebKit's `GPU`, `WebContent` and `Networking` services. The helpers are **not** in the app's process group — they are XPC services with their own pgid — so they are attributed by diffing `ps -Ao pid=,command=` for `WebKit` immediately before launch against the same list while the app idles, never by walking the group. Per-process figures from `vmmap --summary <pid>` and `ps -o rss= -p <pid>`, four seconds after the first invoke, over three launches:
+
+| process | physical footprint | `ps` RSS |
+| --- | --- | --- |
+| app binary | 38.1–38.8 MiB | 97–113 MiB |
+| WebKit GPU | 15.4–15.9 MiB | 15–18 MiB |
+| WebKit WebContent | 20.8–21.1 MiB | 24–28 MiB |
+| WebKit Networking | 26.1–26.3 MiB | 14–27 MiB |
+| **group** | **101–102 MiB** | **158–178 MiB** |
+
+RSS overstates by about 60%: the app binary mmaps its own 85 MiB executable, and every helper shares read-only WebKit and WebCore framework pages, all of it reclaimable. The footprint column is the number to quote, and it stays a range. A run that picked up a second `GPU` helper from another app read 183 MiB, which is the noise this attribution has to be read against.
+
+### Build time and sizes
+
+`crust build --dir examples/hello`, three runs on a warm filesystem: **0.52 s, 0.55 s, 0.53 s** wall (`/usr/bin/time -p`). Bun reports the compile step alone as `[118ms] compile`; bundle assembly and `codesign --sign -` are the rest. `src/packaging/build.ts` was in flux while these ran — it gained an AOT branch in `b6174f8`, committed four minutes after the last build — so the times and byte counts are the tree as it stood at 22:07 on 2026-11-13, not a frozen commit; on Bun 1.4.4 the branch it takes is the same `bun build --compile --trim` timed here, which is why the figures hold after that commit.
+
+| artifact | size | how |
+| --- | --- | --- |
+| compiled binary, `dist/crust-app` | 89,407,586 B (85.27 MiB) | `stat -f '%z'` |
+| executable inside the bundle | 88,887,936 B (84.77 MiB) | `stat -f '%z'` — `codesign` rewrites the Mach-O, so it is a different file from the one compiled |
+| whole `.app` | 84 MiB | `dust -s "examples/hello/dist/Hello crust.app"` |
+
+`crust build` also prints `assembled 85.28 MiB 89,419,776 bytes`, which is its own allocated-block sum (`src/packaging/app.ts`) and matches neither the executable's logical size nor its 88,891,392 allocated bytes (`stat -f '%b'`, 173,616 blocks of 512). Quote the `stat` numbers.
+
+`--trim` was re-checked rather than assumed: `bun build --compile` with it and without is **byte-identical**, same sha256, when the outfile name is held equal — the name is embedded, so two differently named outputs differ in hash while agreeing in size. So nothing is reported as trimmed, and `bun compile`, the AOT entry point that would make trimming meaningful, is not on this Bun at all: `bun compile --help` exits 1 with `error: Script not found "compile"`. The one flag that does bite is `--minify`, and it saves 33,024 bytes of 89,407,586 — 0.04%, which is the "runtime, not the app" point measured a second way.
+
+### Invoke latency
+
+`startBridge` from `src/bridge/server.ts` with a no-op handler, 200 sequential `POST /_crust/invoke` calls after one warm-up, `fetch` from the same process, median and nearest-rank p99:
+
+| path | median | p99 |
+| --- | --- | --- |
+| reused connection | 0.067 ms | 0.475 ms |
+| fresh connection per call | 0.149 ms | 0.361 ms |
+
+A page pays the reused figure from its second call on. The spike's 0.119 ms median and 1.276 ms p99 came from a raw-socket probe against a candidate server and stay in §4 as that; they are a different client, so do not line them up against this table.
+
+### Historical, not re-measured
+
+These are unchanged and dated where they appear: compile-only process start 5.76 ms and 4.37 ms to a listening `Bun.serve` (2026-11-12); `NSApplicationLoad` 28–44.5 ms, `WKWebView alloc+init` 165 ms, `isVisible=1` at 299.5 ms (M0, 2026-11-13); the SSE, body-size, rebind and child-exit numbers in §4 (2026-11-12); the pump's tick-delivery series in §3 (2026-11-12). Their probes are in `research/`, and none was cheap enough to repeat in this pass.
+
+### Still unmeasured
+
+- **Anything timed from inside the page.** `window.crust.ready` exists (`src/bridge/client.ts` resolves it on the first `crust:ready` SSE frame), but `examples/hello`'s page reports nothing back to the backend, so timing it in place needs a page change this pass did not make. The invoke-answer line above is the page-side marker that was available: it covers the first document load and the first invoke, and it is later than `ready` by however long the page took to start its fetch.
+- **A warm first launch.** Every worst case in the cold-start table is a cold page cache. A second launch of the same binary within a session is the number a user gets when reopening an app, and it was not measured separately.
 
 Anything not measured is written down as a guess.
