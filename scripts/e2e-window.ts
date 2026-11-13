@@ -36,7 +36,7 @@
  * window that never loaded its page fails here instead of racing the close.
  *
  * Usage:
- *   bun scripts/e2e-window.ts    # or `bun run e2e:window` once package.json defines it
+ *   bun scripts/e2e-window.ts    # or `bun run e2e:window`
  *
  * Two facts this script is built around:
  *

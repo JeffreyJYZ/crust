@@ -84,10 +84,7 @@ async function main(): Promise<number> {
 
 async function proof(verdict: Verdict, scratch: string): Promise<number> {
 	// ---- 1. build through the CLI, as a user runs it ------------------------
-	const build = await runCommand(
-		[CLI, "build", "--dir", "examples/notes"],
-		REPO_ROOT,
-	);
+	const build = await runCommand([CLI, "build", "--dir", "examples/notes"], REPO_ROOT);
 	const namedBundle = build.stdout.includes(BUNDLE);
 	const built = build.code === 0;
 	const buildOk = verdict.check(

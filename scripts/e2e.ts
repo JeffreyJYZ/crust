@@ -67,10 +67,7 @@ async function main(): Promise<number> {
 	await clearSurvivors(BINARY);
 
 	// ---- 1. build through the CLI, as a user runs it ------------------------
-	const build = await runCommand(
-		[CLI, "build", "--dir", "examples/hello"],
-		REPO_ROOT,
-	);
+	const build = await runCommand([CLI, "build", "--dir", "examples/hello"], REPO_ROOT);
 	const namedBundle = build.stdout.includes(BUNDLE);
 	const built = build.code === 0;
 	const buildOk = verdict.check(

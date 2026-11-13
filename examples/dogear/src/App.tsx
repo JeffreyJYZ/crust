@@ -356,6 +356,30 @@ export function App() {
 		}
 	}, []);
 
+	/**
+	 * End a sheet no human answered.
+	 *
+	 * It is a menu-bar row rather than a page button because a picker is modal
+	 * to the window it is attached to: the page behind it is disabled, so the
+	 * tray is the app's only in-app way out that a person can still reach while
+	 * a folder or save sheet is up. A cancel answers the pending invoke with the
+	 * same `{ paths: [] }` the panel's own Cancel button gives it, and nothing
+	 * else changes.
+	 */
+	const cancelPanel = useCallback(async () => {
+		try {
+			const answer = await plugin<{ cancelled: boolean }>("dialog", "cancel", {});
+			setStatus({
+				kind: "idle",
+				text: answer?.cancelled
+					? "panel cancelled — nothing was picked"
+					: "no panel was open",
+			});
+		} catch (error) {
+			setStatus({ kind: "bad", text: `cancel: ${describe(error)}` });
+		}
+	}, []);
+
 	const quit = useCallback(async () => {
 		setStatus({ kind: "idle", text: "quitting…" });
 		await appCommand("quit").catch(() => undefined);
@@ -371,8 +395,8 @@ export function App() {
 	}, []);
 
 	/** The tray's clicks arrive as an event, so its handlers have to stay current. */
-	const actions = useRef({ save, closeWindow, reopenWindow, quit });
-	actions.current = { save, closeWindow, reopenWindow, quit };
+	const actions = useRef({ save, cancelPanel, closeWindow, reopenWindow, quit });
+	actions.current = { save, cancelPanel, closeWindow, reopenWindow, quit };
 
 	/** Boot runs once; `openNote` changes identity on every keystroke, so it is read here. */
 	const openNoteRef = useRef(openNote);
@@ -437,6 +461,7 @@ export function App() {
 		try {
 			return bridge().listen<{ index: number; label: string }>("tray:click", ({ label }) => {
 				if (label === "Save now") void actions.current.save();
+				else if (label === "Cancel panel") void actions.current.cancelPanel();
 				else if (label === "Close window") void actions.current.closeWindow();
 				else if (label === "Reopen window") void actions.current.reopenWindow();
 				else if (label === "Quit Dogear") void actions.current.quit();

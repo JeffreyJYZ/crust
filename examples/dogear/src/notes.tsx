@@ -15,8 +15,21 @@ export interface Note {
 	modified: number;
 }
 
-/** The menu-bar rows; a click comes back as `tray:click { index, label }`. */
-export const TRAY_ITEMS = ["Save now", "Close window", "Reopen window", "Quit Dogear"] as const;
+/**
+ * The menu-bar rows; a click comes back as `tray:click { index, label }`.
+ *
+ * `Cancel panel` is here, and not on a button, because a picker is a *sheet*:
+ * AppKit disables the window it is attached to, so a control behind it cannot be
+ * clicked. The menu bar is outside that window, which makes it the one surface
+ * still usable while a sheet is up.
+ */
+export const TRAY_ITEMS = [
+	"Save now",
+	"Cancel panel",
+	"Close window",
+	"Reopen window",
+	"Quit Dogear",
+] as const;
 
 export const EXTENSION = ".md";
 

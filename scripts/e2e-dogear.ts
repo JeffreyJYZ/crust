@@ -15,10 +15,13 @@
  *
  * The false pass this is built to avoid: matching `PASS` without reading the
  * step names. A step that stops running would leave ten PASS lines and still
- * exit 0, so the set of names is asserted exactly and in order. The two panel
- * steps are the honest exception — no run completes a pick, so what passes is the
- * sheet being *up and still pending*, and those assertions say so rather than
- * reading a pending invoke as a choice.
+ * exit 0, so the names are asserted exactly — each expected step once, nothing
+ * extra, no duplicates — but as a set rather than a sequence: every step's line
+ * reaches the backend as its own bridge message, so two can arrive in either
+ * order even though the page awaited them in turn. The two panel steps are the
+ * honest exception — no run completes a pick, so what passes is the sheet being
+ * *up and still pending*, and those assertions say so rather than reading a
+ * pending invoke as a choice.
  *
  * The example is copied to a scratch tree first, because two facts make the
  * in-repo directory the wrong thing to build: it has no `node_modules` (an
@@ -46,7 +49,7 @@ const APP_NAME = "Dogear";
 const BINARY_NAME = "crust-app";
 
 /**
- * Every step the page reports, in the order `src/selfcheck.ts` runs them. This
+ * Every step the page reports, in the order `src/selfcheck.tsx` runs them. This
  * list is the guard: a step that stops running shrinks the page's output, and
  * the comparison below fails instead of accepting ten of eleven.
  */
@@ -304,15 +307,25 @@ async function proof(
 	// accept a rename. Comparing the sequence is the whole guard.
 	const reported = steps.map((entry) => entry.step);
 	const missing = STEPS.filter((step) => !reported.includes(step));
+	const counts = new Map<string, number>();
+	for (const step of reported) counts.set(step, (counts.get(step) ?? 0) + 1);
+	const repeated = [...counts].filter(([, seen]) => seen > 1).map(([step]) => step);
 	const extra = reported.filter((step) => !(STEPS as readonly string[]).includes(step));
-	const ordered = reported.length === STEPS.length && STEPS.every((s, i) => reported[i] === s);
+	// Set, not sequence: each step's line reaches the backend as its own bridge message, so
+	// two of them can arrive in either order even though the page awaited them in turn. A
+	// dropped, renamed or repeated step still fails — count, names and duplicates are exact.
+	const stepsOk =
+		missing.length === 0 &&
+		extra.length === 0 &&
+		repeated.length === 0 &&
+		reported.length === STEPS.length;
 	const why =
 		`${reported.length} step lines — ` +
 		`${missing.length > 0 ? `missing ${missing.join(", ")}` : "none missing"}` +
 		`${extra.length > 0 ? `, unexpected ${extra.join(", ")}` : ""}` +
-		`${missing.length === 0 && extra.length === 0 ? `, out of order: ${reported.join(", ")}` : ""}` +
+		`${repeated.length > 0 ? `, repeated ${repeated.join(", ")}` : ""}` +
+		`${stepsOk ? `: ${reported.join(", ")}` : ""}` +
 		` — ${run.ended === "match" ? "the page printed done, so a step was dropped, renamed or repeated" : run.timedOut ? `no done line within ${APP_TIMEOUT_MS / 1000} s` : "the page stopped early"}`;
-	const stepsOk = ordered && extra.length === 0;
 	verdict.check(
 		"step names",
 		stepsOk,
