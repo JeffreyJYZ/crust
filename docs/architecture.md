@@ -139,6 +139,17 @@ Each of these has already cost a debugging session. The file beside each one is 
 
 These are properties of `bun:ffi`, not of the window shim: `status_bar.c` and `notifications.c` obey the same four rules, build their strings with `-initWithBytes:length:encoding:`, and never hand an object across the boundary. A new C unit that breaks one of them will fail the same way, in the same place — at a later send, not at the mistake.
 
+## One copy of the framework, or two `app` singletons
+
+`crust` is a normal dependency of the project, and it is also the thing running the project. Those are two specifiers for the same code, and if they resolve to different files the app has two `app` objects — one holding the registered commands and the config, the other holding the bridge and the window.
+
+Both entry points therefore resolve the project's own copy, by realpath, and fall back to the CLI's only when the project has none:
+
+- `crust build` imports the runtime from `projectCrustRoot(dir)` when it generates the wrapper (`src/cli/build.ts`), so `app.run()` in the entry runs on the instance the wrapper configured.
+- `crust dev` spawns the runtime child from the same root (`src/cli/dev.ts`), so a command registered in `main.ts` is visible to the bridge.
+
+The failure is not subtle when it happens, and it only reproduces with an installed crust: a built app launched outside its project directory died with `no crust config in /`, and `crust dev` answered `crust: unknown command "greet"` for a command that was registered. A checkout hides both, because `link:` makes the two specifiers one realpath — which is why the e2e suites accept `CRUST_BIN` and are run against an installed tarball, not only against this tree.
+
 ## Where a frontend comes from
 
 Three paths, one bridge, and each one is a different file's business:

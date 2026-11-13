@@ -14,7 +14,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { isFrontendSource, isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
-import { frameworkRoot, inExecutable } from "./framework.ts";
+import { frameworkRoot, inExecutable, projectCrustRoot } from "./framework.ts";
 import { fail, line, missingInstall, resolveBackendEntry, type CliOptions } from "./util.ts";
 
 /**
@@ -169,7 +169,7 @@ async function spawnRuntime(options: RuntimeOptions) {
 	return Bun.spawn({
 		cmd: [
 			...run.command,
-			join(await frameworkRoot(), "src/runtime.ts"),
+			join(await projectCrustRoot(options.projectDir), "src/runtime.ts"),
 			"--config",
 			options.configPath,
 			"--entry",

@@ -750,8 +750,14 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 		// which child is which. The dev command is relative (`bun --bun
 		// ./node_modules/.bin/vite`), so it carries no scratch prefix to match.
 		const vite = seen.find((proc) => proc.command.includes(".bin/vite"));
-		const runtime = seen.find((proc) =>
-			proc.command.includes(join(REPO_ROOT, "src", "runtime.ts")),
+		// The runtime child comes from the project's own crust under `dev` (one module
+		// instance with the app's `import "crust"`), or from this checkout when the
+		// scaffold links to it. Both are accepted; a runtime outside both is a leak.
+		const runtime = seen.find(
+			(proc) =>
+				proc.command.includes(
+					join(scratch, "node_modules", "crust", "src", "runtime.ts"),
+				) || proc.command.includes(join(REPO_ROOT, "src", "runtime.ts")),
 		);
 		// The template runs the dev server under Bun. If it went through the `.bin`
 		// shebang instead, `node` would hold it — which is the bug this guards against.

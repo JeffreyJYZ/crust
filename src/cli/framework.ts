@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,6 +21,32 @@ function inExecutable(): boolean {
 
 /** True when runtime paths live inside a compiled executable rather than a checkout. */
 export { inExecutable };
+
+/**
+ * The crust package the project itself depends on, when it has one.
+ *
+ * Everything a project runs has to come from the same module instance the app's
+ * `import "crust"` resolves to. Otherwise two copies of the framework exist — the CLI's
+ * and the project's — and each has its own `app` singleton: `app.run()` in a built entry
+ * never sees the config the wrapper passed, and under `crust dev` a command registered by
+ * `main.ts` is invisible to the runtime, which answers `crust: unknown command "greet"`.
+ *
+ * A checkout hides this because `link:` makes both specifiers one realpath. An installed
+ * crust exposes it, which is why this is resolved by realpath rather than by string.
+ */
+export async function projectCrustRoot(dir: string): Promise<string> {
+	const candidate = join(dir, "node_modules", "crust");
+	try {
+		const manifest = (await Bun.file(join(candidate, "package.json")).json()) as {
+			name?: unknown;
+		};
+		if (manifest.name === "crust" && (await exists(join(candidate, "src", "runtime.ts"))))
+			return await realpath(candidate);
+	} catch {
+		// No usable dependency: fall back to the framework this CLI carries.
+	}
+	return await frameworkRoot();
+}
 
 /**
  * A real directory holding crust's own sources, for the code `dev` and `build` generate.
