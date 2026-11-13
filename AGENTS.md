@@ -10,8 +10,9 @@ live in `DESIGN.md`; research reports in `research/`.
   (user, 2026-11-13) — the work partitions cleanly by directory, and one lane at a time serialises
   what could run beside it. Give each lane a disjoint file set; two writers in one file is how
   edits disappear.
-- **Every lane is `commandcode/deepseek/deepseek-v4.1-flash#high`** and pins it explicitly, since
-  the global config sets no `model`.
+- **Every lane is `opencode-go/deepseek-v4.1-flash#high`** and pins it explicitly, since the global
+  config sets no `model`. (Command Code was the lane until 2026-11-13; the OpenCode Go shelf
+  replaced it when that usage reset.)
 - **The gate is `bun check` && `bun run test` && `bun run e2e`**, plus `bun run e2e:notes` when the
   multi-file path is touched, `bun run e2e:single` when the single-file mode is touched,
   `bun run e2e:dev:react` when the dev-server path is touched (it drives a real Vite through
