@@ -1,0 +1,16 @@
+# Build output
+node_modules/
+dist/
+scripts/out/
+*.dmg
+*.app
+
+# Third-party clones used for recon. The reports beside them are kept;
+# the checkouts and their node_modules are not ours to publish.
+research/*/repo/
+
+# Throwaway probe output
+research/*/probe/
+
+.DS_Store
+*.log
