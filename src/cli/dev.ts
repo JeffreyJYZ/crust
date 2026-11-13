@@ -12,6 +12,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
 import { crustRoot, fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
 
@@ -131,9 +132,12 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 	const watcher = watch(dirname(options.entry), { recursive: true }, (_event, filename) => {
 		if (stopping || restarting) return;
 		// Frontend assets and build output are not backend code: `public/` is the
-		// bridge's to serve fresh, `dist/` is a build result, and both would
-		// otherwise restart the process for a change HMR should own.
-		if (/(^|[/\\])(public|dist|node_modules)([/\\]|$)/.test(String(filename ?? ""))) return;
+		// bridge's to serve fresh, `dist/` is a build result, `.next/` and `out/`
+		// are a framework's own output, and `.crust/` is crust's scratch. A change
+		// in any of them would otherwise restart the backend for a change the
+		// frontend should own — and a restart rotates the bridge token, so the
+		// loaded page then fails with a missing bearer token.
+		if (isIgnoredWatchPath(filename)) return;
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
 			if (wake) {

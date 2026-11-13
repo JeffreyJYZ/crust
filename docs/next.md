@@ -2,9 +2,7 @@
 
 **crust ships one binary that carries the Bun runtime, your backend code and your frontend files, and serves them from its own loopback bridge. There is no server at runtime, so a Next app only fits in `output: "export"` mode.** Server Components that fetch at request time, route handlers, middleware, ISR and `next/image` optimisation all need a process to answer a request; crust has none, and it will not grow one. A Next app that needs any of them cannot ship this way — that is a scope limit, not a missing feature. Server Components still exist and are still worth using; they just run **once, at `next build`**, and their output becomes static HTML plus client chunks in the export.
 
-The rest of this page is what the six files in `templates/next/` do, what they deliberately leave out, and what has and has not been run.
-
-**Nothing here has been run, and the build is unverified.** The pipeline below depends on `crust build` running `build.beforeBuildCommand` *before* it reads the asset directory, which is being added to `src/cli/build.ts` by another lane; until that lands, `crust build` would embed whatever stale `out/` happens to be on disk instead of a fresh export. Nothing in this template has been installed, built or opened. Verification — `bun install`, `bun run build`, run the binary inside the bundle — is the next step, and it needs that support present. Everything else was read from [api.md](api.md), [plugins.md](plugins.md), the config schema and the template as written.
+The rest of this page is what the template's files do, what they deliberately leave out, and what was measured. The whole pipeline below was run on macOS on 2026-11-13 — install, init, build, launch, dev — with crust at `github:JeffreyJYZ/crust#206093c` plus the two template files this page's "What was run" section names as the fix. Every number and every failure sentence quoted there is copied from that run, not reasoned from the code.
 
 ## The shape of the app
 
@@ -12,7 +10,7 @@ Two halves, two processes, one bundle:
 
 | half | runs where | what it is |
 | --- | --- | --- |
-| `app/`, `next.config.mjs` | `next build` only | a static export in `out/`, embedded into the binary at build time |
+| `app/`, `next.config.mjs`, `tsconfig.json` | `next build` only | a static export in `out/`, embedded into the binary at build time |
 | `main.ts`, `crust.config.ts` | the binary, at runtime | the Bun backend, the window, and the bridge that serves the export |
 
 The page talks to `main.ts` through `window.crust.invoke`, exactly like every other crust app. The bridge injects that client into the document it serves, so the export needs no knowledge of crust at all.
@@ -21,17 +19,27 @@ The page talks to `main.ts` through `window.crust.invoke`, exactly like every ot
 
 ```
 templates/next/
-  package.json       crust, next, react, react-dom; dev and build call crust
+  package.json       crust, next, react, react-dom; typescript and two @types for `next build`
   next.config.mjs    output: "export", images.unoptimized
+  tsconfig.json      app-only type program, so crust's own sources are never checked
   crust.config.ts    dev.url + beforeDevCommand, build.assets + beforeBuildCommand, one window
   app/layout.tsx     the root layout: <html lang="en">, metadata, the palette
   app/page.tsx       "use client": one component, one invoke after mount
   main.ts            one command, then app.run()
 ```
 
-Six files and that is the whole template. There is no `globals.css`: the palette is inline styles in `app/layout.tsx`, and `app/page.tsx` only sets what it needs on top. There is no `tsconfig.json` either — Next writes one on first run.
+Eight files and that is the whole template. There is no `globals.css`: the palette is inline styles in `app/layout.tsx`, and `app/page.tsx` only sets what it needs on top.
 
 `crust init <dir> --next` selects this template; `--react` selects React + Vite, and no flag gives the plain-HTML scaffold. Passing two template flags is refused before anything is written, naming both. The template is copied through the same token substitution the others use, so `{{package}}`, `{{name_text}}` and `{{crust_dep}}` are already resolved when you look at the files.
+
+## Why those three devDependencies are there
+
+`next build` runs `verifyTypeScriptSetup`, which does two things the template cannot opt out of:
+
+1. **It refuses a `.tsx` tree with no `typescript` installed.** It does not fail — it tries to install `typescript`, `@types/react` and `@types/node` **with npm**, and npm since v9 refuses git dependencies (`EALLOWGIT`), so the install fails and the build stops. Set `typescript: { ignoreBuildErrors: true }` and it still installs, because the check is about the toolchain, not about the check. Integrating crust from a `github:` spec — the only way to install it before a registry publish — makes this the default outcome, so the deps ship in the template. Measured both ways.
+2. **It type-checks every file reachable from what it includes.** `crust.config.ts` imports `type { CrustConfig } from "crust"`, and crust's `exports` maps `"."` to `./src/index.ts`. A default Next `tsconfig.json` includes `**/*.ts`, so the program reaches crust's own sources and reports *their* errors — `TS2307` for `@/bridge/errors`, `TS5097` for `.ts` import extensions, `TS2868` for the `Bun` global — and the build dies with `Failed to type check`. The template therefore ships `tsconfig.json` with `include: ["next-env.d.ts", "app/**/*.ts", "app/**/*.tsx", ".next/types/**/*.ts"]`: the page type-checks against `@types/react`, and `crust.config.ts`/`main.ts` are not in Next's program at all.
+
+Next rewrites parts of that file on first build — it sets `jsx` to `react-jsx`, adds `allowJs`, and appends `.next/dev/types/**/*.ts` — and leaves the `include` list you gave it. That rewrite is why the file is committed in the template: what ships is what the build then owns.
 
 ## Dev and build
 
@@ -61,9 +69,15 @@ build: {
 },
 ```
 
-`beforeBuildCommand` → `next build` → `output: "export"` writes `out/` → `build.assets: "out"` names the tree `crust build` embeds → the bridge inside the binary serves it. **A non-zero exit from `next build` has to abort the crust build**, or a broken page ships as the previous successful export. `beforeBuildCommand` is documented to abort on a non-zero exit ([api.md](api.md#keys-and-defaults)); doing that *before* assets are read is the part still landing.
+`beforeBuildCommand` → `next build` → `output: "export"` writes `out/` → `build.assets: "out"` names the tree `crust build` embeds → the bridge inside the binary serves it.
 
-Both hooks run through `sh -c` in the project directory. `bun install` puts `next` in `node_modules/.bin`; if that is not on `PATH` in this shell, write `bunx next build` and `bunx next dev -p 3000` in `crust.config.ts` instead — same commands, one word longer.
+The ordering is measured, not promised. `resolveAssets` runs the command with inherited stdio and only then reads `build.assets`, so the frontend's own output is the user's to read and a failure cannot ship stale bytes. When `next build` exited 1 during this verification, `crust build` printed `build.beforeBuildCommand \`next build\` exited with 1 — the frontend build failed, so nothing was packaged`, exited 1 itself, and left `dist/` absent. `out/` and `.next/` are both gitignored, and `.next/` is never embedded: the second build after a dev session embedded 21 files from `out/`, and that is exactly the 21 files in `out/`.
+
+Both hooks run through `sh -c` in the project directory. `bun install` puts `next` in `node_modules/.bin`, and `bun run` puts that directory first on `PATH` for both hooks, so `"next build"` and `"next dev -p 3000"` resolve to the version in the project. That matters more than it sounds: invoking `crust` by its absolute path (`./node_modules/.bin/crust dev`) leaves the global `PATH` alone, and a globally installed `next` then answers instead — on this machine `/opt/homebrew/bin/next` is v16.2.10 while the project has v16.4.6, so the window was served by a different Next than the one in `package.json`, with no warning anywhere.
+
+**The dev server runs under whatever `node` is first on `PATH`**, because `node_modules/.bin/next` carries a `#!/usr/bin/env node` shebang. That matters: on this machine `node` is a `v27.0.0-alpha` build, and `next dev` under it answers **500 on every request** with `TypeError: rawHeaders.hasOwnProperty is not a function`, from `next`'s own code. The same app, same Next version, under Node `v26.7.0` answers `200` in 150 ms. Next's dev server is the constraint, not crust — but a Next app inherits it, so pin a stable Node for the dev hook if `crust dev` serves an error page.
+
+`next dev` also writes `AGENTS.md` and `next-env.d.ts` into the project on first run (Next 16 generates its own agent rules file). `.gitignore` covers neither, so decide whether they are yours to commit; `agentRules: false` in `next.config.mjs` stops the first.
 
 The Next side is two settings:
 
@@ -83,7 +97,7 @@ The scripts are what a user types, and each one is crust:
 "build": "crust build"
 ```
 
-Run the binary inside the bundle directly rather than `open`: `open` routes through LaunchServices and Gatekeeper, and an ad-hoc signed bundle is refused there (see "Limits, stated plainly" in the README).
+Run the binary inside the bundle directly rather than `open`: `open` routes through LaunchServices and Gatekeeper, and an ad-hoc signed bundle is refused there (see "Limits, stated plainly" in the README). `crust build`'s last line still suggests `open` — ignore it and run `dist/<App>.app/Contents/MacOS/crust-app`; that is the only launch path that reports an exit code.
 
 ## The layout is the theme
 
@@ -165,4 +179,52 @@ Two consequences worth knowing before you design around Next's dev server:
 
 ## Deep links
 
-`next build` writes `app/about/page.tsx` to `out/about.html`, and the bridge serves a path only when the embedded tree has that exact file — a path with no extension falls back to `index.html`. So a reload of `/about` lands on the root document, while in-app navigation stays client-side and never asks the bridge for a page. Neither behaviour has been exercised here.
+`next build` writes `app/about/page.tsx` to `out/about.html`, and the bridge serves a path only when the embedded tree has that exact file — a path with no extension falls back to `index.html`. Measured on the built app: `GET /about`, where no such file is embedded, answered `200` with byte-identical `index.html`; `GET /missing.js` answered `403`. So a reload of `/about` lands on the root document, a missing asset is refused rather than served the document, and in-app navigation stays client-side and never asks the bridge for a page.
+
+## What was run
+
+macOS, 2026-11-13, crust installed the way a stranger installs it: `BUN_INSTALL=<tmpdir>/bun bun add -g github:JeffreyJYZ/crust`, which resolved `crust@github:JeffreyJYZ/crust#206093c` and put the CLI at `<tmpdir>/bun/bin/crust` with nothing added to the machine's global bin. That snapshot's `templates/next/` was then replaced with the two fixed files from this checkout before `crust init` ran — a push was out of scope, so the published tree alone still holds the old template — and everything else stayed byte-identical to `206093c`. Then `crust init app --next`, `bun install` (29 packages), `bun run build`, and the bundle's own binary run directly with `/` as the working directory.
+
+`crust init app --next` reported eight files: `app/layout.tsx`, `app/page.tsx`, `crust.config.ts`, `.gitignore`, `main.ts`, `next.config.mjs`, `package.json`, `tsconfig.json`. No `{{…}}` token survived substitution.
+
+`bun run build` (the green run, exit 0):
+
+```
+crust build — …/app/crust.config.ts
+  before    next build
+▲ Next.js 16.4.6 (Turbopack)
+✓ Compiled successfully in 756ms
+  Running TypeScript ...
+  Finished TypeScript in 518ms ...
+✓ Generating static pages (3/3) in 138ms
+  assets    21 files from out/
+binary    85.83 MiB  90002018 bytes  …/dist/crust-app
+  app       85.84 MiB  90013696 bytes …/dist/app2.app
+  sign      ad-hoc (codesign --sign -)
+```
+
+`out/` held 21 files and 21 were embedded; `.next/` was on disk from the same build and none of it was embedded. A second build, after a `crust dev` session had rewritten `.next/`, produced the same 21 assets and the same 90,002,018-byte binary.
+
+The binary inside `dist/app2.app` (89,478,912 bytes; the bundle 90,013,696) was launched as `dist/app2.app/Contents/MacOS/crust-app` with `cwd: "/"`:
+
+```
+bridge      http://127.0.0.1:46042
+document    http 200  11090 bytes  next markup: true  injected bridge client: true
+asset       /_next/static/chunks/1cuyxw6v18rxx.js  http 200  187255 bytes
+route       /about  http 200  11090 bytes  same document: true
+missing     /missing.js  http 403
+greet       greet     hello crust (page call answered)
+exit        0 (SIGTERM)
+survivors   none
+```
+
+The document is 11,090 bytes over the wire against 5,884 bytes for `out/index.html` on disk — the injected client is the difference — and it carries `/_next/` script tags plus the bridge bootstrap, so the page runs from the embedded table with no project directory anywhere. `greet` is the backend's own log line, printed by the handler `main.ts` registered: the page's `invoke("greet", { name: "crust" })` reached the Bun process over the bridge and its return value came back. `SIGTERM` stopped it with exit 0 and nothing survived.
+
+Dev was measured too, with `bun run dev` and Node 26.7.0 first on `PATH`: `next dev` answered `200` on `http://localhost:3000/` (9,397 bytes of Next dev markup), the runtime printed `bridge    http://127.0.0.1:46042  (page from http://localhost:3000)`, and the served document carried **no** bridge client — the dev gap above, confirmed rather than assumed. `SIGTERM` to the `crust dev` process left exit 0, port 3000 free, and no surviving process.
+
+Two things that were broken at `206093c` and are fixed by this template:
+
+- **`bun run build` failed** at `next build`'s TypeScript setup, which tried `npm install --save-exact --save-dev typescript @types/react @types/node` and died on `npm error code EALLOWGIT … Refusing to fetch "crust@github:JeffreyJYZ/crust"`. Fixed by shipping those three devDependencies (`templates/next/package.json`).
+- **With `typescript` installed, the type check failed on crust's own sources** (`TS2307`/`TS5097`/`TS2868`, then `Failed to type check`). Fixed by shipping an app-only `tsconfig.json` (`templates/next/tsconfig.json`).
+
+One defect this run found and did **not** fix, because it lives outside this template: `src/cli/dev.ts` watches the project for backend changes and ignores `public`, `dist` and `node_modules`, but not `.next/` — so `next dev` writing its own build output restarts the Bun backend mid-session (`restart   backend changed` appeared twice during a single page load). The fix is one more directory in that pattern; until it lands, expect the window to reload while Next compiles.
