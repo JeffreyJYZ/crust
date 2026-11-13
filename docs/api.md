@@ -519,7 +519,7 @@ Five names exist, in `src/plugins/`. `config.plugins` selects among them; `start
 | plugin | commands | answers |
 | --- | --- | --- |
 | `fs` | `readTextFile`, `writeTextFile`, `list`, `stat`, `remove`, `rename` | file text, `{ bytes }`, `{ entries: [{ name, path, directory, size }] }`, `{ path, directory, size, modified }`, `{ removed, path }`, `{ path }`. A missing path is `not-found` (404), a non-string path `bad-request` (400). `list` returns absolute paths and sorts by name; `remove` deletes a non-empty directory only with `recursive: true` |
-| `dialog` | `openPanel` | `{ paths: string[] }`, and `[]` means the user cancelled — never an error and never `not-implemented` from a real adapter |
+| `dialog` | `openPanel`, `savePanel` | `{ paths: string[] }`; `savePanel` picks exactly one file, so its list holds one path or none. `[]` means the user cancelled — never an error and never `not-implemented` from a real adapter |
 | `window` | `close`, `focus`, `setTitle`, `list`, `isOpen` | `{ ok: true, … }` or `{ ok: false, code: "unknown-window" \| "invalid-label" \| "handler-error", message, label? }` |
 | `tray` | `setTitle`, `setMenu`, `show`, `hide`, `destroy` | `{ ok: true, … }` or `{ ok: false, code: "invalid-text" \| "invalid-menu" \| "unknown-adapter" \| "destroyed" \| "handler-error", message }` |
 | `notification` | `requestPermission`, `notify` | `notify` → `{ delivered: boolean, reason: string }`; `requestPermission` → `not-implemented` whenever a real adapter is present |

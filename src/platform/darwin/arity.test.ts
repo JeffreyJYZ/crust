@@ -89,10 +89,16 @@ describe("bun:ffi declarations match the C prototypes", () => {
 
 	test("the parser saw the C functions it is meant to check", () => {
 		// If this fails the test is worthless even when it reports no mismatch.
-		for (const name of ["shim_window_new", "shim_open_panel", "shim_webview_load"]) {
+		for (const name of [
+			"shim_window_new",
+			"shim_open_panel",
+			"shim_save_panel",
+			"shim_webview_load",
+		]) {
 			expect(c.has(name)).toBe(true);
 		}
 		expect(c.get("shim_open_panel")).toBe(5);
+		expect(c.get("shim_save_panel")).toBe(4);
 		expect(c.get("shim_webview_load")).toBe(2);
 		expect(c.get("shim_send_p0")).toBe(2);
 	});

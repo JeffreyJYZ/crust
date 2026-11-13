@@ -36,6 +36,8 @@ export {
 	dialogPlugin,
 	type OpenPanelOptions,
 	type OpenPanelResult,
+	type SavePanelOptions,
+	type SavePanelResult,
 } from "./dialog";
 export {
 	fsPlugin,
@@ -64,6 +66,9 @@ export {
 	WINDOW_COMMANDS,
 	WindowAdapterError,
 	type WindowCloseResult,
+	type WindowCreateArgs,
+	type WindowCreateOptions,
+	type WindowCreateResult,
 	type WindowErrorCode,
 	type WindowFailure,
 	type WindowFocusResult,

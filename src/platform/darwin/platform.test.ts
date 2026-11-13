@@ -8,6 +8,7 @@ import {
 	PREFLIGHT,
 	awaitSheetResult,
 	darwinDialogAdapter,
+	extensionList,
 	preflightError,
 	shim,
 	type SheetReadings,
@@ -54,6 +55,29 @@ describe("darwin shim", () => {
 		expect(typeof symbols.shim_open_panel).toBe("function");
 		expect(typeof symbols.shim_open_panel_count).toBe("function");
 		expect(typeof symbols.shim_open_panel_path).toBe("function");
+	});
+
+	/**
+	 * The save panel compiles through `cc()` and answers without a window, the
+	 * same way the open panel does. Nothing here touches the screen.
+	 */
+	test("exports shim_save_panel, which refuses a sheet with no window", () => {
+		const symbols = shim().symbols;
+		expect(typeof symbols.shim_save_panel).toBe("function");
+		const status = Number(
+			symbols.shim_save_panel(cstr("crust test"), cstr("note.md"), cstr("md"), 0) ?? -1,
+		);
+		expect(Object.values(PANEL_STATUS) as number[]).toContain(status);
+		expect([
+			PANEL_STATUS.noWindow,
+			PANEL_STATUS.unsupported,
+			PANEL_STATUS.sheetStarted,
+		] as number[]).toContain(status);
+		expect(status).not.toBe(PANEL_STATUS.picked);
+		// The save panel shares the open panel's path storage, and nothing was
+		// collected because nothing was shown.
+		expect(Number(symbols.shim_open_panel_count() ?? -1)).toBe(0);
+		expect(String(symbols.shim_open_panel_path(0))).toBe("");
 	});
 
 	/**
@@ -196,13 +220,50 @@ describe("sheet polling", () => {
 		await expect(awaitSheetResult(finished(), { intervalMs: 0 })).rejects.toThrow(/positive/);
 		await expect(awaitSheetResult(finished(), { intervalMs: -5 })).rejects.toThrow(/positive/);
 	});
+
+	/** The same poll serves both panels; only the name in a failure changes. */
+	test("names the command that failed", async () => {
+		await expect(
+			awaitSheetResult(finished({ response: () => 7, count: () => 0 }), {
+				command: "savePanel",
+			}),
+		).rejects.toThrow(/savePanel sheet ended/);
+	});
+});
+
+/**
+ * The argument rule the C side depends on: one comma-separated extension list
+ * with no leading `*.` or `.`, lower-cased, de-duplicated, and empty when the
+ * caller gave no filters.
+ */
+describe("extension list", () => {
+	test("is empty with no filters", () => {
+		expect(extensionList(undefined)).toBe("");
+		expect(extensionList([])).toBe("");
+		expect(extensionList([{ name: "Any", extensions: [] }])).toBe("");
+	});
+
+	test("strips a leading *. or ., lower-cases and de-duplicates", () => {
+		expect(
+			extensionList([
+				{ name: "Images", extensions: ["*.PNG", ".jpg", " png "] },
+				{ name: "Text", extensions: ["txt", "TXT"] },
+			]),
+		).toBe("png,jpg,txt");
+	});
+
+	test("drops entries that are only a star or a dot", () => {
+		expect(extensionList([{ name: "Odd", extensions: ["*", ".", "*.", "  "] }])).toBe("");
+	});
 });
 
 describe("dialog adapter", () => {
-	test("exposes the plugin's hook and the command's name", () => {
+	test("exposes the plugin's hooks and the commands' names", () => {
 		const adapter = darwinDialogAdapter();
 		expect(typeof adapter.pickOpen).toBe("function");
 		expect(adapter.openPanel).toBe(adapter.pickOpen);
+		expect(typeof adapter.pickSave).toBe("function");
+		expect(adapter.pickSave).toBe(adapter.savePanel);
 	});
 
 	test("the plugin still answers not-implemented without an adapter", async () => {

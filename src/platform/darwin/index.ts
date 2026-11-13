@@ -17,7 +17,13 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
-import type { DialogNative, OpenPanelOptions, OpenPanelResult } from "@/plugins/dialog";
+import type {
+	DialogNative,
+	OpenPanelOptions,
+	OpenPanelResult,
+	SavePanelOptions,
+	SavePanelResult,
+} from "@/plugins/dialog";
 import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 
 // Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file
@@ -111,10 +117,13 @@ function compile() {
 			shim_pump: { args: [P], returns: I32 },
 
 			// The open panel: an int status in, and the chosen paths read back
-			// one at a time as C strings. No object and no struct crosses.
+			// one at a time as C strings. No object and no struct crosses. The
+			// save panel shares the storage and the status set.
 			shim_open_panel: { args: [P, P, I32, I32, I32], returns: I32 },
 			shim_open_panel_count: { args: [], returns: I32 },
 			shim_open_panel_path: { args: [I32], returns: CS },
+			// title, suggested file name, filter list, runModal.
+			shim_save_panel: { args: [P, P, P, I32], returns: I32 },
 
 			// The sheet's answer, polled while the pump keeps running. -cancel:
 			// is the test's way to end a sheet with no human.
@@ -192,6 +201,7 @@ export interface Shim {
 		shim_open_panel: LooseSymbol;
 		shim_open_panel_count: LooseSymbol;
 		shim_open_panel_path: LooseSymbol;
+		shim_save_panel: LooseSymbol;
 
 		shim_sheet_done: LooseSymbol;
 		shim_sheet_response: LooseSymbol;
@@ -316,9 +326,10 @@ const internalClassSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSString", "alloc"],
 	["NSURL", "URLWithString:"],
 	["NSURLRequest", "requestWithURL:"],
-	// The open panel's C section builds every object it sends to, so these are
-	// verified here rather than at a call site JS can see.
+	// The open and save panels' C sections build every object they send to, so
+	// these are verified here rather than at a call site JS can see.
 	["NSOpenPanel", "openPanel"],
+	["NSSavePanel", "savePanel"],
 	["NSMutableArray", "array"],
 ];
 
@@ -340,6 +351,15 @@ const internalInstanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSOpenPanel", "runModal"],
 	["NSOpenPanel", "cancel:"],
 	["NSOpenPanel", "URLs"],
+	// NSSavePanel: the same sheet and cancel machinery, a name field instead of
+	// a selection shape, and -URL (singular) for the one chosen path.
+	["NSSavePanel", "setTitle:"],
+	["NSSavePanel", "setNameFieldStringValue:"],
+	["NSSavePanel", "setAllowedFileTypes:"],
+	["NSSavePanel", "beginSheetModalForWindow:completionHandler:"],
+	["NSSavePanel", "runModal"],
+	["NSSavePanel", "cancel:"],
+	["NSSavePanel", "URL"],
 	// The window a sheet attaches to, and the reads the fallback path makes.
 	["NSApplication", "keyWindow"],
 	["NSApplication", "mainWindow"],
@@ -896,9 +916,10 @@ export interface SheetReadings {
  */
 export async function awaitSheetResult(
 	readings: SheetReadings,
-	options: { intervalMs?: number } = {},
+	options: { intervalMs?: number; command?: string } = {},
 ): Promise<OpenPanelResult> {
 	const intervalMs = options.intervalMs ?? SHEET_POLL_INTERVAL_MS;
+	const command = options.command ?? "openPanel";
 	if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
 		throw new Error(`crust: awaitSheetResult needs a positive interval, got ${intervalMs}`);
 	}
@@ -911,7 +932,7 @@ export async function awaitSheetResult(
 	if (response === NS_MODAL_RESPONSE.cancel) return { paths: [] };
 	if (response !== NS_MODAL_RESPONSE.ok) {
 		throw new Error(
-			`crust: openPanel sheet ended with NSModalResponse ${response}, which is neither ` +
+			`crust: ${command} sheet ended with NSModalResponse ${response}, which is neither ` +
 				`OK (${NS_MODAL_RESPONSE.ok}) nor cancel (${NS_MODAL_RESPONSE.cancel})`,
 		);
 	}
@@ -919,18 +940,18 @@ export async function awaitSheetResult(
 	const count = readings.count();
 	if (!Number.isInteger(count) || count < 0 || count > PANEL_MAX_PATHS) {
 		throw new Error(
-			`crust: openPanel sheet reported ${count} paths, outside 0…${PANEL_MAX_PATHS}`,
+			`crust: ${command} sheet reported ${count} paths, outside 0…${PANEL_MAX_PATHS}`,
 		);
 	}
 	if (count === 0) {
-		throw new Error("crust: openPanel sheet answered OK with no paths");
+		throw new Error(`crust: ${command} sheet answered OK with no paths`);
 	}
 
 	const paths: string[] = [];
 	for (let index = 0; index < count; index++) {
 		const path = readings.path(index);
 		if (path.length === 0) {
-			throw new Error(`crust: openPanel sheet answered OK with an empty path at ${index}`);
+			throw new Error(`crust: ${command} sheet answered OK with an empty path at ${index}`);
 		}
 		paths.push(path);
 	}
@@ -962,7 +983,7 @@ export async function awaitSheetResult(
  */
 
 /** Filters as one comma-separated extension list — the only shape C can take. */
-function extensionList(filters: OpenPanelOptions["filters"]): string {
+export function extensionList(filters: OpenPanelOptions["filters"]): string {
 	if (!filters) return "";
 	const seen = new Set<string>();
 	for (const filter of filters) {
@@ -979,6 +1000,7 @@ function extensionList(filters: OpenPanelOptions["filters"]): string {
 
 export interface DarwinDialogAdapter extends DialogNative {
 	openPanel(options: OpenPanelOptions): Promise<OpenPanelResult>;
+	savePanel(options: SavePanelOptions): Promise<SavePanelResult>;
 }
 
 /** The native reads `awaitSheetResult` polls, bound to the compiled shim. */
@@ -995,13 +1017,14 @@ function sheetReadings(native: Shim): SheetReadings {
 /** Build the dialog adapter. The shim compiles on the first pick, not before. */
 export function darwinDialogAdapter(): DarwinDialogAdapter {
 	/** Decode a status the shim answered with synchronously. */
-	const immediate = (native: Shim, status: number): OpenPanelResult => {
+	const immediate = (native: Shim, status: number, command = "openPanel"): OpenPanelResult => {
 		if (status === PANEL_STATUS.cancelled) return { paths: [] };
 		if (status !== PANEL_STATUS.picked) {
 			const name =
 				Object.entries(PANEL_STATUS).find(([, value]) => value === status)?.[0] ??
 				`status ${status}`;
-			throw new Error(`crust: openPanel failed (${name}); NSOpenPanel could not be shown`);
+			const cls = command === "savePanel" ? "NSSavePanel" : "NSOpenPanel";
+			throw new Error(`crust: ${command} failed (${name}); ${cls} could not be shown`);
 		}
 
 		const count = Number(native.symbols.shim_open_panel_count() ?? 0);
@@ -1029,7 +1052,7 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 		// The sheet path first: it returns at once, with the answer to come.
 		const sheet = send(0);
 		if (sheet === PANEL_STATUS.sheetStarted)
-			return await awaitSheetResult(sheetReadings(native));
+			return await awaitSheetResult(sheetReadings(native), { command: "openPanel" });
 
 		// No window to attach a sheet to, so the only way to show a panel at all
 		// is -runModal, which blocks this thread until the user answers.
@@ -1038,7 +1061,31 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
 		return immediate(native, sheet);
 	};
 
-	return { pickOpen, openPanel: pickOpen };
+	/**
+	 * The save panel, with the same sheet-first flow. AppKit asks before
+	 * replacing an existing file; nothing here suppresses that or asks again.
+	 */
+	const pickSave = async (options: SavePanelOptions = {}): Promise<SavePanelResult> => {
+		const native = shim();
+		const send = (runModal: number): number =>
+			Number(
+				native.symbols.shim_save_panel(
+					cstr(options.title ?? ""),
+					cstr(options.suggestedName ?? ""),
+					cstr(extensionList(options.filters)),
+					runModal,
+				) ?? -1,
+			);
+
+		const sheet = send(0);
+		if (sheet === PANEL_STATUS.sheetStarted)
+			return await awaitSheetResult(sheetReadings(native), { command: "savePanel" });
+		if (sheet === PANEL_STATUS.noWindow) return immediate(native, send(1), "savePanel");
+
+		return immediate(native, sheet, "savePanel");
+	};
+
+	return { pickOpen, pickSave, openPanel: pickOpen, savePanel: pickSave };
 }
 
 // --- window adapter --------------------------------------------------------

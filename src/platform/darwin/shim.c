@@ -348,12 +348,18 @@ int shim_mode_ok(obj_t mode) {
 // 4 ms delivered only 82.4% of a 16 ms tick (DESIGN.md §3).
 int shim_pump(obj_t mode) { return CFRunLoopRunInMode(mode, 0.00025, 1); }
 
-// --- open panel (NSOpenPanel) ---------------------------------------------
+// --- file panels (NSOpenPanel, NSSavePanel) --------------------------------
 //
 // No object of any kind crosses bun:ffi here. A file path is routinely short
 // ASCII, and a short ASCII NSString is a tagged pointer above 2^53, so the
 // panel's URLs are decoded and copied into C-side storage and JS reads an int
 // status plus a copied `const char *`. See the traps in DESIGN.md §2.
+//
+// The open and save panels share every piece of that machinery: the same
+// status set, the same static path storage, the same hand-built completion
+// block, and the same poll. They differ only in the class they build, the
+// setters they accept, and the read that collects the answer (`-URLs` for the
+// open panel, `-URL` for the save panel).
 //
 // Status codes, mirrored by PANEL_STATUS in index.ts:
 #define SHIM_PANEL_PICKED 0        // modal pick finished with >= 1 path
@@ -377,6 +383,7 @@ static int panel_paths_used;
 #define SHIM_PANEL_NO_RESPONSE -1
 
 static obj_t panel_sheet_panel; // live panel while its sheet is up, else 0
+static int panel_sheet_is_save; // which class the live sheet is, for collection
 static volatile int panel_sheet_done;
 static volatile long long panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 
@@ -405,6 +412,7 @@ static void panel_reset(void) {
 	panel_paths_used = 0;
 	panel_paths[0][0] = 0;
 	panel_sheet_panel = 0;
+	panel_sheet_is_save = 0;
 	panel_sheet_done = 0;
 	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 }
@@ -437,6 +445,51 @@ static void panel_collect(obj_t panel) {
 		    path, sel_registerName("UTF8String"));
 		panel_copy_path(utf8);
 	}
+}
+
+// -[NSSavePanel URL] -> -path -> -UTF8String. A save panel names exactly one
+// file and has no -URLs, so this is the whole collection.
+static void panel_collect_save(obj_t panel) {
+	obj_t url = ((obj_t (*)(void *, void *))objc_msgSend)(panel, sel_registerName("URL"));
+	if (!url) return;
+	obj_t path = ((obj_t (*)(void *, void *))objc_msgSend)(url, sel_registerName("path"));
+	if (!path) return;
+	const char *utf8 = ((const char *(*)(void *, void *))objc_msgSend)(
+	    path, sel_registerName("UTF8String"));
+	panel_copy_path(utf8);
+}
+
+// A comma-separated extension list into -setAllowedFileTypes:. A JS array
+// cannot cross the boundary, so the list arrives as one C string. A missing
+// selector, a null array or a failed string leaves the panel unfiltered rather
+// than aborting the pick. The setter is deprecated on macOS 27 but present on
+// both panel classes; `allowedContentTypes` would be a UTType object graph.
+static void panel_set_file_types(const char *clsname, obj_t panel, const char *types) {
+	if (!types || !types[0]) return;
+	if (!panel_has_instance(clsname, "setAllowedFileTypes:")) return;
+	obj_t cls = objc_getClass("NSMutableArray");
+	if (!cls) return;
+	obj_t array = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("array"));
+	if (!array) return;
+
+	const char *cursor = types;
+	while (*cursor) {
+		char item[64];
+		long n = 0;
+		while (*cursor && *cursor != ',' && n < (long)sizeof(item) - 1)
+			item[n++] = *cursor++;
+		item[n] = 0;
+		if (*cursor == ',') cursor++;
+		const char *ext = item;
+		while (*ext == '*' || *ext == '.') ext++;
+		if (!*ext) continue;
+		obj_t s = panel_nsstring(ext);
+		if (s)
+			((void (*)(void *, void *, obj_t))objc_msgSend)(
+			    array, sel_registerName("addObject:"), s);
+	}
+	((void (*)(void *, void *, obj_t))objc_msgSend)(
+	    panel, sel_registerName("setAllowedFileTypes:"), array);
 }
 
 // --- sheet completion: a hand-built global block ---------------------------
@@ -499,11 +552,15 @@ static int panel_sheet_block_init(void) {
 // Runs on the main thread when the sheet ends, by either route: the user's
 // click, or the -cancel: shim_sheet_cancel() sends. Recording the response
 // first and the done flag last is what makes a JS read after `done` always see
-// the response and the paths together. NSModalResponseOK is 1.
+// the response and the paths together. NSModalResponseOK is 1, and the live
+// panel's class decides which read collects the answer.
 static void panel_sheet_invoke(void *block, long long response) {
 	(void)block;
 	panel_sheet_response = response;
-	if (response == 1 && panel_sheet_panel) panel_collect(panel_sheet_panel);
+	if (response == 1 && panel_sheet_panel) {
+		if (panel_sheet_is_save) panel_collect_save(panel_sheet_panel);
+		else panel_collect(panel_sheet_panel);
+	}
 	panel_sheet_done = 1;
 }
 
@@ -542,6 +599,20 @@ static obj_t panel_sheet_window(obj_t app) {
 	return w;
 }
 
+// The window a sheet attaches to, for either panel class. Returns 0 when this
+// process has no window at all, which is what keeps -runModal the fallback.
+static int panel_sheet_target(obj_t *out) {
+	obj_t app = 0;
+	if (shim_responds((obj_t)objc_getClass("NSApplication"),
+	                  sel_registerName("sharedApplication"))) {
+		app = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSApplication"),
+		                                               sel_registerName("sharedApplication"));
+	}
+	if (!app) return 0;
+	*out = panel_sheet_window(app);
+	return *out ? 1 : 0;
+}
+
 // Opens an NSOpenPanel.
 //
 //   runModal = 1  calls -runModal and BLOCKS this thread until the user answers.
@@ -570,17 +641,9 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 	// AppKit exception, and an exception here is a crashed process.
 	obj_t sheet_window = 0;
 	if (!runModal) {
-		obj_t app = 0;
-		if (shim_responds((obj_t)objc_getClass("NSApplication"),
-		                  sel_registerName("sharedApplication"))) {
-			app = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSApplication"),
-			                                               sel_registerName("sharedApplication"));
-		}
-		if (!app) return SHIM_PANEL_NO_WINDOW;
 		if (!panel_has_instance("NSOpenPanel", "beginSheetModalForWindow:completionHandler:"))
 			return SHIM_PANEL_UNSUPPORTED;
-		sheet_window = panel_sheet_window(app);
-		if (!sheet_window) return SHIM_PANEL_NO_WINDOW;
+		if (!panel_sheet_target(&sheet_window)) return SHIM_PANEL_NO_WINDOW;
 	}
 
 	obj_t panel = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSOpenPanel"),
@@ -606,33 +669,9 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 	}
 
 	// File-type filters, comma-separated because a JS array cannot cross the
-	// boundary. `-setAllowedFileTypes:` is deprecated but present on macOS 27; a
-	// missing selector leaves the panel unfiltered rather than aborting the pick.
-	if (types && types[0] && panel_has_instance("NSOpenPanel", "setAllowedFileTypes:")) {
-		obj_t array = 0;
-		obj_t cls = objc_getClass("NSMutableArray");
-		if (cls) array = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("array"));
-		if (array) {
-			const char *cursor = types;
-			while (*cursor) {
-				char item[64];
-				long n = 0;
-				while (*cursor && *cursor != ',' && n < (long)sizeof(item) - 1)
-					item[n++] = *cursor++;
-				item[n] = 0;
-				if (*cursor == ',') cursor++;
-				const char *ext = item;
-				while (*ext == '*' || *ext == '.') ext++;
-				if (!*ext) continue;
-				obj_t s = panel_nsstring(ext);
-				if (s)
-					((void (*)(void *, void *, obj_t))objc_msgSend)(
-					    array, sel_registerName("addObject:"), s);
-			}
-			((void (*)(void *, void *, obj_t))objc_msgSend)(
-			    panel, sel_registerName("setAllowedFileTypes:"), array);
-		}
-	}
+	// boundary. A missing selector leaves the panel unfiltered rather than
+	// aborting the pick.
+	panel_set_file_types("NSOpenPanel", panel, types);
 
 	if (!runModal) {
 		if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
@@ -659,17 +698,83 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 int shim_open_panel_count(void) { return panel_paths_used; }
 
 // The path at `index`, or "" out of range. Static storage: valid until the next
-// shim_open_panel call, which is all a caller needs.
+// shim_open_panel or shim_save_panel call, which is all a caller needs.
 const char *shim_open_panel_path(int index) {
 	if (index < 0 || index >= panel_paths_used) return "";
 	return panel_paths[index];
 }
 
+// Opens an NSSavePanel. Same two modes, same statuses, same storage as
+// shim_open_panel; the caller supplies a suggested file name and an allowed
+// extension list instead of a selection shape.
+//
+// Overwrite confirmation is AppKit's own job: NSSavePanel asks before replacing
+// an existing file, and nothing here suppresses that prompt or adds a second
+// confirmation of ours. crust never writes the file — the caller does, after
+// the panel answers.
+int shim_save_panel(const char *title, const char *suggested_name, const char *types,
+                    int runModal) {
+	panel_reset();
+
+	if (!objc_getClass("NSSavePanel")) return SHIM_PANEL_UNSUPPORTED;
+	if (!shim_responds((obj_t)objc_getClass("NSSavePanel"), sel_registerName("savePanel")))
+		return SHIM_PANEL_UNSUPPORTED;
+
+	obj_t sheet_window = 0;
+	if (!runModal) {
+		if (!panel_has_instance("NSSavePanel", "beginSheetModalForWindow:completionHandler:"))
+			return SHIM_PANEL_UNSUPPORTED;
+		if (!panel_sheet_target(&sheet_window)) return SHIM_PANEL_NO_WINDOW;
+	}
+
+	obj_t panel = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSSavePanel"),
+	                                                        sel_registerName("savePanel"));
+	if (!panel) return SHIM_PANEL_UNSUPPORTED;
+
+	if (title && title[0] && panel_has_instance("NSSavePanel", "setTitle:")) {
+		obj_t t = panel_nsstring(title);
+		if (t) ((void (*)(void *, void *, obj_t))objc_msgSend)(panel, sel_registerName("setTitle:"), t);
+	}
+
+	// The name field's starting value. It is a bare file name; the panel still
+	// lets the user change it, and a missing selector just leaves it blank.
+	if (suggested_name && suggested_name[0] &&
+	    panel_has_instance("NSSavePanel", "setNameFieldStringValue:")) {
+		obj_t n = panel_nsstring(suggested_name);
+		if (n)
+			((void (*)(void *, void *, obj_t))objc_msgSend)(
+			    panel, sel_registerName("setNameFieldStringValue:"), n);
+	}
+
+	panel_set_file_types("NSSavePanel", panel, types);
+
+	if (!runModal) {
+		if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
+		panel_sheet_panel = panel;
+		panel_sheet_is_save = 1;
+		panel_sheet_done = 0;
+		panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    panel, sel_registerName("beginSheetModalForWindow:completionHandler:"), sheet_window,
+		    (obj_t)&panel_sheet_block);
+		return SHIM_PANEL_SHEET_STARTED;
+	}
+
+	if (!panel_has_instance("NSSavePanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
+	long long response =
+	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
+	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
+
+	panel_collect_save(panel);
+	return panel_paths_used > 0 ? SHIM_PANEL_PICKED : SHIM_PANEL_CANCELLED;
+}
+
 // --- sheet result, for a caller that polls instead of blocking --------------
 
-// 1 once the sheet started by shim_open_panel(…, 0) has ended, 0 while it is up
-// (and 0 before any sheet). Answering this is the whole reason the sheet path
-// no longer needs a human: the promise settles on the frame after the click.
+// 1 once the sheet started by shim_open_panel(…, 0) or shim_save_panel(…, 0) has
+// ended, 0 while it is up (and 0 before any sheet). Answering this is the whole
+// reason the sheet path no longer needs a human: the promise settles on the
+// frame after the click.
 int shim_sheet_done(void) { return panel_sheet_done; }
 
 // The NSModalResponse the sheet ended with: 1 is NSModalResponseOK and 0 is a
@@ -684,7 +789,8 @@ long long shim_sheet_response(void) { return panel_sheet_response; }
 int shim_sheet_cancel(void) {
 	obj_t panel = panel_sheet_panel;
 	if (!panel || panel_sheet_done) return 0;
-	if (!panel_has_instance("NSOpenPanel", "cancel:")) return 0;
+	const char *clsname = panel_sheet_is_save ? "NSSavePanel" : "NSOpenPanel";
+	if (!panel_has_instance(clsname, "cancel:")) return 0;
 	((void (*)(void *, void *))objc_msgSend)(panel, sel_registerName("cancel:"));
 	return 1;
 }
