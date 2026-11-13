@@ -150,6 +150,23 @@ function originOf(url: string): string | undefined {
 	}
 }
 
+/**
+ * A stable port for an app, derived from its id.
+ *
+ * The bridge used to bind `0`, which makes the page's origin change every launch
+ * and discards localStorage, IndexedDB, service workers and per-origin caches.
+ * Deriving from the id keeps the origin stable across runs; the caller walks
+ * upward when the port is taken, and falls back to ephemeral rather than failing.
+ */
+function preferredPortFor(appId: string): number {
+	let hash = 2166136261;
+	for (let index = 0; index < appId.length; index++) {
+		hash ^= appId.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return 45000 + ((hash >>> 0) % 4000);
+}
+
 async function isDirectory(path: string): Promise<boolean> {
 	try {
 		return (await Bun.file(path).stat()).isDirectory();
@@ -260,14 +277,28 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			...app.plugins(),
 			appPlugin,
 		);
-		bridge = startBridge({
-			handlers: registry,
-			assets: options.assets,
-			root: frontendRoot,
-			indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
-			csp: runConfig.security?.csp,
-			devOrigin: runConfig.dev?.url ? originOf(runConfig.dev.url) : undefined,
-		});
+		const preferred = preferredPortFor(runConfig.app.id);
+		let bindError: unknown;
+		for (let offset = 0; offset <= 20; offset++) {
+			try {
+				bridge = startBridge({
+					handlers: registry,
+					assets: options.assets,
+					root: frontendRoot,
+					indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
+					csp: runConfig.security?.csp,
+					devOrigin: runConfig.dev?.url ? originOf(runConfig.dev.url) : undefined,
+					// Walk upward from the app's stable port; the last attempt lets the
+					// OS pick, so a machine with no free port still starts.
+					port: offset === 20 ? 0 : preferred + offset,
+				});
+				bindError = undefined;
+				break;
+			} catch (error) {
+				bindError = error;
+			}
+		}
+		if (!bridge) throw bindError ?? new Error("crust: the bridge could not bind a port");
 		// The handshake only exists for a dev server, which a built app never has.
 		// A built app runs with cwd `/`, so writing it there would throw and kill
 		// `run()` before a window exists — measured as e2e's missing greet.
