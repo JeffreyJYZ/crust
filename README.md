@@ -49,6 +49,22 @@ a cache path that will not survive.
 `templates/default/`, and a directory that is not empty is refused with the
 entries it found rather than overwritten.
 
+Verified on 2026-11-13 from an empty directory with no checkout present:
+
+```
+$ bunx github:JeffreyJYZ/crust init my-app
+$ cd my-app && bun install
+  + crust@github:JeffreyJYZ/crust#e0ce2a4
+$ bunx crust dev
+crust dev — /private/tmp/my-app/crust.config.ts
+  frontend  served by the bridge (public/index.html, no dev server)
+
+  bridge    http://127.0.0.1:49283
+  window    open
+  greet     hello crust (page call answered)
+EXIT=0
+```
+
 ## Run the example
 
 From the crust checkout:
