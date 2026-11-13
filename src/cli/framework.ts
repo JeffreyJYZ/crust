@@ -18,6 +18,9 @@ function inExecutable(): boolean {
 	return import.meta.dir.includes("/$bunfs");
 }
 
+/** True when runtime paths live inside a compiled executable rather than a checkout. */
+export { inExecutable };
+
 /**
  * A real directory holding crust's own sources, for the code `dev` and `build` generate.
  *

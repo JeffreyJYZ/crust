@@ -65,12 +65,19 @@ Either way the assertion already exists: the script reads the shipped files for 
 Measured with stable Bun 1.4.4, from the repo root:
 
 ```sh
-bun build --compile --outfile dist/crust src/cli/index.ts \
-  --asset=templates --asset=docs --asset=src/platform/darwin \
-  --asset=tsconfig.json --asset=package.json
+bun run build:standalone     # compiles dist/crust, then proves it with no checkout
 ```
 
-89,407,586 bytes. `crust --version` (0.1.1) and `crust init app --next` both work under `env -i PATH=/usr/bin:/bin`, and `crust doctor` in that scaffold reports shim, window and templates ok — the shim compiled from the embedded source, since there is no checkout to point at.
+It writes `dist/crust` (89,952,482 bytes) using the flags below, then runs the binary with `PATH=/usr/bin:/bin` from a temporary directory: `--version` must equal `package.json`, `init` must write every file of all three scaffolds, and `doctor` must reach the shim, the templates and the platform from inside the executable. Any gap exits non-zero.
+
+```sh
+bun build --compile --outfile dist/crust src/cli/index.ts \
+  --asset=src --asset=templates --asset=docs --asset=tsconfig.json --asset=package.json
+```
+
+`--asset=src` is the flag that makes `dev` and `build` work at all: their generated entry imports the framework's own sources, and a child `bun build` cannot read a path inside another executable, so the tree is materialised into `$TMPDIR/crust-framework-<version>` first. `--asset=src/platform/darwin` alone would embed only the C shims.
+
+Verified end to end from a compiled crust with no checkout: `crust build` on `examples/hello` produced an 85.25 MiB binary and an 85.26 MiB signed bundle, and that bundle ran with the bridge bound, a 900×640 window open, and both the page's `greet` and a plugin command answered.
 
 Two embedding shapes are not symmetric, which cost an hour: `--asset=<dir>` keeps the directory's own name and everything below it (`--asset=src/platform/darwin` yields `darwin/shim.c`, not `src/platform/darwin/shim.c`), while `--asset=<file>` keeps only the basename. A lookup therefore falls back to the basename, and only when exactly one embedded file carries it.
 

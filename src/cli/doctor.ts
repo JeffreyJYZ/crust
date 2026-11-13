@@ -7,6 +7,7 @@ import { findConfig, loadConfig, type CrustConfig } from "@/config";
 import { describeSignature } from "@/packaging/sign";
 import { buildPage, detectSingle, type SingleApp, type SingleDetection } from "@/single";
 import { listAssets, readAsset } from "./assets.ts";
+import { inExecutable } from "./framework.ts";
 import {
 	crustRoot,
 	exists,
@@ -66,10 +67,12 @@ async function checkShim(): Promise<Check> {
 	let label = onDisk;
 	let temporary: string | undefined;
 
-	if (!(await exists(onDisk))) {
-		// A compiled executable carries the shim as text and has no checkout, so
-		// materialise what it holds and compile that: the check has to test the
-		// source this build would really use.
+	if (!inExecutable() && (await exists(onDisk))) {
+		// A checkout: compile the file that is there.
+	} else {
+		// A compiled executable carries the shim as text, and `cc()` cannot read the
+		// embedded tree — TinyCC opens the path itself and the vfs is not a path it
+		// can open. Materialise what this process can read and compile that.
 		const embedded = await readAsset("src/platform/darwin/shim.c");
 		if (!embedded) {
 			return {
