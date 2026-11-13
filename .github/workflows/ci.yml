@@ -7,7 +7,15 @@ name: ci
 #
 # The e2e suites need a window server session; a runner that has none skips them and
 # says so in the log rather than failing (see the "window session" step). `bun check`,
-# the unit suite and `verify:package` need no window and always run.
+# the unit suite, `verify:package` and `build:standalone` need no window and always
+# run: the standalone binary is only driven through `--version`, `init` and `doctor`,
+# none of which opens one.
+#
+# Two checks guard the two packaging failures that have actually shipped:
+# `verify:package` catches a tarball missing a file it needs (0.1.0 shipped without
+# `tsconfig.json`, so every `@/` import failed on the user's first command line), and
+# `build:standalone` catches a compiled binary that cannot scaffold or compile its
+# shim. Neither is optional; both are cheap.
 
 on:
   push:
@@ -48,8 +56,28 @@ jobs:
       # Packs a tarball, installs it into a temp dir and runs `crust --help` and
       # `crust init probe --react` from the installed copy. This is the only check
       # that catches a package shipping without a file it needs, so it is not optional.
+      # Cost: a pack, an `tar -xzf` and one path install — measured 1.1 s here, so it
+      # is not the expensive step even on a runner.
       - name: verify package
         run: bun run verify:package
+
+      # Compiles `dist/crust` with `bun build --compile --asset=…` and then drives that
+      # binary the way a user does: from a temp dir, with `PATH=/usr/bin:/bin`, so
+      # nothing in this checkout can stand in for an embedded file. It asserts the
+      # version against package.json, all three scaffolds (templates must be inside the
+      # executable), and `doctor` reaching the shim, the templates and the platform from
+      # inside it. The standalone build first shipped unable to scaffold at all, then
+      # unable to compile its shim because `cc()` cannot read a `/$bunfs` path — this is
+      # the only step that catches either.
+      # Deliberately not behind the window gate, and that was read rather than assumed:
+      # `NSApplicationLoad` and `shim_window_new` are called only from the platform's
+      # `start()`, and doctor's "window" line only imports the module. `--version`,
+      # `init` and `doctor` therefore prove the binary with no Aqua session present.
+      # Cost: measured 1.0 s end to end here, 0.3 s of it the 90 MB compile; a runner
+      # differs only in cold disk, so budget seconds, not minutes. Cheap next to `e2e`;
+      # do not delete it as noise.
+      - name: standalone binary
+        run: bun run build:standalone
 
       # A built app opens an NSWindow with a WKWebView, so the e2e run needs an Aqua
       # session and a WindowServer. Probe for both and record the answer; the steps
@@ -68,6 +96,10 @@ jobs:
 
       # `crust build` signs and bundles `examples/hello`, launches its binary
       # directly (never `open`) and asserts the page's command was answered.
+      # Cost: the job's cost centre — it runs a real `bun build --compile`, signs and
+      # bundles a `.app`, then launches it. Expect a minute or two on a runner, more
+      # than every other step combined; it is expensive because it is the only proof
+      # that a built app answers a command, so it is not noise.
       - name: e2e
         if: steps.window.outputs.available == 'true'
         run: bun run e2e
@@ -93,10 +125,32 @@ jobs:
           fi
 
       # The multi-file proof: three embedded assets, backend-owned state, a page that
-      # calls a command on load.
+      # calls a command on load. Cost: another full build-and-launch, so budget the same
+      # minute or two as `e2e`; the diff gate above keeps it off unrelated PRs.
       - name: e2e notes
         if: steps.window.outputs.available == 'true' && steps.multi.outputs.run == 'true'
         run: bun run e2e:notes
+
+      # PLACEHOLDER — the single-file mode proof (`crust dev app.tsx` and
+      # `crust build app.tsx`) is `scripts/e2e-single.ts`. That script is landing
+      # separately and is not in this tree yet, so there is no `run:` line here and no
+      # `e2e:single` package script to call: adding either now would fail the job.
+      # The step belongs exactly here, after `e2e notes`, and it goes behind the same
+      # window probe, because both modes end by launching a windowed app like the other
+      # two — re-check that when the script lands, and drop the gate only if a mode
+      # really runs headless.
+      # When the script lands: add `"e2e:single": "bun run scripts/e2e-single.ts"` to
+      # package.json, then add
+      #
+      #   - name: e2e single
+      #     if: steps.window.outputs.available == 'true'
+      #     run: bun run e2e:single
+      #
+      # with a cost line like the ones above (it builds and launches, so expect the
+      # `e2e` ballpark) and a line in the "e2e skipped" notice below only if it can
+      # fail for a reason other than the missing window.
+      # This note exists so the ordering — after the install, after `bun check`, behind
+      # the window probe — does not have to be rediscovered.
 
       - name: e2e skipped
         if: steps.window.outputs.available != 'true'
