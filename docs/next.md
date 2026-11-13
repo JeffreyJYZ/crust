@@ -31,7 +31,7 @@ templates/next/
 
 Six files and that is the whole template. There is no `globals.css`: the palette is inline styles in `app/layout.tsx`, and `app/page.tsx` only sets what it needs on top. There is no `tsconfig.json` either — Next writes one on first run.
 
-`crust init` cannot select this template yet: `TEMPLATES` in `src/cli/init.ts` maps `vanilla` and `react`, and `--react` is the only template flag. Adding Next is one entry in that map and one flag, which belongs to whoever owns that file. Until then, copy the directory from a checkout and replace the three tokens by hand — `{{package}}`, `{{name_text}}`, and `{{crust_dep}}` (`link:/path/to/crust` from a checkout, `github:JeffreyJYZ/crust` otherwise).
+`crust init <dir> --next` selects this template; `--react` selects React + Vite, and no flag gives the plain-HTML scaffold. Passing two template flags is refused before anything is written, naming both. The template is copied through the same token substitution the others use, so `{{package}}`, `{{name_text}}` and `{{crust_dep}}` are already resolved when you look at the files.
 
 ## Dev and build
 

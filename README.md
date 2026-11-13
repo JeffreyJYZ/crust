@@ -18,19 +18,35 @@ bridge serving the page, and a typed `invoke` path from the page into Bun code.
 `crust build` compiles that app and assembles `X.app`, ad-hoc signed. The
 example in `examples/hello` is the whole path end to end.
 
-`crust init <dir>` scaffolds an app from `templates/default/`, and
-`crust init <dir> --react` scaffolds a React + Vite app from
-`templates/react/`. A built app embeds the configured asset directory —
-`public/` by default, a frontend's build output when `build.assets` names it —
-separate JS, CSS, fonts and images included, and serves a path with no extension
-from `index.html`, so a client-side route works.
+`crust init <dir>` scaffolds an app from `templates/default/`; `--react` selects
+`templates/react/` and `--next` selects `templates/next/`. No flag is the plain
+one, and the two flags are different scaffolds, so passing both is refused with a
+message naming each. A built app embeds the configured asset directory — `public/`
+by default, a frontend's build output when `build.assets` names it (`dist/web` for
+React, `out/` for Next) — separate JS, CSS, fonts and images included, and serves
+a path with no extension from `index.html`, so a client-side route works.
+
+The React scaffold is measured end to end. **The Next scaffold is not**: it has
+never been installed, built or opened, and its build depends on `crust build`
+running `beforeBuildCommand` before it reads `build.assets`.
 
 What is still missing: Windows and Linux, Developer ID signing, and the
 `dialog`, `tray` and `notification` plugins.
 
 ## Start an app
 
-The only requirement is Bun. From anywhere:
+The only requirement is Bun. Pick a scaffold by what you already have; the flag
+is the whole difference between them.
+
+| you have | flag | command |
+| --- | --- | --- |
+| HTML and CSS, no bundler | none | `crust init my-app` |
+| React, or a Vite frontend | `--react` | `crust init my-app --react` |
+| Next.js on the app router | `--next` | `crust init my-app --next` |
+| one component, just to see a window | no scaffold | `crust dev app.tsx` |
+
+`crust` in that table is `bunx github:JeffreyJYZ/crust` until the package is
+installed, so from anywhere the first scaffold is:
 
 ```sh
 bunx github:JeffreyJYZ/crust init my-app
@@ -45,13 +61,57 @@ up without republishing. A scaffold made through `bunx` or a registry install
 pins `github:JeffreyJYZ/crust` instead, because the directory `init` runs from is
 a cache path that will not survive.
 
-`crust init` writes `crust.config.ts`, `main.ts`, `public/index.html`,
-`public/style.css`, `public/app.js`, `.gitignore` and a `package.json` whose
-`dev` and `build` scripts call `crust`. The files are copied from
-`templates/default/`, and a directory that is not empty is refused with the
-entries it found rather than overwritten.
+`crust init` refuses a directory that is not empty, naming the entries it found,
+rather than merging into it — nothing of yours is overwritten.
 
-### React
+Four limits hold for all three scaffolds, and each one changes what you plan to
+build:
+
+- **macOS arm64 only.** Intel Macs, Windows and Linux are not supported.
+- **85 MiB per app.** Bun ships its runtime inside the binary. That is the
+  framework's floor, not your code: three thousand extra functions moved it
+  161 KiB.
+- **Ad-hoc signing.** `codesign --sign -` opens the app on this machine and
+  Gatekeeper refuses it on any other, so a recipient needs
+  `xattr -dr com.apple.quarantine "my-app.app"`, or right-click → Open.
+- **`notification` is refused inside a bundle.** The call is entered and the
+  callback fires with `granted = false`; the cause is still unidentified, and no
+  fake success is reported. Every per-plugin measurement is in
+  [Limits, stated plainly](#limits-stated-plainly).
+
+### Plain HTML — the default
+
+```sh
+bunx github:JeffreyJYZ/crust init my-app
+cd my-app
+bun install
+bunx crust dev
+bun run build             # crust build → dist/my-app.app
+```
+
+`templates/default/` is seven files: `crust.config.ts`, `main.ts`,
+`public/index.html`, `public/style.css`, `public/app.js`, `.gitignore` and a
+`package.json` whose `dev` and `build` scripts call `crust`. Separate CSS and JS
+with no bundler — the bridge serves `public/` itself and injects its own client,
+so an edit under `public/` shows on the next reload and nothing has to be built.
+
+Verified on 2026-11-13 from an empty directory with no checkout present:
+
+```
+$ bunx github:JeffreyJYZ/crust init my-app
+$ cd my-app && bun install
+  + crust@github:JeffreyJYZ/crust#e0ce2a4
+$ bunx crust dev
+crust dev — /private/tmp/my-app/crust.config.ts
+  frontend  served by the bridge (public/index.html, no dev server)
+
+  bridge    http://127.0.0.1:49283
+  window    open
+  greet     hello crust (page call answered)
+EXIT=0
+```
+
+### React — `--react`
 
 ```sh
 bunx github:JeffreyJYZ/crust init my-app --react
@@ -74,21 +134,56 @@ built app proves the whole path — window, embedded bundle, bridge, handler —
 no click. Built from the scaffold on 2026-11-13: **2 files from `dist/web/`**, an
 85.45 MiB binary, the page's call answered, exit 0.
 
-Verified on 2026-11-13 from an empty directory with no checkout present:
+### Next.js — `--next`
 
+```sh
+bunx github:JeffreyJYZ/crust init my-app --next
+cd my-app
+bun install
+bunx crust dev            # `crust dev` starts `next dev -p 3000`; the window loads it
+bun run build             # next build → out/, then crust build → dist/my-app.app
 ```
-$ bunx github:JeffreyJYZ/crust init my-app
-$ cd my-app && bun install
-  + crust@github:JeffreyJYZ/crust#e0ce2a4
-$ bunx crust dev
-crust dev — /private/tmp/my-app/crust.config.ts
-  frontend  served by the bridge (public/index.html, no dev server)
 
-  bridge    http://127.0.0.1:49283
-  window    open
-  greet     hello crust (page call answered)
-EXIT=0
+`templates/next/` is six files: `package.json` (crust, next, react, react-dom),
+`next.config.mjs` (`output: "export"`, `images.unoptimized`), `crust.config.ts`
+(`dev.url` on :3000 with `beforeDevCommand`, `build.assets: "out"`, the matching
+`beforeBuildCommand`), `app/layout.tsx` (the root layout, with the whole palette
+in inline styles and no stylesheet), `app/page.tsx` (`"use client"`, one
+`invoke("greet")` after mount) and `main.ts` (one command, `app.run()`).
+
+**Static export is the whole mode.** crust ships one binary that serves files from
+its own loopback bridge and has no server, so anything needing a process to answer
+a request is out of scope: route handlers, middleware, ISR, `next/image`
+optimisation, Server Actions, request-time `cookies()`/`headers()`, and
+`next start`. Server Components still work — they run once, at `next build`, and
+their output is part of the export. [docs/next.md](docs/next.md) is the full list.
+Development differs too: in `next dev` the page has no bridge client and says so
+(`window.crust is not installed in this page`); a built app is where the bridge
+injects it.
+
+**This path is unverified end to end, so treat it as a starting point rather than
+a measured result.** The template has not been installed, built or opened. Its
+build depends on `crust build` running `beforeBuildCommand` before it reads
+`build.assets`; until that ordering is confirmed, a build would embed whatever
+`out/` already holds instead of a fresh export. The React scaffold above is the
+measured one.
+
+### One file — no scaffold
+
+```sh
+bunx github:JeffreyJYZ/crust dev app.tsx     # one 900×700 window
+bunx github:JeffreyJYZ/crust build app.tsx   # → dist/app.app, ad-hoc signed
 ```
+
+One TSX file, no `crust.config.ts` and no `main.ts`: crust builds the config in
+memory, bundles the page and serves it. A file whose source contains
+`export default` is mounted as a React component, so `react` and `react-dom` must
+be installed beside it; any other file is loaded for its own side effects. There
+is no backend of your own — `info` and `echo` are the app namespace, and every
+plugin is still reachable in the three-argument form. [docs/single-file.md](docs/single-file.md)
+is the whole contract, including what it deliberately lacks: HMR, watching
+imports, a config surface and your own commands. Add `crust.config.ts` and
+`main.ts` the moment you need any of those.
 
 ## Run the example
 
@@ -236,7 +331,7 @@ Chromium.
   needs a certificate this repository does not ship.
 - **A built app embeds the whole asset directory.** By default that is
   `public/`; `build.assets` can name a frontend's output (`dist/web` for the
-  React template). `.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.woff2` and
+  React template, `out/` for Next). `.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.woff2` and
   `.wasm` are served with their own content types, and a path with no extension
   falls back to `index.html` so a client-side route works. A frontend that a dev
   server builds outside the asset directory still needs its own build step.
@@ -270,6 +365,7 @@ Chromium.
 ```
 src/app.ts          the app surface: command, on, run, quit, invoke, + the Platform seam
 src/runtime.ts      startApp: config + bridge + platform + the user's main.ts
+src/single.ts       one-file mode: detect the shape, build the config in memory, bundle
 src/config/         crust.config.ts / crust.json loading and validation
 src/bridge/         loopback invoke + SSE bridge, and the page-side client
 src/cli/            dev, build, sign, dmg, doctor
@@ -278,5 +374,6 @@ src/plugins/        definePlugin and the four v1 plugins
 src/platform/       the macOS implementation (shim.c compiled at launch by cc())
 templates/default/  the app `crust init` copies
 templates/react/    the React + Vite app `crust init --react` copies
+templates/next/     the Next.js static-export app `crust init --next` copies
 examples/hello/     the minimal app this README runs
 ```

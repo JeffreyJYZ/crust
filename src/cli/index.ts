@@ -13,8 +13,11 @@ type CommandName = (typeof COMMANDS)[number];
 const USAGE = `crust — a Bun-native desktop app framework. No Rust. Just crust.
 
 usage:
-  crust init <dir> [--react]
-                           scaffold an app in an empty directory (--react: React + Vite)
+  crust init <dir> [--react | --next]
+                           scaffold an app in an empty directory
+                             (no flag: plain HTML and CSS, no bundler
+                              --react: React + Vite
+                              --next:  Next.js, static export only)
   crust dev [file] [options]
                            watch the backend, restart it on change, follow the
                            frontend URL; with a .tsx/.jsx/.ts/.js file, run that
@@ -30,8 +33,9 @@ options:
   --dir <path>       project directory (default: current directory)
   --config <path>    config file, relative to --dir
   --entry <path>     backend entry, relative to --dir (default: src/main.ts)
-  --react            init only: copy the React + Vite template instead of the
-                     vanilla one
+  --react            init only: copy the React + Vite template
+  --next             init only: copy the Next.js template (static export);
+                     --react and --next are different scaffolds, pass one
   --help, -h         this text
   --version, -v      the crust version
 
@@ -55,6 +59,7 @@ function parse(argv: string[]): Parsed {
 	let positional: string | undefined;
 	let dirExplicit = false;
 	let react = false;
+	let next = false;
 	let help = false;
 	let version = false;
 
@@ -72,6 +77,9 @@ function parse(argv: string[]): Parsed {
 				break;
 			case "--react":
 				react = true;
+				break;
+			case "--next":
+				next = true;
 				break;
 			case "--dir":
 			case "--config":
@@ -127,6 +135,12 @@ function parse(argv: string[]): Parsed {
 			return { options, help, version, error: "--react only applies to init" };
 		}
 		options.react = true;
+	}
+	if (next) {
+		if (command !== "init") {
+			return { options, help, version, error: "--next only applies to init" };
+		}
+		options.next = true;
 	}
 
 	return { command, positional, options, help, version };

@@ -7,15 +7,24 @@ import { crustRoot, fail, line, type CliOptions } from "./util.ts";
 const TEMPLATES = {
 	vanilla: "templates/default",
 	react: "templates/react",
+	next: "templates/next",
 } as const;
 
 type TemplateName = keyof typeof TEMPLATES;
 
-/** `crust init` options: the shared CLI options plus the template flag. */
+/** `crust init` options: the shared CLI options plus the template flags. */
 export interface InitOptions extends CliOptions {
-	/** `--react`: copy the React + Vite template instead of the vanilla one. */
+	/** `--react`: copy the React + Vite template. */
 	react?: boolean;
+	/** `--next`: copy the Next.js static-export template. */
+	next?: boolean;
 }
+
+/** The one line that follows a template, printed under `next:`. */
+const BUILD_HINT: Partial<Record<TemplateName, string>> = {
+	react: "bun run build          (vite build → dist/web, then crust build → dist/)",
+	next: "bun run build          (next build → out/, then crust build → dist/)",
+};
 
 /** A directory name become a package name: lowercase, dots and dashes kept. */
 function packageName(raw: string): string {
@@ -42,7 +51,7 @@ async function templateFiles(dir: string, prefix = ""): Promise<string[]> {
 }
 
 /**
- * `crust init [dir] [--react]` — copy a template into an empty directory.
+ * `crust init [dir] [--react | --next]` — copy a template into an empty directory.
  *
  * The template ships as real files rather than string literals so a user can
  * read exactly what they will get, and so this command has nothing to keep in
@@ -50,15 +59,30 @@ async function templateFiles(dir: string, prefix = ""): Promise<string[]> {
  * dependency, which is what makes `bun install && bunx crust dev` work from a
  * checkout without publishing the package first.
  *
- * `--react` selects `templates/react/` (React + Vite, assets built into
- * `dist/web/`); without it the vanilla template is copied exactly as before.
+ * Three scaffolds, no flag being the default:
+ *
+ * - no flag — `templates/default/`, plain HTML with no bundler;
+ * - `--react` — `templates/react/`, React + Vite into `dist/web/`;
+ * - `--next` — `templates/next/`, Next.js on the app router with
+ *   `output: "export"` into `out/`.
+ *
+ * The two flags name different scaffolds, so both at once is refused with a
+ * message naming each rather than one quietly winning.
  *
  * A non-empty directory is refused rather than merged: a scaffold that silently
  * overwrites someone's `public/index.html` is worse than one that stops.
  */
 export async function init(options: InitOptions): Promise<number> {
+	if (options.react && options.next) {
+		return fail(
+			"init",
+			"--react and --next choose different scaffolds — pass one: --react is React + " +
+				"Vite, --next is Next.js with a static export",
+		);
+	}
+
 	const target = resolve(options.dir);
-	const templateName: TemplateName = options.react ? "react" : "vanilla";
+	const templateName: TemplateName = options.next ? "next" : options.react ? "react" : "vanilla";
 	const templateDir = resolve(crustRoot, TEMPLATES[templateName]);
 
 	const info = await stat(target).catch(() => undefined);
@@ -125,11 +149,10 @@ export async function init(options: InitOptions): Promise<number> {
 	}
 
 	for (const file of created) line("created", file);
-	const next = ["", "next:", `  cd ${target}`, "  bun install", "  bunx crust dev"];
-	if (options.react) {
-		next.push("  bun run build          (Vite build, then crust build, into dist/)");
-	}
-	console.log(`${next.join("\n")}\n`);
+	const steps = ["", "next:", `  cd ${target}`, "  bun install", "  bunx crust dev"];
+	const hint = BUILD_HINT[templateName];
+	if (hint) steps.push(`  ${hint}`);
+	console.log(`${steps.join("\n")}\n`);
 	return 0;
 }
 
