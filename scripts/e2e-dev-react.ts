@@ -479,7 +479,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 	verdict.check("port free", true, `${DEV_ORIGIN} is free before the run`);
 
 	// ---- 1. The scaffold a user gets --------------------------------------
-	const init = await runCommand(["bun", "run", CLI, "init", scratch, "--react"], REPO_ROOT);
+	const init = await runCommand([CLI, "init", scratch, "--react"], REPO_ROOT);
 	const files = ["crust.config.ts", "index.html", "main.ts", "vite.config.ts", "src/main.tsx"];
 	const missing: string[] = [];
 	for (const name of files) if (!(await exists(join(scratch, name)))) missing.push(name);
@@ -530,7 +530,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 	// serves, the bridge's own document and the stop path are each provable
 	// without the window, so a dead window leaves one clear failure instead of
 	// eleven "not checked" lines. Only "edit reload" truly needs a live page.
-	const dev = spawnLive(["bun", "run", CLI, "dev", "--dir", scratch], REPO_ROOT);
+	const dev = spawnLive([CLI, "dev", "--dir", scratch], REPO_ROOT);
 	try {
 		const isVite = (body: string): boolean =>
 			body.includes("/@vite/client") &&

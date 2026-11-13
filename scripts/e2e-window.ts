@@ -336,7 +336,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<string | undefi
 	const bundle = join(scratch, "dist", `${APP_NAME}.app`);
 
 	// ---- 1. build through the CLI, as a user runs it ------------------------
-	const build = await runCommand(["bun", "run", CLI, "build", "--dir", scratch], REPO_ROOT);
+	const build = await runCommand([CLI, "build", "--dir", scratch], REPO_ROOT);
 	const namedBundle = build.stdout.includes(bundle);
 	const built = build.code === 0;
 	const buildOk = verdict.check(

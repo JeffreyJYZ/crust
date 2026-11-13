@@ -274,7 +274,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<void> {
 	);
 
 	// ---- 1. `crust build`, the command `dmg` and `sign` both require -------
-	const build = await runCommand(["bun", "run", CLI, "build", "--dir", scratch], REPO_ROOT);
+	const build = await runCommand([CLI, "build", "--dir", scratch], REPO_ROOT);
 	const namedBundle = build.stdout.includes(bundle);
 	const built = build.code === 0 && namedBundle;
 	verdict.check(
@@ -348,7 +348,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<void> {
 
 	// ---- 2. `crust dmg` makes a real image ---------------------------------
 	const dmgsBefore = await listDmgs(dist);
-	const dmgRun = await runCommand(["bun", "run", CLI, "dmg", "--dir", scratch], REPO_ROOT);
+	const dmgRun = await runCommand([CLI, "dmg", "--dir", scratch], REPO_ROOT);
 	const dmgOk = dmgRun.code === 0;
 	verdict.check(
 		"dmg",
@@ -499,7 +499,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<void> {
 	const binaryBefore = await sha256(binary);
 	const distBefore = await listDist(dist);
 	const signatureBefore = await runCommand(["codesign", "-dv", "--verbose=4", bundle], REPO_ROOT);
-	const signRun = await runCommand(["bun", "run", CLI, "sign", "--dir", scratch], REPO_ROOT);
+	const signRun = await runCommand([CLI, "sign", "--dir", scratch], REPO_ROOT);
 	if (inherited !== undefined) process.env.CRUST_SIGNING_IDENTITY = inherited;
 	if (inherited !== undefined) {
 		note("CRUST_SIGNING_IDENTITY was set in this shell; unset here so the refusal path runs");

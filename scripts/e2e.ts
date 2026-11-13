@@ -68,7 +68,7 @@ async function main(): Promise<number> {
 
 	// ---- 1. build through the CLI, as a user runs it ------------------------
 	const build = await runCommand(
-		["bun", "run", CLI, "build", "--dir", "examples/hello"],
+		[CLI, "build", "--dir", "examples/hello"],
 		REPO_ROOT,
 	);
 	const namedBundle = build.stdout.includes(BUNDLE);

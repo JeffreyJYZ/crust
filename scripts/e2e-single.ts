@@ -327,7 +327,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 	await writeFile(appFile, pageSource("one"), "utf8");
 
 	// ---- 1. `crust dev app.tsx` answers the page's invoke -------------------
-	const dev = spawnLive(["bun", "run", CLI, "dev", APP_FILE], scratch);
+	const dev = spawnLive([CLI, "dev", APP_FILE], scratch);
 	try {
 		const answer = await dev.wait("out", INFO, 1, DEV_TIMEOUT_MS);
 		verdict.check(
@@ -383,7 +383,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 	}
 
 	// ---- 2. `crust build app.tsx` makes a launchable .app -------------------
-	const build = await runCommand(["bun", "run", CLI, "build", APP_FILE], scratch);
+	const build = await runCommand([CLI, "build", APP_FILE], scratch);
 	const namedBundle = build.stdout.includes(bundle);
 	const built = build.code === 0 && namedBundle;
 	verdict.check(
@@ -472,7 +472,7 @@ async function proof(verdict: Verdict, scratch: string): Promise<number> {
 
 	// ---- 3. A save rebuilds the page without restarting the runtime --------
 	await writeFile(appFile, pageSource("one"), "utf8");
-	const watch = spawnLive(["bun", "run", CLI, "dev", APP_FILE], scratch);
+	const watch = spawnLive([CLI, "dev", APP_FILE], scratch);
 	try {
 		const first = await watch.wait("out", INFO, 1, DEV_TIMEOUT_MS);
 		if (first === null) {

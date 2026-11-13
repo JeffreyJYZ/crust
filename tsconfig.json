@@ -14,8 +14,14 @@
 		"skipLibCheck": true,
 		"types": ["bun"],
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			// The package is named `crust`, and `examples/*` imports it by that name. A
+			// checkout only resolved it when a stray `node_modules` happened to exist, so
+			// the exports map is mirrored here and a clean clone typechecks.
+			"crust": ["./src/index.ts"],
+			"crust/plugin": ["./src/plugins/index.ts"],
+			"crust/vite": ["./src/vite.ts"]
 		}
 	},
-	"include": ["src", "scripts", "examples"]
+	"include": ["src", "scripts"]
 }

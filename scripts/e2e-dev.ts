@@ -64,7 +64,7 @@ async function main(): Promise<number> {
 	}
 
 	const run = await probe({
-		command: ["bun", "run", CLI, "dev", "--dir", "examples/hello"],
+		command: [CLI, "dev", "--dir", "examples/hello"],
 		cwd: REPO_ROOT,
 		match: GREET,
 		timeoutMs: DEV_TIMEOUT_MS,
