@@ -65,7 +65,12 @@ describe("darwin shim", () => {
 	 * touches the screen, so no human is needed.
 	 */
 	test("runModal=0 with no window returns a defined status, not a crash", () => {
-		const status = Number(shim().symbols.shim_open_panel(cstr("crust test"), 0, 0, 0) ?? -1);
+		// Five arguments, in the shim's order: title, filter list, dirs, multiple,
+		// runModal. Passing four shifts every one and the last becomes non-zero,
+		// which opens a real modal picker — measured, and it was my regression.
+		const status = Number(
+			shim().symbols.shim_open_panel(cstr("crust test"), cstr(""), 0, 0, 0) ?? -1,
+		);
 		expect(Object.values(PANEL_STATUS) as number[]).toContain(status);
 		expect([
 			PANEL_STATUS.noWindow,
