@@ -59,8 +59,29 @@ export {
 	type TrayOptions,
 	type TrayResult,
 } from "./tray";
+export {
+	createWindowPlugin,
+	WINDOW_COMMANDS,
+	WindowAdapterError,
+	type WindowCloseResult,
+	type WindowErrorCode,
+	type WindowFailure,
+	type WindowFocusResult,
+	type WindowLabelArgs,
+	type WindowListResult,
+	type WindowNative,
+	type WindowOpenResult,
+	type WindowSetTitleArgs,
+	type WindowTitleResult,
+	windowPlugin,
+} from "./window";
 
-/** The four plugins v1 ships. */
+/**
+ * The four plugins that need no platform instance. `window` sits outside this
+ * list because its adapter needs the running `DarwinPlatform` to read labels
+ * from, which only `startApp` has; the runtime appends it before selection, so
+ * its name still matches `config.plugins`.
+ */
 export const corePlugins = [
 	fsPlugin,
 	dialogPlugin,

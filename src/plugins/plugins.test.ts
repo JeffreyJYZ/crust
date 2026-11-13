@@ -121,8 +121,15 @@ describe("honest failures", () => {
 
 	test("tray names NSStatusBar", async () => {
 		const registry = coreRegistry();
-		for (const command of ["set", "remove"]) {
-			await expect(registry.invoke("tray", command, {}, ctx)).rejects.toMatchObject({
+		const calls: [string, Record<string, unknown>][] = [
+			["setTitle", { text: "x" }],
+			["setMenu", { items: [] }],
+			["show", {}],
+			["hide", {}],
+			["destroy", {}],
+		];
+		for (const [command, args] of calls) {
+			await expect(registry.invoke("tray", command, args, ctx)).rejects.toMatchObject({
 				code: "not-implemented",
 				requires: "NSStatusBar",
 			});
@@ -139,8 +146,11 @@ describe("native adapters", () => {
 				notify: async () => ({ id: "n1" }),
 			}),
 			createTrayPlugin({
-				set: async () => ({ active: true as const }),
-				remove: async () => {},
+				setTitle: () => {},
+				setMenu: () => {},
+				show: () => {},
+				hide: () => {},
+				destroy: () => {},
 			}),
 		);
 
@@ -151,7 +161,9 @@ describe("native adapters", () => {
 		expect(await registry.invoke("notification", "notify", { title: "hi" }, ctx)).toEqual({
 			id: "n1",
 		});
-		expect(await registry.invoke("tray", "set", {}, ctx)).toEqual({ active: true });
+		expect(await registry.invoke("tray", "setTitle", { text: "hi" }, ctx)).toMatchObject({
+			ok: true,
+		});
 	});
 
 	test("the defaults stand in for every adapter", () => {
