@@ -1,8 +1,8 @@
 # crust API reference
 
-`crust` 0.1.5, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
+`crust` 0.1.8, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
 
-Each signature, default and error message below was read from the source file named beside it in this working tree. What was *run* is narrower, and [Unverified](#unverified) lists the four claims this page deliberately does not make: a dialog sheet or completed pick, a tray item seen on screen, and a delivered notification have not been observed at all, and the Next static-export path is observed only through `crust build`, never through a human clicking around the exported app. Everything else below, including the Next build pipeline and both single-file modes, has a script or a recorded run behind it.
+Each signature, default and error message below was read from the source file named beside it in this working tree. What was *run* is narrower, and [Unverified](#unverified) lists the four claims this page deliberately does not make: a completed dialog pick (the sheet itself has been shown, held open and cancelled), a tray item seen on screen and a delivered notification have not been observed, and the Next static-export path is observed only through `crust build`, never through a human clicking around the exported app. Everything else below, including the Next build pipeline and both single-file modes, has a script or a recorded run behind it.
 
 Design rationale and measurements live in [DESIGN.md](../DESIGN.md); link targets are cited as `DESIGN.md §n` rather than restated.
 
@@ -37,6 +37,14 @@ import {
 	corePlugins, coreRegistry,
 	createDialogPlugin, createNotificationPlugin, createTrayPlugin, createWindowPlugin,
 	WINDOW_COMMANDS, WindowAdapterError,
+} from "crust/plugin";
+
+// types (erased at runtime)
+import type {
+	DialogNative, OpenPanelOptions, OpenPanelResult, SavePanelOptions, SavePanelResult,
+	NotificationNative, NotificationPermission, NotifyOptions, NotifyResult,
+	TrayNative, TrayOptions, TrayResult, WindowNative, WindowCreateOptions, WindowErrorCode,
+	WindowFailure, PluginContext, PluginDefinition,
 } from "crust/plugin";
 ```
 
@@ -180,7 +188,7 @@ run(): Promise<void>
 
 Starts the app: the deferred bridge (if `startApp` supplied one), `platform.start()`, one `platform.createWindow(…)` per `config.windows` entry, emit `ready`, then `platform.pump(16)` (`PUMP_INTERVAL_MS`). Resolves once the app is up; the process stays alive on the pump timer and the bridge afterwards. There is no "run until closed" promise to await — completion is observed through `quit()` or process exit.
 
-With nothing attached, `run()` loads the config from the current directory and lazily imports `src/platform/darwin/index.ts`, which is what keeps the AppKit layer out of a process that never opens a window.
+With nothing attached at all, `run()` loads the config from the current directory and lazily imports `src/platform/darwin/index.ts`, which is what keeps the AppKit layer out of a process that never opens a window. With only the config attached (`app.configure`, the headless and built-wrapper path) it skips `loadConfig()` and resolves just the platform.
 
 **The bridge is created here, not earlier.** Through `startApp`, `App.deferBridge` holds a factory and `run()` calls it before creating any window; the factory registers the core plugins the config selected, the platform's native adapters, every `app.use` plugin, and the `app` namespace, then binds. That ordering is the reason a plugin mounted in `main.ts` is reachable from the first page load.
 
@@ -424,7 +432,7 @@ The validator fills in nothing — it only rejects. The "default" column is what
 | `windows[].minWidth` | no | unset | applied as the window's minimum size, and the configured `height` is reused as the minimum *height* too (`shim_window_set_min_size` in `src/platform/darwin/index.ts`) |
 | `windows[].title` | no | unset | applied from C and read back; a mismatch throws |
 | `dev.url` | no | unset | when set, every window loads it verbatim and `windows[].url` is ignored; its origin is also the one extra origin the bridge allows for CORS |
-| `dev.beforeDevCommand` | no | unset | started (not awaited) by `crust dev` via `sh -c`, in the project directory, with inherited stdio. It inherits the bridge pair only if `crust dev` already had both variables; otherwise the `.crust/dev.json` handshake is what `crust/vite` reads |
+| `dev.beforeDevCommand` | no | unset | started (not awaited) by `crust dev` via `sh -c`, in the project directory, with inherited stdio. It inherits the bridge pair only if `crust dev` already had both variables; otherwise the `.crust/dev.json` handshake is what `crust/vite` reads. With `dev.url` set, `crust dev` then waits up to 30 s for a TCP connect on that port before spawning the runtime — the window loads the URL exactly once and cannot retry — and aborts with a message naming the URL if nothing listens |
 | `build.beforeBuildCommand` | no | unset | run **first**, before the asset directory is read, via `sh -c` in the project directory with inherited stdio; a non-zero exit aborts the build with a message naming the command and its exit code |
 | `build.assets` | no | `public` | directory `crust build` embeds, relative to `--dir`. A *named* directory must exist and hold `index.html`, or the build stops; it may not resolve to `dist/`, where `crust build` writes, because a second build would embed its own binary |
 | `build.minimumSystemVersion` | no | `"13.0"` | `LSMinimumSystemVersion`; default in `src/cli/build.ts` |
@@ -520,15 +528,16 @@ Five names exist, in `src/plugins/`. `config.plugins` selects among them; `start
 | --- | --- | --- |
 | `fs` | `readTextFile`, `writeTextFile`, `list`, `stat`, `remove`, `rename` | file text, `{ bytes }`, `{ entries: [{ name, path, directory, size }] }`, `{ path, directory, size, modified }`, `{ removed, path }`, `{ path }`. A missing path is `not-found` (404), a non-string path `bad-request` (400). `list` returns absolute paths and sorts by name; `remove` deletes a non-empty directory only with `recursive: true` |
 | `dialog` | `openPanel`, `savePanel` | `{ paths: string[] }`; `savePanel` picks exactly one file, so its list holds one path or none. `[]` means the user cancelled — never an error and never `not-implemented` from a real adapter |
-| `window` | `close`, `focus`, `setTitle`, `list`, `isOpen` | `{ ok: true, … }` or `{ ok: false, code: "unknown-window" \| "invalid-label" \| "handler-error", message, label? }` |
+| `window` | `create`, `close`, `focus`, `setTitle`, `list`, `isOpen` | `{ ok: true, … }` or `{ ok: false, code: "unknown-window" \| "invalid-label" \| "invalid-size" \| "invalid-url" \| "duplicate-label" \| "unknown-adapter" \| "handler-error", message, label? }`. `create` answers `{ ok: true, label, created: true }`; a label that is already open is `duplicate-label`, and a third-party adapter without `WindowNative.create` answers `unknown-adapter` |
 | `tray` | `setTitle`, `setMenu`, `show`, `hide`, `destroy` | `{ ok: true, … }` or `{ ok: false, code: "invalid-text" \| "invalid-menu" \| "unknown-adapter" \| "destroyed" \| "handler-error", message }` |
 | `notification` | `requestPermission`, `notify` | `notify` → `{ delivered: boolean, reason: string }`; `requestPermission` → `not-implemented` whenever a real adapter is present |
 
-Three of those deserve one sentence each, because the shape is not obvious from the command name:
+Four of those deserve one sentence each, because the shape is not obvious from the command name:
 
-- **`dialog`** is a sheet, not a modal, whenever a window exists: the panel is started with `beginSheetModalForWindow:completionHandler:`, the C completion handler records `NSModalResponse`, and `awaitSheetResult` polls the done flag on a 16 ms timer — so the pump and in-flight invokes keep running while the picker is up. With no key window it falls back to `-runModal`, which blocks the JavaScript thread for the whole pick. `filters` is flattened to one comma-separated extension list and applied through the deprecated `-setAllowedFileTypes:`, because macOS 27's `allowedContentTypes` needs UTType objects that cannot cross `bun:ffi`. `multiple` and `directory` map to `allowsMultipleSelection` / `canChooseDirectories`. Neither a sheet on screen nor a completed pick has been observed — see [Unverified](#unverified).
+- **`dialog`** is a sheet, not a modal, whenever a window exists: the panel is started with `beginSheetModalForWindow:completionHandler:`, the C completion handler records `NSModalResponse`, and `awaitSheetResult` polls the done flag on a 16 ms timer — so the pump and in-flight invokes keep running while the picker is up. With no key window it falls back to `-runModal`, which blocks the JavaScript thread for the whole pick. `filters` is flattened to one comma-separated extension list and applied through the deprecated `-setAllowedFileTypes:`, because macOS 27's `allowedContentTypes` needs UTType objects that cannot cross `bun:ffi`. `multiple` and `directory` map to `allowsMultipleSelection` / `canChooseDirectories`; `savePanel` is `NSSavePanel` on the same machinery, takes a `suggestedName` for its name field, and answers one path or none. A sheet has been shown, held pending and cancelled in a real window; a completed pick or save needs a human — see [Unverified](#unverified).
 - **`tray`** is one `NSStatusItem` per process with a title and a menu; a second `createStatusBar()` throws until the first is destroyed, because the ObjC runtime holds a single click IMP. A page cannot send a function, so every row click is also emitted as the `tray:click` event carrying `{ index, label }`.
 - **`notification`** reports the OS's own status: `delivered` is true only when the adapter's status is 0. Statuses 1 (authorization pending or denied), 2 (a class or selector is missing) and 3 (the API errored) all come back as `delivered: false` with the reason intact, so a missing permission is never a silent success. Two answers have been measured, and neither delivered anything: unbundled (`crust dev`) the process has no bundle identifier, so `UNUserNotificationCenter` is never entered and the reason names the absent `NSUserNotification` selector; inside a built `.app` the modern centre *is* entered and authorization comes back denied, `{"delivered":false,"reason":"UNUserNotificationCenter: authorization was denied"}`. The cause of that denial is unidentified; [README](../README.md#limits-stated-plainly) carries the two explanations that were ruled out.
+- **`window.create`** takes `{ label, title?, width?, height?, url? }` and is the answer to a page that closed its only window: before it, a re-open meant keeping a hidden window alive. The plugin half is complete (`src/plugins/window.ts`, with tests), and the macOS `darwinWindowAdapter` implements `WindowNative.create` by delegating to `DarwinPlatform.createWindow` and nothing more: a **live** label is refused as `duplicate-label` before anything is released, a **closed** one is pruned first with `platform.window(label)` so `createWindow` does not refuse a label nobody can see in `list`, and a relative `url` resolves against the document the platform recorded for an open window (`windowUrl`) — neither `CRUST_BRIDGE_URL` nor `.crust/dev.json` is reachable from the adapter. The capability check runs before the arguments, deliberately: an adapter without `create` says `unknown-adapter` rather than complain about a request it would never run. With an adapter present the payload is validated (a non-integer size is `invalid-size`, refused not clamped; an empty `url` is `invalid-url`; an already-open label is `duplicate-label`), and the plugin reads the platform's list back afterwards, so an adapter that answers without tracking the new label is a `handler-error` rather than a window that every later command denies.
 
 ---
 
@@ -543,7 +552,7 @@ Three of those deserve one sentence each, because the shape is not obvious from 
 | `crust build [file]` | compile the binary, assemble `X.app`, ad-hoc sign it; with a positional, build the single-file app |
 | `crust sign` | Developer ID signing (needs a certificate) |
 | `crust dmg` | drag-to-Applications disk image |
-| `crust doctor` | report why the app did not open |
+| `crust doctor` | diagnose a launch instead of guessing: that the C shim compiles, the bridge binds, the port the app will actually get is free, the dev watcher ignores what it should, the asset directory holds `index.html`, the templates are present and a built bundle's signature |
 
 Options: `--dir <path>` (project directory, default the current directory), `--config <path>` and `--entry <path>` (both relative to `--dir`), `--react` / `--next` (init only, and mutually exclusive — passing both is refused before anything is written), `--help`/`-h`, `--version`/`-v`. An unknown option, a second positional, or a template flag anywhere but `init` is an error, not a fallback.
 
@@ -556,7 +565,7 @@ Options: `--dir <path>` (project directory, default the current directory), `--c
 These are the claims this page does not make. Each is code that exists, exercised only in part.
 
 1. **The Next.js build path, part one: a human using the exported app.** `build.assets: "out"` with `beforeBuildCommand: "bun --bun ./node_modules/.bin/next build"` is measured end to end: `crust build` ran the export (21 files from `out/`), embedded them, produced an 85.83 MiB binary, and that binary served the document, a `_next` chunk and `/about`, 403'd a missing asset, and answered the page's `invoke` — see [next.md](next.md). What has not happened is a person clicking around the exported app, so client-side navigation and hydration are proven only by the served markup and the round trip.
-2. **A dialog sheet shown, and a pick a human completed.** The sheet's polling loop is tested against fake readings, and every selector it needs is preflighted. The one automated run that reached the sheet path got a safe refusal rather than a panel, so neither a sheet on screen nor a click in a real `NSOpenPanel` has been observed — and the `-runModal` fallback and the `filters` extension list have never been exercised against a real panel at all.
+2. **A dialog pick a human completed.** The sheet machinery *has* been exercised in a real window: the open panel reported `sheetStarted`, was still pending 400 ms later, and `-cancel:` resolved `{ paths: [] }` through the poll; the save panel did the same. What has not happened is a person choosing a file — for either panel — so the OK response, a real path list and the overwrite prompt are unobserved, and the `-runModal` fallback has never been entered at all.
 3. **A tray item seen on screen.** An item was created, titled, shown, hidden and destroyed in a run, and AppKit readback reported its title, `isVisible: true`, a button window on the menu-bar row and the occlusion bit — state, not pixels. The screen capture contained no menu bar, because the active Space was a fullscreen app, and a menu click needs a human.
 4. **A delivered notification.** Authorisation *has* been observed, and it was denied: inside a built `.app` the modern centre is entered and the callback fires with `granted = false`, so `notify` answers `{"delivered":false,"reason":"UNUserNotificationCenter: authorization was denied"}`. No run has ever produced `delivered: true`. The cause of the denial is unidentified; the app's signing identity is the untested candidate.
 

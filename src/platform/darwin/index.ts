@@ -520,6 +520,14 @@ interface NativeWindow {
 	handle: WindowHandle;
 	win: number;
 	web: number;
+	/**
+	 * The absolute URL this window was asked to load (`about:blank` when the
+	 * caller gave a relative one, which `NSURL` cannot take as-is). Kept because
+	 * a window created later resolves a relative URL against the app's own
+	 * document, and this is the only place that document survives: the bridge
+	 * URL is the runtime's, never the platform's.
+	 */
+	url: string;
 }
 
 /**
@@ -718,8 +726,21 @@ export class DarwinPlatform implements Platform {
 		if (!loaded) throw new Error(`shim_webview_load failed for ${url}`);
 
 		const handle: WindowHandle = { label };
-		this.#windows.set(label, { handle, win, web });
+		this.#windows.set(label, { handle, win, web, url });
 		return handle;
+	}
+
+	/**
+	 * The absolute URL a tracked window was asked to load.
+	 *
+	 * This is what a later `window.create` resolves a relative URL against: the
+	 * bridge URL is the runtime's private state (and only a dev handshake puts it
+	 * in `CRUST_BRIDGE_URL` / `.crust/dev.json`, neither of which a built app
+	 * running from `/` can read), while the document the app's own windows were
+	 * loaded with is right here, absolute and already verified by the webview.
+	 */
+	windowUrl(label: string): string | undefined {
+		return this.#windows.get(label)?.url;
 	}
 
 	/**
@@ -1108,6 +1129,13 @@ export function darwinDialogAdapter(): DarwinDialogAdapter {
  * process through `DarwinPlatform.activateOnce`, so calling it on every switch
  * does not make the Dock icon keep jumping.
  *
+ * `create` is `DarwinPlatform.createWindow` and nothing else: that method already
+ * builds the `initWithContentRect:` window, adds and pins the webview, applies
+ * the title and size, orders it front and tracks the label. The adapter's only
+ * jobs are the two facts that method cannot know — whether the label is a live
+ * window or a stale closed one, and what "the app's own document" is — and both
+ * are read from the platform, never guessed.
+ *
  * Every selector here is in `PREFLIGHT`, so a system that cannot do this fails
  * `start()` with a name instead of aborting on an uncaught ObjC exception.
  */
@@ -1123,7 +1151,58 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 		return win;
 	};
 
+	/**
+	 * The app's own document, as an absolute base URL.
+	 *
+	 * Neither `CRUST_BRIDGE_URL` nor `.crust/dev.json` is usable here: the runtime
+	 * only publishes them when a dev server exists, and a built app runs from `/`
+	 * where there is no handshake. What *is* true is that the app's windows were
+	 * loaded with that document, and `DarwinPlatform` recorded each one — so the
+	 * first tracked window whose URL is a real web URL is the base. A window
+	 * loaded as `about:blank` (a caller handed the platform a relative URL) is
+	 * skipped, because resolving against it would produce nothing loadable.
+	 */
+	const documentBase = (): URL => {
+		for (const label of platform.windowLabels()) {
+			const url = platform.windowUrl(label);
+			if (url === undefined || !/^https?:/i.test(url)) continue;
+			try {
+				return new URL(url);
+			} catch {
+				continue;
+			}
+		}
+		throw new WindowAdapterError(
+			"handler-error",
+			"crust: window.create needs an absolute url — no open window has loaded one to resolve against",
+		);
+	};
+
+	/** Absolute URLs load as given; a relative one joins the app's own document. */
+	const resolveDocument = (url: string | undefined): string => {
+		if (url !== undefined && /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return url;
+		return new URL(url ?? "/", documentBase()).toString();
+	};
+
 	return {
+		/**
+		 * One `platform.window(label)` call answers both questions at once: a
+		 * handle means the label is a live window and must be refused, and
+		 * `undefined` means absent *or* closed — and the call has already pruned
+		 * the closed entry, which is what stops `createWindow` from refusing a
+		 * label nobody can see in `list`. Releasing a closed window is not
+		 * replacing an open one: the live case throws before any release.
+		 */
+		create(options): { label: string } {
+			const live = platform.window(options.label);
+			if (live !== undefined) {
+				throw new WindowAdapterError(
+					"duplicate-label",
+					`crust: a window labelled ${JSON.stringify(options.label)} is already open`,
+				);
+			}
+			return platform.createWindow({ ...options, url: resolveDocument(options.url) });
+		},
 		close(label: string): void {
 			S.v0(require(label), "close");
 		},
