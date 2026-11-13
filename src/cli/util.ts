@@ -1,9 +1,30 @@
+import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import packageJson from "../../package.json";
 
-/** The crust package root, whatever directory the CLI is invoked from. */
-export const crustRoot = resolve(import.meta.dir, "..", "..");
+/**
+ * The crust package root, whatever directory the CLI is invoked from.
+ *
+ * Six ancestors, because the package root is the directory holding `templates/` and
+ * that is not always two steps up: in a checkout this file is `src/cli/util.ts`, in a
+ * compiled executable `import.meta.dir` is `/$bunfs/root/src/cli` when the bundler
+ * keeps the tree, and `/$bunfs/root` when it flattens — where `..` twice would be `/`.
+ * Marker discovery answers all three, and a tree with no marker falls back to the
+ * checkout assumption so nothing that works today changes.
+ */
+function findRoot(start: string): string {
+	let dir = start;
+	for (let depth = 0; depth < 6; depth++) {
+		if (existsSync(join(dir, "templates"))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	return resolve(start, "..", "..");
+}
+
+export const crustRoot = findRoot(import.meta.dir);
 
 export const VERSION: string = packageJson.version;
 

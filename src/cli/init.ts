@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { listAssets } from "./assets.ts";
 import { crustRoot, fail, line, type CliOptions } from "./util.ts";
 
 /** The scaffold sources. Copied, never assembled from strings in this file. */
@@ -33,21 +34,6 @@ function packageName(raw: string): string {
 		.replace(/[^a-z0-9._-]+/g, "-")
 		.replace(/^[.-]+|[.-]+$/g, "");
 	return slug.length > 0 ? slug : "crust-app";
-}
-
-/** Every file under `dir`, as `/`-separated relative paths. */
-async function templateFiles(dir: string, prefix = ""): Promise<string[]> {
-	const entries = await readdir(dir, { withFileTypes: true });
-	const files: string[] = [];
-	for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-		const relative = prefix.length > 0 ? `${prefix}/${entry.name}` : entry.name;
-		if (entry.isDirectory()) {
-			files.push(...(await templateFiles(join(dir, entry.name), relative)));
-		} else if (entry.isFile()) {
-			files.push(relative);
-		}
-	}
-	return files;
 }
 
 /**
@@ -83,7 +69,6 @@ export async function init(options: InitOptions): Promise<number> {
 
 	const target = resolve(options.dir);
 	const templateName: TemplateName = options.next ? "next" : options.react ? "react" : "vanilla";
-	const templateDir = resolve(crustRoot, TEMPLATES[templateName]);
 
 	const info = await stat(target).catch(() => undefined);
 	if (info && !info.isDirectory()) {
@@ -103,12 +88,13 @@ export async function init(options: InitOptions): Promise<number> {
 		}
 	}
 
-	const template = await stat(templateDir).catch(() => undefined);
-	if (!template?.isDirectory()) {
+	const template = await listAssets(TEMPLATES[templateName]).catch(() => undefined);
+	if (!template || template.length === 0) {
 		return fail(
 			"init",
-			`the crust installation has no ${TEMPLATES[templateName]} (expected ${templateDir}) — ` +
-				"the package was installed without its templates/ directory",
+			`the crust installation has no ${TEMPLATES[templateName]} — expected ` +
+				`${resolve(crustRoot, TEMPLATES[templateName])} on disk, or the same path embedded ` +
+				"with --asset. The package was installed without its templates/ directory",
 		);
 	}
 
@@ -124,7 +110,6 @@ export async function init(options: InitOptions): Promise<number> {
 			.replaceAll(">", "&gt;")
 			.replaceAll('"', "&quot;"),
 		"{{package}}": packageName(name),
-		"{{crust_root}}": crustRoot,
 		// A checkout pins the live directory; anything else (a `bunx` run, a
 		// registry install) has to name the package, because the directory it is
 		// running from is a cache path that will not survive.
@@ -135,14 +120,12 @@ export async function init(options: InitOptions): Promise<number> {
 
 	console.log(`crust init — ${target}`);
 	line("template", `${TEMPLATES[templateName]}/`);
-	const files = await templateFiles(templateDir);
 	const created: string[] = [];
-	for (const relative of files) {
+	for (const asset of template) {
 		// npm renames a nested `.gitignore` to `.npmignore` when packing, so the
 		// template keeps it under a plain name and it is renamed on copy.
-		const destination = relative === "gitignore" ? ".gitignore" : relative;
-		const source = join(templateDir, relative);
-		const bytes = await readFile(source);
+		const destination = asset.relative === "gitignore" ? ".gitignore" : asset.relative;
+		const bytes = await asset.bytes();
 		const out = join(target, destination);
 		await Bun.write(out, bytes.includes(0) ? bytes : Buffer.from(applyTokens(bytes, tokens)));
 		created.push(destination);

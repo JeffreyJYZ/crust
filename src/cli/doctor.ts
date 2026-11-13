@@ -1,10 +1,12 @@
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { extname, join, relative, resolve } from "node:path";
 import { cc, FFIType } from "bun:ffi";
 import { startBridge } from "@/bridge/server.ts";
 import { findConfig, loadConfig, type CrustConfig } from "@/config";
 import { describeSignature } from "@/packaging/sign";
 import { buildPage, detectSingle, type SingleApp, type SingleDetection } from "@/single";
+import { listAssets, readAsset } from "./assets.ts";
 import {
 	crustRoot,
 	exists,
@@ -59,10 +61,29 @@ function versionAtLeast(version: string, minimum: string): boolean {
  * no side effects — no window, no application activation.
  */
 async function checkShim(): Promise<Check> {
-	const source = resolve(crustRoot, "src/platform/darwin/shim.c");
-	if (!(await exists(source))) {
-		return { name: "shim", status: "fail", detail: `missing ${source}` };
+	const onDisk = resolve(crustRoot, "src/platform/darwin/shim.c");
+	let source = onDisk;
+	let label = onDisk;
+	let temporary: string | undefined;
+
+	if (!(await exists(onDisk))) {
+		// A compiled executable carries the shim as text and has no checkout, so
+		// materialise what it holds and compile that: the check has to test the
+		// source this build would really use.
+		const embedded = await readAsset("src/platform/darwin/shim.c");
+		if (!embedded) {
+			return {
+				name: "shim",
+				status: "fail",
+				detail: `missing ${onDisk}, and not embedded in this executable`,
+			};
+		}
+		temporary = join(tmpdir(), `crust-doctor-${process.pid}-shim.c`);
+		await Bun.write(temporary, embedded);
+		source = temporary;
+		label = "embedded src/platform/darwin/shim.c";
 	}
+
 	try {
 		cc({
 			source,
@@ -84,14 +105,16 @@ async function checkShim(): Promise<Check> {
 				},
 			},
 		});
-		return { name: "shim", status: "ok", detail: `${source} compiles with cc()` };
+		return { name: "shim", status: "ok", detail: `${label} compiles with cc()` };
 	} catch (error) {
 		const text = error instanceof Error ? error.message : String(error);
 		return {
 			name: "shim",
 			status: "fail",
-			detail: `${source} does not compile — ${inline(text)}`,
+			detail: `${label} does not compile — ${inline(text)}`,
 		};
+	} finally {
+		if (temporary) await rm(temporary, { force: true });
 	}
 }
 
@@ -406,10 +429,22 @@ const TEMPLATES = ["default", "react", "next"] as const;
  */
 export async function checkTemplates(root = crustRoot): Promise<Check> {
 	const missing: string[] = [];
+	let embedded = 0;
 	for (const name of TEMPLATES) {
-		const dir = resolve(root, "templates", name);
-		const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-		if (!(await exists(dir, "dir")) || entries.length === 0) missing.push(name);
+		// `root` is honoured for fixtures; only the real package root falls back to
+		// what a compiled executable carries.
+		let count: number;
+		if (root === crustRoot) {
+			const assets = await listAssets(`templates/${name}`).catch(() => []);
+			count = assets.length;
+			if (count > 0 && !(await exists(resolve(root, "templates", name), "dir"))) embedded++;
+		} else {
+			const entries = await readdir(resolve(root, "templates", name), {
+				withFileTypes: true,
+			}).catch(() => []);
+			count = entries.length;
+		}
+		if (count === 0) missing.push(name);
 	}
 	if (missing.length > 0) {
 		return {
@@ -417,14 +452,15 @@ export async function checkTemplates(root = crustRoot): Promise<Check> {
 			status: "fail",
 			detail:
 				`${missing.map((name) => `templates/${name}`).join(", ")} missing from this install ` +
-				`(${resolve(root, "templates")}) — reinstall crust; crust init cannot scaffold without them`,
+				`(${resolve(root, "templates")}, and not embedded) — reinstall crust; ` +
+				"crust init cannot scaffold without them",
 		};
 	}
-	return {
-		name: "templates",
-		status: "ok",
-		detail: `${resolve(root, "templates")} holds ${TEMPLATES.join(", ")}`,
-	};
+	const where =
+		embedded > 0
+			? `this executable holds ${TEMPLATES.join(", ")} (embedded with --asset)`
+			: `${resolve(root, "templates")} holds ${TEMPLATES.join(", ")}`;
+	return { name: "templates", status: "ok", detail: where };
 }
 
 const PAGE_EXTENSIONS = new Set([".tsx", ".jsx"]);
@@ -593,15 +629,20 @@ export async function doctor(options: CliOptions): Promise<number> {
 		}
 	}
 
-	// Window layer.
-	const platformPath = resolve(crustRoot, "src/platform/darwin/index.ts");
-	if (await exists(platformPath)) push("window", "ok", platformPath);
-	else
+	// Window layer. Importing it is the check: a compiled executable carries the
+	// module and has no file on disk to stat, so a path check would report a failure
+	// for a build that works.
+	try {
+		const platform = await import("@/platform/darwin");
 		push(
 			"window",
-			"fail",
-			"the macOS platform layer is not implemented yet (src/platform/darwin)",
+			"ok",
+			`platform module loaded, ${platform.PREFLIGHT.length} preflight entries`,
 		);
+	} catch (error) {
+		const text = error instanceof Error ? error.message : String(error);
+		push("window", "fail", `the macOS platform layer did not load — ${inline(text)}`);
+	}
 
 	// The three known-fatal traps, named only when the project hits one.
 	for (const trap of await scanTraps(resolve(options.dir))) {
