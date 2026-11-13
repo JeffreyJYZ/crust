@@ -18,9 +18,32 @@ bridge serving the page, and a typed `invoke` path from the page into Bun code.
 `crust build` compiles that app and assembles `X.app`, ad-hoc signed. The
 example in `examples/hello` is the whole path end to end.
 
-What is still missing: Windows and Linux, Developer ID signing, the `dialog`,
-`tray` and `notification` plugins, and embedding frontend files other than
-`index.html` into a built app.
+`crust init <dir>` scaffolds an app from `templates/default/`. A built app
+embeds the whole `public/` tree — separate JS, CSS, fonts and images included —
+and serves a path with no extension from `index.html`, so a client-side route
+works.
+
+What is still missing: Windows and Linux, Developer ID signing, and the
+`dialog`, `tray` and `notification` plugins.
+
+## Start an app
+
+From this checkout:
+
+```sh
+bun run src/cli/index.ts init my-app
+cd my-app
+bun install
+bunx crust dev
+```
+
+`crust init` writes `crust.config.ts`, `main.ts`, `public/index.html`,
+`public/style.css`, `public/app.js`, `.gitignore` and a `package.json` whose
+`dev` and `build` scripts call `crust`. The files are copied from
+`templates/default/`, and a directory that is not empty is refused with the
+entries it found rather than overwritten. The generated `package.json` pins the
+crust installation that ran `init` as a `link:` dependency, so the scaffold
+works from a checkout with no publish step.
 
 ## Run the example
 
@@ -31,9 +54,9 @@ bun install                      # one dev dependency: @types/bun
 bun run src/cli/index.ts dev --dir examples/hello
 ```
 
-There is nothing to build and nothing to install globally. The example is three
-files: `crust.config.ts`, `main.ts`, and `public/index.html` — plain HTML with
-an inline script, no bundler.
+There is nothing to build and nothing to install globally. The example is five
+files: `crust.config.ts`, `main.ts`, `public/index.html`, `public/style.css` and
+`public/app.js` — plain HTML with separate CSS and JS, no bundler.
 
 What you get:
 
@@ -61,10 +84,10 @@ open "examples/hello/dist/Hello crust.app"
 ```
 
 `crust build` compiles a generated entry that embeds the config, the backend
-`main.ts`, `public/index.html`, **and the C shim as text** — inside a compiled
-binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a temp file
-at launch before `cc()` runs — then assembles the bundle and ad-hoc signs it:
-85.11 MiB binary, 85.12 MiB bundle for this example.
+`main.ts`, **every file under `public/`**, **and the C shim as text** — inside a
+compiled binary `import.meta.dir` is `/$bunfs/root`, so the shim is written to a
+temp file at launch before `cc()` runs — then assembles the bundle and ad-hoc
+signs it: 85.11 MiB binary, 85.12 MiB bundle for this example.
 
 Running the binary inside the bundle directly, never `open` (which routes through
 LaunchServices and Gatekeeper):
@@ -156,9 +179,11 @@ Chromium.
   other machine. Recipients run `xattr -dr com.apple.quarantine "Hello
   crust.app"` or right-click → Open. A Developer ID is `crust sign`'s job and
   needs a certificate this repository does not ship.
-- **A built app embeds `index.html` only.** Separate JS, CSS and image files
-  under `public/` are served in `dev` but are not embedded yet, so keep a
-  frontend self-contained or host it.
+- **A built app embeds the whole `public/` tree.** `.html`, `.js`, `.css`,
+  `.json`, `.svg`, `.png`, `.woff2` and `.wasm` are served with their own content
+  types, and a path with no extension falls back to `index.html` so a
+  client-side route works. A frontend that a dev server builds outside `public/`
+  still needs its own build step.
 - **`fs` is the only working plugin.** `dialog`, `tray` and `notification`
   answer with a structured `not-implemented` error naming what they require.
   Scripts also cannot be evaled from the page: no `dialog`.
@@ -177,5 +202,6 @@ src/cli/            dev, build, sign, dmg, doctor
 src/packaging/      binary compile, .app assembly, signing, dmg, icon
 src/plugins/        definePlugin and the four v1 plugins
 src/platform/       the macOS implementation (shim.c compiled at launch by cc())
+templates/default/  the app `crust init` copies
 examples/hello/     the minimal app this README runs
 ```

@@ -143,10 +143,20 @@ function contentTypeOf(pathname: string): string {
 	return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
-/** True for `/` and anything a browser loads as the document or an asset. */
-function isPublicPath(pathname: string): boolean {
-	if (pathname === "/" || pathname === "/index.html") return true;
-	return pathname.startsWith("/assets/") || pathname.startsWith("/static/");
+/**
+ * A path whose last segment has no dot is a client-side route, not a file:
+ * `/settings` falls back to the document so a page's own router can see it,
+ * while `/missing.js` is a genuinely absent asset.
+ */
+function hasExtension(pathname: string): boolean {
+	const last = pathname.slice(pathname.lastIndexOf("/") + 1);
+	return last.includes(".");
+}
+
+/** Whether a document exists to fall back to. No document means no fallback. */
+async function hasDocument(options: StartBridgeOptions): Promise<boolean> {
+	if (options.indexHtml !== undefined) return true;
+	return (await assetBody("/index.html", options)) !== null;
 }
 
 interface Subscriber {
@@ -330,24 +340,32 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 			if (request.method === "OPTIONS") return preflight(request, devOrigins);
 
 			// The document and its assets are the only token-free paths: the page
-			// cannot hold its own token before it has been served.
+			// cannot hold its own token before it has been served. DESIGN.md §4 is
+			// explicit that the built frontend is public — the token protects IPC,
+			// not the HTML, JS and CSS the page is made of.
 			if (
 				(request.method === "GET" || request.method === "HEAD") &&
-				isPublicPath(url.pathname)
+				!url.pathname.startsWith("/_crust/")
 			) {
 				try {
 					if (url.pathname === "/" || url.pathname === "/index.html") {
 						return await documentResponse({ options, csp, token, port });
 					}
 					const body = await assetBody(url.pathname, options);
-					if (body === null) throw new CrustError("not-found", url.pathname);
-					return new Response(body, {
-						headers: {
-							"content-type": contentTypeOf(url.pathname),
-							"cache-control": "no-store",
-							"x-content-type-options": "nosniff",
-						},
-					});
+					if (body !== null) {
+						return new Response(body, {
+							headers: {
+								"content-type": contentTypeOf(url.pathname),
+								"cache-control": "no-store",
+								"x-content-type-options": "nosniff",
+							},
+						});
+					}
+					// A path with no extension that matches no file is a client-side
+					// route: serve the document and let the page's router handle it.
+					if (!hasExtension(url.pathname) && (await hasDocument(options))) {
+						return await documentResponse({ options, csp, token, port });
+					}
 				} catch (error) {
 					return errorResponse(error, cors);
 				}

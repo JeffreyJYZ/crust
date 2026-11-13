@@ -1,0 +1,13 @@
+{
+	"name": "{{package}}",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "crust dev",
+		"build": "crust build"
+	},
+	"dependencies": {
+		"crust": "link:{{crust_root}}"
+	}
+}

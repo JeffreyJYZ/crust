@@ -3,15 +3,17 @@ import { build } from "./build.ts";
 import { dev } from "./dev.ts";
 import { dmg } from "./dmg.ts";
 import { doctor } from "./doctor.ts";
+import { init } from "./init.ts";
 import { sign } from "./sign.ts";
 import { type CliOptions, VERSION } from "./util.ts";
 
-const COMMANDS = ["dev", "build", "sign", "dmg", "doctor"] as const;
+const COMMANDS = ["init", "dev", "build", "sign", "dmg", "doctor"] as const;
 type CommandName = (typeof COMMANDS)[number];
 
 const USAGE = `crust — a Bun-native desktop app framework. No Rust. Just crust.
 
 usage:
+  crust init <dir>         scaffold an app in an empty directory
   crust dev [options]      watch the backend, restart it on change, follow the frontend URL
   crust build [options]    compile the binary and assemble X.app (ad-hoc signed)
   crust sign [options]     Developer ID signing (needs a certificate)
@@ -30,6 +32,8 @@ and no Developer ID signature yet, so Gatekeeper refuses builds on other machine
 
 interface Parsed {
 	command?: CommandName | string;
+	/** The single positional after the command; only `init` takes one. */
+	positional?: string;
 	options: CliOptions;
 	help: boolean;
 	version: boolean;
@@ -39,6 +43,8 @@ interface Parsed {
 function parse(argv: string[]): Parsed {
 	const options: CliOptions = { dir: process.cwd() };
 	let command: string | undefined;
+	let positional: string | undefined;
+	let dirExplicit = false;
 	let help = false;
 	let version = false;
 
@@ -60,7 +66,10 @@ function parse(argv: string[]): Parsed {
 				const value = argv[++index];
 				if (value === undefined)
 					return { options, help, version, error: `${arg} needs a value` };
-				if (arg === "--dir") options.dir = value;
+				if (arg === "--dir") {
+					options.dir = value;
+					dirExplicit = true;
+				}
 				if (arg === "--config") options.config = value;
 				if (arg === "--entry") options.entry = value;
 				break;
@@ -68,14 +77,31 @@ function parse(argv: string[]): Parsed {
 			default:
 				if (arg.startsWith("-"))
 					return { options, help, version, error: `unknown option ${arg}` };
-				if (command !== undefined) {
-					return { options, help, version, error: `unexpected argument ${arg}` };
+				if (command === undefined) {
+					command = arg;
+					break;
 				}
-				command = arg;
+				if (command === "init" && positional === undefined) {
+					positional = arg;
+					break;
+				}
+				return { options, help, version, error: `unexpected argument ${arg}` };
 		}
 	}
 
-	return { command, options, help, version };
+	if (positional !== undefined) {
+		if (dirExplicit) {
+			return {
+				options,
+				help,
+				version,
+				error: "init takes one directory — pass <dir> or --dir, not both",
+			};
+		}
+		options.dir = positional;
+	}
+
+	return { command, positional, options, help, version };
 }
 
 function isCommand(name: string): name is CommandName {
@@ -105,6 +131,7 @@ async function main(argv: string[]): Promise<number> {
 	}
 
 	const handlers: Record<CommandName, (options: CliOptions) => Promise<number>> = {
+		init,
 		dev,
 		build,
 		sign,
