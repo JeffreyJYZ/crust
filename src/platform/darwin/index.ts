@@ -319,6 +319,8 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["WKWebView", "loadRequest:"],
 	["NSApplication", "setActivationPolicy:"],
 	["NSApplication", "isHidden"],
+	["NSApplication", "activate"],
+	["NSApplication", "isActive"],
 	["NSApplication", "activateIgnoringOtherApps:"],
 	["NSApplication", "terminate:"],
 	["NSView", "addSubview:"],
@@ -620,6 +622,13 @@ export class DarwinPlatform implements Platform {
 		S.vq1(app, "setActivationPolicy:", 0);
 		this.ensureRunLoopMode();
 		this.#started = true;
+		// Recorded because an inactive app is one macOS will not let you click into, and an
+		// unbundled `crust dev` runtime is exactly the case where activation is refused.
+		try {
+			console.log(`  active    ${S.b0(this.#app ?? 0, "isActive") ? "yes" : "no"}`);
+		} catch {
+			// Diagnostics only.
+		}
 	}
 
 	/**
@@ -738,6 +747,16 @@ export class DarwinPlatform implements Platform {
 
 		const handle: WindowHandle = { label };
 		this.#windows.set(label, { handle, win, web, url });
+		// Two numbers a blank window makes worth printing: its window number for
+		// `screencapture -l`, and whether AppKit thinks it is visible. A page that renders and
+		// then disappears is otherwise indistinguishable from a page that never loaded.
+		try {
+			const number = Number(shim().symbols.shim_window_number(win) ?? 0);
+			const visible = Number(shim().symbols.shim_window_is_visible(win) ?? 0);
+			console.log(`  window    ${label} number ${number}, visible ${visible}`);
+		} catch {
+			// Diagnostics only.
+		}
 		return handle;
 	}
 
@@ -840,9 +859,19 @@ export class DarwinPlatform implements Platform {
 		this.#activated = true;
 		if (!this.#app) return;
 		try {
-			S.vb1(this.#app, "activateIgnoringOtherApps:", 1);
+			// macOS 14 replaced `activateIgnoringOtherApps:` with a plain `-activate`, and the
+			// old selector is a no-op for a process macOS will not activate — an unbundled
+			// `crust dev` runtime, which is the case that rendered a page and then went blank:
+			// the web content is treated as occluded while the app is not active, so WebKit
+			// stops drawing exactly where a user sees UI appear and then disappear.
+			S.v0(this.#app, "activate");
 		} catch {
-			// Activation is cosmetic; nothing depends on it.
+			// Older systems: fall back to the deprecated call, still better than nothing.
+			try {
+				S.vb1(this.#app, "activateIgnoringOtherApps:", 1);
+			} catch {
+				// Activation is cosmetic; nothing depends on it.
+			}
 		}
 	}
 
