@@ -39,7 +39,7 @@
 		"verify:package": "bun run scripts/verify-package.ts",
 		"build:standalone": "bun run scripts/build-standalone.ts",
 		"verify:first-run": "bun run scripts/first-run.ts",
-		"demo": "bun run src/cli/index.ts dev --dir examples/dogear",
+		"demo": "bun install --cwd examples/dogear && bun run src/cli/index.ts dev --dir examples/dogear --entry desktop/main.ts",
 		"release": "bun run scripts/release.ts",
 		"verify:cellar": "bun run scripts/verify-cellar.ts",
 		"verify": "bun check && bun test src/bridge src/plugins src/platform && bun fmt --check src"

@@ -240,7 +240,7 @@ The honest size claim is **"no bundled Chromium"**, never "as small as Tauri": T
 Everything else in this README has a script behind it. Two things need hands on the keyboard, and each is a couple of minutes:
 
 ```sh
-bun run demo          # crust dev --dir examples/dogear
+bun run demo          # installs the example, then crust dev on it
 ```
 
 - **A completed folder pick.** Click **Choose…** in the app (or the tray's `Open folder`), then pick the `notes/` folder in the panel and hit **Open**. A sheet is up until you answer it; crust cannot click it, which is why every automated run only proves the sheet *appeared* and cancelled it. Success looks like the note list refreshing from the folder you picked, and `panel — picked <path>` in the terminal.
