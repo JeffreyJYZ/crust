@@ -14,10 +14,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { isIgnoredWatchPath } from "@/cli/ignore";
 import { buildPage, detectSingle, devRunnerSource, type SingleApp } from "@/single";
-import { crustRoot, fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
+import { frameworkRoot } from "./framework.ts";
+import { fail, line, resolveBackendEntry, type CliOptions } from "./util.ts";
 
 /** Where the runtime module lives inside this package. */
-const RUNTIME_ENTRY = resolve(crustRoot, "src/runtime.ts");
 
 export async function dev(options: CliOptions): Promise<number> {
 	const detected = await detectSingle(options);
@@ -93,9 +93,16 @@ interface RuntimeOptions {
 	env?: Record<string, string>;
 }
 
-function spawnRuntime(options: RuntimeOptions) {
+async function spawnRuntime(options: RuntimeOptions) {
 	return Bun.spawn({
-		cmd: ["bun", RUNTIME_ENTRY, "--config", options.configPath, "--entry", options.entry],
+		cmd: [
+			"bun",
+			join(await frameworkRoot(), "src/runtime.ts"),
+			"--config",
+			options.configPath,
+			"--entry",
+			options.entry,
+		],
 		cwd: options.projectDir,
 		stdio: ["inherit", "inherit", "inherit"],
 		env: { ...process.env, ...options.env, CRUST_DEV_URL: options.devUrl ?? "" },
@@ -123,7 +130,7 @@ function bridgeEnv(devUrl: string | undefined): Record<string, string> {
  * imports live; a change under `public/` is HMR's and is ignored.
  */
 async function watchRuntime(options: RuntimeOptions): Promise<number> {
-	let child = spawnRuntime(options);
+	let child = await spawnRuntime(options);
 	let stopping = false;
 	let restarting = false;
 	let wake: (() => void) | undefined;
@@ -167,7 +174,7 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		if (stopping) return 0;
 		if (restarting) {
 			restarting = false;
-			child = spawnRuntime(options);
+			child = await spawnRuntime(options);
 			continue;
 		}
 		if (code === 0) {
@@ -180,7 +187,7 @@ async function watchRuntime(options: RuntimeOptions): Promise<number> {
 			wake = resolve;
 		});
 		if (stopping) return 0;
-		child = spawnRuntime(options);
+		child = await spawnRuntime(options);
 	}
 }
 
