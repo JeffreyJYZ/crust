@@ -34,6 +34,14 @@ One `PASS`/`FAIL` line per assertion, a verdict line with the tarball size, and 
 
 The script runs as `bun run verify:package`. It is in CI: `.github/workflows/ci.yml` runs it on every push to `main` and every pull request, in the `verify package` step, ahead of the standalone build and the e2e suites.
 
+## Verifying the Homebrew layout
+
+The tap is a second delivery channel with its own failure mode: the formula copies a **fixed list** into `libexec` and writes a `bin/crust` wrapper, so a tag can be perfect as a tarball and still break `init` or `doctor` once the formula's list drifts from what the package needs.
+
+`bun run verify:cellar` reproduces those two steps from a tag without Homebrew: `git archive` the tag, keep only the paths `libexec.install` names, delete `research/`, `examples/`, `scripts/` and `.github/` so their absence is tested rather than assumed, write the same wrapper, then run `--version`, `init --next` and `doctor` against it. `CRUST_FORMULA` points it at a different clone; `--tag` picks a release.
+
+On `v0.1.8`: 7 named paths, wrapper, `0.1.8`, an 8-file Next scaffold including the `tsconfig.json` the alias needs, and `doctor` reporting shim, templates and window `[ok]` out of `libexec`. It is not a substitute for `brew upgrade` — that needs the tap merged — but it is the half that can be wrong in this repository.
+
 ## What it found, and what closed it
 
 The first run of `verify-package` on `0.1.0` failed 7 of 32 checks, and every install-phase failure traced to one defect. Both are fixed; the account stays because the failure mode is the reason the script exists.

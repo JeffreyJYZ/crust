@@ -39,6 +39,7 @@
 		"build:standalone": "bun run scripts/build-standalone.ts",
 		"verify:first-run": "bun run scripts/first-run.ts",
 		"release": "bun run scripts/release.ts",
+		"verify:cellar": "bun run scripts/verify-cellar.ts",
 		"verify": "bun check && bun test src/bridge src/plugins src/platform && bun fmt --check src"
 	},
 	"devDependencies": {
