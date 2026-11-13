@@ -215,13 +215,16 @@ Chromium.
   item with a clickable menu, created, titled, shown, hidden and destroyed in a
   run. The run landed on a fullscreen space where the menu bar is hidden, so
   visual presence is unproven and a menu click needs a human.
-- **`notification` is entered inside a bundle and refused by the OS.** Unbundled
-  it reports status `2` — no bundle identifier, so the modern path is gated.
-  Inside a built `.app` the modern `UNUserNotificationCenter` path **is** entered
-  and answers `{"delivered":false,"reason":"UNUserNotificationCenter:
-  authorization was denied"}`, because an ad-hoc signed bundle cannot be granted
-  notification authorisation. No fake success: `delivered` is true only when the
-  OS reported delivery.
+- **`notification` is entered inside a bundle and refused, cause narrowed.** Inside
+  a built `.app` the modern `UNUserNotificationCenter` path **is** entered and the
+  callback fires with `granted = false`, reporting
+  `{"delivered":false,"reason":"UNUserNotificationCenter: authorization was denied"}`.
+  Two explanations were tested and ruled out: it is not an unanswered prompt (the
+  callback fired well inside the 1.5 s wait), and it is not LaunchServices
+  registration (`lsregister -f` then a re-run gave the identical answer, with the
+  bundle listed under `codeInfoID: land.jyz.notif`). The cause is still
+  unidentified; the remaining untested candidate is the app's signing identity.
+  No fake success: `delivered` is true only when the OS reported delivery.
 - **A blocking JavaScript call blocks drawing.** The Cocoa run loop is pumped
   from a timer (16 ms tick, 0.25 ms slice); long synchronous work belongs on a
   `Worker`.
