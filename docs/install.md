@@ -85,7 +85,7 @@ bunx github:JeffreyJYZ/crust#v0.1.9 init my-app
 | --- | --- | --- |
 | `github:JeffreyJYZ/crust` | `main`'s head, `0.1.8`, Next template 8 files | `0.1.0`, and `--next` refused |
 | `github:JeffreyJYZ/crust#main` | `main`'s head, `0.1.8` | `0.1.0`, Next template 7 files |
-| `github:JeffreyJYZ/crust#v0.1.9` | `0.1.8`, 8 files | `0.1.8`, 8 files |
+| `github:JeffreyJYZ/crust#v0.1.9` | `0.1.9`, 8 files | `0.1.9`, 8 files |
 
 **The trap is the cache, and it is not a bug in crust.** bunx keys its cache on the specifier string, so a bare `github:JeffreyJYZ/crust` keeps serving whatever commit it first resolved, indefinitely. A reader whose cache predates a feature sees a command fail for a reason that has nothing to do with the code they are running:
 
@@ -99,7 +99,7 @@ Measured on this machine, twice, before touching the cache: `0.1.0` from both th
 
 Two cures, in order of preference:
 
-1. **Name a tag.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#v0.1.9 init my-app --next` resolves fresh the first time and answers `0.1.8` with the 8-file Next template. A tag is the one ref whose answer cannot drift, because the commit it names does not move (a re-tagged release is the only way it could).
+1. **Name a tag.** A different specifier is a different cache key, so `bunx github:JeffreyJYZ/crust#v0.1.9 init my-app --next` resolves fresh the first time and answers `0.1.9` with the 8-file Next template. A tag is the one ref whose answer cannot drift, because the commit it names does not move (a re-tagged release is the only way it could).
 2. **Clear the two cache directories.** Both are safe to delete, nothing else lives in them:
 
 ```sh

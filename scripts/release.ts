@@ -114,8 +114,13 @@ for (const [label, cmd, summarise] of [
 		"test",
 		["bun", "run", "test"],
 		(out: string) => {
-			const passed = /(\d+) pass/.exec(out)?.[1] ?? "?";
-			const failed = /(\d+) fail/.exec(out)?.[1] ?? "?";
+			// bun test paints its totals, and the escape codes sit between the count and
+			// the word often enough that a raw match reports "? passed" — which is how a
+			// release log claimed nothing at all about the suite it had just run.
+			const plain = out.replaceAll(/\u001b\[[0-9;]*m/g, "");
+			const passed = /(\d+)\s+pass/.exec(plain)?.[1] ?? "?";
+			const failed = /(\d+)\s+fail/.exec(plain)?.[1] ?? "?";
+			if (passed === "?" || failed === "?") return `ran, totals not parsed (exit 0)`;
 			return `${passed} passed, ${failed} failed`;
 		},
 	],
@@ -134,15 +139,20 @@ await Bun.write(
 	`${REPO}/package.json`,
 	`${JSON.stringify({ ...manifest, version }, null, "\t")}\n`,
 );
-// Install examples pin the tag, so they move with it; a stale pin sends a reader to a
-// version that lacks the fixes the release exists to deliver.
-for (const file of ["README.md", "docs/install.md"]) {
-	const path = `${REPO}/${file}`;
+// Install examples pin the tag, so README's commands move with it. docs/install.md is
+// deliberately excluded: it carries *measured* answers — what bunx returned for a tag on a
+// fresh cache, what a stale cache returned — and rewriting the tag there pairs a new tag
+// with an old measurement, which is how 0.1.9 shipped a table claiming #v0.1.9 answers
+// 0.1.8. Re-measure that page by hand instead (`BUN_INSTALL=<tmp> bunx …#<tag> --version`).
+{
+	const path = `${REPO}/README.md`;
 	const text = await Bun.file(path).text();
 	const updated = text.replaceAll(`#v${manifest.version}`, `#${tag}`);
 	if (updated !== text) await Bun.write(path, updated);
+	step("pins", `README.md${updated === text ? " (no change)" : ""}`);
 }
-await sh(["git", "add", "package.json", "README.md", "docs/install.md"]);
+await sh(["git", "add", "package.json", "README.md"]);
+console.log("  note      re-measure the bunx table in docs/install.md for this tag");
 await sh([
 	"git",
 	"-c",
