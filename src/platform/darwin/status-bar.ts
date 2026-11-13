@@ -10,7 +10,7 @@
  *
  * `createStatusBar()` returns exactly the `TrayNative` shape, so it is the
  * darwin adapter without a second wrapper: `createTrayPlugin(createStatusBar())`.
- * It is deliberately not wired into `runtime.ts`.
+ * That is how `runtime.ts` wires it on macOS (`nativePlugins`).
  *
  * Limits this module states instead of hiding:
  *

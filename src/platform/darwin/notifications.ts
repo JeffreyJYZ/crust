@@ -18,10 +18,9 @@
  *     with no JavaScript error, so the C unit refuses to send that selector
  *     without an identifier and falls back.
  *
- * This module is deliberately **not** wired into `runtime.ts`: the event pump,
- * the plugin registry and `app.ts` all belong to other lanes. It exports
- * `postNotification` and `darwinNotificationAdapter()`, and nothing calls them
- * unless something asks.
+ * `runtime.ts` wires `darwinNotificationAdapter()` into
+ * `createNotificationPlugin` on macOS (`nativePlugins`); `postNotification`
+ * stays exported for a caller that wants the post without the plugin.
  */
 
 import { cc, FFIType, ptr } from "bun:ffi";
