@@ -61,14 +61,14 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 | surface | what you get | details |
 | --- | --- | --- |
-| `fs` | read, write, list, stat, rename and remove real files | [files](site/app/docs/guides/files/page.mdx) |
-| `dialog` | native open and save sheets, non-blocking, with filters | [dialogs](site/app/docs/guides/dialogs/page.mdx) |
-| `window` | create, focus, close, set the title, and ask whether one is open | [windows](site/app/docs/guides/window/page.mdx) |
-| `tray` | a menu-bar item with rows that fire into your page | [tray](site/app/docs/guides/tray/page.mdx) |
-| `notification` | delivered ad-hoc; refused from the temp dir, and a denied id stays denied until you re-enable it | [notifications](site/app/docs/guides/notifications/page.mdx) |
-| `crust build` / `dmg` / `sign` | `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY` | [packaging](site/app/docs/guides/package/page.mdx) |
-| `crust dev` | a loopback bridge, or your own dev server with `beforeDevCommand` | [dev server](site/app/docs/guides/dev/page.mdx) |
-| frontend | embedded asset directory, client-side routes served from `index.html` | [frontend](site/app/docs/guides/frontend/page.mdx) |
+| `fs` | read, write, list, stat, rename and remove real files | [files](https://crust.jyz.land/docs/guides/files) |
+| `dialog` | native open and save sheets, non-blocking, with filters | [dialogs](https://crust.jyz.land/docs/guides/dialogs) |
+| `window` | create, focus, close, set the title, and ask whether one is open | [windows](https://crust.jyz.land/docs/guides/window) |
+| `tray` | a menu-bar item with rows that fire into your page | [tray](https://crust.jyz.land/docs/guides/tray) |
+| `notification` | delivered ad-hoc; refused from the temp dir, and a denied id stays denied until you re-enable it | [notifications](https://crust.jyz.land/docs/guides/notifications) |
+| `crust build` / `dmg` / `sign` | `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY` | [packaging](https://crust.jyz.land/docs/guides/package) |
+| `crust dev` | a loopback bridge, or your own dev server with `beforeDevCommand` | [dev server](https://crust.jyz.land/docs/guides/dev) |
+| frontend | embedded asset directory, client-side routes served from `index.html` | [frontend](https://crust.jyz.land/docs/guides/frontend) |
 
 ## What it will not do
 
@@ -83,10 +83,10 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 ## Docs and contributing
 
-The documentation lives in [`site/`](site) — one page per entry under `app/docs`, served with
+The documentation lives at **[crust.jyz.land](https://crust.jyz.land)** — one page per entry, source in [`site/`](site), served with
 `cd site && bun install && bun run dev`. Every measured claim behind these pages is on the
-[evidence](site/app/docs/evidence/page.mdx) page, and the [limits](site/app/docs/limits/page.mdx) page states the
+[evidence](https://crust.jyz.land/docs/evidence) page, and the [limits](https://crust.jyz.land/docs/limits) page states the
 consequences rather than the numbers.
 
 Contributors and agents: [AGENTS.md](AGENTS.md) is the workflow and the traps. The design, with its
-reasoning, is in [design](site/app/docs/design/page.mdx).
+reasoning, is in [design](https://crust.jyz.land/docs/design).
