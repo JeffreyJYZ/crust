@@ -1,6 +1,6 @@
 # Evidence
 
-Everything below was run on macOS 27.0.1, arm64 (M4 Air), Bun 1.4.4+38afee6c8, against `crust` 0.1.12 through 0.1.18, between 2026-11-12 and 2026-11-14. Each row names the script or probe that produced it; a row without one is not here.
+Everything below was run on macOS 27.0.1, arm64 (M4 Air), Bun 1.4.4+38afee6c8, against `crust` 0.1.12 through 0.1.20, between 2026-11-12 and 2026-11-14. Each row names the script or probe that produced it; a row without one is not here.
 
 ## Window
 
@@ -34,7 +34,7 @@ Bridge refusals are measured too: a missing or wrong token is `401`, absent or f
 | create, title, show, hide, destroy in one run | AppKit readback: the title, `isVisible: true`, a button window on the menu-bar row, and its frame |
 | `activateRow(index)` | `sent=true fired=Save now` — the row action, the trampoline and the page listener |
 | a person clicked a menu row in a built app | the app reported the save, which means the row's action ran |
-| `bun run e2e:dogear` against the Homebrew Cellar | 15/15 assertions on every release from 0.1.12 to 0.1.18: five-row menu, both sheets up and unresolved, seeded notes, exit 0, no survivors |
+| `bun run e2e:dogear` against the Homebrew Cellar | 15/15 assertions on every release from 0.1.12 to 0.1.20: five-row menu, both sheets up and unresolved, seeded notes, exit 0, no survivors |
 
 The item is only visible where the menu bar has room; a fullscreen Space draws none, which is why it went unseen for so long.
 
@@ -73,7 +73,7 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 | the three scaffolds, built from a scaffold rather than the checkout | plain 3 files / 85.25 MiB, React 2 files / 85.45 MiB, Next 21 files / 85.83 MiB with `invoke("greet")` answered |
 | `bun run e2e:single`, 19 assertions | dev answers the page; the built bundle answers with cwd `/`; a save rebuilds without restarting the runtime; a syntax error leaves the last good bundle running |
 | `bun run verify:package` | 31 checks against a 140.5 KiB tarball (the docs site is a repo artefact and does not ship), installed into a temp directory and run from the installed copy alone |
-| `brew install JeffreyJYZ/tap/crust` | 0.1.18, 206 files, 596.6 KiB (the docs site and DESIGN.md no longer ship), and `crust doctor` compiling the shim out of the Cellar |
+| `brew install JeffreyJYZ/tap/crust` | 0.1.20, 209 files, 611.1 KiB (the docs site and DESIGN.md no longer ship), and `crust doctor` compiling the shim out of the Cellar |
 
 ## What is not proven
 
