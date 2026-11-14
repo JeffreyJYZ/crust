@@ -1,5 +1,5 @@
 /**
- * Scan the project's own source for the traps DESIGN.md §2 records as fatal.
+ * Scan the project's own source for the traps `site/app/docs/design/page.mdx` records as fatal.
  * Each is named when it is hit, with the line that hit it: a user who copied a
  * snippet that passed a JS string into C needs to see why the process died with
  * no JavaScript error, not a generic "window did not open".

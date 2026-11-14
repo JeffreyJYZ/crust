@@ -1,9 +1,5 @@
 /**
- * The shapes `status-bar.ts` hands out: a menu entry, what AppKit reports, and
- * the live item the tray plugin and the tray probe both drive.
- *
- * Types only, so the item implementation and its readback can be read without
- * the FFI table in between.
+ * The shapes `status-bar.ts` hands out: a menu entry, what AppKit reports, and the live item the tray plugin and probe both drive. Types only, so the implementation and its readback can be read without the FFI table between them.
  */
 
 export interface StatusBarMenuItem {
@@ -50,11 +46,10 @@ export interface StatusBar {
 	/** What AppKit reports about the item right now. State, not pixels. */
 	readback(): StatusBarReadback;
 	/**
-	 * Fire a row through AppKit's own target/action, exactly as a click does.
-	 *
-	 * A test seam, not an input synthesizer: it never moves the cursor. It answers whether
-	 * the row wiring and the click trampoline work, which is otherwise only provable by a
-	 * human click on an item macOS may have hidden behind the notch.
+	 * Fire a row through AppKit's target/action, exactly as a click does. A test seam, not
+	 * an input synthesizer: it never moves the cursor, and it answers whether the row
+	 * wiring and click trampoline work — otherwise only provable by a human click on an
+	 * item macOS may have hidden behind the notch.
 	 */
 	activateRow(index: number): boolean;
 }

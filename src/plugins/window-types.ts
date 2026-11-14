@@ -1,10 +1,5 @@
 /**
- * `crust:window`'s public vocabulary: what a create asks for, what the native
- * half must supply, and every shape a command answers.
- *
- * Split out of `window.ts` so the contract stays readable beside the command
- * implementations; `window.ts` re-exports all of it, so importers keep using
- * the same path.
+ * `crust:window`'s public vocabulary: what a create asks for, what the native half must supply, and every shape a command answers. Split out of `window.ts`, which re-exports all of it so the contract stays readable beside the commands.
  */
 
 /** What `window.create` asks a platform to build. */
@@ -29,18 +24,8 @@ export interface WindowCreateOptions {
 /** The native half, supplied by the platform. */
 export interface WindowNative {
 	/**
-	 * Build a real window with its webview, load `options.url` (or the app's own
-	 * document), and track it under `options.label`.
-	 *
-	 * Optional because it postdates the other five commands: an adapter without
-	 * it still satisfies this interface, and the plugin answers
-	 * `unknown-adapter` rather than pretending. On macOS the implementation is
-	 * `DarwinPlatform.createWindow(options)`, and that method's own documented
-	 * limits are the adapter's to close: a relative URL cannot be handed to
-	 * `NSURL` (the adapter resolves one against the document it knows), and a
-	 * label a *closed* window still holds must be released first with
-	 * `platform.window(label)` — measured: without that release, re-creating a
-	 * closed label throws `createWindow: window "…" already exists`.
+	 * Build a real window with its webview, load `options.url` (or the app's document) and track it under `options.label`. Optional because it postdates the other five commands: an adapter without it still satisfies this interface and the plugin answers `unknown-adapter`.
+	 * On macOS it is `DarwinPlatform.createWindow(options)`, whose own documented limits are the adapter's to close: a relative URL cannot be handed to `NSURL` (the adapter resolves it against the document it knows), and a label a *closed* window still holds must be released first with `platform.window(label)` — measured: without that release, re-creating a closed label throws `createWindow: window "…" already exists`.
 	 */
 	create?(options: WindowCreateOptions): { label: string };
 	/** Order the window out. Unknown labels throw `WindowAdapterError`. */

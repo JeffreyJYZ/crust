@@ -1,24 +1,6 @@
 /**
- * Assert what the UI cannot.
- *
- * A Finder window shows an icon and a name. It does not show whether
- * `CFBundleExecutable` names a file that actually exists inside
- * `Contents/MacOS/`, whether the ATS keys are the ones a `WKWebView` needs,
- * or whether the signature is ad-hoc. This script reads those bytes and prints
- * one verdict line. Non-zero exit on any gap, so CI fails on it.
- *
- * Usage:
- *   bun scripts/verify-release.ts <path to X.app>
- *   bun scripts/verify-release.ts            # first *.app in dist/, then scripts/out/
- *
- * Deliberately cheap: `plutil` to parse, `codesign -dv` to read the signature.
- * No `codesign --verify` pass over every sealed file and no `spctl` assessment —
- * the spctl verdict is a known, measured refusal for ad-hoc (exit 3), and
- * reproducing it per run only burns time. Use `crust sign` when that answer
- * needs to be current.
- *
- * The plist and executable checks are `verify-release/plist.ts`; only the
- * signature, the quarantine attribute and the verdict line are here.
+ * Assert what the UI cannot: that `CFBundleExecutable` names a file that exists, that the ATS keys are ones `WKWebView` needs, and that the signature is ad-hoc — one verdict line, non-zero exit on any gap so CI fails on it.
+ * Cheap on purpose: `plutil` to parse and `codesign -dv` to read the signature, with no per-file `codesign --verify` and no `spctl` assessment, whose refusal for ad-hoc is known and measured (exit 3). Plist checks in `verify-release/plist.ts`.
  */
 
 import { stat } from "node:fs/promises";

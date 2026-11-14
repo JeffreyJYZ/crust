@@ -36,14 +36,7 @@ export interface AssetFile {
 }
 
 /**
- * Walk the asset directory and return every file as a request path plus its bytes.
- *
- * A compiled binary has no project directory on the recipient's machine, so the
- * whole tree has to travel inside it. One file (`index.html`) was the v1
- * shortcut and it is the reason a real frontend could not ship; walking the
- * directory removes that limit without a bundler. Which directory is
- * `build.assets`' business — `public/` by default, a Vite `dist/web` for a
- * project that builds its frontend.
+ * Walk the asset directory and return every file as a request path plus its bytes. A compiled binary has no project directory on the recipient's machine, so the whole tree must travel inside it — one `index.html` was the v1 shortcut and the reason a real frontend could not ship. Which directory is `build.assets`' business: `public/` by default, a Vite `dist/web` for a project that builds its frontend.
  */
 export async function collectAssets(assetsDir: string): Promise<AssetFile[]> {
 	if (!(await exists(assetsDir, "dir"))) return [];
@@ -73,12 +66,7 @@ export async function collectAssets(assetsDir: string): Promise<AssetFile[]> {
 }
 
 /**
- * The generated asset module.
- *
- * Text stays a string so `runtime.ts` can hand `index.html` to the bridge as the
- * document and every JS/CSS file is served with no decode step. Binary files
- * are base64 and decoded at import time, which is the one encoding that survives
- * `bun build --compile` unchanged.
+ * The generated asset module. Text stays a string so `runtime.ts` can hand `index.html` to the bridge as the document and every JS/CSS file is served with no decode step; binary files are base64, the one encoding that survives `bun build --compile` unchanged.
  */
 export function assetsModuleSource(files: readonly AssetFile[]): string {
 	const lines = [

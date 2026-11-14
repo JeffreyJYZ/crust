@@ -12,11 +12,7 @@ export const REPO_ROOT = resolve(import.meta.dir, "../..");
 export const CLI = join(REPO_ROOT, "src/cli/index.ts");
 
 /**
- * The example imports `crust`, which resolves through this package's own exports
- * map inside the checkout. A scratch copy has no install, so one symlink to the
- * checkout stands in for it — and it is also what `projectCrustRoot` realpaths,
- * so the compiled binary carries exactly one copy of the framework.
- * (`scripts/package/` uses the same trick for the same reason.)
+ * The example imports `crust`, which resolves through this package's exports map inside the checkout. A scratch copy has no install, so one symlink stands in — and it is what `projectCrustRoot` realpaths, so the compiled binary carries one copy of the framework (`scripts/package/` does the same).
  */
 const FALLBACK_DEPENDENCY = REPO_ROOT;
 

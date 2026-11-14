@@ -1,13 +1,6 @@
 /**
- * `crust:tray` proofs, without a menu bar.
- *
- * Two things are proven here and nothing else: the C unit compiles through
- * `cc()`, links AppKit and Foundation, and exports exactly the symbols the
- * plugin half declares; and the plugin's five commands reach an adapter and
- * relay every click. The refusal side is `tray-failures.test.ts`.
- *
- * No `NSStatusItem` is created. A live status item is a real menu-bar item and
- * needs a human to see it; the compile test above it is what runs here.
+ * `crust:tray` proofs, without a menu bar: the C unit compiles through `cc()`, links AppKit and Foundation, and exports exactly the declared symbols, and the five commands reach an adapter and relay every click. Refusals in `tray-failures.test.ts`.
+ * No `NSStatusItem` is created — a live status item needs a human to see it, so that is stated in the report rather than faked.
  */
 
 import { describe, expect, test } from "bun:test";

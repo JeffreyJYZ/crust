@@ -1,15 +1,6 @@
 /**
- * Plugin seam proofs.
- *
- * The four core plugins share one mechanism. `fs` works; the three that need
- * AppKit or `UNUserNotificationCenter` fail honestly with a code and the
- * selector they are waiting on, which is the whole point of the typed
- * `NotImplemented`.
- *
- * The last two groups prove the seam is open: `app.use` mounts a project's own
- * plugin and refuses a name that would shadow a built-in, and `startApp` puts
- * that plugin in the table the bridge serves, so a page call reaches it. Those
- * live in `plugins-mount.test.ts`.
+ * Plugin seam proofs. The four core plugins share one mechanism: `fs` works, and the three needing AppKit or `UNUserNotificationCenter` fail honestly with a code and the selector they wait on — the whole point of the typed `NotImplemented`.
+ * The mount seam lives in `plugins-mount.test.ts`: `app.use` refuses a name that would shadow a built-in, and `startApp` puts the mounted plugin in the table the bridge serves.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

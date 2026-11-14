@@ -1,26 +1,6 @@
 // crust macOS shim — compiled at launch by bun:ffi's cc().
-//
-// Ported from spike/shim.c, which is measured working. Rules this file obeys,
-// each one measured (research/cc.md, research/objc.md, DESIGN.md §2):
-//
-//  1. EVERY objc_msgSend call site casts to a FIXED prototype. A plain
-//     `extern void *objc_msgSend(void *, void *, ...)` compiles and runs, and
-//     delivers wrong argument values with no diagnostic (41 arrived as
-//     1806466472). Zero-argument sends happen to survive; nothing else does.
-//  2. No framework headers. <AppKit/AppKit.h> and <Foundation/Foundation.h> are
-//     unreachable from TinyCC with or without -I/-F, so every symbol is a
-//     hand-written extern over void *.
-//  3. No struct crosses the export boundary. CGRect is only ever built and read
-//     inside this file; JS sees scalars and pointers.
-//  4. Nothing here builds an NSString from a short string. A short ASCII
-//     NSString is a tagged pointer that cannot survive bun:ffi's number
-//     round-trip, and `+[NSString stringWithUTF8String:]` aborts Bun outright.
-//     Strings stay in C: the URL chain in shim_webview_load uses
-//     -initWithBytes:length:encoding: on an alloc'd NSString.
-//
-// Deliberately absent, each a measured crash or a dead path: the title, the
-// string intern table, and every NSString helper that returned an object across
-// the boundary (shim_string, shim_nsstring_from_data, shim_data).
+// Four measured rules (research/cc.md, research/objc.md, `site/app/docs/design/page.mdx`): every objc_msgSend site casts to a FIXED prototype, because the plain varargs form compiles and delivers wrong values with no diagnostic (41 arrived as 1806466472) and nothing but zero-argument sends survives it; no framework headers, since TinyCC cannot reach AppKit or Foundation, so every symbol is a hand-written extern over void *; no struct crosses the export boundary, so CGRect is only built and read here and JS sees scalars and pointers; and nothing builds an NSString from a short string that then leaves C, because a short ASCII NSString is a tagged pointer that cannot survive bun:ffi's number round-trip and `+[NSString stringWithUTF8String:]` aborts Bun outright — strings stay in C via -initWithBytes:length:encoding:.
+// Deliberately absent, each a measured crash or a dead path: the title, the string intern table, and every NSString helper that returned an object across the boundary (shim_string, shim_nsstring_from_data, shim_data).
 
 typedef void *obj_t;
 

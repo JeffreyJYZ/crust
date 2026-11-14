@@ -1,10 +1,5 @@
 /**
- * The app surface's types, kept apart from the class so `app.ts` reads as the
- * lifecycle it is.
- *
- * `Platform` is the whole native surface crust depends on; one implementation
- * per OS. `app.ts` re-exports every name here, so importers keep using the same
- * path.
+ * The app surface's types, kept apart from the class so `app.ts` reads as the lifecycle it is. `Platform` is the whole native surface crust depends on, one implementation per OS; `app.ts` re-exports every name here.
  */
 
 import type { CrustConfig } from "@/config";
@@ -25,11 +20,7 @@ export interface WindowHandle {
 }
 
 /**
- * The whole native surface crust depends on. One implementation per OS.
- *
- * `start` brings up the application; `pump` starts the Cocoa run loop pump on
- * a timer; `createWindow` opens a window; `window` returns it or undefined once
- * it has closed; `quit` ends the application.
+ * The whole native surface crust depends on, one implementation per OS: `start` brings up the application, `pump` runs the Cocoa run loop on a timer, `createWindow` opens a window, `window` returns it or undefined once closed, `quit` ends the application.
  */
 export interface Platform {
 	start(): Promise<void>;
@@ -52,5 +43,5 @@ export const APP_NAMESPACE = "app";
 /** Builds the bridge on demand and returns the URL its pages load from. */
 export type BridgeFactory = (config: CrustConfig) => string;
 
-/** Cocoa pump tick, from DESIGN.md §3: a 16 ms tick with a 0.25 ms slice holds. */
+/** Cocoa pump tick, from `site/app/docs/design/page.mdx`: a 16 ms tick with a 0.25 ms slice holds. */
 export const PUMP_INTERVAL_MS = 16;

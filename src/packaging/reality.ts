@@ -1,12 +1,7 @@
 import type { SignResult } from "./sign.ts";
 
 /**
- * The lines a build must print, whether or not the user asks.
- *
- * Ad-hoc is rejected by Gatekeeper on every other machine, so an app can only
- * be distributed once a Developer ID exists. Printing that on success is the
- * difference between an honest tool and one that implies a signed app is
- * shippable.
+ * The lines a build must print whether or not the user asks. Ad-hoc is rejected by Gatekeeper on every other machine, so printing that on success is the difference between an honest tool and one implying a signed app is shippable.
  */
 export function signingReality(result: SignResult): string[] {
 	const lines = [

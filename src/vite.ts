@@ -1,20 +1,6 @@
 /**
- * `crust/vite` — the dev-server half of the bridge.
- *
- * With `dev.url` set, the window loads a document the dev server serves, not
- * the bridge's own. The bootstrap the bridge injects therefore never reaches
- * that page, and `invoke("name", args)` — the two-argument app form — has no
- * `window.crust` to rewrite the call. This plugin puts the same client in the
- * dev server's document: `transformIndexHtml` adds `window.__CRUST__` and the
- * page-side client, which installs itself from that global.
- *
- * The values come from the bridge, never from the plugin: on the first `run()`
- * the runtime writes them to `.crust/dev.json` (or `CRUST_DEV_FILE`), and the
- * plugin reads that file per document — `CRUST_BRIDGE_URL` and
- * `CRUST_BRIDGE_TOKEN` are the explicit override on top. Absent, it prints one
- * warning and injects nothing: a page without `window.crust` fails loudly on
- * its first call, and a guessed address would fail quietly against a bridge
- * that is not there.
+ * `crust/vite` — the dev-server half of the bridge. With `dev.url` set the window loads a document the dev server serves, so the bridge's bootstrap never reaches it and `invoke("name", args)` has no `window.crust`; `transformIndexHtml` adds `window.__CRUST__` and the page-side client instead.
+ * Values come from the bridge, never the plugin: the runtime writes `.crust/dev.json` (or `CRUST_DEV_FILE`) and the plugin reads it per document, with `CRUST_BRIDGE_URL`/`CRUST_BRIDGE_TOKEN` as explicit overrides. Absent, it warns and injects nothing — a guessed address fails quietly against a bridge that is not there.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

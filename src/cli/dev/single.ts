@@ -1,14 +1,6 @@
 /**
- * `crust dev app.tsx` — one file, no config, one window.
- *
- * The page bundle is written to `<dir>/.crust/single` and served by the bridge
- * from disk, so a rebuild replaces files and the window reloads itself; the
- * runtime process is never restarted for a page edit. A build failure prints
- * and leaves the last good bundle in place, which is why the window survives a
- * half-typed file.
- *
- * Only the entry file is watched. A file it imports is not, and that is the
- * documented limit of this convenience (`docs/single-file.md`).
+ * `crust dev app.tsx` — one file, no config, one window. The bundle goes to `<dir>/.crust/single` and is served from disk, so a rebuild replaces files and the window reloads itself while the runtime process is never restarted; a failed build prints and leaves the last good bundle, which is why the window survives a half-typed file.
+ * Only the entry file is watched — a file it imports is not, the documented limit of the convenience (`site/app/docs`).
  */
 
 import { watch } from "node:fs";

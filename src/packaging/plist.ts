@@ -17,13 +17,7 @@ export const REQUIRED_PLIST_STRINGS = [
 ] as const;
 
 /**
- * App Transport Security keys, and the measured reason both ship.
- *
- * `NSAllowsArbitraryLoadsInWebContent` is the key that actually governs a
- * `WKWebView` load over plain http. `NSAllowsLocalNetworking` does *not*
- * reliably cover a bare IP address on macOS 14 and later, so it cannot be
- * substituted — but it is free, it covers the `localhost` case, and it is what
- * Apple documents, so every generated plist carries both.
+ * App Transport Security keys, and the measured reason both ship. `NSAllowsArbitraryLoadsInWebContent` is what actually governs a `WKWebView` load over plain http; `NSAllowsLocalNetworking` does *not* reliably cover a bare IP on macOS 14 and later, so it cannot substitute — but it is free, covers `localhost`, and is documented, so every plist carries both.
  */
 export const ATS_KEYS = ["NSAllowsArbitraryLoadsInWebContent", "NSAllowsLocalNetworking"] as const;
 
@@ -35,12 +29,7 @@ function escapeXml(value: string): string {
 }
 
 /**
- * The Info.plist body, as XML.
- *
- * Written by hand rather than through `plutil` or a plist library: it is ~30
- * lines, it needs no round trip, and the output is reviewable in a diff, which
- * is what makes "every required key is present" a code-read rather than a
- * test.
+ * The Info.plist body, as XML. Written by hand rather than through `plutil` or a library: it is ~30 lines, needs no round trip, and the output is reviewable in a diff — which is what makes "every required key is present" a code-read rather than a test.
  */
 export function infoPlist(options: {
 	executableName: string;

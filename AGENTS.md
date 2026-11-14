@@ -1,43 +1,38 @@
 # crust
 
-Bun-native macOS desktop framework: system `WKWebView` driven from Bun over a shipped `.c`
-shim compiled at launch by TinyCC. No Rust, no bundled Chromium. Design and measured evidence
-live in `DESIGN.md`; research reports in `research/`.
+Agent workflow, the gate and the traps that cost a crash. Install paths, API explanations and
+measurements live in the docs site under `site/app/docs`; the design reasoning is at `site/app/docs/design/page.mdx`.
 
-## Working rules for this repo
+## Lanes
 
-- **Never fewer than 3 subagents in flight here**, unless the provider is genuinely unavailable
-  (user, 2026-11-13) — the work partitions cleanly by directory, and one lane at a time serialises
-  what could run beside it. Give each lane a disjoint file set; two writers in one file is how
-  edits disappear.
-- **Every lane is `opencode-go/deepseek-v4.1-flash#high`** and pins it explicitly, since the global
-  config sets no `model`. (Command Code was the lane until 2026-11-13; the OpenCode Go shelf
-  replaced it when that usage reset.)
-- **The gate is `bun check` && `bun run test` && `bun run e2e` && `bun run check:lines`**, plus
-  `bun run e2e:notes` when the multi-file path is touched, `bun run e2e:single` when the
-  single-file mode is touched, `bun run e2e:dev:react` when the dev-server path is touched (it
-  drives a real Vite through `crust dev`), `bun run e2e:window` when the `window` plugin is
-  touched, `bun run e2e:notify` when `notification` is touched — diagnostic, not gate: it
-  builds under `~/.cache` (macOS refuses that authorization from the system temp directory)
-  and needs a person to answer the permission prompt, because an unanswered prompt is
-  recorded as a denial for that identifier. A denial is reversible in System Settings →
-  Notifications (measured: a four-times-refused id delivered with no rebuild), and
-  `--fresh-id` asks about a brand-new identifier. And
-  `bun run e2e:dogear` when a plugin surface changes — it is the widest example and exercises
-  `fs`, the window title and the tray from a page. A green gate is the only proof a landing is safe.
-- **Every file stays at or under 200 lines, tests and examples included** (user, 2026-11-14) —
-  `bun run check:lines` is the measurement, so a file that outgrows the cap fails the gate
-  instead of being remembered. Split by responsibility; never trim a comment that records a
-  measured reason to make the number.
-- **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
-  Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
-- **After a probe that launches or activates a GUI app, hand focus back to Ghostty** (`open -a Ghostty`) — a probe that opens a test window leaves the human looking at it and switching back by hand (user, 2026-11-13). And capture *before* touching the shell: a screenshot taken after a command shows the terminal over the app, not the app.
-- **Say so before anything that takes focus, moves a window or asks for a physical click** (user, 2026-11-14: "anything placement-ish or physical clicks, u gotta tell me first or i'll just move back — it's my screen"). A probe that steals focus makes the human switch tabs, and then my capture shows their screen, not the app — which is how a working tray click was written off as a placement bug. Their own report ("I clicked it, the app said saved") outranks a missing log line: the instance predated the log file.
+- **Never fewer than 3 subagents in flight**, unless the provider is genuinely unavailable — the work
+  partitions by directory, and one lane at a time serialises what could run beside it.
+- **Every dispatch and every continue pins `opencode-go/deepseek-v4.1-flash#high`** — the global
+  config sets no `model`, so an unpinned call inherits the session's own paid lane.
+- **One writer per file.** Give lanes disjoint file sets; two agents on one file is how a merge
+  silently keeps one of them.
 
-## Things that cost a crash or a wrong answer
+## The gate
 
-Recorded in `DESIGN.md` §2 and `docs/architecture.md`; the short list, because each was measured
-the hard way:
+`bun check` && `bun run test` && `bun run e2e` && `bun run check:lines`, plus `bun run site:build` and
+`bun run check:links` when you touch `site/`, and whichever e2e owns the
+path you touched:
+
+- `bun run e2e:notes` — multi-file apps, `fs` against a real folder, the window title
+- `bun run e2e:single` — single-file mode
+- `bun run e2e:dev:react` — a real Vite driven through `crust dev`
+- `bun run e2e:window` — the `window` plugin
+- `bun run e2e:dogear` — any plugin surface, the widest example
+- `bun run e2e:notify` — `notification`; diagnostic rather than a gate step, because it needs a
+  person to answer the permission prompt
+
+A green gate is the only proof a landing is safe.
+
+- **Every file stays at or under 200 lines, tests and examples included** — `bun run check:lines` is
+  the measurement, so an oversized file fails the gate instead of relying on memory. Split by
+  responsibility; never trim a comment that records a measured reason to reach the number.
+
+## Traps
 
 - `[[NSWindow alloc] init]` is not a valid initializer — use `initWithContentRect:…` with the rect
   built on the C stack.
@@ -45,5 +40,19 @@ the hard way:
 - `-windowNumber` never clears after `-close`; liveness is `visible || miniaturized || appHidden`.
 - Every `bun:ffi` declaration's arity must match its C prototype — `src/platform/darwin/arity.test.ts`
   fails the suite otherwise.
-- **Crash reports live in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones in `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence (the same trap that made a real crash report read as "none").
-- **Hardened runtime needs `com.apple.security.cs.allow-unsigned-executable-memory`, not just `allow-jit`** — TinyCC writes code into ordinary unsigned executable memory, so `--options runtime` without it gives an app that launches, creates no page and prints nothing, exit 0; the `.ips` says `SIGKILL (Code Signature Invalid)`, `Invalid Page`. Measured 2026-11-14, fixed in `src/packaging/sign.ts` and asserted in `src/packaging/sign.test.ts`.
+- **Crash reports are in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones
+  under `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with
+  `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence.
+- **Hardened runtime needs `com.apple.security.cs.allow-unsigned-executable-memory`, not just
+  `allow-jit`** — TinyCC writes code into ordinary unsigned executable memory, so `--options runtime`
+  without it gives an app that launches, creates no page, prints nothing and exits 0 (the `.ips` says
+  `SIGKILL (Code Signature Invalid)`, `Invalid Page`). Fixed in `src/packaging/sign.ts`, asserted in
+  `src/packaging/sign.test.ts`.
+- **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
+  Run `X.app/Contents/MacOS/<bin>` directly; that is the only launch path that reports exit 0.
+- **After a probe that launches or activates a GUI app, hand focus back to Ghostty**
+  (`open -a Ghostty`) — otherwise the human is left looking at a test window. Capture before touching
+  the shell: a screenshot taken after a command shows the terminal, not the app.
+- **Say so before anything that takes focus, moves a window or asks for a physical click** — their
+  screen is theirs. A performed click they reported outranks a missing log line, because
+  instrumentation may predate the log file.

@@ -1,9 +1,5 @@
 /**
- * The client body: `installCrust`. Everything it needs is inside the function,
- * because the served bootstrap is `installCrust.toString()` and a module-scope
- * reference would arrive in the page undefined; only types live outside, as
- * `T.`. Called with a config it uses that; called with none (`crust/vite`) it
- * installs from the pre-set `window.__CRUST__`.
+ * The client body: `installCrust`. Everything it needs is inside the function, because the served bootstrap is `installCrust.toString()` and a module-scope reference would arrive undefined in the page; only types live outside, as `T.`. Called with a config it uses that; called with none (`crust/vite`) it installs from the pre-set `window.__CRUST__`.
  */
 import type * as T from "./types";
 

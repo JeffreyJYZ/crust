@@ -1,22 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Cut a release: bump, gate, tag, push, and open the tap PR.
- *
- * Every version so far was shipped by hand, and the hand-work is where the mistakes
- * were: a tag pushed before the version bump (v0.1.2 pointed at a tree that still said
- * 0.1.1), a formula pinned to a tag that predated the fixes it advertised, and three
- * separate PRs for what became one afternoon of work. This does the mechanical part in
- * one pass and leaves only the merge to a human.
- *
- *   bun run release --patch        # 0.1.7 -> 0.1.8
- *   bun run release --minor        # 0.1.7 -> 0.2.0
- *   bun run release --patch --dry  # print the plan, change nothing
- *
- * Requires a clean tree on `main`, and the `gh` identity that may push the tap branch
- * (jyzbot). It does not merge: tap `main` is protected and the review is the point.
- *
- * The shell and the failure counter are `release/git.ts`; the gate is
- * `release/gate.ts`.
+ * Cut a release: bump, gate, tag, push, open the tap PR. Hand-releasing is where the mistakes were — a tag pushed before the version bump (v0.1.2 pointed at a tree still saying 0.1.1), a formula pinned to a tag predating its own fixes, three PRs for one afternoon of work.
+ * Needs a clean tree on `main` and the `gh` identity that may push the tap branch (jyzbot). It does not merge: tap `main` is protected and the review is the point. Shell in `release/git.ts`, gate in `release/gate.ts`.
  */
 import { gate } from "./release/gate.ts";
 import {

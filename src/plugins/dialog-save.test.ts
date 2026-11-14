@@ -1,10 +1,5 @@
 /**
- * `crust:dialog`'s `savePanel`, without AppKit.
- *
- * Split from `dialog.test.ts`: the same seam, but its own contract — an adapter
- * written before the save panel existed keeps type-checking and reports the gap,
- * the panel's own overwrite confirmation is never duplicated here, and a pending
- * answer stays pending until the native one arrives.
+ * `crust:dialog`'s `savePanel`, without AppKit — same seam as `dialog.test.ts`, its own contract: an adapter written before the save panel existed keeps type-checking and reports the gap, the panel's overwrite confirmation is never duplicated, and a pending answer stays pending until the native one arrives.
  */
 
 import { describe, expect, test } from "bun:test";

@@ -1,42 +1,6 @@
 /**
- * The end-to-end proof for the mode a newcomer tries first: one file, no config.
- *
- * `e2e.ts` and `e2e-notes.ts` prove a project; this one proves `crust dev app.tsx`
- * and `crust build app.tsx`, in the order a user meets them. Until now both were
- * exercised by hand, so the gate could stay green while the shortest path to a
- * window was broken.
- *
- * Three phases, each through the real command:
- *
- *   1. `crust dev app.tsx` — the generated runner opens a window, the bridge
- *      serves the page from `.crust/single`, and the page's own
- *      `window.crust.invoke("info")` is answered (the backend logs the line).
- *   2. `crust build app.tsx` — the bundle is assembled and ad-hoc signed, then
- *      the binary inside it is launched with `/` as its working directory,
- *      because that is the cwd a bundle gets from LaunchServices. A single-file
- *      app must answer from its embedded page with no project directory to read.
- *   3. Rebuild on save — editing the file must replace the served bundle and
- *      move the reload marker without restarting the runtime, and a syntax error
- *      must leave the last good bundle exactly where it was.
- *
- * The app is launched directly — never `open`, which routes through
- * LaunchServices and Gatekeeper and would hide which process ran.
- *
- * Two facts this script is built around:
- *
- *   - the runtime compiles the shim parts at launch, so every
- *     windowed run needs an Aqua session and gets a hard deadline plus a
- *     `SIGTERM` to its process group; macOS ships no `timeout(1)`;
- *   - a page edit must not restart the runtime, so the dev run is followed by
- *     waiting for a *second* answer rather than by re-reading a log at the end.
- *
- * Usage:
- *   bun scripts/e2e-single.ts    # or `bun run e2e:single` once package.json defines it
- *
- * Each phase lives in `single/phases/` (dev, build, watch) and the fixture —
- * the page it writes, the lines its runtime prints, the paths under the scratch
- * directory — is `single/fixture.ts`. The order of the assertions is the order
- * a user meets them, so the phases run in that order and nowhere else.
+ * E2E for the shape a newcomer meets first: `crust dev app.tsx` opens a window and answers the page's `invoke("info")`, `crust build app.tsx` runs from `/` with no project directory, and an edit rebuilds in place while a syntax error leaves the last good bundle untouched.
+ * A page edit must not restart the runtime, so the watch phase waits for a *second* answer rather than re-reading a log at the end. Phases in `single/phases/`, fixture in `single/fixture.ts`.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";

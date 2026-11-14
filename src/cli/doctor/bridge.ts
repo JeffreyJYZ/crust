@@ -8,14 +8,7 @@ import { startBridge } from "@/bridge/server.ts";
 import type { Check } from "./check.ts";
 
 /**
- * The port `startApp` will prefer for an app id.
- *
- * This is the same FNV-1a derivation `preferredPortFor` uses in `src/runtime.ts`
- * (`45000 + hash % 4000`), and it is duplicated here because doctor must know
- * the *preferred* port to tell "stable" from "the app walked upward". The pair
- * is pinned by a test that starts the real runtime and compares the port it
- * binds, so a change there fails the suite instead of silently making this
- * stale.
+ * The port `startApp` will prefer for an app id — the same FNV-1a derivation as `preferredPortFor` (`45000 + hash % 4000`), duplicated here because doctor must know the *preferred* port to tell "stable" from "the app walked upward". A test starts the real runtime and compares the port it binds, so a change there fails the suite instead of leaving this stale.
  */
 export function preferredPort(appId: string): number {
 	let hash = 2166136261;
@@ -38,13 +31,7 @@ const PORT_ATTEMPTS = 20;
 const DOCTOR_HANDLERS = { "__doctor.ping": () => "pong" };
 
 /**
- * Bind the bridge the way the runtime does: the port derived from the app id,
- * walking upward when it is taken, and falling back to the OS's choice last.
- *
- * Doctor used to bind `0` only, which proves the bridge works but not the thing
- * that changed: an app whose derived port is occupied still opens, on a
- * different origin, and loses everything origin-scoped. Binding the same port
- * here is what lets that be reported instead of hidden.
+ * Bind the bridge the way the runtime does: the port derived from the app id, walking upward when taken, then the OS's choice. Doctor used to bind `0` only, which proves the bridge works but not the thing that changed — an app whose derived port is occupied still opens on a different origin and loses everything origin-scoped.
  */
 function bindBridge(appId: string | undefined): BoundBridge | undefined {
 	const preferred = appId === undefined ? undefined : preferredPort(appId);

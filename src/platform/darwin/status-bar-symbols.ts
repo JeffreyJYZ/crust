@@ -1,9 +1,5 @@
 /**
- * The ABI `status_bar/*.c` publishes, as TypeScript types.
- *
- * Separated from the compiler so the symbol list is readable on its own: the
- * concatenated C unit must export exactly these names, and `tray.test.ts`
- * asserts the compiled library has no others.
+ * The ABI `status_bar/*.c` publishes, as TypeScript types — separated from the compiler so the symbol list is readable on its own: the concatenated unit must export exactly these names, and `tray.test.ts` asserts the library has no others.
  */
 
 /** Every symbol `status_bar/*.c` exports, in the order the unit declares them. */

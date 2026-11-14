@@ -1,20 +1,5 @@
 /**
- * Compile the app's entry with Bun, then assemble the bundle around it.
- *
- * The size story, measured (DESIGN.md §1, research/packaging.md §1):
- *
- *   bun build --compile ... anything ...            -> 89,159,906 bytes (85.03 MiB)
- *   bun build --compile --trim ... same thing       -> 89,159,906 bytes
- *
- * `--trim` is a no-op on Bun 1.4.4 stable. It is absent from `bun build --help`,
- * unknown flags are accepted in silence, and an entry with 3,000 extra functions
- * moved the binary by 161 KiB. Passing it would therefore be a lie in the
- * command line and no change in the artefact, so this build passes no trim flag
- * and reports the plain number. The 22.9 MiB figure in circulation needs `--aot`
- * on a canary build, which stable does not have.
- *
- * So the honest claim is "no bundled Chromium", not "small". The floor is the
- * Bun runtime plus JavaScriptCore, and it is roughly ten times Tauri's.
+ * Compile the app's entry with Bun, then assemble the bundle around it. Measured (the design page (`site/app/docs/design/page.mdx`), `research/packaging.md` §1): stable 1.4.4 accepts `--trim` and strips nothing (byte-identical output), and 161 KiB of extra entry functions moved it that much — so the honest claim is "no bundled Chromium", not "small": the floor is Bun plus JavaScriptCore, roughly ten times Tauri's.
  */
 
 import { mkdir, stat } from "node:fs/promises";
@@ -53,12 +38,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Compile and assemble. Does not sign.
- *
- * Two numbers, reported separately on purpose: the compiled binary is what
- * `bun build` produced, the assembled bundle is what a recipient's disk gives
- * up. They differ by the plist, PkgInfo, icon and, after signing, the embedded
- * signature — and reporting one number for both hides which half grew.
+ * Compile and assemble. Does not sign. Two numbers, reported separately on purpose: the compiled binary is what `bun build` produced, the assembled bundle is what a recipient's disk gives up — one number for both would hide which half grew.
  */
 export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	const outDir = resolve(options.outDir ?? "dist");
@@ -70,17 +50,12 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	}
 	await mkdir(outDir, { recursive: true });
 
-	// `--trim` always; whether it bites depends on the interpreter. Stable 1.4.4 has
-	// `--trim` but strips nothing (byte-identical output, measured), so the floor there is
-	// the interpreter itself. A Bun carrying `bun compile` — canary 1.4.5, and 1.5 when it
-	// ships — compiles ahead of time, and `--trim` there is worth 85.27 MiB to 53.10 MiB on
-	// examples/hello (measured). AOT is not faster (215.2 ms vs 211.9 ms on a
-	// 300M-iteration loop), so this buys size alone.
-	//
-	// `--aot-allow-code-from-disk` costs 4.14 MiB, so it is not passed by default: an app
-	// whose entry imports are statically bundled does not need it. It is added on a retry
-	// when AOT refuses a dynamic `import()`, which is the only case it exists for — a real
-	// app that loads code at run time still builds, and everyone else keeps the 4 MiB.
+	// `--trim` always; whether it bites depends on the interpreter. Stable 1.4.4 strips
+	// nothing (byte-identical, measured), while a Bun carrying `bun compile` — canary
+	// 1.4.5 and 1.5 — is worth 85.27 MiB to 53.10 MiB on examples/hello. AOT is not
+	// faster (215.2 ms vs 211.9 ms on a 300M loop), so that buys size alone, and
+	// `--aot-allow-code-from-disk` costs 4.14 MiB so it is added only on the retry after
+	// AOT refuses a dynamic `import()` — the one case it exists for.
 	const aot =
 		Bun.spawnSync(["bun", "compile", "--help"], {
 			stdout: "ignore",

@@ -1,10 +1,5 @@
 /**
- * `crust:notification` proofs that need no notification permission.
- *
- * Nothing here posts a real notification: a notification needs a human to see it,
- * so the tests stop at the C unit compiling and at the plugin's mapping from an
- * OS status to `delivered`. The one thing they cannot prove is that a
- * notification appeared — that is stated in the report rather than faked here.
+ * `crust:notification` proofs that need no permission. Nothing here posts a real notification — that needs a human to see it — so they stop at the C unit compiling and at the mapping from an OS status to `delivered`; that nothing was proven about delivery is stated in the report rather than faked.
  */
 
 import { describe, expect, test } from "bun:test";

@@ -1,0 +1,73 @@
+# Tray
+
+A menu-bar status item, driven from the page. One item per process, and every click comes back as an event.
+
+## Commands
+
+| command | arguments | answer |
+| --- | --- | --- |
+| `setTitle` | `{ text }` | `{ ok: true, text }` |
+| `setMenu` | `{ items: [{ label }] }` | `{ ok: true, labels }` |
+| `show` | none | `{ ok: true, active: true }` |
+| `hide` | none | `{ ok: true, active: false }` |
+| `destroy` | none | `{ ok: true, destroyed: true }` |
+
+Three-argument calls, because these are plugin commands:
+
+```ts
+await window.crust.invoke("tray", "setTitle", { text: "crust" });
+```
+
+## A menu
+
+```ts
+await window.crust.invoke("tray", "setMenu", {
+	items: [{ label: "Open" }, { label: "Save" }, { label: "Quit" }],
+});
+```
+
+Every row needs a non-empty `label`. An empty list detaches the menu, and `setMenu` replaces the whole menu rather than adding to it.
+
+## Clicks arrive as an event
+
+A page cannot send a function over the bridge, so each row click is also pushed as `tray:click` carrying `{ index, label }`:
+
+```js
+window.crust.listen("tray:click", ({ index, label }) => {
+	console.log(index, label);
+});
+```
+
+`index` is the row's position in the most recent list. Replacing the menu replaces the indices, so read the label when the meaning matters.
+
+## One item per process
+
+The macOS runtime holds a single click trampoline and a single target, so a second live status bar throws until `destroy` frees the slot. That is a limit on code that tries to create two items, not on the normal path.
+
+Each menu is wired through that one trampoline, which is why a destroyed item frees the slot for the next one.
+
+## Failure shape
+
+A tray failure is a value inside an ordinary `200`, not a rejected invoke:
+
+```json
+{ "ok": false, "code": "invalid-menu", "message": "crust: tray.setMenu needs { items } with an array, got {}" }
+```
+
+| code | when |
+| --- | --- |
+| `invalid-text` | `setTitle` without a string `text` |
+| `invalid-menu` | `items` not an array, or a row without a non-empty `label` |
+| `unknown-adapter` | the platform adapter does not implement that command |
+| `destroyed` | the adapter reported the item gone |
+| `handler-error` | the adapter threw |
+
+Branch on `result.ok`, not on a thrown error.
+
+## Where it is visible
+
+macOS draws a status item only where the menu bar has room. On a fullscreen Space there is no bar at all, so the item exists, AppKit reads back `isVisible: true`, and it appears nowhere. A menu bar already full of items can also leave it out of sight.
+
+## Headless
+
+Without a platform adapter every command answers `not-implemented` with `requires: "NSStatusBar"`. That is deliberate: a tray that silently did nothing is indistinguishable from one that failed.

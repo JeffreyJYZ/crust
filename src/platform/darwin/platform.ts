@@ -55,7 +55,7 @@ export class DarwinPlatform implements Platform {
 
 	/**
 	 * Pump Cocoa from a self-rearming `setTimeout` chain. A repeating interval is
-	 * more likely to be coalesced under power saving (DESIGN.md §3).
+	 * more likely to be coalesced under power saving (`site/app/docs/design/page.mdx`).
 	 */
 	pump(intervalMs: number): void {
 		if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
@@ -132,12 +132,10 @@ export class DarwinPlatform implements Platform {
 	}
 
 	/**
-	 * Activate the app at most once per process.
-	 *
-	 * Every activation re-orders the app above whatever the user was doing, so
-	 * repeating it on each window creation or `window.focus` call makes the
-	 * Dock icon jump on every call. `#activated` is the one flag both paths
-	 * share; a failure is cosmetic and never loses a window.
+	 * Activate the app at most once per process. Every activation re-orders the app above
+	 * whatever the user was doing, so repeating it per window creation or `window.focus`
+	 * makes the Dock icon jump; `#activated` is the one flag both paths share, and a
+	 * failure is cosmetic and never loses a window.
 	 */
 	activateOnce(): void {
 		if (this.#activated) return;

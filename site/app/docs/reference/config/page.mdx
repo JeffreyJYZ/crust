@@ -1,0 +1,95 @@
+# Config
+
+`crust.config.ts` — default export, or an export named `config` — or `crust.json` holding the same object, in that order. The object is validated once at startup and unknown keys are rejected at every level, so a typo is a launch failure rather than a silently ignored option.
+
+```ts
+import type { CrustConfig } from "crust";
+
+export default {
+	app: { id: "land.jyz.example", name: "Example", version: "0.1.0" },
+	windows: [{ label: "main", url: "/", width: 900, height: 640, title: "Example" }],
+} satisfies CrustConfig;
+```
+
+Types are what the validator accepts. The default is what the consuming code does when the key is absent — the validator itself fills in nothing.
+
+## `app`
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `id` | string | required | reverse-DNS bundle identifier written to `Info.plist`; also seeds the bridge port and is the notification identity |
+| `name` | string | required | app name, and the name platform failures print |
+| `version` | string | required | `CFBundleShortVersionString` |
+| `icon` | string | unset | PNG resolved against `--dir` by `crust build`; a missing file fails the build |
+
+## `windows`
+
+At least one entry. A missing or empty array is a config error, not a windowless app.
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `label` | string | required | the handle `window` commands and `platform.window(label)` use |
+| `url` | string | `"/"` | appended to the bridge URL; ignored when `dev.url` is set |
+| `width` | positive integer | `1100` | content width in points |
+| `height` | positive integer | `760` | content height in points |
+| `minWidth` | positive integer | unset | minimum width; the configured `height` is reused as the minimum height |
+| `title` | string | unset | window title, applied from C and read back; a mismatch throws |
+
+## `dev`
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `url` | string | unset | one dev-server origin every window loads verbatim; `windows[].url` is then ignored, and its origin is the one extra origin the bridge allows |
+| `beforeDevCommand` | string | unset | started, not awaited, by `crust dev` through `sh -c` in the project directory |
+
+With `dev.url` set, `crust dev` waits up to 30 s for a TCP connect on that port before starting the runtime, because the window loads the URL exactly once and cannot retry.
+
+## `build`
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `beforeBuildCommand` | string | unset | run to completion before the asset directory is read; a non-zero exit aborts the build naming the command and its exit code |
+| `assets` | string | `"public"` | directory `crust build` embeds, relative to `--dir`; must hold `index.html`, and may not resolve to `dist/` |
+| `minimumSystemVersion` | string | `"13.0"` | `LSMinimumSystemVersion` |
+
+## `plugins`
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `plugins` | string array | all five | built-ins to register; the `crust:` prefix is optional |
+
+Absent or `[]` registers `fs`, `dialog`, `notification`, `tray` and `window`. Naming any restricts registration to exactly those, so every other name answers `unknown-command`. An unknown name fails startup with `crust: unknown plugin "nope" — v1 ships fs, dialog, notification, tray, window`. The `app` namespace and any plugin mounted with `app.use` are always registered — this key selects built-ins only.
+
+## `security`
+
+| key | type | default | what it does |
+| --- | --- | --- | --- |
+| `csp` | string | `DEFAULT_CSP` | Content-Security-Policy served with every document |
+
+`DEFAULT_CSP` is `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. Any replacement must keep `connect-src 'self'`, or every invoke is a CSP violation.
+
+## What `app.id` decides
+
+- **The bundle identifier.** It is written to `Info.plist` as `CFBundleIdentifier`, so it is what macOS keys notifications, privacy grants and per-app settings to. A changed id is a new app to the system.
+- **The bridge port.** `preferredPortFor` hashes the id (FNV-1a) into `45000 + (hash % 4000)`; the bridge tries `preferred + offset` for offsets 0 to 19 and binds `0` on the 21st attempt. Two launches normally share one origin, which is what keeps `localStorage`, IndexedDB and service workers alive across a restart.
+- **The notification identity.** A permission answer is remembered per id: an id macOS recorded as denied keeps answering `UNErrorDomain code 1` whatever the signature, and changing the id is the only way to be asked again.
+
+The port guarantee is "stable unless the port is occupied". When the walk moves, that launch has a different origin and nothing migrates old state.
+
+## Validation
+
+`validateConfig` throws `ConfigError` listing **every** issue, not just the first, with the issues intact on `error.issues`.
+
+```text
+invalid crust config in crust.config.ts:
+  windows[0].width — expected a positive integer, got "wide"
+```
+
+An unknown key is reported the same way, with the accepted set:
+
+```text
+invalid crust config in crust.config.ts:
+  app.color — expected one of "id", "name", "version", "icon", got "red"
+```
+
+`loadConfig` throws plain `Error` naming the path for: no config file, an explicit path that does not exist, unreadable or unparsable JSON, a module with no default export, and an unsupported extension. Expected filenames are in `CONFIG_FILES`; `findConfig(dir)` answers the same question without loading.

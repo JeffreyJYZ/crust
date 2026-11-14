@@ -4,13 +4,7 @@ import { cls, ptrValueZero, SEL } from "./objc.ts";
 // --- selectors -------------------------------------------------------------
 
 /**
- * Every selector this file sends, checked once before the application starts.
- *
- * `kind: "class"` means the receiver is a class object, and the honest test is
- * `[class respondsToSelector:]`. `kind: "instance"` means an instance method,
- * and the honest test is `class_getInstanceMethod`, which walks the superclass
- * chain. `class_getClassMethod` is never used: it reports `+init`/`+valueForKey:`
- * as present on every class through the metaclass chain.
+ * Every selector this file sends, checked once before the application starts. `kind: "class"` means a class object, honestly tested with `[class respondsToSelector:]`; `kind: "instance"` means an instance method, tested with `class_getInstanceMethod` and its superclass walk. `class_getClassMethod` is never used — it reports `+init`/`+valueForKey:` as present on every class.
  */
 export interface PreflightEntry {
 	owner: string;

@@ -21,11 +21,7 @@ describe("dialog adapter", () => {
 	});
 
 	/**
-	 * The defect this exists for: the C globals hold one panel, and starting a
-	 * second sheet used to wipe the first one's done flag, panel pointer and
-	 * path storage — so the page awaiting the first pick would eventually read
-	 * the second panel's answer. A refusal must therefore leave the live sheet
-	 * untouched, and the first request must still answer with its own pick.
+	 * The defect this exists for: the C globals hold one panel, and starting a second sheet used to wipe the first one's done flag, panel pointer and path storage, so the page awaiting the first pick eventually read the second panel's answer. A refusal must leave the live sheet untouched and the first request must still answer with its own pick.
 	 */
 	test("a second request is refused, and the first pick still answers", async () => {
 		const fake = new FakePanel();

@@ -37,26 +37,8 @@ function packageName(raw: string): string {
 }
 
 /**
- * `crust init [dir] [--react | --next]` — copy a template into an empty directory.
- *
- * The template ships as real files rather than string literals so a user can
- * read exactly what they will get, and so this command has nothing to keep in
- * sync. The crust installation that runs `init` is pinned as a `link:`
- * dependency, which is what makes `bun install && bunx crust dev` work from a
- * checkout without publishing the package first.
- *
- * Three scaffolds, no flag being the default:
- *
- * - no flag — `templates/default/`, plain HTML with no bundler;
- * - `--react` — `templates/react/`, React + Vite into `dist/web/`;
- * - `--next` — `templates/next/`, Next.js on the app router with
- *   `output: "export"` into `out/`.
- *
- * The two flags name different scaffolds, so both at once is refused with a
- * message naming each rather than one quietly winning.
- *
- * A non-empty directory is refused rather than merged: a scaffold that silently
- * overwrites someone's `public/index.html` is worse than one that stops.
+ * `crust init [dir] [--react | --next]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync; the crust installation running `init` is pinned as `link:`, which makes `bun install && bunx crust dev` work from a checkout.
+ * No flag is `templates/default/` (plain HTML, no bundler), `--react` is React + Vite into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Both flags at once is refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
  */
 export async function init(options: InitOptions): Promise<number> {
 	if (options.react && options.next) {

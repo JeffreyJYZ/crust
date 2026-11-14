@@ -8,12 +8,7 @@ import { crustRoot, exists, VERSION } from "./util.ts";
 let cached: string | undefined;
 
 /**
- * True when this code is running inside a compiled executable rather than a checkout.
- *
- * The embedded tree is mounted at `/$bunfs`, and this process can read it — but a child
- * `bun build` cannot, so `dev` and `build` must never hand that path to one. `exists()`
- * is therefore not the test: it says yes inside a binary and then the child fails with
- * `Could not resolve: "/$bunfs/root/src/runtime.ts"`.
+ * True when this code runs inside a compiled executable rather than a checkout. The embedded tree is mounted at `/$bunfs` and this process can read it, but a child `bun build` cannot — so `exists()` is not the test: it says yes inside a binary and the child then fails with `Could not resolve: "/$bunfs/root/src/runtime.ts"`.
  */
 function inExecutable(): boolean {
 	return import.meta.dir.includes("/$bunfs");
@@ -23,16 +18,8 @@ function inExecutable(): boolean {
 export { inExecutable };
 
 /**
- * The crust package the project itself depends on, when it has one.
- *
- * Everything a project runs has to come from the same module instance the app's
- * `import "crust"` resolves to. Otherwise two copies of the framework exist — the CLI's
- * and the project's — and each has its own `app` singleton: `app.run()` in a built entry
- * never sees the config the wrapper passed, and under `crust dev` a command registered by
- * `main.ts` is invisible to the runtime, which answers `crust: unknown command "greet"`.
- *
- * A checkout hides this because `link:` makes both specifiers one realpath. An installed
- * crust exposes it, which is why this is resolved by realpath rather than by string.
+ * The crust package the project itself depends on, when it has one. Everything the project runs must come from the same module instance its `import "crust"` resolves to, or two copies exist — the CLI's and the project's — each with its own `app` singleton: `app.run()` in a built entry never sees the wrapper's config, and under `crust dev` a command registered by `main.ts` is invisible to the runtime, which answers `crust: unknown command "greet"`.
+ * A checkout hides this because `link:` makes both specifiers one realpath; an installed crust exposes it, which is why this resolves by realpath rather than by string.
  */
 export async function projectCrustRoot(dir: string): Promise<string> {
 	const candidate = join(dir, "node_modules", "crust");
@@ -49,14 +36,8 @@ export async function projectCrustRoot(dir: string): Promise<string> {
 }
 
 /**
- * A real directory holding crust's own sources, for the code `dev` and `build` generate.
- *
- * In a checkout that is the checkout. In a compiled executable there is no checkout, so
- * the embedded tree is written to a temporary directory once and the generated entry
- * imports from there.
- *
- * The directory is keyed by version, and the marker is written last, so a half-written
- * tree from an interrupted run is rebuilt instead of trusted.
+ * A real directory holding crust's own sources, for the code `dev` and `build` generate. In a checkout that is the checkout; in a compiled executable the embedded tree is written to a temporary directory once and the generated entry imports from there.
+ * The directory is keyed by version and the marker is written last, so a half-written tree from an interrupted run is rebuilt instead of trusted.
  */
 export async function frameworkRoot(): Promise<string> {
 	if (!inExecutable() && (await exists(join(crustRoot, "src", "runtime.ts")))) return crustRoot;

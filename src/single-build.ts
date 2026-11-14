@@ -1,11 +1,5 @@
 /**
- * Single-file mode's bundle step: one `Bun.build`, the document beside it, and
- * the reload marker a dev page polls.
- *
- * A failed build throws before touching `index.html` or the marker, so the
- * previously written page stays exactly where it was and a running window keeps
- * it. Only the bundle directory is written: `<dir>/.crust/single` in dev,
- * `<dir>/dist/single` in a build.
+ * Single-file mode's bundle step: one `Bun.build`, the document beside it, and the reload marker a dev page polls. Only the bundle directory is written — `<dir>/.crust/single` in dev, `<dir>/dist/single` in a build.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -44,11 +38,7 @@ function bundleFailure(logs: readonly BuildLog[], reason: string): Error {
 }
 
 /**
- * Bundle the page and write the document beside it.
- *
- * A failed build throws before touching `index.html` or the reload marker, so
- * the previously written page stays exactly where it was and a running window
- * keeps it.
+ * Bundle the page and write the document beside it. A failed build throws before touching `index.html` or the reload marker, so the previously written page stays where it was and a running window keeps it.
  */
 export async function buildPage(app: SingleApp, options: { dev: boolean }): Promise<PageBuild> {
 	const outDir = options.dev

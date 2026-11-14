@@ -1,0 +1,64 @@
+# crust
+
+<p className="tag">
+	macOS apps from Bun and the system WebView. No Rust, no bundled Chromium, no native
+	artifact to build.
+</p>
+
+<div className="row">
+	<a href="/docs/start/install">Install</a>
+	<a href="/docs/start/first-app">First app</a>
+	<a href="/docs/guides/package">Ship it</a>
+</div>
+
+```sh
+brew install JeffreyJYZ/tap/crust
+crust init my-app --react
+cd my-app && bun install && crust dev
+```
+
+That is a real window, a real `NSOpenPanel`, a real menu-bar item and real notifications —
+from TypeScript, with `WKWebView` doing the rendering.
+
+<div className="rule" />
+
+## Why it exists
+
+- **No native build step.** The only C is one file compiled at launch by the TinyCC inside
+  Bun. There is no `cargo`, no Xcode project, no bottle to match to your machine.
+- **No Chromium.** The WebView is the one already on the Mac, so your app is ~85 MB of
+  embedded Bun runtime and nothing else.
+- **The boring surfaces work.** Files, dialogs, tray, notifications, windows, packaging,
+  a dev server and a DMG — each with a test, not a promise.
+
+<div className="rule" />
+
+## What you write
+
+```ts
+import { app } from "crust";
+
+app.command("greet", ({ name }) => ({ text: `hello ${name}` }));
+
+await app.run();
+```
+
+```html
+<script type="module">
+	const { text } = await window.crust.invoke("greet", { name: "crust" });
+	document.body.textContent = text;
+</script>
+```
+
+A page calls the backend; the backend is Bun; the window is AppKit. That is the whole
+model.
+
+<div className="rule" />
+
+## What it will not do
+
+macOS arm64 only. Ad-hoc signing by default, so a bundle you hand someone else is refused by
+Gatekeeper until it carries a Developer ID. Intel, Windows and Linux are out of scope.
+
+The [limits page](/docs/limits) states each one, and the [evidence
+page](/docs/evidence) says what has been measured rather than assumed.

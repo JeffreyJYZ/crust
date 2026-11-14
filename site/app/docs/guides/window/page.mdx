@@ -1,0 +1,64 @@
+# Windows
+
+A window is an `NSWindow` with a `WKWebView` in it. You describe windows in config, or create them from the page.
+
+## From config
+
+```ts
+windows: [
+	{ label: "main", url: "/", width: 900, height: 640, title: "Example" },
+],
+```
+
+Created in array order at `app.run()`, before the `ready` event fires. `label` is required and is the handle every command and `platform.window(label)` resolves. Defaults: `url` `"/"`, width `1100`, height `760`, no title.
+
+With `dev.url` set, every window loads that URL verbatim and `windows[].url` is ignored.
+
+## From the page
+
+```js
+await window.crust.invoke("window", "create", {
+	label: "second",
+	title: "Second",
+	width: 800,
+	height: 600,
+});
+// { ok: true, label: "second", created: true }
+```
+
+`{ label, title?, width?, height?, url? }`. An absent `url` means the app's own document; a relative path resolves against the document of an open window; an absolute URL is loaded as given. A width or height that is not a positive integer is refused, not clamped.
+
+## Commands
+
+| command | args | answers |
+| --- | --- | --- |
+| `create` | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }` |
+| `close` | `{ label }` | `{ ok: true, label, closed: true }` |
+| `focus` | `{ label }` | `{ ok: true, label, focused: true }` |
+| `setTitle` | `{ label, title }` | `{ ok: true, label, title }` |
+| `list` | none | `{ ok: true, labels }` |
+| `isOpen` | `{ label }` | `{ ok: true, label, open }` |
+
+Success is `{ ok: true, … }`. Failure is an ordinary 200 with `{ ok: false, code, message, label? }`, where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
+
+A label that is already open is `duplicate-label`: the platform map is keyed by label, and a second window would replace the first.
+
+## What "closed" means
+
+- **Liveness is visible, miniaturised, or the app hidden.** A minimised window is still open. `-windowNumber` keeps its value after `-close`, so it is never the test.
+- **A closed label leaves `list`**, answers `unknown-window` for every other command, and `isOpen` on it answers `unknown-window` rather than `open: false`.
+- **A closed label can be created again.** `create` releases the stale native entry first, so reuse works; a *live* label is refused before anything is touched.
+- **Closing the last window ends the app** only when a `window-all-closed` listener exists — the check runs on a 250 ms poll and calls `quit()` after the listeners. With no listener the app keeps running with no window.
+
+## Events
+
+```ts
+app.on("ready", () => console.log("windows open"));
+app.on("window-all-closed", () => console.log("closed; quitting"));
+```
+
+Two events exist, and only these two. A `ready` listener that throws rejects `app.run()`.
+
+## A relative URL
+
+`create` with a relative `url` resolves it against the document of an open window. With no open window that loaded a real `http(s)` document there is no base, so the command answers `handler-error` rather than guessing an origin. An absent `url` needs no base: it loads the app's own document, which is the reopen case a page wants.

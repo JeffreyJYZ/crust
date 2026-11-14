@@ -11,24 +11,8 @@ export interface WindowLivenessState {
 }
 
 /**
- * Whether a window is still open, from the three AppKit reads that answer it.
- *
- * **`-windowNumber` is not a liveness test**, which is what broke
- * `window-all-closed` for every crust app. Measured 2026-11-13 on macOS 27:
- * `-close` takes effect immediately (`isVisible` 1 → 0 within 1.02 ms of the
- * send, still 0 after 300 ms and after 1 s of pumping) and the window device
- * number never clears — 517 stayed 517 through `-close`, and a second window
- * stayed 518 through `-orderOut:` followed by `-close`. AppKit keeps the number
- * for the life of the window object, so a window that has been shown once
- * reports a non-zero number forever and `windowNumber === 0` can only ever
- * detect a window that was never ordered in.
- *
- * The measured rule instead:
- *
- *   - visible        → open (the normal case, and after an unhide)
- *   - miniaturised   → open: not visible, and definitely not closed
- *   - app hidden     → open: Cmd+H orders every window out without closing one
- *   - none of those  → closed, including a window never ordered in
+ * Whether a window is still open, from the three AppKit reads that answer it. **`-windowNumber` is not a liveness test** — that is what broke `window-all-closed` for every crust app. Measured 2026-11-13 on macOS 27: `-close` takes effect immediately (`isVisible` 1 → 0 within 1.02 ms, still 0 after 1 s of pumping) while the device number never clears — 517 stayed 517 through `-close`, a second window stayed 518 through `-orderOut:` then `-close`. AppKit keeps the number for the life of the object, so `windowNumber === 0` can only detect a window never ordered in.
+ * The measured rule: visible → open (and after an unhide); miniaturised → open, not visible and definitely not closed; app hidden → open, since Cmd+H orders every window out without closing one; none of those → closed, including one never ordered in.
  */
 export function windowLiveness(state: WindowLivenessState): boolean {
 	return state.visible || state.miniaturized || state.appHidden;

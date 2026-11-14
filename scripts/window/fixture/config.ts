@@ -10,22 +10,8 @@ export const BINARY_NAME = "crust-app";
 export const APP_NAME = "Window crust";
 
 /**
- * The two configured windows, and which one drives the page.
- *
- * `other` serves the driver and `main` is a spare. Two windows is the point:
- * `focus` on a different label must reach a different `NSWindow`, not the same
- * one renamed. The driver must never sit in the window `create` is tested
- * against — closing it kills the page mid-proof — so the spare goes first in the
- * list, which is also the order `window-all-closed` checks: it calls
- * `platform.window(label)` per configured label and stops at the first open one,
- * so `main` is examined (and a closed `main` pruned) while the driver is alive.
- *
- * `main` loads `/spare/idle.html` rather than `/idle.html` on purpose, and it is
- * the only reason for that subdirectory: `create` with a relative URL resolves
- * against the document the platform recorded for an open window, and `main` is
- * the first of the two, so a path-relative request must land under `/spare/`.
- * At `/` the recorded base and this page's own `/` would coincide and the
- * resolution would be unobservable.
+ * The two configured windows. `other` serves the driver and `main` is the spare: `focus` on another label must reach a different `NSWindow`, and `create` is proved on `main` while the driver stays alive, since closing the driver kills the page mid-proof.
+ * `main` loads `/spare/idle.html` so a path-relative `create` URL must resolve to `/spare/child/…`; at `/` the recorded base and this page's own would coincide and the resolution would be unobservable.
  */
 export const CONFIG_SOURCE = `import type { CrustConfig } from "crust";
 
@@ -39,11 +25,7 @@ export default {
 `;
 
 /**
- * The backend. `report` is the page's channel: one line per window answer, on
- * this process's stdout, which is the log the proof reads. `seen` hands the tags
- * recorded so far back to the page, so the driver can wait for a *created*
- * window's page to report before closing the window it is proving.
- * `window-all-closed` is what must run after the page closes the second window.
+ * The backend. `report` is the page's channel — one line per window answer on stdout, which is the log the proof reads — and `seen` hands back the tags recorded so far so the driver can wait for a created window's page before closing it. `window-all-closed` must run after the page closes the second window.
  */
 export const MAIN_SOURCE = `import { app } from "crust";
 

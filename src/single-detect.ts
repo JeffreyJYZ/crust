@@ -1,11 +1,5 @@
 /**
- * Single-file mode's detection half: is this invocation one file, and what
- * config does that imply?
- *
- * A positional is only ever a single file: the extension must be one this
- * framework can bundle, the path must exist, and the directory must hold no
- * `crust.config.ts`/`crust.json`. The config is built in memory and never
- * written; `single-page.ts` bundles and `single.ts` re-exports both.
+ * Single-file mode's detection half: is this invocation one file, and what config does that imply? A positional is only ever a single file — the extension must be one this framework can bundle, the path must exist, and the directory must hold no `crust.config.ts`/`crust.json`. The config is built in memory, never written.
  */
 
 import { stat } from "node:fs/promises";
@@ -51,12 +45,7 @@ function slug(name: string): string {
 }
 
 /**
- * Decide whether this invocation is a single-file app.
- *
- * A positional is only ever a single file: the extension must be one this
- * module can bundle, the path must exist, and the directory must hold no
- * `crust.config.ts`/`crust.json`. A config beside the file means the user has a
- * real project, and guessing which shape they meant is worse than saying so.
+ * Decide whether this invocation is a single-file app. A config beside the file means the user has a real project, and guessing which shape they meant is worse than saying so.
  */
 export async function detectSingle(options: {
 	single?: string;

@@ -1,0 +1,66 @@
+# First app
+
+```sh
+crust init my-app --react
+cd my-app
+bun install
+crust dev
+```
+
+Scaffold, install, dev. `crust init` writes into an empty directory and refuses anything else, naming the entries it found, so nothing of yours is overwritten.
+
+## Pick a scaffold
+
+| you have | flag | what it makes |
+| --- | --- | --- |
+| HTML and CSS, no bundler | none | seven files; the bridge serves `public/` itself |
+| React, or a Vite frontend | `--react` | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
+| Next.js, app router | `--next` | `next dev` on :3000, static export to `out/` |
+
+The flag is the whole difference. Plain is the default, and passing both flags is refused before anything is written.
+
+## What you see
+
+The plain scaffold, measured from an empty directory:
+
+```
+crust dev — /…/my-app/crust.config.ts
+  frontend  served by the bridge (public/index.html, no dev server)
+
+  bridge    http://127.0.0.1:49283
+  window    open
+  greet     hello crust (page call answered)
+```
+
+`--react` and `--next` print the dev-server URL instead of "served by the bridge", and `crust dev` starts that server through `beforeDevCommand`, then waits until it accepts a connection before creating the window.
+
+## What the window is
+
+One `NSWindow` holding a `WKWebView`, created from the `windows` array in `crust.config.ts`. The page inside it is a normal web page; `window.crust` is the bridge's client, and a call reaches a handler in `main.ts`.
+
+```ts
+import { app } from "crust";
+
+app.command("greet", ({ name }) => `hello ${name}`);
+
+await app.run();
+```
+
+```js
+const text = await window.crust.invoke("greet", { name: "crust" });
+```
+
+Two arguments is an app command. A plugin command takes three: `invoke("fs", "readTextFile", { path })`.
+
+## How the pieces run
+
+- **The backend is Bun.** It owns the app process; with the scaffold's `window-all-closed` listener, closing the window ends it.
+- **A backend edit restarts that process.** Under `dev.url` the dev server owns frontend files, so a `.tsx` or `.css` edit restarts nothing.
+- **Without `dev.url` the bridge serves `public/`** itself and injects its own client, so an edit shows on the next reload with no build step.
+- **The bridge binds `127.0.0.1`** on a port derived from `app.id`, so the page origin — and its `localStorage`, `IndexedDB` and caches — is stable across launches.
+
+## Where to go next
+
+- [Project files](/docs/start/files) — which file is what, and the config surface.
+- [Windows](/docs/guides/window) — a second window, and what "closed" means.
+- [Config](/docs/reference/config) — every key and its default.

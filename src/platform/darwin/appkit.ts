@@ -1,9 +1,5 @@
 /**
- * Bringing NSApplication up, in the measured order.
- *
- * Compile the shim, preflight every selector, then `NSApplicationLoad` →
- * `sharedApplication` → policy. The caller owns the pump and the run loop mode,
- * so this returns the app object and nothing else.
+ * Bringing NSApplication up, in the measured order: compile the shim, preflight every selector, then `NSApplicationLoad` → `sharedApplication` → policy. The caller owns the pump and the run-loop mode, so this returns the app object alone.
  */
 import { shim } from "./index.ts";
 import { cls, S } from "./objc.ts";

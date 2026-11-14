@@ -1,10 +1,5 @@
 /**
- * Structured bridge errors.
- *
- * Every failure the bridge produces carries a machine-readable `code`, so page
- * code branches on `error.code` instead of string-matching a status. The code
- * set is the one the probe measured: research/bridge.md §"Implementer surprises"
- * item 7.
+ * Structured bridge errors. Every failure carries a machine-readable `code`, so page code branches on `error.code` instead of string-matching a status; the code set is the one the probe measured (`research/bridge.md` §"Implementer surprises" item 7).
  */
 
 export type CrustErrorCode =

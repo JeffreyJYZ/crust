@@ -1,10 +1,5 @@
 /**
- * `window.create`, the one command whose native half is optional.
- *
- * Split out of `window.ts` because it carries its own ordering rules: ask
- * whether the adapter can create at all before validating arguments, refuse a
- * label the platform still holds, and read the platform's list back rather than
- * trusting the call it just made.
+ * `window.create`, the one command whose native half is optional. Split out of `window.ts` because it carries its own ordering rules: ask whether the adapter can create before validating arguments, refuse a label the platform still holds, and read the platform's list back rather than trusting the call just made.
  */
 
 import type { NotImplemented } from "./define";
@@ -18,12 +13,7 @@ import type {
 } from "./window-types.ts";
 
 /**
- * The missing-window case this exists for: with five commands a page could
- * close its only window and never open another, so an app that wanted a reopen
- * had to keep a hidden window alive. Creation is a command like any other —
- * typed args, typed failure, and the label tracked by the platform afterwards,
- * so `list`, `isOpen`, `close` and `setTitle` all find the new window on the
- * next call.
+ * The missing-window case this exists for: with five commands a page could close its only window and never open another, forcing an app that wanted a reopen to keep a hidden one alive. Creation is a command like any other — typed args, typed failure, and the platform tracks the label afterwards, so `list`, `isOpen`, `close` and `setTitle` all find it next call.
  */
 export function createWindowCommand(
 	adapter: WindowNative | undefined,

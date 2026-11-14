@@ -1,19 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Prove the Homebrew layout, without Homebrew.
- *
- * The Cellar is not just "crust installed somewhere": the formula copies a fixed file
- * list into `libexec` and writes a `bin/crust` wrapper that runs `libexec/src/cli/index.ts`
- * with the depended-on `bun`. Everything crust resolves at runtime — templates, docs, the
- * C shim, `tsconfig.json` for the `@/` alias — hangs off that layout, so a formula that
- * drifts from the package breaks `init` or `doctor` while the tarball stays green.
- *
- * This reproduces those two steps from a tag and runs the same suites against the result.
- * It is not a substitute for `brew upgrade` (that needs the tap merged), but it is the
- * part of the brew path that can be wrong in this repo.
- *
- *   bun run verify:cellar                 # latest tag
- *   bun run verify:cellar --tag v0.1.8    # a specific one
+ * Prove the Homebrew layout without Homebrew: the formula copies a fixed file list into `libexec` and writes a `bin/crust` wrapper, and everything crust resolves at runtime (templates, docs, the C shim, `tsconfig.json`) hangs off that layout — so a formula drifting from the package breaks `init` while the tarball stays green.
+ * It reproduces those two steps from a tag and runs the same suites against the result. Not a substitute for `brew upgrade`, which needs the tap merged.
  */
 import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";

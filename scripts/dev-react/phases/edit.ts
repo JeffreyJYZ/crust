@@ -76,13 +76,11 @@ export async function editPhase(
 		);
 	}
 
-	// One runtime start is one bridge line. A second means the watcher restarted
-	// the backend for a page edit, which rotates the token the loaded page holds.
-	// Judged after a bounded settle: the watcher debounces a change by 150 ms and
-	// a restarted runtime needs a moment to print its own bridge line, so reading
-	// the log the instant the page reloads would report "no restart" for a
-	// restart that is merely still in flight. That is a false pass this script
-	// had until the settle went in.
+	// One runtime start is one bridge line; a second means the watcher restarted the
+	// backend for a page edit, which rotates the loaded page's token. Judged after a
+	// bounded settle: the watcher debounces 150 ms and a restarted runtime needs a
+	// moment to print, so reading at reload time reported "no restart" for a restart
+	// still in flight — a false pass this script had until the settle went in.
 	const settleUntil = performance.now() + RESTART_SETTLE_MS;
 	while (performance.now() < settleUntil && !RESTARTED.test(dev.text("out"))) await delay(50);
 	const restarted = RESTARTED.test(dev.text("out"));

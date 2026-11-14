@@ -1,9 +1,5 @@
 /**
- * Whether a pid a run captured earlier is still alive.
- *
- * A `crust dev` child tree is captured while the run is up, and the survivor
- * assertion happens after it was signalled — so the check is by pid, never by a
- * name: `pgrep -f vite` would answer with every Vite on the machine.
+ * Whether a pid a run captured earlier is still alive. Checked by pid, never by name: the child tree is captured while the run is up and the assertion happens after signalling, and `pgrep -f vite` would answer with every Vite on the machine.
  */
 import { delay } from "./text.ts";
 

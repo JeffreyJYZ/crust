@@ -1,0 +1,66 @@
+.home {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 96px 24px 120px;
+}
+
+.home .hero {
+	font-size: 15px;
+	line-height: 1.7;
+	max-width: 620px;
+}
+
+.home h1 {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 44px;
+	letter-spacing: -0.02em;
+	margin: 0 0 6px;
+}
+
+.home .tag {
+	color: var(--muted);
+	font-size: 17px;
+	line-height: 1.5;
+	margin: 0 0 34px;
+	max-width: 560px;
+}
+
+.home .row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 22px 0 40px;
+}
+
+.home .row a {
+	border: 0.5px solid var(--line);
+	border-radius: 999px;
+	padding: 7px 16px;
+	font-size: 13px;
+	color: var(--fg);
+	background: var(--panel);
+}
+
+.home .row a:hover {
+	border-color: var(--accent);
+	text-decoration: none;
+}
+
+.home .rule {
+	border-top: 0.5px solid var(--line);
+	margin: 44px 0;
+}
+
+.home h2 {
+	font-size: 13px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted);
+	margin: 0 0 14px;
+	font-weight: 500;
+}
+
+.home p,
+.home li {
+	max-width: 620px;
+}

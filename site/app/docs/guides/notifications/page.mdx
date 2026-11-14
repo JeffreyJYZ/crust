@@ -1,0 +1,59 @@
+# Notifications
+
+A user notification through the system notification centre. `delivered` is the operating system's own answer, never the adapter's optimism.
+
+## notify
+
+```ts
+const result = await window.crust.invoke("notification", "notify", {
+	title: "Saved",
+	body: "notes.md",
+});
+```
+
+| key | required | notes |
+| --- | --- | --- |
+| `title` | yes | non-empty string; anything else rejects `handler-error` with `notification.notify: "title" must be a non-empty string` |
+| `body` | no | the second line |
+| `id` | no | caller-chosen dedupe key |
+| `waitMs` | no | how long the permission prompt may stay up; default `1500` |
+
+## The result
+
+```json
+{ "delivered": true, "reason": "…" }
+```
+
+`delivered` is true only when the OS reported status 0. Statuses 1 (authorization pending or denied), 2 (a class or selector is missing) and 3 (the API errored) all come back `delivered: false` with the reason intact. A missing permission is never a silent success.
+
+## What refuses delivery
+
+Four rules, each measured on a real bundle.
+
+1. **No certificate is needed.** A bundle built by `crust build` and ad-hoc signed delivers. A Developer ID is not required, and an Apple Development certificate changes nothing.
+2. **A bundle running from the system temp directory is refused.** The identical app delivered from `~/dev` and answered `code 1` from `/var/folders/…T`, twice each way. Run the built app from a normal directory.
+3. **An identifier macOS recorded as denied is not re-asked.** It keeps answering `code 1` whatever you sign it with. It is reversible: switching the app back on in System Settings, under Notifications, made the same identifier deliver, with no rebuild and no new identifier. Change `app.id` only when the app never appears in that list.
+4. **An unanswered prompt is recorded as a denial.** The first post on a new identifier raises the prompt, and an identifier that was never answered answers `code 1` from then on. On an ad-hoc bundle that prompt can show as an unresolvable spinner rather than an Allow pair, which spends the identifier.
+
+## waitMs
+
+The first `notify` on a new identifier raises the permission prompt, and nothing is delivered until a human answers it. The default `1500` ms asks and reports that it was not answered yet; pass something human-sized when one call should succeed:
+
+```ts
+await window.crust.invoke("notification", "notify", {
+	title: "Saved",
+	waitMs: 30_000,
+});
+```
+
+## requestPermission
+
+Always `not-implemented` with a real adapter, `requires: "UNUserNotificationCenter"`. Authorization is requested by `notify` itself and the OS answers only through a completion handler, so there is no separate state to report. Inventing "granted" would be a claim nothing read.
+
+## Unbundled
+
+Under `crust dev` the process has no bundle identifier, so the modern notification centre is never entered and the reason names the absent `NSUserNotification` selector. Notifications are a built-app surface: `crust build`, then launch the bundle.
+
+## Headless
+
+Without a platform adapter both commands answer `not-implemented` with `requires: "UNUserNotificationCenter"`.

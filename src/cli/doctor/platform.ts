@@ -14,12 +14,7 @@ import { crustRoot, exists } from "../util.ts";
 import { type Check, inline } from "./check.ts";
 
 /**
- * `cc()` the shipped shim once, exactly as the platform does at launch.
- *
- * This is the check a user cannot do by reading the project: TinyCC compiling
- * C with four frameworks linked is the step that fails when the macOS toolchain
- * is missing or the shim has been edited into something C cannot parse. It has
- * no side effects — no window, no application activation.
+ * `cc()` the shipped shim once, exactly as the platform does at launch — the check a user cannot do by reading the project, since TinyCC compiling C with four frameworks linked is what fails when the toolchain is missing or the shim was edited into something C cannot parse. No side effects: no window, no application activation.
  */
 export async function checkShim(): Promise<Check> {
 	// The shim is one translation unit assembled from numbered parts, so the check

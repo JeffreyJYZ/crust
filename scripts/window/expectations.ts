@@ -131,12 +131,7 @@ export const WINDOW_CHECKS = [
 export const ALL_CLOSED = /window\s+every window closed; quitting/;
 
 /**
- * Nothing. The app ends itself, so the probe must not stop it on a line:
- * anything that matched would get a SIGTERM, and `exit 0` would then be a fact
- * about the harness rather than about `window-all-closed`. `(?!)/` can never
- * match, so `probe` waits for the child's own exit — and a hung app still fails
- * on the deadline below. (A regex like `/$^/` is not a safe choice here: it
- * matches an empty string, and an empty first chunk would end the probe early.)
+ * Nothing. The app ends itself, so the probe must not stop it on a line: anything matching would get a SIGTERM and `exit 0` would be a fact about the harness, not about `window-all-closed`. `(?!)/` can never match, so the probe waits for the child's own exit; `/$^/` is unsafe because it matches an empty string and would end the probe on an empty first chunk.
  */
 export const WAIT_FOR_EXIT = /(?!)/;
 

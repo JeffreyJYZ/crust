@@ -17,12 +17,10 @@ import {
 
 export function checkCreates(verdict: Verdict, byTag: Map<string, PageAnswer>): void {
 	// ---- 10b. create: a real second NSWindow, and a document that runs ------
-	// The page that asked only sees the plugin's answer, so the created windows
-	// load a document that runs this same script in its own context and reports
-	// what it found: its URL, and the answer its *own* invoke got. A window whose
-	// webview never loaded the bridge document has no page to report with, and
-	// every check below fails together — which is the point: the plugin's `ok` is
-	// not evidence that an NSWindow exists.
+	// Created windows run this same script in their own context and report their
+	// URL and their own invoke answer. A webview that never loaded the bridge
+	// document has no page to report with, so the plugin's `ok` alone is not
+	// evidence that an NSWindow exists.
 	const createRel = resolved(byTag.get("createrel"));
 	const createRelOk =
 		createRel?.ok === true && createRel?.created === true && createRel?.label === "relative";

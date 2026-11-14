@@ -1,23 +1,6 @@
 /**
- * `crust:tray` — a menu-bar status item.
- *
- * `NSStatusBar` is AppKit, and this module owns no AppKit. The native half is a
- * `TrayNative` adapter, so the platform side stays in `platform/darwin` and the
- * same commands work unchanged on a platform that has no menu bar. macOS
- * supplies one through `createStatusBar()` in `platform/darwin/status-bar.ts`;
- * without an adapter every command returns a typed `NotImplemented` naming
- * `NSStatusBar`, and the registry turns that into a `not-implemented` error. It
- * never resolves a fake success, because a tray that silently did nothing is
- * indistinguishable from one that failed.
- *
- * The five commands are the item's life, not a single `set`: a title, a menu,
- * visibility, and removal each have their own answer. A menu entry may carry an
- * `onClick` for in-process callers, but the bridge transports JSON, so a page
- * cannot send a function. Every click is therefore also pushed as a `tray:click`
- * event carrying `{ index, label }`, which is how page code learns about it.
- *
- * The vocabulary lives in `tray-types.ts` and the argument rules in
- * `tray-args.ts`; this file is the commands.
+ * `crust:tray` — a menu-bar status item. `NSStatusBar` is AppKit and this module owns none: the native half is a `TrayNative` adapter from `createStatusBar()`, so the same commands work on a platform with no menu bar; without one every command returns a typed `NotImplemented` naming `NSStatusBar`, never a fake success — a tray that silently did nothing is indistinguishable from one that failed.
+ * The five commands are the item's life (title, menu, visibility, removal), each with its own answer. A menu entry may carry `onClick` for in-process callers, but the bridge transports JSON, so every click is also pushed as a `tray:click` event with `{ index, label }`. Vocabulary in `tray-types.ts`, argument rules in `tray-args.ts`.
  */
 
 import {

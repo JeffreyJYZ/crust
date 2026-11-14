@@ -1,19 +1,6 @@
 /**
- * The bridge server: `Bun.serve` on loopback, one token, one origin check.
- *
- * Measured on Bun 1.4.4, macOS 27.0.1 (research/bridge.md):
- *   - invoke round-trip, 200 calls over fresh sockets: median 0.119 ms, p99 1.276 ms;
- *     the same-process floor is 0.0005 ms, so the socket is 99.6% of the cost;
- *   - a reused connection costs 0.045 ms, which is why the page's keep-alive
- *     `fetch` connection is the number that matters;
- *   - an ephemeral-port bind takes 0.11 ms, a stopped bridge rebinds the same
- *     port in 0.45 ms, and SSE delivered 20 of 20 frames in order at a 20.38 ms
- *     median gap with no coalescing;
- *   - one-megabyte bodies take 2.4 ms as JSON and 1.8 ms as binary.
- *
- * Security posture: ephemeral port + per-launch bearer token + an Origin check
- * that refuses an absent header + an explicit CSP. Loopback is reachable by any
- * local process, so the token is what actually protects the bridge.
+ * The bridge server: `Bun.serve` on loopback, one token, one origin check. Measured on Bun 1.4.4 / macOS 27.0.1 (`research/bridge.md`): round-trip median 0.119 ms and p99 1.276 ms over 200 fresh-socket calls against a 0.0005 ms same-process floor, 0.045 ms on a reused connection, an ephemeral bind in 0.11 ms, a stopped bridge rebinding in 0.45 ms, SSE 20/20 frames in order at a 20.38 ms median gap, and 1 MB bodies at 2.4 ms JSON / 1.8 ms binary.
+ * Security posture: ephemeral port + per-launch bearer token + an Origin check refusing an absent header + an explicit CSP. Loopback is reachable by any local process, so the token is what actually protects the bridge.
  */
 
 import type { PluginContext } from "../plugins/define";
@@ -45,12 +32,7 @@ export const DEFAULT_CSP = [
 ].join("; ");
 
 /**
- * Start the bridge.
- *
- * `port: 0` lets the OS choose, so two instances cannot collide; the returned
- * `port` is the real one. `stop()` closes every event stream and releases the
- * port immediately (measured rebind 0.45 ms), and a stopped bridge does not
- * keep the process alive.
+ * Start the bridge. `port: 0` lets the OS choose, so two instances cannot collide, and the returned `port` is the real one. `stop()` closes every event stream and releases the port immediately (measured rebind 0.45 ms); a stopped bridge does not keep the process alive.
  */
 export function startBridge(options: StartBridgeOptions): BridgeHandle {
 	const handlers = handlerMap(options.handlers);

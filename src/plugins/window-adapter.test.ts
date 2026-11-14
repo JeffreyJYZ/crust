@@ -1,11 +1,5 @@
 /**
- * The real adapter (`darwinWindowAdapter`), against a platform double.
- *
- * `darwinWindowAdapter.create` has exactly two jobs beyond delegating: decide
- * whether a label is a live window or a stale closed one, and resolve a
- * relative URL against the app's own document. Both are ordering facts, so the
- * double records calls and the assertions read that order. The adapter logic is
- * under test; AppKit is not.
+ * The real adapter (`darwinWindowAdapter`) against a platform double. Beyond delegating, `create` has exactly two jobs: decide whether a label is a live window or a stale closed one, and resolve a relative URL against the app's document — both ordering facts, so the double records calls and the assertions read that order. AppKit is not under test.
  */
 
 import { describe, expect, test } from "bun:test";

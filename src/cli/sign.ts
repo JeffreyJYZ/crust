@@ -3,11 +3,7 @@ import { assessGatekeeper, describeSignature, signApp, verifySignature } from "@
 import { fail, findAppBundle, line, type CliOptions } from "./util.ts";
 
 /**
- * `crust sign` — the Developer ID path, hardened runtime, JIT entitlement.
- *
- * Without a certificate there is nothing honest to do, so this fails naming the
- * environment variable. `crust build`'s ad-hoc signature is local-only: an ad-hoc
- * signature cannot be notarized, so Gatekeeper refuses it elsewhere.
+ * `crust sign` — the Developer ID path, hardened runtime, JIT entitlement. Without a certificate there is nothing honest to do, so it fails naming the environment variable. `crust build`'s ad-hoc signature is local-only: it cannot be notarized, so Gatekeeper refuses it elsewhere.
  */
 export async function sign(options: CliOptions): Promise<number> {
 	const loaded = await loadConfig({ dir: options.dir, configPath: options.config });

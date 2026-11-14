@@ -92,9 +92,6 @@ const char *shim_open_panel_path(int index) {
 
 // Opens an NSSavePanel. Same two modes, same statuses, same storage as
 // shim_open_panel; the caller supplies a suggested file name and an allowed
-// extension list instead of a selection shape.
-//
-// Overwrite confirmation is AppKit's own job: NSSavePanel asks before replacing
-// an existing file, and nothing here suppresses that prompt or adds a second
-// confirmation of ours. crust never writes the file — the caller does, after
-// the panel answers.
+// extension list instead of a selection shape. Overwrite confirmation is
+// AppKit's own job and nothing here suppresses or duplicates it; crust never
+// writes the file — the caller does, after the panel answers.

@@ -1,26 +1,17 @@
 #!/usr/bin/env bun
 /**
- * The 200-line cap, as a check rather than a habit.
- *
- * The owner's rule: no file past 200 lines, tests and examples included. A cap nobody
- * measures is a cap that regresses the first time a feature lands, so this reads the tree
- * and fails on every offender instead of trusting anyone to remember.
- *
- *   bun run check:lines          # every path this repo ships
- *   bun run check:lines --fix    # no-op; the split is a human decision, not a formatter's
- *
- * Files are grouped by extension because the cap has the same reason in each: a file you
- * cannot read in one screen is a file whose responsibilities have merged.
+ * The 200-line cap as a check rather than a habit: no file past 200 lines, tests and examples included, because a file you cannot read in one screen is a file whose responsibilities have merged.
+ * `bun run check:lines` reads the tree and fails on every offender; `--fix` is a no-op, since the split is a human decision.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 const CAP = 200;
-const ROOTS = ["src", "scripts", "examples"];
-const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".c", ".css", ".mjs"]);
+const ROOTS = ["src", "scripts", "examples", "site"];
+const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".c", ".css", ".mjs", ".mdx"]);
 
 /** Directories that are generated, vendored or not ours to read. */
-const SKIP = new Set(["node_modules", "dist", "web", "target", ".git", "build"]);
+const SKIP = new Set(["node_modules", "dist", "web", "target", ".git", "build", ".next"]);
 
 interface Offender {
 	path: string;

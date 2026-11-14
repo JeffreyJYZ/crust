@@ -1,11 +1,5 @@
 /**
- * Phase 4: `crust dev` starts the frontend, the dev server answers, the bridge
- * publishes its pair, and the page the window runs is the Vite one.
- *
- * The blocks are ordered so each stands alone: the dev server, the client it
- * serves, the bridge's own document, the cross-origin invoke and the whole stop
- * path are all provable without the window. Only "edit reload" needs a page that
- * is alive, so a dead window costs one failure rather than a skipped run.
+ * Phase 4: `crust dev` starts the frontend, the dev server answers, the bridge publishes its pair, and the window's page is the Vite one. Each block stands alone except "edit reload", which needs a live page — so a dead window costs one failure rather than a skipped run.
  */
 import { join } from "node:path";
 import { runCommand, type Verdict } from "../../e2e-harness.ts";

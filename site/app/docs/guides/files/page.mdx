@@ -1,0 +1,83 @@
+# Files
+
+The `fs` plugin reads and writes real files on disk. Every command is async, because one blocking handler stalls the bridge and the Cocoa pump with it.
+
+## Commands
+
+| command | arguments | result |
+| --- | --- | --- |
+| `readTextFile` | `{ path }` | the file's text |
+| `writeTextFile` | `{ path, contents }` | `{ bytes }` |
+| `list` | `{ path }` | `{ entries: [{ name, path, directory, size }] }` |
+| `stat` | `{ path }` | `{ path, directory, size, modified }` |
+| `remove` | `{ path, recursive? }` | `{ removed, path }` |
+| `rename` | `{ from, to }` | `{ path }` |
+
+Three-argument calls, because `fs` is a plugin:
+
+```js
+const text = await window.crust.invoke("fs", "readTextFile", { path: "/Users/jyz/notes.md" });
+```
+
+## Reading and writing
+
+```js
+await window.crust.invoke("fs", "writeTextFile", {
+	path: "/Users/jyz/notes.md",
+	contents: "# Notes",
+});
+// { bytes: 7 }
+```
+
+`bytes` is what `Bun.write` reports, not a second measurement. A non-string `contents` rejects `bad-request`.
+
+## Listing
+
+```js
+const { entries } = await window.crust.invoke("fs", "list", { path: "/Users/jyz/notes" });
+```
+
+`name` is a basename and never a path, `path` is absolute, `size` is bytes for a file and `0` for a directory, and the list is sorted by name. Absolute paths mean a page never joins strings, which matters because a built app's page runs from `/`.
+
+## Removing
+
+`remove` deletes a file, or an empty directory, with no flag. A non-empty directory needs a second argument:
+
+```js
+await window.crust.invoke("fs", "remove", { path: "/Users/jyz/notes", recursive: true });
+// { removed: true, path: "/Users/jyz/notes" }
+```
+
+## Renaming
+
+```js
+await window.crust.invoke("fs", "rename", { from: "a.md", to: "b.md" });
+// { path: "/Users/jyz/b.md" }
+```
+
+The returned path is absolute and describes the destination.
+
+## Errors
+
+| code | HTTP | when |
+| --- | --- | --- |
+| `not-found` | 404 | the path does not exist |
+| `bad-request` | 400 | `path`, `from` or `to` missing or not a string, or `contents` not a string |
+
+A missing path carries the command and the path: `fs.readTextFile: no file at /Users/jyz/none.md`. A bad argument carries the rule: `fs: "path" must be a non-empty string`.
+
+Any other filesystem error is passed through unchanged, so it arrives as `handler-error`. Branch on `error.code`:
+
+```js
+try {
+	await window.crust.invoke("fs", "readTextFile", { path });
+} catch (error) {
+	if (error.code === "not-found") {
+		// first run: nothing written yet
+	}
+}
+```
+
+## Limits
+
+Text only, plus directory metadata. There is no binary read, no streaming and no watch; a command of your own covers those, and it stays async for the same reason `fs` is.

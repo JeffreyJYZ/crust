@@ -1,13 +1,5 @@
 /**
- * The crust config shape and its validator.
- *
- * A bad config is a startup failure with a message that names the offending key
- * and the shape that key expects, never a silent default.
- *
- * The shapes live in `types.ts`, the issue type and its formatting in
- * `issues.ts`, the checks in `validator.ts`, and one file per config area
- * (`validate-*.ts`). Everything they export is re-exported here so `./schema`
- * stays the import path the rest of the repo uses.
+ * The crust config shape and its validator: a bad config is a startup failure naming the offending key and the shape it expects, never a silent default. Shapes in `types.ts`, issues in `issues.ts`, checks in `validator.ts` and one `validate-*.ts` per area — all re-exported here so `./schema` stays the import path.
  */
 
 import { ConfigError } from "./issues.ts";

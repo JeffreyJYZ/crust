@@ -13,11 +13,7 @@ export const REPO_ROOT = resolve(import.meta.dir, "../..");
 export const CLI = process.env.CRUST_BIN ?? join(REPO_ROOT, "src/cli/index.ts");
 
 /**
- * The port and origin the scaffold pins. `vite.config.ts` sets `strictPort: true`
- * on purpose — the bridge allowlists exactly the origin `dev.url` names, so a
- * Vite that quietly moved to the next free port would produce a page whose every
- * invoke is a CORS refusal. A test that accepted "some port" would pass while
- * that happened.
+ * The port and origin the scaffold pins. `vite.config.ts` sets `strictPort: true` on purpose: the bridge allowlists exactly the origin `dev.url` names, so a Vite that moved to the next free port would make every invoke a CORS refusal — and a test accepting "some port" would pass through that.
  */
 export const DEV_PORT = 5173;
 export const DEV_ORIGIN = `http://localhost:${DEV_PORT}`;
@@ -50,13 +46,7 @@ export const MARKER = "edited";
 export const ARGUMENT = '{ name: "react" }';
 
 /**
- * Why the page never answered, in one line.
- *
- * Two facts decide it and both are in the runtime's own output: whether a window
- * was created at all, and whether it was created before the dev server printed
- * its ready banner. The second is the failure this shape has — `loadRequest:` is
- * issued once, so a window that navigates before the frontend is listening has
- * nothing to connect to, and the page never runs.
+ * Why the page never answered, in one line. Both facts are in the runtime's output: whether a window was created, and whether it was created before the dev server printed its ready banner — `loadRequest:` is issued once, so a window that navigates early has nothing to connect to.
  */
 export function windowEvidence(out: string, running: boolean): string {
 	const opened = /window\s+open/.exec(out);

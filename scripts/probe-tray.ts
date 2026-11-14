@@ -1,41 +1,6 @@
 /**
- * Evidence probe: is the crust tray status item actually *drawn* on the menu
- * bar, or does it only exist as an AppKit object that reports success?
- *
- * The README says nobody has seen it — an earlier run landed on a fullscreen
- * space where the menu bar is hidden. So this run answers one question with
- * pixels instead of a return value:
- *
- *   1. bring AppKit up the way `startApp` does (NSApplicationLoad →
- *      sharedApplication → activation policy) and pump it on a 16 ms timer, so
- *      the item is created inside a real, drawing application;
- *   2. capture the menu-bar strip *before* the item exists, then again with a
- *      distinctive title up, then hidden, then re-shown, then destroyed;
- *   3. read the item back from AppKit and the WindowServer — the applied title,
- *      `isVisible`, `length`, and the button window's frame, `isVisible`,
- *      `isOnActiveSpace` and `occlusionState` — and capture that window's own
- *      rectangle as well, so its pixels are compared in place;
- *   4. decode each capture (BMP, so no image library is needed) and report the
- *      pixels that changed, as a bounding box in points plus how bright the
- *      "after" pixels are inside it.
- *
- * The split matters. The readback is AppKit's *claim* about layout; the
- * screenshot is what the screen shows. When they disagree — a fullscreen space
- * keeps `isVisible = true` while the bar is off-screen — that disagreement is
- * the result, and it is reported as disagreement, not resolved by guessing.
- *
- * What it cannot do, by design: click, type, move the pointer or otherwise
- * drive the UI. A screenshot is a read. Nothing is left running: the item is
- * destroyed, the pump is stopped and the process exits.
- *
- *   bun run scripts/probe-tray.ts
- *
- * Exit status is 0 whenever the measurements themselves ran, including when the
- * item turned out to be invisible; the report says which answer it found.
- *
- * The measurement code lives beside this entry: `tray/bitmap.ts` decodes what
- * `screencapture` wrote, `tray/capture.ts` takes the captures, and
- * `tray/analysis.ts` compares them. Only the run and its JSON report are here.
+ * Evidence probe: is the tray status item actually *drawn*, or only an AppKit object that reports success? Captures the menu-bar strip before/after and decodes the BMP pixels, alongside the item read back from AppKit and the WindowServer.
+ * The readback is AppKit's claim; when it disagrees with the screenshot (a fullscreen space keeps `isVisible = true` while the bar is off-screen) that disagreement is the result, not something to resolve by guessing. Read-only, and exit 0 whenever the measurements ran, even for an invisible item. Code in `tray/`.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";

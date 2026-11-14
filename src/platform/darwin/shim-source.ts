@@ -1,15 +1,6 @@
 /**
- * The AppKit shim, as one compilation unit assembled from parts.
- *
- * The C is a single translation unit on purpose: every part shares statics
- * (`panel_paths`, `panel_sheet_panel`, the sheet block) and the parts carry no
- * `#include` at all — every Objective-C symbol is a hand-written `extern`, which is
- * what lets TinyCC compile it with no SDK. So the order below is load-bearing: it is
- * the order the parts had before the split, and joining it any other way changes
- * meaning, not just layout.
- *
- * Parts are numbered because the unit reads top to bottom. `arity.test.ts` composes
- * the same files from disk, in path order, so the numbers and this list must agree.
+ * The AppKit shim, as one compilation unit assembled from parts. It must stay one unit: the parts share statics (`panel_paths`, `panel_sheet_panel`, the sheet block) and carry no `#include` at all — every Objective-C symbol is a hand-written `extern`, which is what lets TinyCC compile it with no SDK — so the order below is load-bearing, not layout.
+ * Parts are numbered because the unit reads top to bottom; `arity.test.ts` composes the same files in path order, so the numbers and this list must agree.
  */
 import prelude from "./shim/10_prelude.c" with { type: "text" };
 import sends from "./shim/20_sends.c" with { type: "text" };

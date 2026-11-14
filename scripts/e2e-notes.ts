@@ -1,28 +1,6 @@
 /**
- * The end-to-end proof for the multi-file app: `examples/notes`.
- *
- * `e2e.ts` proves the smallest path — one command, one asset-free page. This one
- * proves the shape a real app has: everything under `public/` (seven files, counted rather than asserted) embedded in the
- * bundle, a backend that owns its state, and a page that calls a command on load.
- * Everything goes through the real path: `crust build` compiles and signs the
- * bundle, then the binary inside it is launched directly — never `open`, which
- * would route through LaunchServices and hide which process ran.
- *
- * The app proves itself by printing the `notes.list` line its page triggers. A
- * built app keeps its notes beside the directory it is launched from, so the
- * child runs in a scratch directory with one seeded note rather than the repo
- * root; that also makes the reported count a fact this script can check.
- *
- * Usage:
- *   bun scripts/e2e-notes.ts    # or `bun run e2e:notes`
- *
- * macOS has no `timeout(1)`, so the deadline, the SIGTERM and the escalation to
- * SIGKILL all live in `e2e-harness.ts`. A hung app must fail, never pass: the
- * listed line is missing, and an exit that only happened because the deadline
- * killed the child is not a clean exit.
- *
- * The build and the bundle-level checks are `notes/build.ts`; the run and the
- * count are here, because they are what this example adds to `e2e.ts`.
+ * E2E for the multi-file app: every asset under `public/` embedded in the bundle, a backend owning its state, and a page that calls a command on load — built by `crust build`, then its binary launched directly (never `open`).
+ * The child runs in a scratch directory with one seeded note because a built app keeps its notes beside its launch directory; that makes the reported count checkable. macOS has no `timeout(1)`, so the deadline and the SIGKILL escalation are in `e2e-harness.ts`.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

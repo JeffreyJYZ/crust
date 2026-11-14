@@ -1,9 +1,5 @@
 /**
- * The window plugin's test double, shared by the `window.*.test.ts` suites.
- *
- * Imported only by tests: product code never reads it, and `window.ts` has no
- * knowledge of it. It lives apart so a 600-line suite could become four without
- * each copy drifting.
+ * The window plugin's test double, shared by the `window.*.test.ts` suites and imported only by tests. `window.ts` has no knowledge of it; it lives apart so a 600-line suite could become four without the copies drifting.
  */
 
 import { type WindowNative, WindowAdapterError } from "./window-types.ts";
@@ -16,12 +12,7 @@ export interface FakeWindow {
 }
 
 /**
- * A fake platform: labels are tracked the way `DarwinPlatform` tracks them, so
- * a closed window stays listed (its number is 0) instead of vanishing.
- *
- * `create` records the exact options it was handed, so a test can assert what
- * crossed the seam rather than only what the plugin answered — a create that
- * clamped a size or dropped a title would otherwise look identical.
+ * A fake platform: labels are tracked the way `DarwinPlatform` tracks them, so a closed window stays listed with number 0 rather than vanishing. `create` records the exact options handed to it, so a test can assert what crossed the seam — a create that clamped a size or dropped a title would otherwise look identical.
  */
 export function fakeAdapter(labels: string[] = ["main"]): WindowNative & {
 	calls: string[];

@@ -14,12 +14,11 @@ static int nf_absent(const char *cls, const char *selname, int as_class) {
 }
 
 // Deprecated since macOS 11, and on macOS 27 the class is a husk: measured,
-// NSUserNotification answers -init but has no -setTitle:, -setInformativeText:
-// or -setBody:, so nothing with content can be built and this path reports a
-// missing symbol rather than delivering an empty notification. There is no
-// authorization call and no delivery report in this API either:
-// -deliverNotification: returns void, so "accepted with no exception" would be
-// the strongest fact it could give.
+// NSUserNotification answers -init but has no -setTitle:, -setInformativeText: or
+// -setBody:, so nothing with content can be built and this path reports a missing
+// symbol rather than delivering an empty notification. There is no authorization
+// call and no delivery report either: -deliverNotification: returns void, so
+// "accepted with no exception" is the strongest fact it can give.
 static int nf_post_deprecated(const char *title, const char *body) {
 	obj_t center_cls = objc_getClass("NSUserNotificationCenter");
 	obj_t note_cls = objc_getClass("NSUserNotification");

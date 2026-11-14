@@ -1,10 +1,5 @@
 /**
- * `window.create`'s happy path and its two conflict cases.
- *
- * The point of the command is that after it answers, every other command finds
- * the new window by the same label — that is what makes a reopen possible
- * without keeping a hidden window alive. Argument validation and the
- * adapter-without-create gap are in `window-args.test.ts`.
+ * `window.create`'s happy path and its two conflict cases. The point is that after it answers, every other command finds the new window by the same label — that is what makes a reopen possible without keeping a hidden window alive.
  */
 
 import { describe, expect, test } from "bun:test";

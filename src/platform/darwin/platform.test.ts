@@ -3,11 +3,10 @@ import { DarwinPlatform, windowLiveness } from "./index.ts";
 
 describe("window liveness", () => {
 	/**
-	 * The defect this rule exists for: `-windowNumber` never reads 0 after a
-	 * close. Measured 2026-11-13 on macOS 27 — `-close` ordered the window out
-	 * (`isVisible` 1 → 0 in 1.02 ms, still 0 after 300 ms and after 1 s of
-	 * pumping) while the window device number stayed 517, and stayed 518 for a
-	 * second window that got `-orderOut:` before `-close`.
+	 * The defect this rule exists for: `-windowNumber` never reads 0 after a close.
+	 * Measured 2026-11-13 on macOS 27 — `-close` ordered the window out (`isVisible` 1 → 0
+	 * in 1.02 ms, still 0 after 300 ms and after 1 s of pumping) while the device number
+	 * stayed 517, and 518 for a second window that got `-orderOut:` before `-close`.
 	 */
 	test("a closed window is gone even though AppKit keeps its device number", () => {
 		expect(windowLiveness({ visible: false, miniaturized: false, appHidden: false })).toBe(

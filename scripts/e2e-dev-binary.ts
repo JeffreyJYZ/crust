@@ -1,28 +1,7 @@
 #!/usr/bin/env bun
 /**
- * `crust dev` from a compiled binary — the path no other proof covers.
- *
- * `build-standalone.ts` proves a binary can start, scaffold and diagnose; `e2e-dev.ts`
- * proves the watcher from a checkout. The two things that only fail inside an executable
- * are both here:
- *
- *   1. the runtime child needs an interpreter, and a machine that only has crust has no
- *      `bun` on PATH — the binary re-executes itself with `BUN_BE_BUN=1` instead;
- *   2. the generated runner names the framework by absolute path, and `/$bunfs` is
- *      mounted in one process only, so a child must be handed the materialised copy.
- *
- * Both shapes are exercised: a single file (`crust dev app.tsx`) and a scaffolded
- * project (`crust dev --dir`). The interpreter case runs twice, once with Bun on PATH
- * and once with a deliberately bare one, because those are two different branches.
- *
- * Usage:
- *   bun run build:standalone && bun scripts/e2e-dev-binary.ts
- *   CRUST_BIN=./dist/crust bun scripts/e2e-dev-binary.ts
- *
- * Nothing is left running and every temporary directory is removed, including on
- * failure: the survivor patterns are checked after both runs, not only after the last.
- *
- * The binary, the page and the bare environment are `dev-binary/fixture.ts`.
+ * `crust dev` from a compiled binary — the path no other proof covers. Two things only fail inside an executable: the runtime child needs an interpreter and a crust-only machine has no `bun` on PATH, so the binary re-executes itself with `BUN_BE_BUN=1`; and the generated runner names the framework by absolute path while `/$bunfs` is mounted in one process only, so a child gets the materialised copy.
+ * Both shapes are exercised (single file and `crust dev --dir`), the interpreter case twice — Bun on PATH and a deliberately bare one are different branches. Survivors are checked after both runs, not only the last. Fixture in `dev-binary/fixture.ts`.
  */
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,9 +1,5 @@
 /**
- * One PASS/FAIL line per assertion, and the one exit code a run reports.
- *
- * Kept apart from the process plumbing so a script that only needs to print
- * verdicts (the packaging and publishing checks) does not drag the probe in
- * with it.
+ * One PASS/FAIL line per assertion, and the one exit code a run reports — kept apart from the process plumbing so a script that only prints verdicts does not drag the probe in.
  */
 
 const LABEL_WIDTH = 14;

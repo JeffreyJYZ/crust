@@ -1,11 +1,5 @@
 /**
- * `crust:window` through the two seams it actually meets: no adapter at all,
- * and the registry the bridge calls.
- *
- * Both are about honesty at a boundary — a platform with no AppKit answers a
- * structured `not-implemented` naming `NSWindow`, and the registry turns that
- * into a `CrustError` a page can catch. An adapted plugin, by contrast, resolves
- * every call as a value.
+ * `crust:window` through the two seams it actually meets: no adapter at all, and the registry the bridge calls. Both are about honesty at a boundary — a platform with no AppKit answers a structured `not-implemented` naming `NSWindow`, the registry turns it into a `CrustError` a page can catch, and an adapted plugin resolves every call as a value.
  */
 
 import { describe, expect, test } from "bun:test";

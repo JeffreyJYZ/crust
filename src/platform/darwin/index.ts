@@ -1,18 +1,6 @@
 /**
- * macOS platform implementation: AppKit over `bun:ffi`, no native artifact.
- *
- * Ported from the M0 spike (`spike/main.ts`, measured working: window visible at
- * 299.5 ms, webview 165 ms, page 925 ms, two resizes survived). DESIGN.md §2
- * explains why the shim exists; §3 explains the pump.
- *
- * Every selector is preflighted once, because an uncaught Objective-C exception
- * terminates the process with SIGABRT and no JavaScript error. Nothing here
- * passes a JS string into C: `const char *` parameters get an encoded buffer,
- * and every object stays native-side as an opaque pointer.
- *
- * This file is the FFI boundary and the public surface: the `cc()` declaration
- * below is what `arity.test.ts` compares against the shim parts, so it stays here
- * rather than in a sibling. Everything else lives one responsibility per module.
+ * macOS platform implementation: AppKit over `bun:ffi`, no native artifact. Ported from the M0 spike (window visible at 299.5 ms, webview 165 ms, page 925 ms, two resizes survived); `site/app/docs/design/page.mdx` explains the shim and the pump.
+ * Every selector is preflighted once, because an uncaught Objective-C exception terminates the process with SIGABRT and no JavaScript error; no JS string passes into C — `const char *` gets an encoded buffer and every object stays native-side as an opaque pointer. The `cc()` declaration stays in this file because `arity.test.ts` compares it against the shim parts.
  */
 
 import { cc, FFIType } from "bun:ffi";

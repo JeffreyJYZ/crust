@@ -1,10 +1,5 @@
 /**
- * Attaching and ejecting the built image.
- *
- * The device to detach is parsed from `hdiutil attach`'s own table, never guessed
- * from `/Volumes/<name>`: `diskutil image create from` writes an APFS container,
- * so the command prints several `/dev/disk*` lines and only one carries the mount
- * point.
+ * Attaching and ejecting the built image. The device is parsed from `hdiutil attach`'s own table, never guessed from `/Volumes/<name>`, because `diskutil image create from` writes an APFS container and prints several `/dev/disk*` lines with only one carrying the mount point.
  */
 import { runCommand } from "../e2e-harness.ts";
 import { REPO_ROOT } from "./fixture.ts";
@@ -35,12 +30,7 @@ export function mountPointSeen(): string | null {
 }
 
 /**
- * Parse `hdiutil attach`'s table into the device to detach.
- *
- * The table is tab-separated, `/dev/disk*` first and the mount point last, and an
- * image made by `diskutil image create from` prints four lines for one mount
- * (partition scheme, APFS container, its slice). Only one line names a mount
- * point, so that line — never a guess at `/Volumes/<name>` — is what is detached.
+ * Parse `hdiutil attach`'s table. It is tab-separated, `/dev/disk*` first and the mount point last, and an image from `diskutil image create from` prints four lines for one mount (scheme, APFS container, slice) — only one names a mount point, and that line is what gets detached.
  */
 export function parseAttachment(stdout: string, dmgPath: string): Attachment | undefined {
 	const devices: string[] = [];
@@ -77,12 +67,7 @@ async function imageAttached(dmgPath: string): Promise<boolean> {
 }
 
 /**
- * Eject the image, escalating from the container device to `-force`.
- *
- * Detaching the whole disk (`/dev/disk15` for `/dev/disk15s1`) is what releases an
- * APFS container; detaching the slice alone can leave the container behind. The
- * result is verified against the mount table and `hdiutil info`, because an exit 0
- * from a deprecated command is not the same fact as an unmounted volume.
+ * Eject the image, escalating from the container device to `-force`. Detaching the whole disk (`/dev/disk15` for `/dev/disk15s1`) is what releases an APFS container; the slice alone can leave it behind. The result is verified against the mount table and `hdiutil info`, because exit 0 from a deprecated command is not the same fact as an unmounted volume.
  */
 export async function detachImage(target: Attachment): Promise<{ ok: boolean; detail: string }> {
 	const candidates = [

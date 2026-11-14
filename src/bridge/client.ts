@@ -1,22 +1,6 @@
 /**
- * The page-side half of the bridge.
- *
- * This file is the module's public surface: the client body lives in
- * `client/install.ts`, the injected sources in `client/bootstrap.ts` and the
- * shapes in `client/types.ts`. The split is a size boundary only — nothing a
- * page or an importer sees has changed.
- *
- * The served document takes `installCrust`'s own source
- * (`Function.prototype.toString`) and calls it with the token, so the page and
- * the server share one implementation rather than two drifting copies. The
- * consequence is a hard constraint: `installCrust` must stay self-contained
- * and reference nothing from module scope. Every helper lives inside it.
- *
- * Cost, measured on Bun 1.4.4: an invoke round-trip is a median 0.119 ms and a
- * p99 1.276 ms over 200 calls, against a same-process floor of 0.0005 ms. The
- * socket is 99.6% of that, and a reused connection costs 0.045 ms, so the page's
- * keep-alive connection - which `fetch` gives for free - is why the per-call
- * budget is about 0.05 ms, not 0.12 ms. research/bridge.md §2.
+ * The page-side half of the bridge. The client body is `client/install.ts`, injected sources `client/bootstrap.ts`, shapes `client/types.ts` — a size boundary only. The served document takes `installCrust`'s own source (`Function.prototype.toString`), so page and server share one implementation; the hard constraint is that it stays self-contained and references nothing from module scope.
+ * Measured on Bun 1.4.4: a round-trip is median 0.119 ms / p99 1.276 ms over 200 calls against a 0.0005 ms same-process floor, so the socket is 99.6%; a reused connection costs 0.045 ms, which is why the page's keep-alive `fetch` makes the per-call budget ~0.05 ms (`research/bridge.md` §2).
  */
 
 export { bootstrapSource, pageClientSource } from "./client/bootstrap.ts";

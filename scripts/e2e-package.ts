@@ -1,38 +1,6 @@
 /**
- * The end-to-end proof for packaging: `crust dmg` makes a disk image, and
- * `crust sign` refuses honestly when there is no certificate.
- *
- * `e2e.ts` stops once the app answers from inside its bundle. The two commands a
- * user reaches for *after* that had no proof at all: `dmg` had produced one
- * 38.70 MiB image by hand, and `sign` had never been exercised — yet its refusal
- * is the path every user without a Developer ID takes, so the wording of that
- * refusal is the feature, not an error path to skip.
- *
- * Everything goes through the real CLI, in a scratch copy of `examples/hello`,
- * so the checkout's own `dist/` is never touched and the whole temp directory can
- * be deleted at the end. The bundle is never launched: an ad-hoc bundle runs on
- * this machine and is refused by Gatekeeper elsewhere, so `open` would prove
- * nothing and raise a dialog.
- *
- * Three facts this proof is built around:
- *
- *   - `diskutil image create from` writes an APFS container, so `hdiutil attach`
- *     prints several `/dev/disk*` lines and only one carries the mount point. The
- *     device to detach is parsed from that table, never guessed from
- *     `/Volumes/<name>`;
- *   - a failed assertion must not leave a volume mounted, because the user sees it
- *     on their desktop. Detach lives in a `finally`, and the run ends by proving
- *     nothing from the image is still attached;
- *   - `crust sign` fails before it reads the bundle, so the assertion that matters
- *     is that the refusal changed nothing: the binary's hash and the bundle's seal
- *     are identical afterwards.
- *
- * Usage:
- *   bun run scripts/e2e-package.ts    # or `bun run e2e:package` once package.json defines it
- *
- * The phases live in `package/phases/` — build, dmg, mount (with the detach in a
- * `finally`), sign — and `package/hdiutil.ts` owns the attach/eject state so a
- * throw can still clear the desktop.
+ * E2E for packaging: `crust dmg` makes a disk image and `crust sign` refuses honestly with no certificate — the path every user without a Developer ID takes, so the wording is the feature.
+ * `diskutil image create from` writes an APFS container, so the detach device is parsed from `hdiutil attach`'s table, never guessed from `/Volumes/<name>`; the detach lives in a `finally` because a mounted volume shows on the user's desktop. Sign fails before reading the bundle, so the proof is that the hash and seal are unchanged. Phases in `package/phases/`.
  */
 
 import { mkdtemp, rm, stat } from "node:fs/promises";

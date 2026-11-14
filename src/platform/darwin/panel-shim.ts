@@ -20,11 +20,7 @@ export function extensionList(filters: OpenPanelOptions["filters"]): string {
 }
 
 /**
- * The panel half of the compiled shim, named so a test can drive the adapter
- * with a fake and wide enough that the real one is the same shape.
- *
- * Every method binds `shim()` when it is called, not when this object is built,
- * so the C file still compiles on the first pick rather than at import.
+ * The panel half of the compiled shim, named so a test can drive the adapter with a fake and wide enough that the real one has the same shape. Every method binds `shim()` when called, not when this object is built, so the C file still compiles on the first pick rather than at import.
  */
 export interface PanelShim {
 	openPanel(

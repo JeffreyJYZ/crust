@@ -1,27 +1,6 @@
 /**
- * macOS notifications: `UNUserNotificationCenter` first, the deprecated
- * `NSUserNotificationCenter` second.
- *
- * The native half lives in `notifications/*.c`, one translation unit
- * concatenated and compiled by `notifications-ffi.ts`, and it obeys the same
- * four rules as the shim (DESIGN.md §2): a fixed prototype per `objc_msgSend`,
- * no framework headers, no struct across `bun:ffi`, and the title and body
- * crossing as encoded buffers rather than objects.
- *
- * Two facts are measured on this machine and they decide which path runs:
- *
- *   - `objc_getClass("UNUserNotificationCenter")` resolves once
- *     `-framework UserNotifications` is linked, and `-framework` is mandatory:
- *     linking is what makes the class visible at all.
- *   - `-[NSBundle bundleIdentifier]` is `nil` in an unbundled `bun` process, and
- *     that is the exact condition under which `+currentNotificationCenter`
- *     raises `NSInternalInconsistencyException`. An ObjC exception is a SIGABRT
- *     with no JavaScript error, so the C unit refuses to send that selector
- *     without an identifier and falls back.
- *
- * `runtime.ts` wires `darwinNotificationAdapter()` into
- * `createNotificationPlugin` on macOS (`nativePlugins`); `postNotification`
- * stays exported for a caller that wants the post without the plugin.
+ * macOS notifications: `UNUserNotificationCenter` first, the deprecated `NSUserNotificationCenter` second. The native half is `notifications/*.c`, concatenated and compiled by `notifications-ffi.ts`, obeying the shim's four rules (the design page (`site/app/docs/design/page.mdx`)): fixed prototype per `objc_msgSend`, no framework headers, no struct across `bun:ffi`, title and body as encoded buffers.
+ * Two measured facts decide the path: `objc_getClass("UNUserNotificationCenter")` resolves only once `-framework UserNotifications` is linked; and `-[NSBundle bundleIdentifier]` is `nil` in an unbundled `bun` process, exactly when `+currentNotificationCenter` raises `NSInternalInconsistencyException` — a SIGABRT with no JavaScript error, so the C unit refuses that selector without an identifier and falls back. `runtime.ts` wires `darwinNotificationAdapter()` in via `nativePlugins`.
  */
 
 import type { NotificationAdapter } from "@/plugins/notification";
@@ -46,12 +25,7 @@ export interface PostNotificationOptions {
 	title: string;
 	body?: string;
 	/**
-	 * How long to let the system permission prompt stay up, in milliseconds.
-	 *
-	 * A first post triggers that prompt, and the OS answers nothing until a human clicks.
-	 * The old fixed wait was 1500 ms — shorter than reading the dialog — so a first
-	 * `notify` always answered "not answered yet". 0 asks without waiting; the ceiling is
-	 * 120 s because this wait blocks the invoke.
+	 * How long to let the system permission prompt stay up, in milliseconds. A first post triggers it and the OS answers nothing until a human clicks; the old fixed 1500 ms was shorter than reading the dialog, so a first `notify` always answered "not answered yet". 0 asks without waiting, and the 120 s ceiling is because this blocks the invoke.
 	 */
 	waitMs?: number;
 }
@@ -64,11 +38,7 @@ export interface PostNotificationResult {
 }
 
 /**
- * Compile the C unit and report whether every export resolved.
- *
- * `cc()` refuses a declared symbol it cannot find, so a successful compile is
- * the proof that all three functions exist. Nothing is posted, so this is safe
- * to call in a test and needs no notification permission.
+ * Compile the C unit and report whether every export resolved. `cc()` refuses a declared symbol it cannot find, so a successful compile proves all three functions exist. Nothing is posted, so this is test-safe and needs no permission.
  */
 export function notificationUnitStatus(): { available: boolean; reason: string } {
 	try {
@@ -80,13 +50,7 @@ export function notificationUnitStatus(): { available: boolean; reason: string }
 }
 
 /**
- * Post one local notification.
- *
- * Never throws: a compile failure is a status like any other, so a caller on a
- * machine where the unit will not build gets a reason to report instead of an
- * exception. `status` is 0 only when the OS accepted the notification, which on
- * this machine means the deprecated center, because an unbundled process has no
- * bundle identifier and `UNUserNotificationCenter` is never entered.
+ * Post one local notification. Never throws: a compile failure is a status like any other, so a caller on a machine where the unit will not build gets a reason instead of an exception. `status` is 0 only when the OS accepted it — on this machine that means the deprecated center, because an unbundled process has no bundle identifier and `UNUserNotificationCenter` is never entered.
  */
 export function postNotification(options: PostNotificationOptions): PostNotificationResult {
 	const title = typeof options?.title === "string" ? options.title : "";

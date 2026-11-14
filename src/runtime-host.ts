@@ -1,9 +1,5 @@
 /**
- * `startApp`'s host questions: which port to bind, which document to serve, and
- * which entry module to import.
- *
- * None of it needs the app instance, so it lives beside `runtime.ts` rather than
- * inside it.
+ * `startApp`'s host questions — which port to bind, which document to serve, which entry module to import — none of which needs the app instance, so they live beside `runtime.ts` rather than inside it.
  */
 
 import { join, resolve } from "node:path";
@@ -19,12 +15,7 @@ export function originOf(url: string): string | undefined {
 }
 
 /**
- * A stable port for an app, derived from its id.
- *
- * The bridge used to bind `0`, which makes the page's origin change every launch
- * and discards localStorage, IndexedDB, service workers and per-origin caches.
- * Deriving from the id keeps the origin stable across runs; the caller walks
- * upward when the port is taken, and falls back to ephemeral rather than failing.
+ * A stable port for an app, derived from its id. The bridge used to bind `0`, which changes the page's origin every launch and discards localStorage, IndexedDB, service workers and per-origin caches; the caller walks upward when the port is taken and falls back to ephemeral rather than failing.
  */
 export function preferredPortFor(appId: string): number {
 	let hash = 2166136261;

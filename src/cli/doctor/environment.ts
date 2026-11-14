@@ -1,9 +1,5 @@
 /**
- * The environment half of `crust doctor`: platform, runtime, the macOS floor,
- * and the config — or the single file that needs none.
- *
- * A failure is reported in the order it actually happens, so platform comes
- * before config: a Linux box never reaches the config reader at all.
+ * The environment half of `crust doctor`: platform, runtime, the macOS floor, and the config — or the single file that needs none. Reported in the order it happens, so platform comes before config: a Linux box never reaches the config reader.
  */
 
 import { readdir } from "node:fs/promises";
@@ -35,12 +31,7 @@ async function solePageFile(dir: string): Promise<string | undefined> {
 }
 
 /**
- * Decide whether a configless directory is a single-file app.
- *
- * `crust dev app.tsx` takes no config at all, so failing "config" there would be
- * a false alarm. Only a directory with no backend entry and no config is
- * considered, and only one unambiguous page file — an explicit file or
- * `--entry app.tsx` names it when the directory holds more than one.
+ * Decide whether a configless directory is a single-file app. `crust dev app.tsx` takes no config, so failing "config" there would be a false alarm: only a directory with no backend entry and no config is considered, and only one unambiguous page file — an explicit file or `--entry app.tsx` names it when there are several.
  */
 async function detectConfiglessSingle(options: CliOptions): Promise<SingleDetection | undefined> {
 	const backend = await resolveBackendEntry(options.dir, options.entry);

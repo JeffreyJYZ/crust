@@ -1,0 +1,95 @@
+# Imports
+
+Three entry points, all real `exports` in `package.json`, so they resolve in an installed project with no build step. Page code imports none of them — a page uses the `window.crust` the bridge injects. `crust/vite` is imported by `vite.config.ts`, never by a page.
+
+## `crust`
+
+The package root, `src/index.ts`.
+
+| export | signature |
+| --- | --- |
+| `app` | `app: App` — the module-level singleton, inert until a platform and config are attached |
+| `App` | `class App` — the methods below |
+| `createApp` | `createApp(platform: Platform, config: CrustConfig, bridgeUrl?: string): App` |
+| `PUMP_INTERVAL_MS` | `const PUMP_INTERVAL_MS = 16` |
+| `CONFIG_FILES` | `["crust.config.ts", "crust.json"]` |
+| `findConfig` | `findConfig(dir: string): Promise<string \| undefined>` |
+| `loadConfig` | `loadConfig(options?: LoadConfigOptions): Promise<LoadedConfig>` |
+| `validateConfig` | `validateConfig(value: unknown, source?: string): CrustConfig` |
+| `ConfigError` | `class ConfigError extends Error` — carries `issues: ConfigIssue[]` |
+| `definePlugin` | re-exported from `crust/plugin` |
+| `notImplemented`, `isNotImplemented`, `NotImplementedError` | re-exported from `crust/plugin` |
+
+### `App`
+
+| method | signature |
+| --- | --- |
+| `command` | `command(name: string, handler: (args: Record<string, unknown>) => unknown \| Promise<unknown>): this` |
+| `use` | `use(plugin: PluginDefinition): this` |
+| `plugins` | `plugins(): readonly PluginDefinition[]` |
+| `on` | `on(event: "ready" \| "window-all-closed", listener: () => void \| Promise<void>): this` |
+| `run` | `run(): Promise<void>` |
+| `quit` | `quit(): void` |
+| `invoke` | `invoke(name: string, args?: Record<string, unknown>): Promise<unknown>` |
+| `attach` | `attach(platform: Platform, config: CrustConfig, bridgeUrl?: string): this` — internal |
+| `configure` | `configure(config: CrustConfig): this` — internal |
+| `deferBridge` | `deferBridge(factory: (config: CrustConfig) => string): this` — internal |
+
+The last three are what `startApp` calls before importing your `main.ts`; they are public only because `App` lives in another module. Calling `attach` or `configure` yourself is correct only in a test. `command` and `use` both throw after `run()` has started.
+
+### Types
+
+`AppEvent`, `AppListener`, `CommandHandler`, `Platform`, `WindowHandle`, `WindowOptions`, `AppConfig`, `BuildConfig`, `ConfigIssue`, `CrustConfig`, `DevConfig`, `LoadedConfig`, `LoadConfigOptions`, `SecurityConfig`, `WindowConfig`.
+
+## `crust/plugin`
+
+The plugin entry point, `src/plugins/index.ts`: the registry, the built-in plugins, and the native adapter factories.
+
+| export | signature |
+| --- | --- |
+| `definePlugin` | `definePlugin<Name extends string, Commands extends CommandMap>(plugin: { name: Name; commands: Commands }): PluginDefinition<Name, Commands>` |
+| `notImplemented` | `notImplemented(message: string, requires: string): NotImplemented` |
+| `isNotImplemented` | `isNotImplemented(value: unknown): value is NotImplemented` |
+| `NotImplementedError` | `new NotImplementedError(message: string, requires: string)` |
+| `PluginRegistry` | `new PluginRegistry()` — `register`, `invoke(pluginName, commandName, args, ctx)`, `has`, `get`, `names`, `commandsOf`, `handlers` |
+| `handlerMap` | `handlerMap(source: HandlerSource): Map<string, CommandHandler>` |
+| `fsPlugin`, `dialogPlugin`, `notificationPlugin`, `trayPlugin`, `windowPlugin` | `PluginDefinition` values |
+| `createDialogPlugin` | `createDialogPlugin(native?: DialogNative)` |
+| `createNotificationPlugin` | `createNotificationPlugin(adapter?: NotificationAdapter \| NotificationNative)` |
+| `createTrayPlugin` | `createTrayPlugin(adapter?: TrayNative)` |
+| `createWindowPlugin` | `createWindowPlugin(adapter?: WindowNative)` |
+| `corePlugins` | `[fsPlugin, dialogPlugin, notificationPlugin, trayPlugin]` |
+| `coreRegistry` | `coreRegistry(): PluginRegistry` |
+| `WINDOW_COMMANDS` | `["create", "close", "focus", "setTitle", "list", "isOpen"]` |
+| `WindowAdapterError` | `class WindowAdapterError extends Error` — carries `code: WindowErrorCode` |
+
+Every `create*` factory returns a `PluginDefinition`. Without an adapter the plugin fails honestly: `notImplemented` for `dialog`, `notification` and `tray`, and `unknown-adapter` for `window.create`. `windowPlugin` is `createWindowPlugin()` with no adapter, and `corePlugins` leaves `window` out because its adapter needs the running platform; the runtime appends it before plugin selection.
+
+### Types
+
+`PluginContext`, `PluginDefinition`, `NotImplemented`, `CommandMap`, `CommandSchema`, `MaybePromise`, `ArgsOf`, `ResultOf`, `SchemaOf`, `CommandHandler`, `DialogNative`, `OpenPanelOptions`, `OpenPanelResult`, `SavePanelOptions`, `SavePanelResult`, `CancelPanelResult`, `NotificationNative`, `NotificationPermission`, `NotifyOptions`, `NotifyResult`, `TrayNative`, `TrayOptions`, `TrayResult`, `WindowNative`, `WindowCreateOptions`, `WindowCreateResult`, `WindowCloseResult`, `WindowFocusResult`, `WindowTitleResult`, `WindowListResult`, `WindowOpenResult`, `WindowLabelArgs`, `WindowSetTitleArgs`, `WindowCreateArgs`, `WindowErrorCode`, `WindowFailure`, `ReadTextFileArgs`, `WriteTextFileArgs`, `WriteTextFileResult`.
+
+`ArgsOf`, `ResultOf` and `SchemaOf` are types only, for deriving a typed client from a tuple of plugin definitions; nothing is exported at runtime for them.
+
+## `crust/vite`
+
+The dev-server half of the bridge: it injects `window.__CRUST__` and the page client into the document a dev server serves.
+
+| export | signature |
+| --- | --- |
+| `crust` | `crust(options?: CrustOptions): Plugin` |
+| `BRIDGE_URL_VAR` | `const BRIDGE_URL_VAR = "CRUST_BRIDGE_URL"` |
+| `BRIDGE_TOKEN_VAR` | `const BRIDGE_TOKEN_VAR = "CRUST_BRIDGE_TOKEN"` |
+
+`CrustOptions` is `{ urlVar?: string; tokenVar?: string }`, defaulting to the two constants above.
+
+```ts
+import { crust } from "crust/vite";
+
+export default defineConfig({
+	server: { port: 5173, strictPort: true },
+	plugins: [crust()],
+});
+```
+
+Serve-only (`apply: "serve"`), and the handshake is read per document request, never at config time. `strictPort` is required: the bridge allows exactly the origin `dev.url` names, so a port that drifts makes every invoke `bad-origin`. With neither variable nor handshake file present it warns once and injects nothing.

@@ -1,20 +1,12 @@
 /**
- * The plugins `startApp` registers: the platform's adapted core four, the
- * window plugin the platform owns, and the runtime's own `app` namespace.
- *
- * Split out of `runtime.ts` because each needs a different instance — AppKit
- * adapters, the running platform, or the `app` singleton itself.
+ * The plugins `startApp` registers: the platform's adapted core four, the window plugin the platform owns, and the runtime's own `app` namespace. Split out of `runtime.ts` because each needs a different instance — AppKit adapters, the running platform, or the `app` singleton.
  */
 
 import { APP_NAMESPACE, app } from "@/app.ts";
 import { createWindowPlugin, definePlugin, type PluginDefinition } from "@/plugins";
 
 /**
- * The `app` namespace: what a two-argument `invoke(name, args)` reaches.
- *
- * The app namespace is the same object for every launch: commands registered
- * by main.ts after the bridge starts are still reachable, because the handler
- * closes over `app` rather than snapshotting its command table.
+ * The `app` namespace: what a two-argument `invoke(name, args)` reaches. It is the same object for every launch, so commands registered by main.ts after the bridge starts stay reachable — the handler closes over `app` rather than snapshotting its command table.
  */
 export function createAppNamespacePlugin(): PluginDefinition {
 	return definePlugin({
@@ -36,17 +28,8 @@ export function createAppNamespacePlugin(): PluginDefinition {
 }
 
 /**
- * Swap in the platform's native plugins.
- *
- * `dialog` and `window` are the two plugins with a native half in v1. Each
- * default export answers `not-implemented`; the real answer needs AppKit,
- * which arrives through that plugin's own `create*Plugin` hook. The window
- * plugin additionally needs the running platform to read labels from, which is
- * why it is appended here rather than living in `corePlugins`.
- *
- * No platform, or not macOS, means the honest answers stay: a headless bridge
- * and a non-macOS platform are unchanged, and the plugin is still registered
- * under its own name so `selectedPlugins` matches `config.plugins`.
+ * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
+ * No platform, or not macOS, keeps the honest answers and still registers the plugin under its own name so `selectedPlugins` matches `config.plugins`.
  */
 export async function nativePlugins(
 	core: readonly PluginDefinition[],

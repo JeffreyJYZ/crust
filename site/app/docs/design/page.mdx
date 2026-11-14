@@ -1,0 +1,69 @@
+# Design
+
+crust is a bet: you can build a real macOS app with **no compiled artifact in the package**.
+Everything below follows from that one constraint. The measurements behind each claim are on
+the [evidence page](/docs/evidence).
+
+## The premise
+
+There is no prebuilt native library, no `cargo`, no Xcode project. Every AppKit call goes
+through `bun:ffi` into the Objective-C runtime. The only C is a shim compiled **at launch** by
+the TinyCC that ships inside Bun, which is why `brew install` compiles nothing and there is no
+bottle to match to your machine.
+
+## Four constraints that follow
+
+**`objc_msgSend` is variadic, and a variadic declaration lies.** Declared as `void *objc_msgSend(void *, void *, ...)`
+it compiles and runs, then delivers wrong argument values with no diagnostic — a `takeInt:` sent
+41 arrived as 1806466472. Every call site therefore casts to a fixed prototype per arity and
+return kind (`shim_send_p1`, `shim_send_pq1`, `shim_send_vb1`, …). Zero-argument sends happen to
+survive; nothing else does.
+
+**Structs cannot cross.** `CGRect`, `CGSize` and `CGAffineTransform` are the danger zone. The
+shim builds them on the C stack and calls the initializer itself, so a window is created with
+`initWithContentRect:styleMask:backing:defer:` while no struct ever reaches JavaScript. Views are
+laid out with constraints; `setFrame:` appears nowhere.
+
+**Nothing is typed, and a bad selector kills the process.** A selector the receiver does not
+implement raises an Objective-C exception Bun cannot catch: `SIGABRT`, no JavaScript error. So
+every selector is verified once at startup (`PREFLIGHT`) and an unverified one is never sent.
+
+**Framework headers are unreachable.** `<objc/runtime.h>` resolves; `<AppKit/AppKit.h>` never
+does, with or without `-I`. Every symbol is a hand-written `extern` over `void *`, and every
+framework is linked by name (`-framework AppKit`, `-framework Foundation`, `-framework WebKit`,
+`-framework CoreFoundation`).
+
+## The run loop
+
+`[NSApp run]` never returns, so it cannot be called — Bun's event loop would stop. The Cocoa loop
+is pumped from JavaScript in **0.25 ms slices on a 16 ms timer**, and each tick drains AppKit's
+event queue (`nextEventMatchingMask:` → `sendEvent:` → `updateWindows`) before falling back to
+`CFRunLoopRunInMode`.
+
+The slice length is the whole design: 0.25 ms and 0.5 ms both delivered 186 of 187 ticks, 1 ms
+reached 96.8%, 4 ms only 82.4%. A 4 ms slice is *worse than not pumping at all*. Blocking
+JavaScript blocks drawing, so long work belongs on a `Worker`.
+
+## The bridge
+
+The page and the backend talk over a loopback HTTP bridge, not a promise inside one process:
+`invoke` is a POST with a bearer token, and answers are JSON. The port is **derived from
+`app.id`** (45000–48999, walking upward), so the origin a page loads from is stable and can be
+named in the content security policy. This is also what makes `crust dev` work: the window loads
+`dev.url` exactly once, so the dev server must already be up.
+
+## Known shape, stated honestly
+
+- **~85 MB is the floor**, because Bun is embedded. The honest claim is "no bundled Chromium",
+  never "as small as Tauri" — Tauri ships no JavaScript engine.
+- **Ad-hoc signing by default.** It runs locally and Gatekeeper refuses it anywhere else until
+  `crust sign` puts a Developer ID on it.
+- **The polled pump is the only option here.** BunKit's event-driven pump is strictly better and
+  is closed to crust for one reason: it wraps each `sendEvent:` in `@try`, which is Objective-C
+  syntax, and `cc()` compiles C only.
+
+## Deliberately absent
+
+A string intern table, helpers that return an `NSString` object across the FFI, `setFrame:`-based
+layout, and any dependency on Xcode at build or install time. Each was removed after it crashed
+the process or silently corrupted an object; the traps are in `AGENTS.md`.

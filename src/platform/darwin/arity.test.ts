@@ -1,18 +1,6 @@
 /**
- * The seam nothing else checks: `shim.c` compiles and its selectors are
- * preflighted, but the JSON-style argument list in `index.ts` is what `bun:ffi`
- * uses to place values in registers. Add a parameter to a C function without
- * updating that list and every argument shifts by one — no error, no crash,
- * just the wrong value in the wrong place.
- *
- * This cost a real defect: a four-argument call to the five-argument
- * `shim_open_panel` put `allowMultiple` into `runModal` and opened a modal file
- * picker inside the test suite. The test parses both sides and compares arity, so
- * that mistake fails here instead of on someone's screen.
- *
- * Both sides may be split across several files by responsibility — the C unit
- * stays one translation unit by concatenation, and the binding may live in its
- * own module — so the test finds them instead of naming one path.
+ * The seam nothing else checks: `bun:ffi` places values by the JSON-style argument list in `index.ts`, so adding a C parameter without updating that list shifts every argument by one — no error, no crash, just the wrong value in the wrong place.
+ * This cost a real defect: a four-argument call to the five-argument `shim_open_panel` put `allowMultiple` into `runModal` and opened a modal file picker inside the test suite. Both sides may be split across files, so the test finds them instead of naming one path.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";

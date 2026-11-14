@@ -2,11 +2,7 @@ import type { OpenPanelResult } from "@/plugins/dialog";
 import { NS_MODAL_RESPONSE, PANEL_MAX_PATHS, SHEET_POLL_INTERVAL_MS } from "./panel-status.ts";
 
 /**
- * The native reads a sheet poll needs, named so a test can supply them.
- *
- * `response()` only means anything once `done()` is true; the shim answers
- * `SHIM_PANEL_NO_RESPONSE` (-1) before that, so "cancel" and "no answer yet"
- * are never the same value.
+ * The native reads a sheet poll needs, named so a test can supply them. `response()` only means anything once `done()` is true; the shim answers `SHIM_PANEL_NO_RESPONSE` (-1) before that, so "cancel" and "no answer yet" are never the same value.
  */
 export interface SheetReadings {
 	done(): boolean;
@@ -16,31 +12,8 @@ export interface SheetReadings {
 }
 
 /**
- * Await a sheet that is already on screen, without blocking.
- *
- * This is the half that makes the sheet path real. `-runModal` stops the
- * JavaScript thread, and with it the Cocoa pump and every in-flight invoke, for
- * as long as the panel is up; a sheet plus this poll leaves both running. The
- * await is a `setTimeout` chain, so the pump's own timer gets its turn between
- * reads.
- *
- * Rejections are the malformed answers, never a user's choice:
- *
- *   - a response that is neither `NSModalResponseOK` nor `NSModalResponseCancel`
- *     (a panel that reports something else is not something to guess about);
- *   - a path count outside `0…PANEL_MAX_PATHS`, which cannot come from the C
- *     storage and means the read is not the one that was written;
- *   - an OK whose path list is empty, or contains an empty string, because OK
- *     means "the user picked" and an empty answer contradicts it.
- *
- * Cancel resolves `{ paths: [] }`, which is exactly what a user clicking Cancel
- * means — the two are never confused, and neither is ever `not-implemented`.
- *
- * `abandoned` is the page's own cancel reaching the wait: once it answers true
- * the poll stops reading and resolves the same empty list, instead of reading
- * state the *next* request has already reset. The check comes before every
- * read, so a sheet that is cancelled and immediately replaced can never report
- * the replacement's answer as its own.
+ * Await a sheet already on screen, without blocking. `-runModal` stops the JavaScript thread, the Cocoa pump and every in-flight invoke for as long as the panel is up; a sheet plus this `setTimeout` poll leaves all three running, so the pump's own timer gets a turn between reads.
+ * Rejections are malformed answers, never a user's choice: a response that is neither OK nor Cancel, a path count outside `0…PANEL_MAX_PATHS` (impossible from the C storage, so the read is not the one written), or an OK with an empty list or empty string — OK means "the user picked". Cancel resolves `{ paths: [] }`, never `not-implemented`. `abandoned` is the page's own cancel reaching the wait: checked before every read, so a cancelled sheet immediately replaced can never report the replacement's answer as its own.
  */
 export async function awaitSheetResult(
 	readings: SheetReadings,

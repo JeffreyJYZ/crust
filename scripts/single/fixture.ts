@@ -59,11 +59,7 @@ export function pathsOf(scratch: string): Paths {
 }
 
 /**
- * The page under test. No `export default`, so crust loads it for its own side
- * effects and no React is needed: the file owns the document and calls the one
- * command the single-file mode registers. `marker` is text that reaches the
- * bundled `page.js`, so an edit is visible in the served bytes and not only in
- * the source.
+ * The page under test. No `export default`, so crust loads it for its side effects and no React is needed. `marker` reaches the bundled `page.js`, so an edit shows in the served bytes and not only in the source.
  */
 export function pageSource(marker: string): string {
 	return [

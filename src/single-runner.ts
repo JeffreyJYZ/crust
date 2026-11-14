@@ -1,9 +1,5 @@
 /**
- * Single-file mode's dev runtime: the script `crust dev app.tsx` writes into a
- * temp directory and spawns as the app process.
- *
- * The config travels as a literal, so no `crust.config.ts` exists on disk for
- * anything to find.
+ * Single-file mode's dev runtime: the script `crust dev app.tsx` writes into a temp directory and spawns as the app process. The config travels as a literal, so no `crust.config.ts` exists on disk for anything to find.
  */
 
 import { join, resolve } from "node:path";
@@ -13,13 +9,7 @@ import type { SingleApp } from "./single-detect.ts";
 export const PACKAGE_ROOT = resolve(import.meta.dir, "..");
 
 /**
- * The dev runtime script, written into a temp directory and spawned as the app
- * process. The config travels as a literal, so no `crust.config.ts` exists on
- * disk for anything to find.
- *
- * `root` is where the framework sources can be read from *by the child*: inside a
- * compiled executable `PACKAGE_ROOT` is `/$bunfs`, which only this process has
- * mounted, so `dev` passes the materialised copy `frameworkRoot()` returns.
+ * The dev runtime script, written into a temp directory and spawned as the app process. `root` is where the framework sources are readable *by the child*: inside a compiled executable `PACKAGE_ROOT` is `/$bunfs`, mounted in one process only, so `dev` passes the materialised copy `frameworkRoot()` returns.
  */
 export function devRunnerSource(
 	app: SingleApp,

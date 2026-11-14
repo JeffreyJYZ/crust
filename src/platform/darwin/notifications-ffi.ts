@@ -1,15 +1,6 @@
 /**
- * Compile the notifications C unit, once per process.
- *
- * The native half ships as a directory of source parts so no part outgrows the
- * repo's line cap, and is concatenated here because it is **one translation
- * unit**: the parts share statics (`nf_reason`, `nf_center`, the block
- * descriptors), which are private per unit. Splitting them into separately
- * compiled files would give each part its own silent copy.
- *
- * `bun:ffi`'s `cc()` compiles C only and frameworks must be linked by name.
- * `-framework UserNotifications` is not optional: it is what makes
- * `UNUserNotificationCenter` resolvable at all.
+ * Compile the notifications C unit, once per process. It ships as several parts so none outgrows the line cap and is concatenated here because it is **one translation unit**: the parts share statics (`nf_reason`, `nf_center`, the block descriptors), and separately compiled files would give each part a silent copy.
+ * `cc()` compiles C only and frameworks must be linked by name: `-framework UserNotifications` is not optional, it is what makes `UNUserNotificationCenter` resolvable at all.
  */
 
 import { cc, FFIType, ptr } from "bun:ffi";

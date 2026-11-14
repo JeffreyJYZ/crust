@@ -1,10 +1,5 @@
 /**
- * The plugin seam's open end: native adapters, `app.use`, and `startApp`.
- *
- * A project plugin is mounted through `app.use`, which refuses a name that would
- * shadow a built-in, and `startApp` puts it in the table the bridge serves, so a
- * page call reaches it over HTTP. The core registry and the honest failures live
- * in `plugins.test.ts`.
+ * The plugin seam's open end: native adapters, `app.use`, and `startApp`. A project plugin mounted through `app.use` must be refused if its name would shadow a built-in, and `startApp` must put it in the table the bridge serves so a page call reaches it over HTTP. Core registry in `plugins.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";

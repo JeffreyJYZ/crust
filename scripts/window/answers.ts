@@ -82,14 +82,7 @@ export function childReport(answer: PageAnswer | undefined): ChildReport | undef
 }
 
 /**
- * Whether the page was told the window is gone.
- *
- * Measured, and it is the only truthful answer today: the platform reports only
- * the windows AppKit still holds, so a closed label is absent from `list`, and
- * the plugin's own existence check answers `unknown-window` before `isOpen` can
- * report `open: false`. That branch is unreachable from a page — `window.test.ts`'s
- * fake still models the older "closed but listed, number 0" platform, which is why
- * the unit test sees `open: false` and this proof cannot.
+ * Whether the page was told the window is gone. Measured, and the only truthful answer: the platform reports only the windows AppKit still holds, so a closed label is absent from `list`, and the plugin's existence check answers `unknown-window` first. That branch is unreachable from a page — `window.test.ts`'s fake still models the older "closed but listed, number 0" platform, which is why it sees `open: false` and this proof cannot.
  */
 export function goneAnswer(answer: PageAnswer | undefined): boolean {
 	const value = resolved(answer);

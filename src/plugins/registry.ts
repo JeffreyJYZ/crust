@@ -1,10 +1,5 @@
 /**
- * Plugin registry and handler resolution.
- *
- * The registry is the single place a plugin name becomes a handler lookup. Two
- * registrations of the same name are refused rather than silently overwritten,
- * and an unknown plugin and an unknown command produce different codes so page
- * code can tell a stale plugin from a stale command.
+ * Plugin registry and handler resolution. The registry is the single place a plugin name becomes a handler lookup: a duplicate registration is refused rather than silently overwritten, and an unknown plugin and an unknown command produce different codes so a page can tell a stale plugin from a stale command.
  */
 
 import { CrustError } from "../bridge/errors";
@@ -112,12 +107,7 @@ function addHandler(
 }
 
 /**
- * Resolve a `HandlerSource` to a flat table.
- *
- * A registry is used as-is; a plugin list is expanded the same way; a record may
- * either carry `"plugin.command"` keys pointing at functions, or plugin names
- * pointing at command maps. The `"plugin.command"` form is the escape hatch for
- * internal commands that are not worth a plugin object.
+ * Resolve a `HandlerSource` to a flat table. A registry is used as-is and a plugin list expanded the same way; a record carries either `"plugin.command"` keys pointing at functions or plugin names pointing at command maps — the dotted form being the escape hatch for internal commands that do not warrant a plugin object.
  */
 export function handlerMap(source: HandlerSource): Map<string, CommandHandler> {
 	const table = new Map<string, CommandHandler>();

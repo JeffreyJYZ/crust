@@ -1,5 +1,4 @@
 // --- completion handlers ---------------------------------------------------
-//
 // A block is plain memory: { isa, flags, reserved, invoke, descriptor }. A
 // GLOBAL block (flags bit 28) needs no copy or dispose helper and no heap, which
 // is what makes it constructible from C with no compiler support. The isa is

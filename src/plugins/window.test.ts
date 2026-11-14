@@ -1,15 +1,5 @@
 /**
- * `crust:window` proofs, without a window.
- *
- * The point of the plugin is that a page can branch on the answer: every
- * command resolves a value, an unknown label is a typed failure rather than a
- * throw, and a platform with no adapter says `not-implemented` instead of
- * pretending the window moved. None of it needs AppKit, so all of it is here.
- *
- * The `create` command has its own suites (`window-create.test.ts`,
- * `window-args.test.ts`), the registry path and the adapter-less answers live in
- * `window-registry.test.ts`, and the real adapter's ordering is
- * `window-adapter.test.ts`.
+ * `crust:window` proofs, without a window. A page must be able to branch on every answer: each command resolves a value, an unknown label is a typed failure rather than a throw, and a platform with no adapter says `not-implemented` instead of pretending the window moved. `create` in its own suites; the registry path in `window-registry.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";

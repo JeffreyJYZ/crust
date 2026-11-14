@@ -105,15 +105,8 @@ static int nf_post_modern(const char *title, const char *body, int auth_wait_ms)
 			}
 			nf_cat(detail, sizeof detail, ")");
 			nf_cat(line, NF_REASON_BYTES, detail);
-			// Measured on 2026-11-14, and the signature is not a cause. Two things refuse this,
-			// each isolated by holding the other constant with a fresh identifier and ad-hoc
-			// signing: a bundle running from the system temp directory (identical bundle in
-			// `/var/folders/…T` answered code 1 while the copy in `~/dev` delivered, twice each
-			// way), and a bundle identifier macOS already recorded as denied, which is never
-			// re-asked no matter what signs it — the original probe id answered code 1 ad-hoc,
-			// under an Apple Development certificate, via LaunchServices and from ~/Applications.
-			// A recorded denial is *not* permanent: switching that app back on in System
-			// Settings → Notifications made the same probe id deliver with no rebuild.
+			// Measured on 2026-11-14, and the signature is not a cause. Two things refuse this, each isolated with a fresh identifier and ad-hoc signing: a bundle run from the system temp directory (the identical bundle in `/var/folders/…T` answered code 1 while the `~/dev` copy delivered, twice each way), and an identifier macOS already recorded as denied, which is never re-asked whatever signs it — the probe id answered code 1 ad-hoc, under an Apple Development certificate, via LaunchServices and from ~/Applications.
+			// A recorded denial is *not* permanent: re-enabling that app in System Settings → Notifications made the same probe id deliver with no rebuild.
 			if (nf_error_code == 1 && nf_same(nf_error_domain, "UNErrorDomain")) {
 				nf_cat(line, NF_REASON_BYTES,
 				       ". macOS refuses this authorization in two measured cases: the .app runs "

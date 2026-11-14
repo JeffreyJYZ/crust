@@ -1,9 +1,5 @@
 /**
- * Server-side bridge proofs: the token gate, the origin gate, and what an
- * invoke answers.
- *
- * Every rejection rule here is one research/bridge.md measured, and each test
- * states the measured answer it holds.
+ * Server-side bridge proofs: the token gate, the origin gate, and what an invoke answers. Every rejection rule is one `research/bridge.md` measured, and each test states the measured answer it holds.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

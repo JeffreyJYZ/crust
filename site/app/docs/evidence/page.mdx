@@ -1,0 +1,81 @@
+# Evidence
+
+Everything below was run on macOS 27.0.1, arm64 (M4 Air), Bun 1.4.4+38afee6c8, against `crust` 0.1.12 through 0.1.16, between 2026-11-12 and 2026-11-14. Each row names the script or probe that produced it; a row without one is not here.
+
+## Window
+
+| what was run | result |
+| --- | --- |
+| `bun run e2e:window`, 61 assertions | four windows through `window.create`: relative `url` resolved against the open window's document, absolute loaded as given, live label refused with `duplicate-label`, closed label re-created with its page loading again, `invalid-size` as a fraction and as zero, `invalid-url` |
+| ten launches of the built `examples/hello` bundle, `Contents/MacOS` path | window ordered in at 188.7 ms best, 203.8 ms median, 790.1 ms worst; page's first invoke answered 435.3 ms best, 448.8 ms median, 1.70 s worst |
+| idle, four processes, `vmmap --summary` plus `ps` | 101–102 MiB physical footprint for the group; 158–178 MiB `ps` RSS, inflated by shared framework pages |
+| 200 invokes on the shipped bridge | 0.067 ms median, 0.475 ms p99 on a reused connection; 0.149 ms / 0.361 ms when each call opens one |
+| pump tick delivery over three seconds | a 0.25 ms slice delivered 186 of 187 ticks (99.5%); 4 ms delivered 82.4%, worse than not pumping at all (184 of 187) |
+| `-windowNumber` before and after `-close` | 517 both times, one millisecond apart and a second later — hence liveness is `visible \|\| miniaturized \|\| appHidden` |
+| a page whose window never appeared | `active no`, `isOnActiveSpace 0` while its JavaScript kept invoking; fixed with `setCollectionBehavior` 257 and `orderFrontRegardless` |
+
+Bridge refusals are measured too: a missing or wrong token is `401`, absent or foreign `Origin` is `403`, own origin is `200`.
+
+## Dialog
+
+| what was run | result |
+| --- | --- |
+| open panel driven through the plugin | `sheetStarted`, still pending 400 ms later, `-cancel:` resolved `{ paths: [] }` through the 16 ms poll |
+| save panel, then a person picked a folder and saved a file | sheet opened, a folder was chosen, a file written, the UI updated — a human report, not an automated one |
+| a second panel while a sheet is up | refused with a message naming the sheet that is up and naming `dialog.cancel` as the way out |
+| windowless app, adapter half | the pick stays pending and `cancel` settles it |
+
+## Tray
+
+| what was run | result |
+| --- | --- |
+| create, title, show, hide, destroy in one run | AppKit readback: the title, `isVisible: true`, a button window on the menu-bar row, and its frame |
+| `activateRow(index)` | `sent=true fired=Save now` — the row action, the trampoline and the page listener |
+| a person clicked a menu row in a built app | the app reported the save, which means the row's action ran |
+| `bun run e2e:dogear` against the Homebrew Cellar | 15/15 assertions on every release from 0.1.12 to 0.1.16: five-row menu, both sheets up and unresolved, seeded notes, exit 0, no survivors |
+
+The item is only visible where the menu bar has room; a fullscreen Space draws none, which is why it went unseen for so long.
+
+## Notification
+
+| what was run | result |
+| --- | --- |
+| one `notification.notify` from a built app | `{"delivered": true}`, completion handler reported no error |
+| same identifier, ad-hoc, then Apple Development | `UNErrorDomain code 1` both ways, direct launch and through LaunchServices |
+| fresh identifier, ad-hoc, then Apple Development, from `dist/` and `~/Applications` | delivered under both signatures |
+| identical bundle from the system temp directory | `code 1`, twice each way |
+| an identifier recorded as denied, switched back on in System Settings | delivered on the same identifier with no rebuild |
+| `bun run e2e:notify` | 6/6 on 0.1.14; now diagnostic, because a first post raises a prompt only a person can answer |
+
+## Packaging
+
+| what was run | result |
+| --- | --- |
+| `crust build --dir examples/hello`, three runs on a warm filesystem | 0.52 s, 0.55 s, 0.53 s wall |
+| `stat -f '%z'` on the compiled binary | 89,407,586 B (85.27 MiB) |
+| `stat -f '%z'` on the executable inside the bundle | 88,887,936 B (84.77 MiB) — `codesign` rewrites the Mach-O |
+| `dust -s` on the whole `.app` | 84 MiB |
+| `--trim` with and without, outfile name held equal | byte-identical, same sha256; `--minify` saves 33,024 B of 89,407,586 |
+| a Bun carrying `bun compile` (AOT plus `--trim`) | 55,360,800 B (52.79 MiB) |
+| `crust dmg` | 40,610,304 B (38.73 MiB) image that `hdiutil verify` accepts |
+| hardened runtime sealed with `allow-jit` alone | app launched, created no page, printed nothing, exit 0; the `.ips` said `SIGKILL (Code Signature Invalid)`, `Invalid Page` |
+| hardened runtime with both entitlements | the same bundle runs |
+| `spctl` on an ad-hoc build | rejected, exit 3; ad-hoc cannot be notarized |
+
+## First run
+
+| what was run | result |
+| --- | --- |
+| `bun run verify:first-run`, plain, React and Next scaffolds | scaffold → `bun install` → `crust build` → bundle → a window that answered a page call, on 0.1.15 and 0.1.16 |
+| the three scaffolds, built from a scaffold rather than the checkout | plain 3 files / 85.25 MiB, React 2 files / 85.45 MiB, Next 21 files / 85.83 MiB with `invoke("greet")` answered |
+| `bun run e2e:single`, 19 assertions | dev answers the page; the built bundle answers with cwd `/`; a save rebuilds without restarting the runtime; a syntax error leaves the last good bundle running |
+| `bun run verify:package` | 31 checks against a 140.5 KiB tarball (the docs site is a repo artefact and does not ship), installed into a temp directory and run from the installed copy alone |
+| `brew install JeffreyJYZ/tap/crust` | 0.1.16, 216 files, 876.4 KiB, and `crust doctor` compiling the shim out of the Cellar |
+
+## What is not proven
+
+- **Developer ID signing.** No such certificate exists on this machine, so `crust sign`'s path is written and never exercised, and Gatekeeper's behaviour on a recipient's Mac is untested. Ad-hoc is the only signature observed.
+- **A human clicking through a Next static export.** The export is measured end to end through `crust build` and the served document, a `_next` chunk, `/about`, a 403 on a missing asset and the page's invoke; client-side navigation and hydration are proven only by that served markup.
+- **AppKit's overwrite prompt.** Nothing has replaced an existing file through `savePanel`, so the prompt is documented from AppKit's behaviour, not observed.
+- **The free-standing panel at runtime.** A windowless app's `beginWithCompletionHandler:` path has its adapter half tested; the AppKit half has never been entered.
+- **A warm first launch, and anything timed from inside the page.** Every cold-start worst case is a cold page cache, and the page's own `ready` marker is resolved but never reported back to the backend, so it is not timed.

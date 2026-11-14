@@ -1,22 +1,6 @@
 // --- sheet completion: a hand-built global block ---------------------------
-//
-// `beginSheetModalForWindow:completionHandler:` takes a block, and a sheet
-// started with a NULL one can only ever be started — which is exactly what this
-// path did until now. A block is plain memory:
-//
-//   { isa, flags, reserved, invoke, descriptor }
-//
-// A GLOBAL block (isa `__NSGlobalBlock__`, BLOCK_IS_GLOBAL set) needs no copy or
-// dispose helper and no heap, which is what makes it constructible from C with
-// no compiler support; `Block_copy` on it is a documented no-op, so a static
-// instance outlives the call that hands it to AppKit. `notifications.c` builds
-// its two handlers the same way and they are measured working.
-//
-// Bit 28 is BLOCK_IS_GLOBAL. Bit 30 is BLOCK_HAS_SIGNATURE, and setting that
-// without a real signature in the descriptor makes the runtime read past this
-// hand-built struct — so it is deliberately never set. The isa comes from
-// objc_getClass rather than the `_NSConcreteGlobalBlock` data symbol, so a
-// missing symbol cannot break linking.
+// `beginSheetModalForWindow:completionHandler:` takes a block, and a sheet started with a NULL one can only ever be started — which is what this path did until now. A block is plain memory, { isa, flags, reserved, invoke, descriptor }; a GLOBAL block (isa `__NSGlobalBlock__`, bit 28) needs no copy or dispose helper and no heap, so C builds it with no compiler support and `Block_copy` is a documented no-op.
+// Bit 30 is BLOCK_HAS_SIGNATURE, and setting it without a real signature makes the runtime read past this struct, so it is never set. The isa comes from objc_getClass rather than the `_NSConcreteGlobalBlock` data symbol, so a missing symbol cannot break linking; `notifications.c` builds its two handlers the same way, measured working.
 #define SHIM_BLOCK_IS_GLOBAL (1 << 28)
 
 typedef struct {
@@ -119,17 +103,4 @@ static int panel_sheet_target(obj_t *out) {
 	return *out ? 1 : 0;
 }
 
-// Opens an NSOpenPanel.
-//
-//   runModal = 1  calls -runModal and BLOCKS this thread until the user answers.
-//                 Called from JS that stops the JavaScript thread and the Cocoa
-//                 pump for the duration; accepted for a file picker, and stated
-//                 as blocking rather than dressed up as async.
-//   runModal = 0  calls -beginSheetModalForWindow:completionHandler: with a real
-//                 completion handler and returns at once, status
-//                 SHIM_PANEL_SHEET_STARTED. The handler records the
-//                 NSModalResponse, copies -URLs, and sets the done flag, so the
-//                 caller polls shim_sheet_done() while the pump and the bridge
-//                 keep running. With no key window there is nothing to attach a
-//                 sheet to and this returns SHIM_PANEL_NO_WINDOW without
-//                 sending, which is what keeps the blocking path a fallback.
+// Opens an NSOpenPanel. `runModal = 1` calls -runModal and BLOCKS this thread until the user answers, stopping the JavaScript thread and the pump — stated as blocking rather than dressed up as async. `runModal = 0` sheets with a real completion handler and returns at once with SHIM_PANEL_SHEET_STARTED: the handler records the NSModalResponse, copies -URLs and sets the done flag, so the caller polls shim_sheet_done() while pump and bridge run. With no key window it answers SHIM_PANEL_NO_WINDOW without sending.

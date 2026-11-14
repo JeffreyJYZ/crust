@@ -1,14 +1,6 @@
 /**
- * `crust:dialog` — native file panels.
- *
- * `NSOpenPanel` and `NSSavePanel` are AppKit, and this module owns no AppKit. It
- * takes the native implementation as a parameter, so the platform half stays in
- * `platform/darwin` and this file works unchanged on a platform that has none.
- * macOS supplies `darwinDialogAdapter()` from there; without an adapter the
- * command returns a typed `NotImplemented` naming the selector, and the registry
- * turns that into a `not-implemented` error. It never silently resolves an empty
- * list for a missing implementation — an empty list means the user cancelled,
- * and nothing else.
+ * `crust:dialog` — native file panels. `NSOpenPanel`/`NSSavePanel` are AppKit and this module owns none: the native half arrives as a parameter, so it works unchanged on a platform that has none.
+ * Without an adapter the command returns a typed `NotImplemented` naming the selector and the registry makes that a `not-implemented` error. It never resolves an empty list for a missing implementation — an empty list means the user cancelled, and nothing else.
  */
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
@@ -51,12 +43,7 @@ export interface SavePanelOptions {
 export type SavePanelResult = OpenPanelResult;
 
 /**
- * What `cancel` answers.
- *
- * `paths` is always empty: a cancel is a cancel, and the panel it ends resolves
- * the same empty list a human's Cancel button gives it. `cancelled` says whether
- * a sheet was actually up — `false` means the page asked for a cancel that had
- * nothing left to end, which is an ordinary race with the user, never an error.
+ * What `cancel` answers. `paths` is always empty — a cancel resolves the same empty list a human's Cancel button gives — and `cancelled` says whether a sheet was actually up: `false` means nothing was left to end, an ordinary race with the user, never an error.
  */
 export interface CancelPanelResult {
 	cancelled: boolean;
@@ -64,25 +51,8 @@ export interface CancelPanelResult {
 }
 
 /**
- * The native half, supplied by the platform.
- *
- * Resolving `{ paths: [] }` means the user cancelled; a platform that cannot
- * show a picker at all rejects instead, so the two are never confused. macOS
- * shows the panel as a sheet and awaits it without blocking the JavaScript
- * thread, so an invoke issued while the sheet is up is still answered; the one
- * blocking path is the `-runModal` fallback used when there is no window to
- * attach a sheet to — see `darwinDialogAdapter` in `platform/darwin`.
- *
- * `pickSave` is optional so an adapter written before the save panel existed
- * keeps type-checking; `savePanel` then answers `not-implemented` naming
- * `NSSavePanel`, which is the honest answer for that adapter.
- *
- * `cancel` is optional for the same reason, and it exists because a sheet is
- * otherwise only dismissible by a human: a page that opened a pick by accident,
- * or that is stuck behind one, needs a way out that is not "click something".
- * With one sheet at a time it is also the answer to a refused `openPanel` or
- * `savePanel` — that request has not started anything, so cancelling is what
- * makes room for the next one.
+ * The native half, supplied by the platform. `{ paths: [] }` means the user cancelled; a platform that cannot show a picker at all rejects, so the two are never confused.
+ * macOS shows the panel as a sheet without blocking the JavaScript thread, so an invoke issued while it is up is still answered; the one blocking path is `-runModal`, the fallback when there is no window to attach a sheet to (`darwinDialogAdapter`). `pickSave` and `cancel` are optional so an adapter written before them keeps type-checking and answers `not-implemented` naming the selector; `cancel` exists because a sheet is otherwise dismissible only by a human, and with one sheet at a time it is also how a refused `openPanel`/`savePanel` frees the slot.
  */
 export interface DialogNative {
 	pickOpen(options: OpenPanelOptions): Promise<OpenPanelResult>;
@@ -130,14 +100,10 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 				return native.pickSave(options);
 			},
 			/**
-			 * End the sheet that is up, the way its Cancel button would, and
-			 * answer with what that panel resolves to.
-			 *
-			 * Nothing pending is `{ cancelled: false }` rather than
-			 * `not-implemented`: an adapter that has the selector simply found
-			 * no sheet to end, because the page raced the user's own click.
-			 * Only an adapter with no `cancel` at all is a gap, and that is the
-			 * one case reported as `not-implemented`.
+			 * End the sheet that is up, the way its Cancel button would. Nothing pending
+			 * is `{ cancelled: false }` rather than `not-implemented`: an adapter with the
+			 * selector simply found no sheet, because the page raced the user's click.
+			 * Only an adapter with no `cancel` at all is a gap.
 			 */
 			cancel: async (): Promise<CancelPanelResult | NotImplemented> => {
 				if (!native?.cancel) {

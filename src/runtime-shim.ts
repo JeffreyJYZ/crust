@@ -1,9 +1,5 @@
 /**
- * The runtime's page-side shim and its plugin selection rules.
- *
- * `INVOKE_SHIM` is the one-name `invoke` DESIGN.md §5 promises, injected after
- * the bridge's own bootstrap, and `selectedPlugins` decides which core plugins a
- * config asks for. Split out of `runtime.ts` so the startup path stays readable.
+ * The runtime's page-side shim and its plugin selection rules. `INVOKE_SHIM` is the one-name `invoke` the design page (`site/app/docs/design/page.mdx`) promises, injected after the bridge's bootstrap, and `selectedPlugins` decides which core plugins a config asks for.
  */
 
 import { APP_NAMESPACE } from "@/app.ts";
@@ -11,12 +7,7 @@ import type { CrustConfig } from "@/config";
 import type { PluginDefinition } from "@/plugins";
 
 /**
- * The page-side shim, installed after the bridge's own bootstrap.
- *
- * `installCrust` speaks `(plugin, command, args)`, which is what plugin calls
- * use. DESIGN.md §5 has the page call `invoke("greet", { name })` for an app
- * command, so a two-argument call is routed to the `app` namespace. A string
- * second argument is the explicit plugin form and passes through untouched.
+ * The page-side shim, installed after the bridge's bootstrap. `installCrust` speaks `(plugin, command, args)`, which is what plugin calls use; the design page (`site/app/docs/design/page.mdx`) has the page call `invoke("greet", { name })`, so a two-argument call is routed to the `app` namespace and a string second argument is the explicit plugin form, passed through untouched.
  */
 export const INVOKE_SHIM = `<script>(function () {
 	var api = window.crust;

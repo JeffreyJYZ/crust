@@ -1,10 +1,5 @@
 /**
- * Plugin entry point.
- *
- * `corePlugins` is the four v1 plugins, in the order DESIGN.md §5 lists them.
- * Each is a plain `definePlugin` value, so the same mechanism carries a
- * plugin that works today (`fs`) and three that fail honestly until AppKit or
- * `UNUserNotificationCenter` is reachable.
+ * Plugin entry point. `corePlugins` is the four v1 plugins in the order the design page (`site/app/docs/design/page.mdx`) lists them, each a plain `definePlugin` value — so the same mechanism carries one that works today (`fs`) and three that fail honestly until AppKit or `UNUserNotificationCenter` is reachable.
  */
 
 import { createDialogPlugin, dialogPlugin } from "./dialog";

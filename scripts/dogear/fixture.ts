@@ -1,12 +1,5 @@
 /**
- * The example copy this proof builds, and the constants the build needs.
- *
- * The example is copied to a scratch tree rather than built in place: it has no
- * `node_modules` (an install there would rewrite the checkout's own state), and
- * its `crust` dependency is a `github:` pin — building it would embed the
- * published framework instead of the checkout under test. The copy rewrites
- * exactly that one dependency to `file:<repo>`, so the app code is byte-identical
- * to the example and the framework is this working tree.
+ * The example copy this proof builds. It is copied rather than built in place because it ships no `node_modules` (an install there rewrites the checkout) and its `crust` dependency is a `github:` pin; the copy rewrites exactly that one dependency to `file:<repo>`, so the app code stays byte-identical.
  */
 import { cp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -26,10 +19,7 @@ export const APP_TIMEOUT_MS = 45_000;
 const SKIP = new Set(["node_modules", "dist", "bun.lock", ".DS_Store"]);
 
 /**
- * Copy the example into `scratch` and point its framework dependency here.
- *
- * Only the `crust` line changes. Everything the app asserts — the fs calls, the
- * title strings, the tray labels, the panel — is the example's own code.
+ * Copy the example into `scratch` and point its framework dependency here. Only the `crust` line changes; every call the app asserts is the example's own code.
  */
 export async function sandbox(scratch: string): Promise<void> {
 	for (const name of await readdir(EXAMPLE_DIR)) {

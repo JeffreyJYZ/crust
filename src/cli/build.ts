@@ -1,10 +1,5 @@
 /**
- * `crust build` — compile the backend with Bun, assemble `X.app`, then ad-hoc
- * sign it. A Developer ID signature is `crust sign`'s job, not this one's.
- *
- * The two sizes are printed separately because they answer different questions:
- * the compiled binary is what Bun produced, the assembled bundle is what a
- * recipient's disk gives up.
+ * `crust build` — compile the backend with Bun, assemble `X.app`, then ad-hoc sign it; a Developer ID signature is `crust sign`'s job. The two sizes print separately because they answer different questions: the compiled binary is what Bun produced, the assembled bundle is what a recipient's disk gives up.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";

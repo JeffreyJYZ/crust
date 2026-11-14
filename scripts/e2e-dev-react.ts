@@ -1,61 +1,6 @@
 /**
- * The end-to-end proof for the shape most users will live in: `crust dev` on the
- * React + Vite scaffold.
- *
- * `e2e:dev` proves the watcher against `examples/hello`, whose page the bridge
- * serves itself. `e2e:single` proves one file. Neither touches the third shape:
- * `dev.url` set, so `crust dev` starts the frontend command itself, the runtime
- * hands that page its bridge address and token, and the window loads a document
- * another origin served. That is the shape with CORS, a cross-origin bearer
- * token, and an HMR client the framework does not own — and until now it rested
- * on one manual run.
- *
- * What each assertion is worth, and what would be a false pass:
- *
- *   - the served document is fetched from the dev server and must carry the Vite
- *     client, the `/src/main.tsx` module and the *live* `window.__CRUST__` pair
- *     from `.crust/dev.json`. A cached or stale page fails on the token, because
- *     that value is minted per launch and only this project's Vite can print it;
- *   - the bridge's own document is fetched too and must not contain the Vite
- *     client, so "the window loaded the dev page" is a comparison of two real
- *     documents rather than an inference;
- *   - `greet` in the runtime log is the page's own `invoke` arriving from the
- *     dev origin. It cannot be produced by the bridge's document: the React
- *     scaffold has no `public/`, so that document is the empty one;
- *   - the page is then edited and both halves are checked: the dev server must
- *     serve the new text, and the window must run it and answer again. Only the
- *     dev server can re-serve an edited module, so this is also the positive
- *     proof that the running page is the Vite one;
- *   - one `bridge` line and no `restart` line across the edit. A restart rotates
- *     the token and rebuilds the window, so a second line means the backend was
- *     restarted for a change the dev server owns.
- *
- * The blocks are ordered so each one stands alone: the dev server, the client it
- * serves, the bridge's own document, the cross-origin invoke and the whole stop
- * path are all provable without the window. Only "edit reload" needs a page that
- * is alive, so a dead window costs one failure rather than a skipped run.
- *
- * No warm-up, deliberately: the cold start is part of the proof. `crust dev` used
- * to hand the window its URL before `beforeDevCommand` was listening, and a cold
- * Vite (measured 0.66-1.08 s to first listen) lost that race silently — 0 of 4
- * fresh-scratch runs ever reached the page. `dev.ts` now waits for `dev.url` to
- * accept a connection before the runtime is spawned, so the un-warmed run is
- * what proves that fix instead of papering over it.
- *
- * The scaffold is built with `crust init <dir> --react` rather than by copying
- * `templates/react` here. Copying is the more fragile choice: it would have to
- * reproduce init's token map (`{{name_text}}` JSON-escaping, `{{package}}`
- * slugging, and the checkout-vs-registry choice for `{{crust_dep}}`), and a
- * fourth token added to the template would silently leave a literal `{{…}}` in
- * the scratch project. `init` is the code path a user runs, so the scaffold
- * under test can never drift from the scaffold users get.
- *
- * Usage:
- *   bun scripts/e2e-dev-react.ts    # or `bun run e2e:dev:react` once package.json names it
- *
- * The phases live in `dev-react/phases/` — scaffold, serve, edit, stop — and
- * `dev-react/fixture.ts` holds the pinned port, the runtime's lines and the
- * HTTP plumbing they read through.
+ * E2E for `crust dev` with `dev.url` set: a React+Vite page served from another origin, its live token read from `.crust/dev.json`, and `invoke` answered across origins.
+ * Cold start is the proof — Vite measured 0.66-1.08 s to listen and lost the race in 0 of 4 scratch runs before `dev.ts` waited for the URL; scaffold built by `crust init --react`, never copied, so it cannot drift. Phases in `dev-react/phases/`.
  */
 
 import { mkdtemp, rm } from "node:fs/promises";

@@ -1,13 +1,6 @@
 /**
- * `crust:fs` — text files, directories and their metadata.
- *
- * Every failure carries a structured code: a missing path is `not-found`, a bad argument
- * is `bad-request`. Nothing here is synchronous, because one blocking handler stalls
- * every other invoke on the bridge (research/bridge.md §Concurrency).
- *
- * `list`, `stat`, `remove` and `rename` exist because a real app asked for them: notes on
- * disk need a directory listing and a delete, and without them every app reimplements
- * path handling in its own backend.
+ * `crust:fs` — text files, directories and their metadata. Every failure carries a structured code (`not-found`, `bad-request`), and nothing here is synchronous because one blocking handler stalls every other invoke on the bridge (`research/bridge.md` §Concurrency).
+ * `list`, `stat`, `remove` and `rename` exist because a real app asked: notes on disk need a listing and a delete, and without them every app reimplements path handling.
  */
 
 import { rename as renamePath, rm, readdir, stat as statPath } from "node:fs/promises";

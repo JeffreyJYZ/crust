@@ -1,9 +1,5 @@
 /**
- * `runtime.ts`'s process-level pieces: the shutdown signals and the one
- * argument parser both this module and the CLI accept.
- *
- * Split out so `runtime.ts` reads as the startup sequence it is. Both are
- * exported through `runtime.ts`, so importers keep using the same path.
+ * `runtime.ts`'s process-level pieces: the shutdown signals and the one argument parser both it and the CLI accept, split out so `runtime.ts` reads as the startup sequence it is and re-exported so paths stay stable.
  */
 
 let signalsRegistered = false;

@@ -1,13 +1,6 @@
 /**
- * The plugin seam.
- *
- * A plugin is a name plus a command map. The bridge keys handlers as
- * `"<plugin>.<command>"`, and `definePlugin` refuses a name that would make that
- * key ambiguous, so a command can never be reached under the wrong plugin.
- *
- * A command the platform cannot run yet returns a typed `NotImplemented`
- * instead of pretending. That is the rule the brief sets: fail honestly, not
- * silently.
+ * The plugin seam. A plugin is a name plus a command map; the bridge keys handlers as `"<plugin>.<command>"`, and `definePlugin` refuses a name that would make that key ambiguous, so a command can never be reached under the wrong plugin.
+ * A command the platform cannot run yet returns a typed `NotImplemented` instead of pretending — fail honestly, not silently.
  */
 
 import { CrustError } from "../bridge/errors";
@@ -69,11 +62,7 @@ export function isNotImplemented(value: unknown): value is NotImplemented {
 }
 
 /**
- * Declare a plugin.
- *
- * The name is doubled as the invoke namespace, so it must be a non-empty token
- * with no dot in it: `"<plugin>.<command>"` is the handler key and a dotted
- * plugin name would collide with another plugin's command.
+ * Declare a plugin. The name doubles as the invoke namespace, so it must be a non-empty token with no dot: `"<plugin>.<command>"` is the handler key, and a dotted name would collide with another plugin's command.
  */
 export function definePlugin<Name extends string, Commands extends CommandMap>(plugin: {
 	name: Name;

@@ -1,12 +1,8 @@
 // --- readback for evidence -------------------------------------------------
-//
-// These four exist so a run can report what AppKit *says* about the item
-// besides the title: its visibility flag, the length it reserved, and the
-// button's window. Every one returns a primitive — a BOOL, a CGFloat, a
-// window number — so nothing crosses the boundary as an object or a struct,
-// and each is preflighted like the rest of the file. They are AppKit's claim
-// about layout, never proof that a pixel was drawn; a screenshot is that
-// proof, and the two are reported separately.
+// AppKit's claims about the item besides the title: visibility flag, reserved
+// length, the button's window. Each returns a primitive, so nothing crosses as
+// an object or struct, and each is preflighted. Never proof a pixel was drawn —
+// a screenshot is that proof, and a run reports the two separately.
 
 // -1 means "this AppKit has no -[NSStatusItem isVisible]", which is different
 // from 0, an item AppKit itself calls hidden.

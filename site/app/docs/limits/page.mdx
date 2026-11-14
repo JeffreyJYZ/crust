@@ -1,0 +1,56 @@
+# Limits
+
+What crust does not do, stated before you build on it. Each line is a boundary, not a bug list.
+
+## Platform
+
+| limit | detail |
+| --- | --- |
+| macOS 13 (Ventura) or later | the shim links AppKit, WebKit and Foundation by name; the Homebrew formula declares `depends_on macos: :ventura` |
+| Apple silicon only | there is no Intel, Windows or Linux path |
+| no Xcode required | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
+
+## Distribution
+
+- **Ad-hoc signing by default.** `codesign --sign -` opens on the machine that built it. `spctl`
+  rejects it with exit 3 and it cannot be notarised, so Gatekeeper refuses it on any other Mac
+  until the recipient runs `xattr -dr com.apple.quarantine "my-app.app"` or right-click → Open.
+- **No notarisation without a Developer ID.** A notarised ticket needs a certificate and
+  `notarytool` credentials. `crust sign` takes `CRUST_SIGNING_IDENTITY`, signs with the hardened
+  runtime, and still reports `spctl` refusing until the ticket is stapled.
+- **A whole asset directory goes into the binary.** By default `public/`; `build.assets` names a
+  frontend's output instead. A frontend that builds elsewhere needs its own build step first.
+- **Next.js means static export.** Route handlers, middleware, ISR, `next/image` optimisation,
+  Server Actions and request-time `cookies()`/`headers()` are out of scope: there is one binary and
+  no server.
+
+## No bundled Chromium
+
+The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS ships. A platform
+WebKit bug is not something crust can patch, and a page cannot rely on a browser crust pinned.
+The honest size claim is "no bundled Chromium", never "as small as Tauri": the ~85 MiB floor is
+the Bun runtime inside the binary, and Tauri's floor is smaller because it ships no JavaScript
+engine at all.
+
+## Notifications
+
+`notification.notify()` returns `{ delivered, reason }`, and `delivered` is true only when the OS
+reported success. Four measured rules decide it:
+
+| rule | detail |
+| --- | --- |
+| a bundle in the system temp directory is refused | the same app delivered from `~/dev` and answered code 1 from `/var/folders`, twice each way |
+| a denied identifier is never re-asked | macOS records the denial; the app answers code 1 forever without a prompt |
+| a denial is reversible | System Settings → Notifications → Allow made an identifier that had answered code 1 four different ways deliver, with no rebuild |
+| the signature is not a cause | ad-hoc and Apple Development both deliver on a fresh identifier |
+
+Unbundled, there is no bundle identifier, so the modern notification centre is never entered and
+`delivered` is false. A first post on a new identifier raises a permission prompt; an unanswered
+prompt is recorded as a denial, so `notify({ waitMs })` bounds how long it may stay up.
+`requestPermission` answers `not-implemented` — the notification itself requests authorization.
+
+## When in doubt
+
+`crust doctor` covers the traps that produce a silent failure — a shim that will not compile, a
+bridge that will not bind, an asset directory a build would embed as nothing. The
+[evidence page](/docs/evidence) holds what was measured for each claim above.

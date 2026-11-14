@@ -34,11 +34,7 @@ export async function describeSignature(appPath: string): Promise<string> {
 }
 
 /**
- * Ask Gatekeeper. Expensive, and the answer is already known for ad-hoc.
- *
- * Included because `crust sign` must be able to tell the user the truth about
- * their own signature, and because a Developer ID build answers differently.
- * Call it once per artefact, never per check.
+ * Ask Gatekeeper. Expensive, and the answer is already known for ad-hoc — included because `crust sign` must tell the user the truth about their own signature and a Developer ID build answers differently. Once per artefact, never per check.
  */
 export async function assessGatekeeper(appPath: string): Promise<GatekeeperResult> {
 	const result = await run(["spctl", "-a", "-vvv", appPath]);

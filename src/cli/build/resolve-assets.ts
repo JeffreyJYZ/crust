@@ -17,15 +17,7 @@ const FRONTEND_HINT =
 	"run its build (for Vite, `bun --bun ./node_modules/.bin/vite build`) then `crust build`";
 
 /**
- * Run `build.beforeBuildCommand` (if any), then read `build.assets`.
- *
- * The command runs first and its non-zero exit aborts: a framework app must
- * never ship whatever happened to be in its asset directory from an earlier
- * run. Stdio is inherited (`runShell`), so the frontend's own output is the
- * user's to read. Only after it returns is the directory read — and checked
- * again, because "exited 0" is not the same fact as "produced an index.html".
- *
- * Returns rather than throws so `build` prints one line in its own format.
+ * Run `build.beforeBuildCommand` (if any), then read `build.assets`. The command runs first and its non-zero exit aborts, so a framework app never ships whatever sat in its asset directory from an earlier run; stdio is inherited, so the frontend's own output is the user's to read. The directory is read and checked only after it returns — "exited 0" is not the same fact as "produced an index.html". Returns rather than throws so `build` prints one line in its own format.
  */
 export async function resolveAssets(
 	dir: string,

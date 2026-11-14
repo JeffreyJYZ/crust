@@ -1,13 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Build crust as one standalone executable and prove it works with no checkout.
- *
- * `bun build --compile --asset` embeds the files crust reads at runtime: the templates
- * `init` copies, the docs, and the `src/` tree `dev` and `build` materialise into a
- * temporary directory. Every flag here exists because something failed without it.
- *
- * The checks run the binary the way a user would: with an empty environment, from a
- * directory that is not this repository, against a scaffold it just created.
+ * Build crust as one standalone executable and prove it works with no checkout: `bun build --compile --asset` embeds the templates, docs and `src/` tree that `dev` and `build` materialise at runtime, and the checks run the binary from a bare environment and an unrelated directory.
  */
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";

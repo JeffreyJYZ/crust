@@ -1,13 +1,5 @@
 /**
- * Compile the status-bar C unit, once per process.
- *
- * The unit is shipped as a directory of source parts rather than one file so no
- * part outgrows the repo's line cap, but it is still **one translation unit**:
- * the parts share statics (`tray_target`, `tray_title_buf`, `tray_building_menu`),
- * and a static is private to its unit, so compiling them separately would give
- * each its own copy — the click trampoline would route to a different target
- * than the menu rows point at. They are therefore concatenated here, in the
- * order the single `status_bar.c` declared them, and handed to `cc()` as text.
+ * Compile the status-bar C unit, once per process. It ships as several parts so none outgrows the line cap, but it is **one translation unit**: the parts share statics (`tray_target`, `tray_title_buf`, `tray_building_menu`) and a static is private to its unit, so compiling them separately would give each its own copy and the click trampoline would route to a different target than the menu rows point at. They are concatenated here in the original `status_bar.c` order and handed to `cc()` as text.
  */
 
 import { cc, FFIType } from "bun:ffi";

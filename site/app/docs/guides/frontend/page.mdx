@@ -1,0 +1,77 @@
+# Frontend
+
+crust serves a window; the frontend is yours. A dev server keeps its own HMR and crust only puts `window.crust` into the document it serves.
+
+## Vite
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { crust } from "crust/vite";
+
+export default defineConfig({
+	server: { port: 5173, strictPort: true },
+	plugins: [crust()],
+});
+```
+
+The plugin is serve-only. It injects `window.__CRUST__` and the page client into every document, resolving the bridge pair per request from `CRUST_BRIDGE_URL` and `CRUST_BRIDGE_TOKEN`, then from `.crust/dev.json`, which the runtime writes on first `run()`.
+
+`strictPort` is required: the bridge allows exactly the origin `dev.url` names, so a Vite port move makes every invoke `bad-origin`.
+
+When neither source has a pair, the plugin warns once and injects nothing. The page's first call then fails loudly, instead of a client talking to a guessed address.
+
+## React
+
+```sh
+bunx github:JeffreyJYZ/crust#v0.1.16 init my-app --react
+cd my-app
+bun install
+bunx crust dev
+bun run build
+```
+
+`--react` copies `templates/react/`, seven files: `package.json`, `vite.config.ts` (the React plugin plus `crust()`, port pinned, `outDir: "dist/web"`), `crust.config.ts` (`dev.url` on that port, `build.assets: "dist/web"`), `index.html`, `src/main.tsx`, `main.ts` and `.gitignore`.
+
+`src/main.tsx` calls `invoke("greet", { name })` after mount, so a built app proves window, embedded bundle, bridge and handler with no click.
+
+## Next
+
+```sh
+bunx github:JeffreyJYZ/crust#v0.1.16 init my-app --next
+cd my-app
+bun install
+bunx crust dev
+bun run build
+```
+
+Static export is the whole mode: `output: "export"` and `images: { unoptimized: true }`. crust ships one binary with no server, so route handlers, middleware, ISR, Server Actions, request-time `cookies()`/`headers()` and `next start` are out of scope. Server Components still work; they run once at `next build` and their output is part of the export.
+
+In `next dev` the page has no `window.crust`, because nothing injects the client into a document `next dev` serves. It says so in the window. A built app works, because its bridge injects its own client.
+
+## Asset embedding
+
+```ts
+build: {
+	assets: "out",
+	beforeBuildCommand: "bun --bun ./node_modules/.bin/next build",
+},
+```
+
+`build.assets` names the directory `crust build` embeds; it defaults to `public`. `beforeBuildCommand` runs first, to completion, and only then is the directory read and checked for `index.html`, so a framework never ships whatever an earlier run left behind.
+
+A named directory must exist and hold `index.html`, and it may not resolve to `dist/`, where `crust build` writes.
+
+Embedded files are served with their own content types (`.html`, `.js`, `.css`, `.json`, `.svg`, `.png`, `.woff2`, `.wasm`), and a path with no extension falls back to `index.html`, so a client-side route works without a router change.
+
+## The dev-URL wait
+
+With `dev.url` set, `crust dev` starts `beforeDevCommand` and then waits up to 30 seconds for a TCP connect on that port before it spawns the runtime. The window loads the URL once and cannot retry, so a launch with nothing listening aborts with a message naming the URL.
+
+`crust doctor` probes the same port and reports one of four states: free, held by a process that answers the URL, held by one that answers nothing (the `strictPort` failure), or answering with nothing listening locally (a proxy).
+
+## What breaks
+
+- SSR. `crust build` embeds a directory; nothing renders per request.
+- Two clients. Never import crust in page code; `window.crust` arrives through the injected client.
+- A backend entry inside the frontend directory. Saving a file there restarts the backend, and a restart rotates the bridge token, so the loaded page fails `missing or bad bearer token` until it reloads.

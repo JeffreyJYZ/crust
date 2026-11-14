@@ -1,9 +1,5 @@
 /**
- * Marshalling between JavaScript values and the pointers `status_bar/*.c` takes.
- *
- * Nothing here knows what a status item is; it is the argument and return-value
- * discipline every call in `status-bar-item.ts` and `status-bar-readback.ts`
- * shares.
+ * Marshalling between JavaScript values and the pointers `status_bar/*.c` takes. Nothing here knows what a status item is: it is the argument and return-value discipline every call in `status-bar-item.ts` and `status-bar-readback.ts` shares.
  */
 
 import { ptr } from "bun:ffi";

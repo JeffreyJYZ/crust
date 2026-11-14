@@ -1,17 +1,7 @@
 // --- file panels (NSOpenPanel, NSSavePanel) --------------------------------
-//
-// No object of any kind crosses bun:ffi here. A file path is routinely short
-// ASCII, and a short ASCII NSString is a tagged pointer above 2^53, so the
-// panel's URLs are decoded and copied into C-side storage and JS reads an int
-// status plus a copied `const char *`. See the traps in DESIGN.md §2.
-//
-// The open and save panels share every piece of that machinery: the same
-// status set, the same static path storage, the same hand-built completion
-// block, and the same poll. They differ only in the class they build, the
-// setters they accept, and the read that collects the answer (`-URLs` for the
-// open panel, `-URL` for the save panel).
-//
-// Status codes, mirrored by PANEL_STATUS in index.ts:
+// No object crosses bun:ffi: a short ASCII NSString is a tagged pointer above 2^53, so URLs are decoded into
+// C-side storage and JS reads an int status plus a copied `const char *` (`site/app/docs/design/page.mdx`). Open and save share
+// that machinery, differing only in the class, setters and answer read. Status codes, mirrored by PANEL_STATUS:
 #define SHIM_PANEL_PICKED 0        // modal pick finished with >= 1 path
 #define SHIM_PANEL_CANCELLED 1     // modal pick finished with no path
 #define SHIM_PANEL_UNSUPPORTED 2   // NSOpenPanel, or a selector it needs, is absent
@@ -73,14 +63,12 @@ static void panel_reset(void) {
 	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
 }
 
-// One sheet at a time, and this is the whole reason a second request is
-// refused instead of started: the storage above holds exactly one panel, one
-// done flag and one path list, so starting a second sheet would overwrite the
-// first one's state and a page already awaiting the first pick would read the
-// second panel's answer. A request that lands while a sheet is up therefore
-// answers SHIM_PANEL_BUSY before anything is touched, which leaves the live
-// sheet — pointer, done flag and paths — exactly as it was. `dialog.cancel` in
-// the plugin is how a page gets out of a sheet it no longer wants.
+// One sheet at a time, which is why a second request is refused instead of
+// started: the storage holds one panel, one done flag and one path list, so a
+// second sheet would overwrite the first one's state and a page awaiting the first
+// pick would read the second panel's answer. A request landing while a sheet is up
+// answers SHIM_PANEL_BUSY before anything is touched, leaving the live sheet
+// exactly as it was; `dialog.cancel` is the way out of a sheet no longer wanted.
 static int panel_sheet_busy(void) { return panel_sheet_panel != 0 && !panel_sheet_done; }
 
 static void panel_copy_path(const char *src) {

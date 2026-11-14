@@ -1,7 +1,7 @@
 /**
  * The document and asset half of the bridge: everything the page can fetch
  * without a token, because the page cannot hold its own token before it has
- * been served. DESIGN.md §4 is explicit that the built frontend is public —
+ * been served. `site/app/docs/design/page.mdx` is explicit that the built frontend is public —
  * the token protects IPC, not the HTML, JS and CSS the page is made of.
  */
 

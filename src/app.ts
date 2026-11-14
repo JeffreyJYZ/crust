@@ -1,21 +1,6 @@
 /**
- * The public app surface.
- *
- * `main.ts` registers commands, mounts plugins and adds listeners, then awaits
- * `app.run()`. The window machinery lives behind the `Platform` seam declared in
- * `app-types.ts`, so the macOS implementation can be plugged in without this
- * file knowing AppKit exists.
- *
- * `run()` works two ways. Through `startApp` (both `crust dev` and a built app)
- * the platform and the config are attached before `main.ts` is imported, and
- * the bridge is created on the first `run()` rather than before it, so a plugin
- * mounted by `main.ts` is in the handler table the bridge snapshots. Called
- * bare (`bun src/main.ts`) it loads both itself: the config from the project
- * directory and the platform through a lazy import, so the macOS layer is not
- * linked into a process that never opens a window.
- *
- * The types live in `app-types.ts` and everything that needs no instance in
- * `app-loop.ts`; both are re-exported here so `./app.ts` stays the one path.
+ * The public app surface: `main.ts` registers commands, mounts plugins and adds listeners, then awaits `app.run()`. The window machinery stays behind the `Platform` seam in `app-types.ts`, so macOS plugs in without this file knowing AppKit exists.
+ * Through `startApp` (dev and built apps) the platform and config are attached before `main.ts` is imported and the bridge is created on the first `run()`, so a plugin mounted there is in the table the bridge snapshots; called bare (`bun src/main.ts`) it loads both itself, importing the platform lazily so macOS is not linked into a process that never opens a window.
  */
 import { CrustError } from "@/bridge/errors";
 import { type CrustConfig, loadConfig } from "@/config";
@@ -58,13 +43,7 @@ export class App {
 	}
 
 	/**
-	 * Hand this instance the config without a platform.
-	 *
-	 * A built app's wrapper already carries the project's config and imports the
-	 * backend entry through `entryModule`, so there is no working directory to load
-	 * from — a launched `.app` runs with `/` as cwd. Without this, `app.run()` in the
-	 * entry fell back to `loadConfig()` and died with `no crust config in /` for any
-	 * app started outside its project directory.
+	 * Hand this instance the config without a platform. A built app's wrapper already carries it and imports the backend through `entryModule`, so there is no working directory to load from — a launched `.app` runs with `/` as cwd. Without this, `app.run()` fell back to `loadConfig()` and died with `no crust config in /` for any app started outside its project directory.
 	 */
 	configure(config: CrustConfig): this {
 		if (this.#started) throw new Error("crust: cannot configure a running app");
@@ -73,12 +52,7 @@ export class App {
 	}
 
 	/**
-	 * Create the bridge on the first `run()` instead of now.
-	 *
-	 * `startApp` calls this before importing the project's entry, because the
-	 * bridge snapshots its `"<plugin>.<command>"` table at creation: a plugin
-	 * mounted by that entry must already be registered. The factory runs at most
-	 * once, and its return value is the URL the windows load.
+	 * Create the bridge on the first `run()` instead of now: `startApp` calls this before importing the entry, because the bridge snapshots its `"<plugin>.<command>"` table at creation and a plugin mounted there must already be registered. Runs at most once; returns the URL the windows load.
 	 */
 	deferBridge(factory: BridgeFactory): this {
 		if (this.#started) throw new Error("crust: cannot start a bridge for a running app");
@@ -99,11 +73,9 @@ export class App {
 
 	/**
 	 * Mount a plugin of your own, so a page reaches it as
-	 * `window.crust.invoke("<name>", "<command>", args)`.
-	 *
-	 * The name is a namespace, so a duplicate, a built-in name or the reserved
-	 * `app` namespace is refused rather than shadowed — `mountable` in
-	 * `app-loop.ts` owns those rules — and the mount must happen before `run()`.
+	 * `window.crust.invoke("<name>", "<command>", args)`. The name is a namespace, so a
+	 * duplicate, a built-in or the reserved `app` is refused rather than shadowed
+	 * (`mountable` owns those rules), and the mount must happen before `run()`.
 	 */
 	use(plugin: PluginDefinition): this {
 		if (this.#started)
@@ -137,12 +109,7 @@ export class App {
 	}
 
 	/**
-	 * Start the platform, open the configured windows, emit `ready`, and hand
-	 * the run loop to `pump`. Resolves once the app is up; the pump timer keeps
-	 * the process alive afterwards.
-	 *
-	 * With nothing attached it loads the config from the working directory and
-	 * imports the macOS platform on demand — the bare `bun src/main.ts` path.
+	 * Start the platform, open the configured windows, emit `ready` and hand the run loop to `pump`. Resolves once the app is up; the pump timer keeps the process alive. With nothing attached it loads the config from the working directory and imports macOS on demand — the bare `bun src/main.ts` path.
 	 */
 	async run(): Promise<void> {
 		if (this.#started) throw new Error("crust: app.run() was already called");

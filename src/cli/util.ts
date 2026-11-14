@@ -4,14 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import packageJson from "../../package.json";
 
 /**
- * The crust package root, whatever directory the CLI is invoked from.
- *
- * Six ancestors, because the package root is the directory holding `templates/` and
- * that is not always two steps up: in a checkout this file is `src/cli/util.ts`, in a
- * compiled executable `import.meta.dir` is `/$bunfs/root/src/cli` when the bundler
- * keeps the tree, and `/$bunfs/root` when it flattens — where `..` twice would be `/`.
- * Marker discovery answers all three, and a tree with no marker falls back to the
- * checkout assumption so nothing that works today changes.
+ * The crust package root, whatever directory the CLI is invoked from. Six ancestors, because the root is the directory holding `templates/` and that is not always two steps up: in a checkout this is `src/cli/util.ts`, in a compiled executable `import.meta.dir` is `/$bunfs/root/src/cli` when the bundler keeps the tree and `/$bunfs/root` when it flattens — where `..` twice would be `/`. Marker discovery answers all three, falling back to the checkout assumption.
  */
 function findRoot(start: string): string {
 	let dir = start;
@@ -107,13 +100,7 @@ export async function findAppBundle(dir: string): Promise<string | undefined> {
 }
 
 /**
- * Why `bun install` has not been run here, when that is the state.
- *
- * A declared dependency set with no `node_modules` is what a fresh clone or a `rm -rf`
- * leaves behind. The frontend command then cannot find its tool locally, and `bun x`
- * silently resolves one from the global cache: vite starts, dies on the missing react,
- * and the failure reaches the user as a rolldown stack with crust reporting "the
- * frontend build failed" — which points at the wrong thing entirely.
+ * Why `bun install` has not been run here, when that is the state. A declared dependency set with no `node_modules` is what a fresh clone or a `rm -rf` leaves; the frontend command then cannot find its tool locally, and `bun x` silently resolves one from the global cache — vite starts, dies on the missing react, and the user gets a rolldown stack with crust reporting "the frontend build failed", which points at the wrong thing entirely.
  */
 export async function missingInstall(dir: string): Promise<string | undefined> {
 	const manifest = Bun.file(join(dir, "package.json"));

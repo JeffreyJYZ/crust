@@ -1,17 +1,6 @@
 /**
- * The live status item: create, drive, route clicks, destroy.
- *
- * The limits this module enforces instead of hiding (see `status-bar.ts` for
- * the whole contract):
- *
- *   - One live status bar per process. `createStatusBar()` throws while another
- *     is alive, because the runtime class holds a single click IMP and a single
- *     target instance; every menu row of every live item would otherwise share
- *     one handler set. Destroying frees the slot, and the same click trampoline
- *     is reused, so repeated create/destroy does not allocate per cycle.
- *   - The click trampoline is never closed. Freeing it while an AppKit menu row
- *     still points at the target is a SIGABRT with no JavaScript error, so it
- *     lives for the process lifetime.
+ * The live status item: create, drive, route clicks, destroy. Limits enforced rather than hidden (full contract in `status-bar.ts`): one live status bar per process, because the runtime class holds a single click IMP and target so every row of every live item would share one handler set — destroying frees the slot and reuses the trampoline, so create/destroy does not allocate per cycle.
+ * The click trampoline is never closed: freeing it while an AppKit menu row still points at the target is a SIGABRT with no JavaScript error, so it lives for the process.
  */
 
 import { JSCallback } from "bun:ffi";

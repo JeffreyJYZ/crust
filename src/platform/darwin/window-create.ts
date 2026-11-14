@@ -1,11 +1,6 @@
 /**
- * Build the window with `initWithContentRect:` on the C stack (a bare
- * `[[NSWindow alloc] init]` aborts from AppKit's event thread), add the
- * webview, pin it with Auto Layout, order front, then load the URL inside C.
- *
- * Kept away from `DarwinPlatform` so the construction half and the tracking
- * half can be read separately; activation is passed in because it is the one
- * platform fact this needs.
+ * Build the window with `initWithContentRect:` on the C stack (a bare `[[NSWindow alloc] init]` aborts from AppKit's event thread), add the webview, pin it with Auto Layout, order front, then load the URL inside C.
+ * Kept away from `DarwinPlatform` so construction and tracking read separately; activation is passed in because it is the one platform fact this needs.
  */
 import type { WindowOptions } from "@/app.ts";
 import { shim } from "./index.ts";

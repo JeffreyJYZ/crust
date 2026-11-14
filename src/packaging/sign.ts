@@ -1,20 +1,6 @@
 /**
- * Code signing, and the honest verdict that comes with it.
- *
- * What is measured on this machine (research/packaging.md §4):
- *
- *   codesign --force --sign - --timestamp=none "X.app"   -> signs, flags=0x2(adhoc)
- *   codesign --verify --verbose=4 "X.app"                -> valid on disk
- *   spctl -a -vvv "X.app"                                -> rejected, exit 3
- *
- * The spctl refusal is not a bug in this code. An ad-hoc signature cannot be
- * notarized, so Gatekeeper refuses an ad-hoc bundle on any machine that did not
- * build it. That is the whole distribution story until a Developer ID
- * certificate exists, and `signingReality()` in `reality.ts` prints it rather
- * than hiding it.
- *
- * The entitlement plist lives in `entitlements.ts`, verification in `verify.ts`,
- * and both are re-exported here so `./sign` stays the one import path.
+ * Code signing, and the honest verdict that comes with it. Measured on this machine (`research/packaging.md` §4): `codesign --force --sign - --timestamp=none` gives `flags=0x2(adhoc)`, `codesign --verify` says valid on disk, and `spctl -a -vvv` rejects with exit 3.
+ * The spctl refusal is not a bug: an ad-hoc signature cannot be notarized, so Gatekeeper refuses the bundle on any machine that did not build it, and `signingReality()` prints that rather than hiding it. Entitlements in `entitlements.ts`, verification in `verify.ts`.
  */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -54,11 +40,7 @@ export interface SignResult {
 }
 
 /**
- * Sign `appPath`.
- *
- * `--force` replaces an existing signature, which is what makes a rebuild
- * idempotent. `--timestamp=none` is used for ad-hoc: an ad-hoc signature has no
- * chain to timestamp against, and asking for one only slows the build.
+ * Sign `appPath`. `--force` replaces an existing signature, which makes a rebuild idempotent; `--timestamp=none` because an ad-hoc signature has no chain to timestamp against and asking only slows the build.
  */
 export async function signApp(options: SignOptions): Promise<SignResult> {
 	const mode = options.mode ?? "adhoc";

@@ -6,32 +6,8 @@ import type { DarwinPlatform } from "./platform.ts";
 // --- window adapter --------------------------------------------------------
 
 /**
- * The native half of `crust:window` on macOS.
- *
- * Built on the `DarwinPlatform` instance the runtime attached, because the
- * labels and the `NSWindow *` pointers already live there. Two facts carry the
- * whole liveness rule:
- *
- *   - `close` sends `-close`, which orders the window out at once. The object
- *     stays addressable because `setReleasedWhenClosed: 0` was applied at
- *     creation, which is what lets the liveness read still work afterwards.
- *   - `isOpen` reads the platform's measured liveness rule, never raw
- *     `-windowNumber`: a closed window keeps its device number (measured), and a
- *     minimised window is not visible yet still open.
- *
- * `focus` orders the window front and activates the app at most once per
- * process through `DarwinPlatform.activateOnce`, so calling it on every switch
- * does not make the Dock icon keep jumping.
- *
- * `create` is `DarwinPlatform.createWindow` and nothing else: that method already
- * builds the `initWithContentRect:` window, adds and pins the webview, applies
- * the title and size, orders it front and tracks the label. The adapter's only
- * jobs are the two facts that method cannot know — whether the label is a live
- * window or a stale closed one, and what "the app's own document" is — and both
- * are read from the platform, never guessed.
- *
- * Every selector here is in `PREFLIGHT`, so a system that cannot do this fails
- * `start()` with a name instead of aborting on an uncaught ObjC exception.
+ * The native half of `crust:window` on macOS, built on the `DarwinPlatform` the runtime attached because the labels and `NSWindow *` pointers already live there. `close` sends `-close` and the object stays addressable via `setReleasedWhenClosed: 0`; `isOpen` reads the measured liveness rule, never raw `-windowNumber` (a closed window keeps its device number and a minimised one is open but not visible).
+ * `focus` activates at most once per process through `DarwinPlatform.activateOnce`, so switching does not make the Dock icon jump. `create` is `DarwinPlatform.createWindow` and nothing else: the adapter adds only the two facts that method cannot know — live label or stale closed one, and what the app's document is — both read from the platform. Every selector is in `PREFLIGHT`, so a system that cannot do this fails `start()` by name instead of aborting.
  */
 export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 	const require = (label: string): number => {
@@ -46,15 +22,7 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 	};
 
 	/**
-	 * The app's own document, as an absolute base URL.
-	 *
-	 * Neither `CRUST_BRIDGE_URL` nor `.crust/dev.json` is usable here: the runtime
-	 * only publishes them when a dev server exists, and a built app runs from `/`
-	 * where there is no handshake. What *is* true is that the app's windows were
-	 * loaded with that document, and `DarwinPlatform` recorded each one — so the
-	 * first tracked window whose URL is a real web URL is the base. A window
-	 * loaded as `about:blank` (a caller handed the platform a relative URL) is
-	 * skipped, because resolving against it would produce nothing loadable.
+	 * The app's own document, as an absolute base URL. Neither `CRUST_BRIDGE_URL` nor `.crust/dev.json` is usable — the runtime publishes them only when a dev server exists, and a built app runs from `/` with no handshake — so the base is the first tracked window whose URL is a real web URL, skipping one loaded as `about:blank` because resolving against it yields nothing loadable.
 	 */
 	const documentBase = (): URL => {
 		for (const label of platform.windowLabels()) {
@@ -80,12 +48,7 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 
 	return {
 		/**
-		 * One `platform.window(label)` call answers both questions at once: a
-		 * handle means the label is a live window and must be refused, and
-		 * `undefined` means absent *or* closed — and the call has already pruned
-		 * the closed entry, which is what stops `createWindow` from refusing a
-		 * label nobody can see in `list`. Releasing a closed window is not
-		 * replacing an open one: the live case throws before any release.
+		 * One `platform.window(label)` answers both questions: a handle means a live window and is refused, `undefined` means absent *or* closed and the call has already pruned the closed entry — which stops `createWindow` refusing a label nobody can see in `list`. The live case throws before any release.
 		 */
 		create(options): { label: string } {
 			const live = platform.window(options.label);

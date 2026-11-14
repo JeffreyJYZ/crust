@@ -1,11 +1,5 @@
 /**
- * `crust dev` — the backend owns the app process, the frontend stays with its
- * own dev server.
- *
- * A backend edit restarts the runtime process. A frontend edit never touches
- * it: HMR is the dev server's job, so UI state survives. The backend runs in a
- * child process (see `dev/runtime.ts`) because the platform's `quit()` calls
- * `process.exit`, and the window closing must not take the watcher down with it.
+ * `crust dev` — the backend owns the app process, the frontend stays with its own dev server. A backend edit restarts the runtime; a frontend edit never touches it, so UI state survives. The backend runs in a child process (`dev/runtime.ts`) because the platform's `quit()` calls `process.exit` and a closing window must not take the watcher down.
  */
 
 import { resolve } from "node:path";
@@ -40,14 +34,12 @@ export async function dev(options: CliOptions): Promise<number> {
 	if (devUrl) line("frontend", `${devUrl} (HMR stays with the dev server)`);
 	else line("frontend", "served by the bridge (public/index.html, no dev server)");
 
-	// A dev-server page is not the bridge's document, so the client has to
-	// arrive through the page itself: `crust/vite` injects `window.__CRUST__`.
-	// The bridge's port and token cannot be known before the runtime binds, so
-	// they reach the dev server through `.crust/dev.json`, which the plugin
-	// reads per request — `crust/vite` is the only place that can warn when
-	// neither that file nor an explicit environment holds them. These two are
-	// forwarded when a shell already has them, so an operator can point the
-	// page at a bridge by hand.
+	// A dev-server page is not the bridge's document, so the client must arrive through
+	// the page: `crust/vite` injects `window.__CRUST__`. The bridge's port and token
+	// cannot be known before the runtime binds, so they reach the dev server through
+	// `.crust/dev.json`, read per request — only that plugin can warn when neither the
+	// file nor the environment holds them. These two forward an existing shell value, so
+	// an operator can point the page at a bridge by hand.
 	const env = bridgeEnv(devUrl);
 
 	const projectDir = resolve(options.dir);

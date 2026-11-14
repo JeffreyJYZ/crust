@@ -5,17 +5,10 @@ int shim_sheet_done(void) { return panel_sheet_done; }
 // that reads 0 can never confuse "cancel" with "no answer".
 long long shim_sheet_response(void) { return panel_sheet_response; }
 
-// End the live sheet without a human: -cancel: is the panel's own cancel
-// action, so it runs the same path as clicking Cancel — the completion handler
-// fires, the response is recorded, and the sheet leaves the window. Returns 1
-// when the send happened, 0 when no sheet is up (or it had already answered) or
-// the selector is absent, so a page that calls it twice cannot end a second
-// sheet by accident.
-//
-// This is the page-level cancel behind the plugin's `dialog.cancel`, and it is
-// also how a page gets out of a sheet it opened without meaning to: the release
-// is the completion handler's, so the state a later request resets is already
-// the one a user's click would have left.
+// End the live sheet without a human: -cancel: is the panel's own cancel action, so it runs the same path as
+// clicking Cancel — handler fires, response recorded, sheet leaves. Returns 1 when the send happened, 0 when
+// no sheet is up (or already answered) or the selector is absent, so a page calling twice cannot end a second
+// sheet. The page-level cancel behind `dialog.cancel`, and the way out of a sheet opened by accident.
 int shim_sheet_cancel(void) {
 	obj_t panel = panel_sheet_panel;
 	if (!panel || panel_sheet_done) return 0;

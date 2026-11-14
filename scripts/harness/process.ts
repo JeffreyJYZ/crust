@@ -16,11 +16,7 @@ async function matchingPids(pattern: string): Promise<number[]> {
 }
 
 /**
- * Kill anything matching `pattern` left over from an earlier run, and say so.
- *
- * The alternative is a harness that fails forever after one abort, because the
- * survivor assertion is then true regardless of this run. A leftover is ours:
- * the pattern is a path this script just built.
+ * Kill anything matching `pattern` left from an earlier run. The alternative is a harness that fails forever after one abort, because the survivor assertion is then true regardless of this run; a leftover is ours, since the pattern is a path this script just built.
  */
 export async function clearSurvivors(pattern: string): Promise<void> {
 	for (const pid of await matchingPids(pattern)) {
@@ -34,11 +30,7 @@ export async function clearSurvivors(pattern: string): Promise<void> {
 }
 
 /**
- * Wait for every matching process to be gone, then return what is left.
- *
- * A child that just received `SIGTERM` needs a moment to leave the process
- * table, so an immediate `pgrep` proves nothing. Bounded, because a survivor
- * that never dies must be reported rather than waited on.
+ * Wait for every matching process to be gone, then return what is left. A child that just got `SIGTERM` needs a moment to leave the process table, so an immediate `pgrep` proves nothing — bounded, because a survivor that never dies must be reported rather than waited on.
  */
 export async function survivorsOf(pattern: string, settleMs = 2000): Promise<number[]> {
 	const deadline = performance.now() + settleMs;

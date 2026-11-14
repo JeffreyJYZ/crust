@@ -1,13 +1,5 @@
 /**
- * `crust:dialog` on its own, with no AppKit anywhere near it.
- *
- * The plugin owns no native code: it forwards to a `DialogNative` and turns a
- * missing adapter into a typed `NotImplemented`. That contract is what a
- * non-macOS platform and a headless process both rely on, so it is asserted
- * here rather than only through the Darwin adapter.
- *
- * `savePanel` has its own file — `dialog-save.test.ts` — because its argument
- * rules and its pending branch are a separate contract.
+ * `crust:dialog` on its own, with no AppKit nearby: the plugin owns no native code, forwards to a `DialogNative`, and turns a missing adapter into a typed `NotImplemented` — the contract a non-macOS platform and a headless process both rely on. `savePanel` has its own file (`dialog-save.test.ts`).
  */
 
 import { describe, expect, test } from "bun:test";

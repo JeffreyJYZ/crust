@@ -1,11 +1,5 @@
 /**
- * `crust:tray`'s refusal side: typed failures, the adapter-less answers and the
- * registry seam.
- *
- * A page must always get a shape it can branch on — a bad argument is its own
- * code, a partial adapter is `unknown-adapter` rather than a `TypeError`, and a
- * platform with no `NSStatusBar` answers a structured `not-implemented` that the
- * registry turns into a `CrustError`.
+ * `crust:tray`'s refusal side: typed failures, the adapter-less answers and the registry seam. A page must always get a shape it can branch on — a bad argument is its own code, a partial adapter is `unknown-adapter` rather than a `TypeError`, and a platform with no `NSStatusBar` answers a structured `not-implemented` the registry turns into a `CrustError`.
  */
 
 import { describe, expect, test } from "bun:test";

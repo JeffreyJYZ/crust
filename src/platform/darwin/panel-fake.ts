@@ -5,14 +5,8 @@ import { NS_MODAL_RESPONSE, PANEL_KIND, PANEL_STATUS, type PanelShim } from "./i
 export const SHIM_PANEL_NO_RESPONSE = -1;
 
 /**
- * A stand-in for the C panel state, applying the same one-sheet rule the shim
- * applies: a sheet that is up and unanswered refuses a second request with
- * `busy` and leaves every read exactly as it was.
- *
- * This is the seam that makes the defect testable without a window. The real
- * storage lives in the shim source, so the C half of the same rule is proved by the
- * bounded windowed run; what is proved here is that the adapter honours a
- * refusal instead of reading the wrong panel's state.
+ * A stand-in for the C panel state, applying the same one-sheet rule the shim applies: a sheet that is up and unanswered refuses a second request with `busy` and leaves every read exactly as it was.
+ * The seam that makes the defect testable without a window — the real storage is in the shim source and the C half is proved by the bounded windowed run; what is proved here is that the adapter honours a refusal instead of reading the wrong panel's state.
  */
 export class FakePanel implements PanelShim {
 	/** Which class the live sheet is; `PANEL_KIND.none` with none. */

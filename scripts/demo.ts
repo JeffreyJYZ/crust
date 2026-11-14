@@ -1,15 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Run `examples/dogear` against this checkout.
- *
- * Two things make the plain command wrong. The example's `crust` dependency points at
- * GitHub, so `crust dev` would run the *published* framework rather than the tree you are
- * editing — the runtime a dev session spawns is the project's copy. And the example ships
- * no `node_modules`, because the e2e builds a scratch copy instead.
- *
- * So: install, repoint the dependency at this checkout for the run, and start dev with the
- * entry the example keeps under `desktop/` (a root entry is watched recursively, which
- * restarts the backend on every UI save).
+ * Run `examples/dogear` against this checkout. The example's `crust` dependency points at GitHub, so `crust dev` would run the published framework rather than the tree being edited; a symlink over `node_modules/crust` repoints it.
+ * The entry stays under `desktop/` because a root entry is watched recursively, which restarts the backend on every UI save.
  */
 import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";

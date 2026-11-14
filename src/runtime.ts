@@ -1,28 +1,6 @@
 /**
- * The shared runtime: what `crust dev` spawns, and what a built app runs.
- *
- * One function, `startApp`, does the same five things in both:
- *
- *   1. load and validate the config
- *   2. attach the macOS platform and the config to the `app` singleton
- *   3. import the user's `main.ts` so it registers commands, mounts plugins and
- *      calls `run()`
- *   4. create the bridge on that first `run()`, with the core plugins, the
- *      mounted ones and one `app` namespace, so the handler table it snapshots
- *      already holds the project's plugins
- *   5. serve the page (the bridge injects its token; this module injects the
- *      one-name `invoke` shim DESIGN.md §5 promises)
- *
- * An invoke that matches no handler is the bridge's structured error, never a
- * crash: `app.invoke` throws a plain Error and the bridge serialises it.
- *
- * The pieces sit beside this file: `runtime-shim.ts` (the page shim and plugin
- * selection), `runtime-plugins.ts` (the native four and the `app` namespace) and
- * `runtime-host.ts` (port, document and entry).
- *
- * Run directly, this module IS the backend process:
- *
- *   bun run src/runtime.ts --config <path> --entry <path>
+ * The shared runtime: what `crust dev` spawns and what a built app runs. One `startApp` loads and validates the config, attaches the platform and config to the `app` singleton, imports the user's `main.ts`, creates the bridge on its first `run()` (core plugins, mounted ones, one `app` namespace) and serves the page with the injected token and `invoke` shim.
+ * An invoke that matches no handler is the bridge's structured error, never a crash. Pieces: `runtime-shim.ts`, `runtime-plugins.ts`, `runtime-host.ts`. Run directly it IS the backend: `bun run src/runtime.ts --config <path> --entry <path>`.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

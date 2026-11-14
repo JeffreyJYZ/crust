@@ -23,11 +23,10 @@ function finished(overrides: Partial<SheetReadings> = {}): SheetReadings {
 
 describe("sheet polling", () => {
 	/**
-	 * The defect this exists for: `-runModal` stops the JavaScript thread and the
-	 * pump for the whole pick. A timer-driven poll leaves both running, which is
-	 * what makes an invoke answer while the sheet is up (measured in the one
-	 * windowed run: cancel at 300 ms, promise resolved `paths: []`, bridge invoke
-	 * answered during the sheet).
+	 * The defect this exists for: `-runModal` stops the JavaScript thread and the pump for
+	 * the whole pick, while a timer-driven poll leaves both running — so an invoke answers
+	 * during the sheet (measured in the one windowed run: cancel at 300 ms, promise
+	 * resolved `paths: []`, bridge invoke answered mid-sheet).
 	 */
 	test("resolves once the flag flips, with the paths the shim stored", async () => {
 		let done = false;

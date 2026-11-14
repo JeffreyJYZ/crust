@@ -1,22 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Does a built app actually deliver a notification?
- *
- * This is the only proof of that surface a machine can make: `notification.notify` posts
- * through `UNUserNotificationCenter`, and the OS either schedules the request or refuses it
- * with `UNErrorDomain code 1`. Nothing here fakes delivery — the assertion is the OS's own
- * completion handler reporting no error.
- *
- * The app identifier is randomised per run **on purpose**. macOS caches notification
- * authorization per bundle identifier and never re-asks after a denial, so a fixed id would
- * pass once and then fail forever on that machine (measured 2026-11-14: the same id refused
- * an ad-hoc build, an Apple Development build, a LaunchServices launch and a copy in
- * `~/Applications`, while a fresh id delivered under every one of those).
- *
- *   bun run e2e:notify              # build with the crust on PATH
- *   bun run e2e:notify --crust ./src/cli/index.ts
- *
- * A window appears for a few seconds, so this is not in the automatic gate.
+ * Does a built app actually deliver a notification? The only proof a machine can make: `notification.notify` posts through `UNUserNotificationCenter` and the assertion is the OS's own completion handler reporting no error, with nothing faked.
+ * macOS caches authorization per bundle identifier and never re-asks after a denial — measured 2026-11-14, the same id refused an ad-hoc build, an Apple Development build, a LaunchServices launch and a copy in `~/Applications`, while a fresh id delivered under every one. A window appears, so this is not in the automatic gate.
  */
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";

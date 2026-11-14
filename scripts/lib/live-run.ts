@@ -1,14 +1,6 @@
 /**
- * Spawn a process that has to stay up across an assertion, or across an edit.
- *
- * `e2e-harness.ts`'s `probe` stops the child the moment its proving line
- * appears, which is the right shape for one answer and the wrong one here: the
- * dev-shape proofs compare the same process before and after a save, and need
- * its whole log rather than one line. That is why this is not `probe` widened.
- *
- * The child is its own process group (`detached`), because `crust dev` owns a
- * runtime child *and* a frontend child: signalling only the CLI would leave a
- * window and a dev server behind while reporting success.
+ * Spawn a process that has to stay up across an assertion, or across an edit. `probe` stops the child the moment its proving line appears — right for one answer, wrong for proofs that compare the same process before and after a save and need its whole log — which is why this is not `probe` widened.
+ * The child is its own process group, because `crust dev` owns a runtime child *and* a frontend child: signalling only the CLI leaves a window and a dev server behind while reporting success.
  */
 import { delay, nthLine } from "./text.ts";
 import { alivePid } from "./pids.ts";
@@ -31,11 +23,10 @@ export interface LiveRun {
 	/** Direct children right now — the runtime `crust dev` spawned. */
 	children(): Promise<number[]>;
 	/**
-	 * Every descendant right now, with the argv it was running under.
-	 *
-	 * pid and argv are read together because a restart replaces the runtime child:
-	 * a pid captured earlier is gone by the time a separate `ps` gets to it, and
-	 * the argv of the child that answered is the evidence a proof needs.
+	 * Every descendant right now, with the argv it ran under. pid and argv are read
+	 * together because a restart replaces the runtime child: a pid captured earlier is
+	 * gone by the time a separate `ps` gets to it, while the answering child's argv is
+	 * the evidence a proof needs.
 	 */
 	tree(): Promise<Proc[]>;
 	/** SIGTERM the group, then SIGKILL after the grace period. Idempotent. */

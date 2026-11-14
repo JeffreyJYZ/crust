@@ -21,11 +21,7 @@ export interface Gap {
 }
 
 /**
- * Record and report one assertion, in the order a user would meet it.
- *
- * `gap` is what a failure means; it is printed only when the check fails, so
- * a passing line never reads as a complaint. `found` is the passing detail,
- * where a count or a path is the evidence.
+ * Record and report one assertion, in the order a user would meet it. `gap` is what a failure means and prints only on failure, so a passing line never reads as a complaint; `found` is the passing detail, where a count or a path is the evidence.
  */
 export type Check = (what: string, ok: boolean, gap?: string, found?: string) => void;
 

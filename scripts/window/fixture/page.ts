@@ -1,11 +1,5 @@
 /**
- * The driver. Every answer is normalised to one of two shapes — `resolved` with
- * the value, or `rejected` with the page-side error's own fields — because the
- * difference between a typed failure and a rejected invoke is exactly what this
- * proof documents.
- *
- * The helpers are `page-prelude.ts`; the two halves are joined with the blank
- * line that separated them, so the served document is unchanged.
+ * The driver. Every answer is normalised to `resolved` with its value or `rejected` with the page-side error's fields, because the difference between a typed failure and a rejected invoke is what this proof documents. Helpers in `page-prelude.ts`.
  */
 import { PAGE_PRELUDE } from "./page-prelude.ts";
 
@@ -26,15 +20,11 @@ const PAGE_DRIVER = `async function main() {
 	await report("alive", await ask("window", "list"));
 
 	// ---- a created window is a real second NSWindow ----------------------
-	// Every create below runs while the pump is ticking: a page's invoke is
-	// delivered by that pump, so an answer here has already crossed it.
-	//
-	// "child/relative" has no leading slash on purpose. The adapter resolves a
-	// relative url against the document the platform recorded for an open window
-	// — /spare/idle.html, not this page's / — so it must land on
-	// /spare/child/relative and not /child/relative. A relative string handed to
-	// NSURL unchanged becomes about:blank, so a window made from one would run no
-	// page at all.
+	// Every create below runs while the pump is ticking: an invoke is delivered
+	// by that pump, so an answer here has already crossed it. "child/relative"
+	// has no leading slash on purpose — a relative url resolves against
+	// /spare/idle.html, so it must land on /spare/child/relative; handed to
+	// NSURL unchanged it becomes about:blank and runs no page at all.
 	await report(
 		"createrel",
 		await ask("window", "create", {

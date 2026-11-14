@@ -1,9 +1,8 @@
 // --- click target ----------------------------------------------------------
-//
 // One runtime class per process, created on the first menu, whose
 // `crustTrayItemClicked:` IMP is the JSCallback status-bar.ts handed to
-// tray_create. The instance is kept in static storage because -[NSMenuItem
-// setTarget:] is an unretained reference: dropping it would leave every row
+// tray_create. The instance lives in static storage because -[NSMenuItem
+// setTarget:] is an unretained reference: dropping it leaves every row
 // pointing at a deallocated object.
 static void *tray_target_class;
 static obj_t tray_target;

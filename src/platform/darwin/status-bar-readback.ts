@@ -1,11 +1,5 @@
 /**
- * Readback: what AppKit *says* about the live item, as primitives.
- *
- * Every field is a number, a flag or a string the C unit copied into static
- * storage, so nothing here is proof that a pixel was drawn — a screenshot is
- * that proof, and a run reports the two separately. `-1` from the C side means
- * "this AppKit has no such selector", which is not the same as `0`, an item
- * AppKit itself calls hidden, so it maps to `null` rather than `false`.
+ * Readback: what AppKit *says* about the live item, as primitives. Every field is a number, flag or string the C unit copied into static storage, so nothing here proves a pixel was drawn — a screenshot is that proof and a run reports the two separately. `-1` from C means "this AppKit has no such selector", not the same as `0` (an item AppKit calls hidden), so it maps to `null` rather than `false`.
  */
 
 import type { StatusBarShim } from "./status-bar-symbols";

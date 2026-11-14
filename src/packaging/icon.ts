@@ -1,9 +1,5 @@
 /**
- * PNG -> `icon.icns` using only `sips` and `iconutil`.
- *
- * No dependency, no `node-gyp`, no ImageMagick. Both tools ship with macOS and
- * both are cheap enough that regenerating an icon on every build is not worth
- * caching.
+ * PNG -> `icon.icns` using only `sips` and `iconutil`: no dependency, no `node-gyp`, no ImageMagick. Both ship with macOS and are cheap enough that regenerating on every build is not worth caching.
  */
 
 import { mkdir, rm } from "node:fs/promises";
@@ -45,12 +41,7 @@ export interface IcnsResult {
 }
 
 /**
- * Read width/height straight out of the PNG IHDR chunk.
- *
- * `sips -g pixelWidth` would work too, but it is a process spawn and it fails
- * with a much less useful message on a non-PNG. Twenty-four bytes are enough:
- * 8 signature bytes, the 4-byte chunk length, "IHDR", then width and height as
- * big-endian uint32.
+ * Read width/height straight out of the PNG IHDR chunk. `sips -g pixelWidth` would work but is a process spawn and fails with a far less useful message on a non-PNG; 24 bytes suffice — 8 signature, 4-byte length, `IHDR`, then width and height as big-endian uint32.
  */
 function readPngSize(data: Uint8Array, source: string): { width: number; height: number } {
 	if (data.byteLength < 24) {
@@ -65,11 +56,7 @@ function readPngSize(data: Uint8Array, source: string): { width: number; height:
 }
 
 /**
- * Convert a PNG to an `.icns`, or fail with the actual dimensions.
- *
- * The 1024 floor is not a nicety: `icon_512x512@2x.png` is 1024 pixels, so a
- * smaller source has to be upscaled and macOS then shows a soft icon at every
- * size. Failing here is the only clear outcome; a silently upscaled icon ships.
+ * Convert a PNG to an `.icns`, or fail with the actual dimensions. The 1024 floor is not a nicety: `icon_512x512@2x.png` is 1024 pixels, so a smaller source must be upscaled and macOS then shows a soft icon at every size — failing here is the only clear outcome.
  */
 export async function pngToIcns(options: IcnsOptions): Promise<IcnsResult> {
 	const data = new Uint8Array(await Bun.file(options.source).arrayBuffer());

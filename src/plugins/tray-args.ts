@@ -1,9 +1,5 @@
 /**
- * `crust:tray`'s argument reading, typed failures and click relay.
- *
- * A page payload is whatever the bridge parsed, so each argument is read
- * defensively and each refusal is a value a page can branch on. Nothing here
- * touches an adapter.
+ * `crust:tray`'s argument reading, typed failures and click relay. A page payload is whatever the bridge parsed, so each argument is read defensively and each refusal is a value a page can branch on. Nothing here touches an adapter.
  */
 
 import { TrayAdapterError, type TrayFailure, type TrayMenuItem } from "./tray-types.ts";

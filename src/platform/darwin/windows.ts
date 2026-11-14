@@ -1,9 +1,5 @@
 /**
- * The windows a platform tracks, and the one measured rule that answers whether
- * one of them is still open.
- *
- * The registry owns nothing but the map: the AppKit object, its webview and the
- * URL it was loaded with all arrive from `createNativeWindow`.
+ * The windows a platform tracks, and the one measured rule answering whether one is still open. The registry owns nothing but the map: the AppKit object, its webview and the URL it loaded all arrive from `createNativeWindow`.
  */
 import type { WindowHandle } from "@/app.ts";
 import { shim } from "./index.ts";
@@ -15,11 +11,10 @@ export interface NativeWindowPointers {
 	win: number;
 	web: number;
 	/**
-	 * The absolute URL this window was asked to load (`about:blank` when the
-	 * caller gave a relative one, which `NSURL` cannot take as-is). Kept because
-	 * a window created later resolves a relative URL against the app's own
-	 * document, and this is the only place that document survives: the bridge
-	 * URL is the runtime's, never the platform's.
+	 * The absolute URL this window was asked to load (`about:blank` when the caller gave a
+	 * relative one, which `NSURL` cannot take as-is). Kept because a window created later
+	 * resolves a relative URL against the app's document, and this is the only place that
+	 * document survives: the bridge URL is the runtime's, never the platform's.
 	 */
 	url: string;
 }
@@ -48,24 +43,16 @@ export class WindowRegistry {
 	}
 
 	/**
-	 * The absolute URL a tracked window was asked to load.
-	 *
-	 * This is what a later `window.create` resolves a relative URL against: the
-	 * bridge URL is the runtime's private state (and only a dev handshake puts it
-	 * in `CRUST_BRIDGE_URL` / `.crust/dev.json`, neither of which a built app
-	 * running from `/` can read), while the document the app's own windows were
-	 * loaded with is right here, absolute and already verified by the webview.
+	 * The absolute URL a tracked window was asked to load — what a later `window.create` resolves a relative URL against. The bridge URL is the runtime's private state (only a dev handshake puts it in `CRUST_BRIDGE_URL` or `.crust/dev.json`, neither readable by a built app running from `/`), while the document the app's windows were loaded with is here, absolute and verified by the webview.
 	 */
 	url(label: string): string | undefined {
 		return this.#windows.get(label)?.url;
 	}
 
 	/**
-	 * Return the handle only while the window is still open.
-	 *
-	 * Liveness is `windowLiveness`, not `-windowNumber` (see that rule for the
-	 * measurement that ruled the number out). A closed window stays addressable
-	 * because `setReleasedWhenClosed: 0` was applied at creation, so its
+	 * Return the handle only while the window is still open. Liveness is `windowLiveness`,
+	 * not `-windowNumber` (that rule carries the measurement). A closed window stays
+	 * addressable because `setReleasedWhenClosed: 0` was applied at creation, so its
 	 * visibility can still be read after the close.
 	 */
 	handle(label: string): WindowHandle | undefined {
@@ -79,11 +66,9 @@ export class WindowRegistry {
 	}
 
 	/**
-	 * The labels this platform still tracks, in creation order.
-	 *
-	 * A closed window stays in the map (`setReleasedWhenClosed: 0` keeps it
-	 * addressable) until `handle(label)` prunes it, so this is what the
-	 * platform knows about, not only what is on screen.
+	 * The labels this platform still tracks, in creation order. A closed window stays in
+	 * the map (`setReleasedWhenClosed: 0` keeps it addressable) until `handle(label)`
+	 * prunes it, so this is what the platform knows about, not only what is on screen.
 	 */
 	labels(): string[] {
 		// Only windows AppKit still holds. A closed window's native object survives on

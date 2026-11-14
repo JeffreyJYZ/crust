@@ -1,9 +1,5 @@
 /**
- * Page-side client proofs.
- *
- * The bootstrap is `installCrust.toString()` evaluated in a stub target, so
- * these tests exercise the exact source the served document carries, not a
- * parallel copy of it.
+ * Page-side client proofs. The bootstrap is `installCrust.toString()` evaluated in a stub target, so these exercise the exact source the served document carries, not a parallel copy.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

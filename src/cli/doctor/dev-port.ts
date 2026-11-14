@@ -12,11 +12,7 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0
 export type DevUrlTarget = { hostname: string; port: number } | "remote" | "unreadable";
 
 /**
- * The port a `dev.url` names, when that URL is a loopback name doctor can probe.
- *
- * A remote URL's port belongs to that host, so there is nothing local to check,
- * and `new URL` rejects strings a config can still carry. Both are told apart
- * from a real target so each gets its own one-line note rather than a failure.
+ * The port a `dev.url` names, when that URL is a loopback name doctor can probe. A remote URL's port belongs to that host and `new URL` rejects strings a config can still carry — both are told apart from a real target, so each gets its own one-line note rather than a failure.
  */
 export function devUrlTarget(url: string): DevUrlTarget {
 	let target: URL;
@@ -74,12 +70,7 @@ export interface DevPortFacts {
 }
 
 /**
- * Turn the port probe into one line.
- *
- * A busy port is not a broken project: a dev server the user already has open
- * is exactly what `dev.url` describes. Only a holder that answers nothing on
- * that URL is fatal, because `strictPort` then refuses to start and `crust dev`
- * waits 30 s for a page nothing will serve.
+ * Turn the port probe into one line. A busy port is not a broken project — a dev server the user already has open is exactly what `dev.url` describes. Only a holder that answers nothing on that URL is fatal, because `strictPort` then refuses to start and `crust dev` waits 30 s for a page nothing will serve.
  */
 export function classifyDevPort(facts: DevPortFacts): Check {
 	const { url, port, listening, answered, holder } = facts;

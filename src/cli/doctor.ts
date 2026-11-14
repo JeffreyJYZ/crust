@@ -1,14 +1,6 @@
 /**
- * `crust doctor` — report the state of everything the app needs, in the order
- * a failure actually happens: platform, runtime, config (or the single file),
- * shim, bridge on the app's own port, the dev server's port and URL, entry, the
- * watcher's `.ts` trap, window layer, the known-fatal traps, what a build would
- * embed, the scaffolding, bundle.
- *
- * The checks themselves live one file per group beside this one:
- * `doctor/environment.ts`, `doctor/bridge.ts`, `doctor/dev-port.ts`, and so on.
- * This file keeps the order and the exit code, which is the only part that is
- * not a check.
+ * `crust doctor` — report the state of everything the app needs, in the order a failure actually happens: platform, runtime, config (or the single file), shim, the app's own bridge port, the dev server's port and URL, entry, the watcher's `.ts` trap, window layer, the known-fatal traps, what a build would embed, scaffolding, bundle.
+ * The checks live one file per group (`doctor/environment.ts`, `doctor/bridge.ts`, …); this file keeps the order and the exit code.
  */
 
 import { resolve } from "node:path";

@@ -1,28 +1,6 @@
 /**
- * One file as a crust app — `crust dev app.tsx` and `crust build app.tsx`.
- *
- * A single-file app has no `crust.config.ts` and no `main.ts`. This module
- * detects that shape, builds the config in memory, and bundles the page with
- * `Bun.build`; `dev.ts` owns the window/reload loop and `build.ts` owns the
- * `.app`. Nothing here writes into the project except the bundle directory
- * (`<dir>/.crust/single` in dev, `<dir>/dist/single` in a build).
- *
- * The page convention, stated once because it is the whole contract:
- *
- *   - a file whose source contains `export default` is a React component; crust
- *     mounts it into `#root` with `react-dom/client`, resolved from the file's
- *     own `node_modules`;
- *   - any other file is loaded for its own side effects and is expected to
- *     render itself.
- *
- * The backend is the framework, not the file: `app` answers `info` and `echo`,
- * so `window.crust.invoke("info")` proves the round trip with no second file.
- * `docs/single-file.md` is the user-facing version of all of this.
- *
- * The work is split by stage — `single-detect.ts` (shape and config),
- * `single-page.ts` (the mount and the document), `single-build.ts` (the bundle)
- * and `single-runner.ts` (the dev runner) — and this path re-exports all of it,
- * because `cli/dev.ts`, `cli/build.ts` and `cli/doctor.ts` import from here.
+ * One file as a crust app — `crust dev app.tsx` and `crust build app.tsx`. With no `crust.config.ts` and no `main.ts`, this detects the shape, builds the config in memory and bundles the page; the only writes are `<dir>/.crust/single` in dev and `<dir>/dist/single` in a build.
+ * The convention is the whole contract: a source containing `export default` is a React component mounted into `#root` from its own `node_modules`, anything else is loaded for its side effects. The backend is the framework (`info`, `echo`), so `invoke("info")` proves the round trip with no second file. Stages: `single-detect.ts`, `single-page.ts`, `single-build.ts`, `single-runner.ts`.
  */
 import type { App } from "./app.ts";
 

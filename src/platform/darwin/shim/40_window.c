@@ -44,12 +44,11 @@ const char *shim_window_title_utf8(obj_t win) {
 }
 
 // --- window liveness ------------------------------------------------------
-//
-// Read from C, not through the arity ladder, because these four are the whole
-// evidence for "this window is gone" and each must be one guarded send with a
-// fixed prototype. `-windowNumber` is the liveness test: a minimised window
-// still reports a number, a closed one reports 0. `-isVisible` is not, because
-// it is false for a minimised window too.
+// Read from C, not through the arity ladder, because these are the whole
+// evidence for "this window is gone" and each is one guarded send with a fixed
+// prototype. `-windowNumber` is not the test — it keeps the device number after
+// `-close` (measured 2026-11-13, 517 stayed 517) — and `-isVisible` alone would
+// call a minimised window closed.
 
 long long shim_window_number(obj_t win) {
 	if (!win) return 0;

@@ -1,0 +1,64 @@
+# Dialogs
+
+Real `NSOpenPanel` and `NSSavePanel`, attached to the window as a sheet. Crust owns the plumbing; it never writes the file a save panel picks.
+
+## Open a panel
+
+```js
+const { paths } = await window.crust.invoke("dialog", "openPanel", {
+	title: "Open a note",
+	multiple: false,
+	directory: false,
+	filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+});
+```
+
+`paths` is absolute paths, or `[]` when the user cancelled. An empty list never means "no adapter" and never means an error.
+
+## Save
+
+```js
+const { paths } = await window.crust.invoke("dialog", "savePanel", {
+	title: "Save note",
+	suggestedName: "notes.md",
+	filters: [{ name: "Markdown", extensions: ["md"] }],
+});
+```
+
+A save panel picks exactly one file, so `paths` holds one entry or none. `suggestedName` is a bare file name the panel offers, not a directory; the user can change both. Replacing an existing file gets AppKit's own replace prompt, and crust adds no second confirmation.
+
+## End the sheet
+
+```js
+const { cancelled, paths } = await window.crust.invoke("dialog", "cancel", {});
+```
+
+`cancelled: true` means a sheet was up and is now ended — `paths` is empty. `cancelled: false` means nothing was pending, which is an ordinary race with the user's own click, deliberately not an error.
+
+## Options
+
+| key | on | meaning |
+| --- | --- | --- |
+| `title` | both | the panel's title |
+| `filters` | both | `[{ name, extensions }]`; empty means any file type |
+| `multiple` | `openPanel` | allow more than one path; default `false` |
+| `directory` | `openPanel` | pick directories instead of files; default `false` |
+| `suggestedName` | `savePanel` | the name the panel offers |
+
+`filters` is flattened to one comma-separated extension list and applied through the deprecated `-setAllowedFileTypes:`, because macOS 27's `allowedContentTypes` needs objects that cannot cross `bun:ffi`.
+
+## One sheet at a time
+
+The native side holds one panel, one done flag and one path list. A second `openPanel` or `savePanel` while a sheet is up is refused **before touching anything**: a rejected invoke with `code: "handler-error"` (HTTP 500) whose message names the panel that is already up and names `dialog.cancel` as the way out.
+
+## Why it does not block
+
+The panel is started with `beginSheetModalForWindow:completionHandler:`. The completion handler records the answer, and the adapter awaits it by reading a done flag on a 16 ms timer — so the pump and every in-flight invoke keep running while the picker is up.
+
+## With no visible window
+
+The same panel is presented through `beginWithCompletionHandler:` instead of `-runModal`. It returns at once, reports through the same completion block, and the same poll awaits it — so `dialog.cancel` works there too. The blocking `-runModal` path is gone; a windowless app no longer has a thread stuck with no way out.
+
+## Headless
+
+With no platform attached, each command answers `not-implemented` (HTTP 501) with `requires` naming the AppKit selector it needs — `NSOpenPanel`, `NSSavePanel`, `cancel:`. An adapter written before the save panel existed answers `not-implemented` for `savePanel` alone.

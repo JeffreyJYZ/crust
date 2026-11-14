@@ -35,16 +35,10 @@ int shim_mode_ok(obj_t mode) {
 	return buf[i] == 0 ? 1 : 0;
 }
 
-// The pump: one 0.25 ms slice. The slice length is what decides tick fidelity —
-// 4 ms delivered only 82.4% of a 16 ms tick (DESIGN.md §3).
-//
-// `CFRunLoopRunInMode` alone does not draw: a page painted, kept running, and its window went
-// blank while the pump kept ticking and the run loop kept reporting "timed out, no sources"
-// (measured with a heartbeat page that kept invoking while nothing was visible). AppKit's own
-// loop is the difference, so each tick drains the event queue the way BunKit does — mask, a
-// deadline, `sendEvent:`, then `updateWindows` — and falls back to the run-loop slice.
-// `NSDefaultRunLoopMode` is content-equal to `kCFRunLoopDefaultMode`, which is why the same
-// constant string works for both calls.
+// The pump: one 0.25 ms slice — the length decides tick fidelity, since 4 ms delivered only 82.4% of a
+// 16 ms tick (`site/app/docs/design/page.mdx`). `CFRunLoopRunInMode` alone does not draw: a page painted and its window went
+// blank while the pump kept ticking and the run loop reported "timed out, no sources" (measured with a
+// heartbeat page). So each tick also drains the event queue — mask, deadline, `sendEvent:`, `updateWindows`.
 static obj_t shim_default_mode(void) { return __CFStringMakeConstantString("kCFRunLoopDefaultMode"); }
 
 // Does this thread own the main run loop? If it does not, pumping here can never drive

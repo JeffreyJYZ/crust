@@ -1,35 +1,6 @@
 /**
- * Assert what `bun add crust` actually delivers.
- *
- * Every other check in this repo reads the working tree, so all of them pass on
- * a package that is broken the moment it is installed: `files` decides which
- * bytes travel, `bin` names a file that may not exist, and `exports` maps
- * specifiers to paths that may not resolve once the checkout's `tsconfig.json`
- * is left behind. This script answers that question from the tarball alone.
- *
- * Three phases, in the order a user meets them:
- *
- *   pack     `bun pm pack` into a temp dir, so `files` is the only input.
- *   unpack   read the received copy: manifest, bin target, exports, templates,
- *            docs, and the directories that must NOT travel.
- *   install  `bun add <tarball>` into an empty project, then run the real
- *            `crust --help` and `crust init probe --react` there.
- *
- * A passing `--help` is the load-bearing check: it imports every CLI module, so
- * a specifier that only resolves inside this checkout fails here instead of in
- * the user's first command line.
- *
- * Usage:
- *   bun scripts/verify-package.ts            # pack, verify, clean up
- *   bun scripts/verify-package.ts --keep     # leave the workspace on disk
- *   bun scripts/verify-package.ts ~/tagged   # another checkout, e.g. a tag export
- *
- * Deliberately cheap and offline: the tarball is installed by path, crust has
- * no runtime dependencies, and nothing here publishes anything.
- *
- * The phases live in `verify-package/phases/` (manifest, travel, install) and
- * `verify-package/context.ts` holds the received listing and the assertion
- * counter they share.
+ * Assert what `bun add crust` delivers, from the tarball alone: every other check reads the working tree, so all of them pass on a package that `files`, `bin` or `exports` breaks the moment it is installed.
+ * Phases: pack, read the received copy, then `bun add <tarball>` into an empty project and run the real `crust --help` and `crust init probe --react`. `--help` imports every CLI module, so a specifier resolving only in this checkout fails here. Code in `verify-package/`.
  */
 
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";

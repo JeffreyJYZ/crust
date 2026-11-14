@@ -1,0 +1,72 @@
+# Project files
+
+A crust app is a config, a backend entry, and a page. Everything else is optional.
+
+## The three that matter
+
+| file | what it is |
+| --- | --- |
+| `crust.config.ts` | app identity, the `windows` array, and optional `dev`, `build`, `plugins`. `crust.json` is the same object |
+| `main.ts` | the backend entry: register commands, mount plugins, then `await app.run()`. `src/main.ts` resolves too |
+| the page | `public/index.html` by default, or a frontend's output when `build.assets` names it |
+
+The page may be anything a browser renders. Without `dev.url` the bridge serves the asset directory itself and injects `window.crust`; with `dev.url` the window loads that URL verbatim and `crust/vite` supplies the client.
+
+## A whole app
+
+```ts
+// crust.config.ts
+import type { CrustConfig } from "crust";
+
+export default {
+	app: { id: "land.jyz.example", name: "Example", version: "0.1.0" },
+	windows: [{ label: "main", url: "/", width: 900, height: 640, title: "Example" }],
+} satisfies CrustConfig;
+```
+
+```ts
+// main.ts
+import { app } from "crust";
+
+app.command("greet", ({ name }) => `hello ${name}`);
+
+await app.run();
+```
+
+## What each scaffold adds
+
+| scaffold | files |
+| --- | --- |
+| plain | `crust.config.ts`, `main.ts`, `public/index.html`, `public/style.css`, `public/app.js`, `package.json`, `.gitignore` |
+| `--react` | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.tsx`, `package.json`, `.gitignore` |
+| `--next` | `crust.config.ts`, `main.ts`, `next.config.mjs`, `tsconfig.json`, `app/layout.tsx`, `app/page.tsx`, `package.json`, `.gitignore` |
+
+`package.json` always carries a `dev` and a `build` script that call `crust`, so `bun run dev` and `bun run build` are the short forms.
+
+## The config surface, in brief
+
+| key | default | notes |
+| --- | --- | --- |
+| `app.id` | required | reverse-DNS bundle identifier; also seeds the bridge port |
+| `app.name`, `app.version` | required | app name, `CFBundleShortVersionString` |
+| `app.icon` | unset | resolved by `crust build`; a missing file fails the build |
+| `windows` | required | non-empty array of window descriptors |
+| `windows[].label` | required | the handle every `window` command uses |
+| `windows[].url` | `"/"` | appended to the bridge URL unless `dev.url` is set |
+| `windows[].width`, `height` | `1100`, `760` | |
+| `windows[].minWidth`, `title` | unset | `height` doubles as the minimum height |
+| `dev.url` | unset | every window loads it verbatim, `windows[].url` is ignored |
+| `build.assets` | `"public"` | the directory a build embeds; must hold `index.html` |
+| `plugins` | all five built-ins | naming any registers only those |
+
+Every key is validated at startup and extra keys are rejected, so a typo is a startup failure naming the key and the shape it expected — never a silently ignored option. The full table, plus `dev.beforeDevCommand`, `build.beforeBuildCommand` and `security.csp`, is in [Config](/docs/reference/config).
+
+## Folders crust uses
+
+| path | what it is |
+| --- | --- |
+| `.crust/dev.json` | the dev handshake — bridge URL and token, written per run |
+| `.crust/single/` | the bundle for `crust dev app.tsx` |
+| `dist/` | build output: `<name>.app`, and `dist/single/` for one-file builds |
+
+None of them belong in git.

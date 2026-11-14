@@ -1,15 +1,6 @@
 #!/usr/bin/env bun
 /**
- * What a stranger does, from nothing: scaffold, install, build, run.
- *
- * Every other script here tests one layer. This one tests the chain a newcomer actually
- * walks, and it is the only check that would notice a scaffold that installs but does
- * not build, or a build that produces an app whose window never answers.
- *
- *   bun run verify:first-run                  # the CLI on PATH, React template
- *   bun run verify:first-run --next           # the Next template
- *   bun run verify:first-run --crust ./dist/crust --plain
- *
+ * What a stranger does, from nothing: scaffold, install, build, run — the only check that would notice a scaffold that installs but does not build, or a build whose window never answers.
  * Needs the network for the scaffold's own dependencies, so it is not in CI.
  */
 import { mkdtemp, rm, stat } from "node:fs/promises";

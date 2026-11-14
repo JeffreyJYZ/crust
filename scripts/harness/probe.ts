@@ -1,11 +1,6 @@
 /**
- * Spawn a child, wait for its proving line, then stop it and report both facts.
- *
- * Why the child is bounded by hand: macOS ships no `timeout(1)`. A plain
- * `await child.exited` on a hung app hangs the harness with it, which is worse
- * than a failure — it looks like a slow run forever. So every child gets a hard
- * deadline, a `SIGTERM` to its process group, then `SIGKILL` after a grace
- * period, and the deadline is what the failure line reports.
+ * Spawn a child, wait for its proving line, then stop it and report both facts. The child is bounded by hand because macOS ships no `timeout(1)`, and a plain `await child.exited` on a hung app hangs the harness with it — worse than a failure, because it looks like a slow run forever.
+ * Every child gets a hard deadline, a `SIGTERM` to its process group, then `SIGKILL` after a grace period; the deadline is what the failure line reports.
  */
 export interface ProbeOptions {
 	command: string[];
@@ -63,12 +58,7 @@ function delay(ms: number): Promise<"delay"> {
 }
 
 /**
- * Spawn, wait for the proving line, stop, report.
- *
- * The child is its own process group (`detached`), because both proofs spawn a
- * process that starts another: a built app launches WebKit helpers and
- * `crust dev` owns its runtime child. Signalling the group is what makes "no
- * survivors" an assertion instead of a hope.
+ * Spawn, wait for the proving line, stop, report. The child is its own process group (`detached`) because both proofs spawn a process that starts another — a built app launches WebKit helpers and `crust dev` owns a runtime child — so signalling the group is what makes "no survivors" an assertion instead of a hope.
  */
 export async function probe(options: ProbeOptions): Promise<Probe> {
 	const started = performance.now();

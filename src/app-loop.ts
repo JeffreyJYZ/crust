@@ -1,10 +1,5 @@
 /**
- * The pieces of an app run that need no `App` instance: the URL a window
- * loads, the platform a bare `run()` imports, event fan-out, and the
- * every-window-closed watch.
- *
- * Split out of `app.ts` so the class stays the lifecycle; every rule stated in
- * the comments here was measured, so they travel with the code.
+ * The pieces of an app run that need no `App` instance: the URL a window loads, the platform a bare `run()` imports, event fan-out, and the every-window-closed watch. Split out of `app.ts` so the class stays the lifecycle; every rule here was measured, so they travel with the code.
  */
 
 import { CrustError } from "@/bridge/errors";
@@ -17,12 +12,7 @@ import { corePlugins, windowPlugin } from "./plugins/index.ts";
 const WINDOW_CHECK_INTERVAL_MS = 250;
 
 /**
- * Names a project plugin may not claim.
- *
- * The core four are `corePlugins`; `window` is appended by `startApp` and is
- * therefore not in that list; `app` is the runtime's own namespace. A name is a
- * namespace, so a duplicate is an overlap in the handler table rather than an
- * override — refused instead of silently shadowing a built-in.
+ * Names a project plugin may not claim. The core four are `corePlugins`; `window` is appended by `startApp` and is not in that list; `app` is the runtime's namespace. A name is a namespace, so a duplicate overlaps the handler table rather than overriding — refused, never silently shadowed.
  */
 export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
 	APP_NAMESPACE,
@@ -92,14 +82,7 @@ export async function emit(
 }
 
 /**
- * Check that a project plugin may be mounted, and freeze it the way
- * `definePlugin` would.
- *
- * `definePlugin` already checks the shape, so this adds the two rules a mount
- * needs: the name is a namespace and must be unused — a duplicate, a built-in
- * name (`fs`, `dialog`, `notification`, `tray`, `window`) or the reserved `app`
- * namespace is refused, never shadowed — and the mount must happen before
- * `run()`, which the caller checks because it owns the started flag.
+ * Check that a project plugin may be mounted, and freeze it the way `definePlugin` would. `definePlugin` already checks the shape, so this adds the two rules a mount needs: the name is a namespace and must be unused (a duplicate, a built-in or the reserved `app` is refused, never shadowed), and the mount happens before `run()`, which the caller checks because it owns the started flag.
  */
 export function mountable(
 	plugin: PluginDefinition,

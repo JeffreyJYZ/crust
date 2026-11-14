@@ -1,0 +1,99 @@
+.shell {
+	display: grid;
+	grid-template-columns: 232px minmax(0, 1fr);
+	min-height: 100vh;
+	max-width: 1180px;
+	margin: 0 auto;
+}
+
+.rail {
+	border-right: 0.5px solid var(--line);
+	padding: 28px 20px 48px;
+	position: sticky;
+	top: 0;
+	align-self: start;
+	max-height: 100vh;
+	overflow-y: auto;
+}
+
+.brand {
+	display: block;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 17px;
+	letter-spacing: 0.02em;
+	color: var(--fg);
+	margin-bottom: 26px;
+}
+
+.rail .group {
+	margin-bottom: 22px;
+}
+
+.rail .label {
+	margin: 0 0 8px;
+	color: var(--muted);
+	font-size: 10px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.rail ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.rail li {
+	margin: 0;
+}
+
+.rail a {
+	display: block;
+	padding: 4px 0;
+	color: var(--muted);
+	font-size: 14px;
+}
+
+.rail a:hover {
+	color: var(--fg);
+	text-decoration: none;
+}
+
+.rail a.current {
+	color: var(--fg);
+	box-shadow: inset 2px 0 0 var(--accent);
+	padding-left: 10px;
+	margin-left: -10px;
+}
+
+.prose {
+	border-right: 0.5px solid var(--line);
+	padding: 44px 56px 96px;
+	min-width: 0;
+	max-width: 760px;
+}
+
+@media (max-width: 900px) {
+	.shell {
+		grid-template-columns: 1fr;
+	}
+	.rail {
+		position: static;
+		max-height: none;
+		border-right: 0;
+		border-bottom: 0.5px solid var(--line);
+		padding: 20px 18px;
+	}
+	.rail ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+	}
+	.rail .group {
+		margin-bottom: 12px;
+	}
+	.prose {
+		border-right: 0;
+		padding: 28px 18px 72px;
+	}
+}

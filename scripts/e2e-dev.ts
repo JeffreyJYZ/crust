@@ -1,19 +1,6 @@
 /**
- * The end-to-end proof for `crust dev`: the other half of `e2e.ts`.
- *
- * A built bundle is one path a user takes; the other is the watcher, and it is
- * a different shape — the CLI spawns a runtime child, that child opens the
- * window and serves the page, and the watcher outlives it. So the proof starts
- * `crust dev` exactly as the README does, waits for the page's own `greet`
- * answer, then terminates the process group and asserts two things a user
- * depends on: a clean exit, and nothing left behind.
- *
- * Terminating the group rather than the CLI alone is deliberate: `crust dev`
- * owns a child process, and a harness that kills only the parent would leave a
- * window and a `Bun.serve` alive while reporting success.
- *
- * Usage:
- *   bun scripts/e2e-dev.ts    # or `bun run e2e:dev` once package.json defines it
+ * E2E for `crust dev`, the other path a user takes: the CLI spawns a runtime child that opens the window and serves the page, and the watcher outlives it. Waits for the page's own `greet` answer, then terminates the process group.
+ * The group, not the CLI alone, because a harness that killed only the parent would leave a window and a `Bun.serve` alive while reporting success.
  */
 
 import { join, resolve } from "node:path";

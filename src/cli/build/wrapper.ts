@@ -7,20 +7,8 @@ import { resolve } from "node:path";
 import type { SingleApp } from "@/single";
 
 /**
- * The generated entry a compiled crust app runs.
- *
- * The app's config and `main.ts` are imported statically so `bun build
- * --compile` bundles both; `startApp` then starts the bridge and platform and
- * the wrapper's own literal `import("<main.ts>")` runs the app. The generated
- * `crust-assets.ts` carries every file under the configured asset directory
- * (`build.assets`, `public/` by default), so the bridge inside the binary serves
- * the whole frontend — separate JS, CSS, fonts and images included — with no
- * project directory on disk.
- *
- * `config.dev` is dropped from the generated entry, and only there: `dev.url`
- * names a dev server, a built app has none, and keeping it would point the
- * window at a port nobody is listening on instead of the embedded document.
- * The project's own `crust.config.ts` is untouched, so `crust dev` still uses it.
+ * The generated entry a compiled crust app runs. The config and `main.ts` are imported statically so `bun build --compile` bundles both; `startApp` starts bridge and platform, and the wrapper's literal `import("<main.ts>")` runs the app. `crust-assets.ts` carries every file under the asset directory, so the bridge inside the binary serves the whole frontend with no project directory on disk.
+ * `config.dev` is dropped from the generated entry and only there: `dev.url` names a dev server a built app does not have, and keeping it would point the window at a port nobody listens on. The project's own `crust.config.ts` is untouched, so `crust dev` still uses it.
  */
 export function wrapperSource(options: {
 	configPath: string;
@@ -54,12 +42,7 @@ export function wrapperSource(options: {
 const NO_PROJECT_ROOT = "/crust-single/no-project";
 
 /**
- * The generated entry a single-file `.app` runs.
- *
- * The config is a literal, not an import: no `crust.config.ts` exists for a
- * single file, and a build must not need one. The page is already bundled
- * JavaScript inside `crust-assets.ts`, so this wrapper carries only the
- * backend and the framework's two commands.
+ * The generated entry a single-file `.app` runs. The config is a literal, not an import — no `crust.config.ts` exists and a build must not need one — and the page is already bundled JavaScript inside `crust-assets.ts`, so this carries only the backend and the framework's two commands.
  */
 export function singleWrapperSource(app: SingleApp, assetsPath: string, root: string): string {
 	return [

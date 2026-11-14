@@ -36,7 +36,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		if (request.method === "OPTIONS") return preflight(request, devOrigins);
 
 		// The document and its assets are the only token-free paths: the page
-		// cannot hold its own token before it has been served. DESIGN.md §4 is
+		// cannot hold its own token before it has been served. `site/app/docs/design/page.mdx` is
 		// explicit that the built frontend is public — the token protects IPC,
 		// not the HTML, JS and CSS the page is made of.
 		if (

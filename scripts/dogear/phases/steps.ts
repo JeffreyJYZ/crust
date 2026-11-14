@@ -8,11 +8,7 @@ import { APP_TIMEOUT_MS } from "../fixture.ts";
 import { DONE, detailOf, pageSteps, STEPS } from "../report.ts";
 
 /**
- * Run it from `/`, as a launched bundle does.
- *
- * `/usr/bin/env` carries the two switches so the harness's own environment is
- * untouched; `exec` replaces it, so the pid, the argv and the process group
- * are the app's.
+ * Run it from `/`, as a launched bundle does. `/usr/bin/env` carries the two switches so the harness environment is untouched, and `exec` replaces it, so the pid, argv and process group are the app's.
  */
 export async function runPhase(verdict: Verdict, binary: string, notes: string): Promise<Probe> {
 	const run = await probe({

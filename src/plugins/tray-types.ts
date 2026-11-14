@@ -1,9 +1,5 @@
 /**
- * `crust:tray`'s public vocabulary: what a menu row is, what the native half
- * must supply, and every shape a command answers.
- *
- * Split out of `tray.ts` so the contract reads beside the commands; `tray.ts`
- * re-exports all of it, so importers keep using the same path.
+ * `crust:tray`'s public vocabulary: what a menu row is, what the native half must supply, and every shape a command answers. Split out of `tray.ts`, which re-exports all of it.
  */
 
 /** A menu row: the label the item shows plus an optional in-process handler. */
@@ -15,11 +11,7 @@ export interface TrayMenuItem {
 }
 
 /**
- * The v1 option bag, kept for the plugin entry point's re-export.
- *
- * It belongs to the draft where one `set` call carried everything; the five
- * commands replaced it. An adapter that grows an icon or a tooltip can read it,
- * but nothing in these commands does.
+ * The v1 option bag, kept for the plugin entry point's re-export. It belongs to the draft where one `set` call carried everything, which the five commands replaced — nothing here reads it.
  */
 export interface TrayOptions {
 	/** SF Symbol name or absolute image path. */

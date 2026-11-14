@@ -17,3 +17,6 @@ research/*/probe/
 
 .DS_Store
 *.log
+
+# Docs site build output
+site/.next/

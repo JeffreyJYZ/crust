@@ -1,25 +1,6 @@
 /**
- * The native half of `crust:dialog` on macOS.
- *
- * `pickOpen` is the plugin's adapter hook; `openPanel` is the same function
- * under the name the plugin's command is called by, so either shape reads
- * correctly at the call site.
- *
- * **The pick does not block while a window is open.** The panel is started as a
- * sheet (`beginSheetModalForWindow:completionHandler:`), the C-side completion
- * handler records the answer, and this adapter awaits it by polling the done
- * flag on a timer — so the JavaScript thread, the Cocoa pump and every in-flight
- * invoke keep running while the sheet is on screen. A sheet needs a window to
- * attach to; with none, the pick falls back to `-runModal`, which does block for
- * the whole pick. That fallback is the only blocking path and is chosen by the
- * shim's `SHIM_PANEL_NO_WINDOW`, never by this adapter guessing.
- *
- * `filters` are applied as extension strings: a filter list is flattened, each
- * entry stripped of a leading `*.` or `.`, de-duplicated, and handed to C as one
- * comma-separated string, because a JS array cannot cross the boundary. macOS 27
- * deprecates `-setAllowedFileTypes:` in favour of `allowedContentTypes` UTType
- * objects, which would be a second object graph inside C; the deprecated setter
- * still works and is guarded like every other selector.
+ * The native half of `crust:dialog` on macOS. `pickOpen` is the plugin's adapter hook and `openPanel` is the same function under the command's name, so either shape reads correctly where it is used.
+ * **The pick does not block while a window is open**: the panel starts as a sheet, the C completion handler records the answer, and this adapter polls the done flag on a timer — so the JavaScript thread, the pump and every in-flight invoke keep running. With no window it falls back to `-runModal`, which does block, chosen by the shim's `SHIM_PANEL_NO_WINDOW`, never by this adapter guessing. `filters` are flattened to extension strings, stripped, de-duplicated and handed over as one comma-separated string because a JS array cannot cross the boundary; `-setAllowedFileTypes:` is deprecated on macOS 27 in favour of UTType objects, which would be a second object graph in C, so the setter stays and is guarded like every other selector.
  */
 import type {
 	CancelPanelResult,
@@ -144,12 +125,10 @@ export function darwinDialogAdapter(
 	};
 
 	/**
-	 * End the sheet that is up, the way its Cancel button would.
-	 *
-	 * Nothing pending is `{ cancelled: false }`, not an error: a page races the
-	 * user's own click all the time, so "the sheet was already gone" is an
-	 * ordinary state it acts on. An error would make a completed pick look like
-	 * a broken cancel, and there is nothing to retry or report.
+	 * End the sheet that is up, the way its Cancel button would. Nothing pending is
+	 * `{ cancelled: false }`, not an error: a page races the user's own click all the
+	 * time, so "the sheet was already gone" is an ordinary state. An error would make a
+	 * completed pick look like a broken cancel, with nothing to retry or report.
 	 */
 	const cancel = async (): Promise<CancelPanelResult> => {
 		if (native.sheetCancel() !== 1) return { cancelled: false, paths: [] };

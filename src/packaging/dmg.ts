@@ -1,15 +1,6 @@
 /**
- * A drag-to-Applications disk image.
- *
- * Built with `diskutil image create from` (the supported path on macOS 27) and
- * falling back to `hdiutil create -srcfolder`, which is deprecated there and was
- * measured failing with "No space left on device" on a volume with 40 GiB free.
- *
- * No Finder scripting, and that is a deliberate limit rather than an oversight:
- * an AppleScript-passed window layout needs Finder running, Automation consent on
- * the build machine, and fails silently in CI. The cost is real: the mounted
- * image opens with the icon wherever Finder feels like putting it. A layout pass
- * belongs behind an opt-in flag, not in the default build.
+ * A drag-to-Applications disk image, built with `diskutil image create from` — the supported path on macOS 27 — falling back to `hdiutil create -srcfolder`, which is deprecated there and was measured failing "No space left on device" on a volume with 40 GiB free.
+ * No Finder scripting, deliberately: an AppleScript window layout needs Finder running, Automation consent on the build machine, and fails silently in CI. The cost is that the icon opens wherever Finder likes; a layout pass belongs behind an opt-in flag.
  */
 
 import { cp, mkdir, mkdtemp, rm, stat, symlink } from "node:fs/promises";
@@ -34,12 +25,7 @@ export interface DmgResult {
 }
 
 /**
- * Stage the app beside an `/Applications` symlink and compress that folder.
- *
- * The symlink is the whole point of the "drag-to-Applications" convention: the
- * mounted image shows the app and a shortcut to the install destination, and a
- * single drag does the copy. It points at the absolute path `/Applications`, so
- * it survives mounting at any volume path.
+ * Stage the app beside an `/Applications` symlink and compress that folder. The symlink is the drag-to-Applications convention: the mounted image shows the app and the destination, and one drag copies it. It is the absolute path, so it survives mounting at any volume path.
  */
 export async function buildDmg(options: DmgOptions): Promise<DmgResult> {
 	const appStat = await stat(options.appPath).catch(() => undefined);

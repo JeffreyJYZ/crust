@@ -1,10 +1,5 @@
 /**
- * The shapes the page-side client exposes.
- *
- * These live apart from `install.ts` because `installCrust` is serialised with
- * `Function.prototype.toString()` and must stay self-contained: only type
- * declarations may live outside it, since types are erased before the page
- * ever receives the source.
+ * The shapes the page-side client exposes. They live apart from `install.ts` because `installCrust` is serialised with `Function.prototype.toString()` and must stay self-contained: only type declarations may live outside it, since types are erased before the page sees the source.
  */
 
 import type { ArgsOf, CommandSchema, ResultOf } from "../../plugins/define";

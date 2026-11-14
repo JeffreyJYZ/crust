@@ -1,17 +1,5 @@
 /**
- * Single-file mode's page half: the generated module that mounts a React
- * component, the HTML document beside it, and the rule that decides which.
- *
- * The page convention, stated once because it is the whole contract:
- *
- *   - a file whose source contains `export default` is a React component; crust
- *     mounts it into `#root` with `react-dom/client`, resolved from the file's
- *     own `node_modules`;
- *   - any other file is loaded for its own side effects and is expected to
- *     render itself.
- *
- * `single-build.ts` runs the bundle; nothing here writes outside the bundle
- * directory.
+ * Single-file mode's page half: the generated module that mounts a React component, the HTML document beside it, and the rule that decides which. A source containing `export default` is a component mounted into `#root` from its own `node_modules`; anything else is loaded for its side effects. `single-build.ts` runs the bundle.
  */
 
 import { basename, dirname, join, resolve } from "node:path";
@@ -60,11 +48,7 @@ async function installed(name: string, dir: string): Promise<boolean> {
 }
 
 /**
- * Fail before `Bun.build` if the mount would need packages the project does not
- * have. Bun's own resolver also consults its global install cache, and a
- * half-populated cache resolves `react` while failing on `react-dom`'s own
- * dependency — so the check is a real `node_modules/<pkg>/package.json` walk,
- * which is what "installed here" means to a user.
+ * Fail before `Bun.build` if the mount would need packages the project lacks. Bun's resolver also consults its global install cache, and a half-populated cache resolves `react` while failing on `react-dom`'s own dependency — so this is a real `node_modules/<pkg>/package.json` walk, which is what "installed here" means to a user.
  */
 export async function requireReact(dir: string, file: string): Promise<void> {
 	if ((await installed("react", dir)) && (await installed("react-dom", dir))) return;

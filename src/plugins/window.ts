@@ -1,28 +1,6 @@
 /**
- * `crust:window` — window control: create, close, focus, title, list, isOpen.
- *
- * `NSWindow` is AppKit, and this module owns no AppKit. It takes the native
- * implementation as a parameter, so the platform half stays in
- * `platform/darwin` and this file works unchanged on a platform that has none.
- * macOS supplies `darwinWindowAdapter()` from there; without an adapter every
- * command returns a typed `NotImplemented` naming the selector, never a silent
- * undefined and never a resolved fake.
- *
- * `create` is the one command whose native half is *optional*: it arrived after
- * the first five, so an adapter written before it still satisfies
- * {@link WindowNative} and answers `unknown-adapter` here rather than failing to
- * compile. The macOS adapter's `create` is a delegation to
- * `DarwinPlatform.createWindow`, which already owns the `initWithContentRect:`
- * path, the webview and Auto Layout; this file never grows a second one. Its
- * ordering rules live in `window-create.ts`.
- *
- * The adapter contract carries rules the type cannot express: a label it does
- * not track throws `WindowAdapterError("unknown-window")`, and a label it
- * already holds throws `WindowAdapterError("duplicate-label")` instead of
- * replacing the entry — `DarwinPlatform` keeps a closed window addressable, so
- * only it can tell "gone from `list`" from "still in the map". The plugin turns
- * both into values rather than letting a throw escape into the bridge, so a page
- * always gets a shape it can branch on.
+ * `crust:window` — create, close, focus, title, list, isOpen. `NSWindow` is AppKit and this module owns none: the native half is a parameter, so it works unchanged on a platform with none, and without an adapter every command returns a typed `NotImplemented` naming the selector — never a silent undefined, never a resolved fake.
+ * `create` is the one command whose native half is optional (it postdates the other five), so an old adapter still compiles and answers `unknown-adapter`; its macOS implementation is `DarwinPlatform.createWindow`, and this file never grows a second one. The adapter contract carries rules the type cannot: an untracked label throws `WindowAdapterError("unknown-window")` and one already held throws `duplicate-label` rather than replacing the entry — `DarwinPlatform` keeps a closed window addressable, so only it can tell "gone from `list`" from "still in the map". Both become values before the bridge.
  */
 
 import { definePlugin, type NotImplemented, type PluginDefinition } from "./define";

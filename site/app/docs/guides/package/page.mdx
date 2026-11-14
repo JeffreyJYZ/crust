@@ -1,0 +1,90 @@
+# Packaging
+
+Three commands: `build` assembles and ad-hoc signs an app, `dmg` wraps it for handing over, `sign`
+replaces the signature with a Developer ID when you have one.
+
+## `crust build`
+
+```sh
+crust build
+crust build --dir my-app
+crust build app.tsx          # single-file mode
+```
+
+It runs `build.beforeBuildCommand` first, reads `build.assets`, compiles the backend with Bun,
+assembles the bundle, then signs it ad-hoc. A failed frontend build stops the command instead of
+packaging stale bytes.
+
+| output | what it is |
+| --- | --- |
+| `dist/crust-app` | the compiled binary |
+| `dist/<app.name>.app` | the assembled bundle |
+| `dist/crust-assets.ts`, `dist/crust-entry.ts` | generated inputs for that build |
+
+The two sizes are printed separately because they answer different questions: the binary is what
+Bun produced, the bundle is what a recipient's disk gives up. `LSMinimumSystemVersion` defaults to
+`13.0`; set `build.minimumSystemVersion` to raise it. A missing `node_modules` fails here with a
+plain "run bun install" rather than inside a bundler.
+
+`build.assets` defaults to `public/`. The React template names `dist/web`, the Next template
+`out/`, because a static export is where Next puts its page. Whatever the directory holds is
+embedded in the binary — there is no server at run time.
+
+## `crust dmg`
+
+```sh
+crust dmg
+```
+
+Requires a built app. Stages the bundle beside an `/Applications` symlink and compresses that
+folder into a drag-to-Applications image at `dist/<app.name>-<app.version>.dmg`. The volume name is
+`app.name`.
+
+## `crust sign`
+
+```sh
+CRUST_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" crust sign
+```
+
+Reads the identity from the environment and fails naming it when unset. Signs with
+`--options runtime`, seals the entitlements below, verifies with `codesign --verify --strict`, and
+prints what `spctl` says.
+
+It does **not** notarise: that needs `notarytool` credentials and a `stapler staple` afterwards,
+and until the ticket is stapled `spctl` still refuses the bundle. `crust sign` reports that state
+rather than claiming a shippable app.
+
+## Why ad-hoc is the default
+
+`crust build` signs with `codesign --sign -`. That works on the machine that built it and cannot be
+notarised, because an ad-hoc signature has no certificate chain to notarise against. So Gatekeeper
+refuses the app on every other Mac: `spctl` rejects it with exit 3, and the recipient sees "damaged
+and can't be opened".
+
+The way out is on their side:
+
+```sh
+xattr -dr com.apple.quarantine "my-app.app"
+```
+
+or right-click → Open. A Developer ID signature is the only thing that removes the step, and it
+needs a certificate this repository does not ship.
+
+A related consequence: macOS keys privacy grants to the app's designated requirement, which for an
+ad-hoc build is the binary's own cdhash. Every rebuild looks like a new app and re-prompts. A
+Developer ID gives the bundle a stable requirement.
+
+## Entitlements
+
+The hardened runtime is off by default. With `crust sign` it is on, and two entitlements are
+sealed:
+
+| entitlement | why |
+| --- | --- |
+| `com.apple.security.cs.allow-jit` | the one Apple documents; it permits `MAP_JIT` pages |
+| `com.apple.security.cs.allow-unsigned-executable-memory` | the TinyCC inside Bun writes machine code into ordinary unsigned executable memory, which `allow-jit` alone does not permit |
+
+Both are required, and the second is easy to miss. Sealed with `allow-jit` only, a signed app
+launches, creates no page, prints nothing and exits 0 — which reads as a packaging bug for as long
+as you look in the wrong place. `crust build`'s ad-hoc signature carries no entitlements, because
+it does not enable the hardened runtime.

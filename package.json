@@ -32,6 +32,8 @@
 		"e2e:window": "bun run scripts/e2e-window.ts",
 		"e2e:dogear": "bun run scripts/e2e-dogear.ts",
 		"check:lines": "bun run scripts/line-cap.ts",
+		"site:build": "cd site && bun run build",
+		"check:links": "bun run scripts/check-links.ts",
 		"e2e:notify": "bun run scripts/e2e-notify.ts",
 		"e2e:dev": "bun run scripts/e2e-dev.ts",
 		"e2e:single": "bun run scripts/e2e-single.ts",

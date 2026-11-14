@@ -1,22 +1,6 @@
 /**
- * The end-to-end proof: build the example through the CLI, then run the
- * bundle's own binary and judge what a user would see.
- *
- * This is deliberately not a unit test. Everything below goes through the real
- * path: `crust build` compiles a wrapper with Bun, assembles `Hello crust.app`,
- * ad-hoc signs it, and the binary inside the bundle is what runs. If any of
- * that stops working, this script says which step, in one line, and exits 1.
- *
- * The app is launched directly — never `open`, which routes through
- * LaunchServices and Gatekeeper and would hide which process ran.
- *
- * Usage:
- *   bun scripts/e2e.ts        # or `bun run e2e` once package.json defines it
- *
- * The binary opens a window and stays alive, so it proves itself by printing
- * the page's `greet` answer; the proof then stops it with SIGTERM (the runtime
- * exits 0 on that) and asserts nothing survived. macOS has no `timeout(1)`, so
- * the deadline and the escalation to SIGKILL are in `e2e-harness.ts`.
+ * The end-to-end proof: `crust build` compiles a wrapper with Bun, assembles `Hello crust.app`, ad-hoc signs it, and the binary inside the bundle is what runs — launched directly, never `open`, which routes through LaunchServices and hides which process ran.
+ * The app stays alive and proves itself by printing the page's `greet` answer; the proof stops it with SIGTERM (the runtime exits 0 on that) and asserts nothing survived. macOS has no `timeout(1)`, so the deadline and SIGKILL escalation are in `e2e-harness.ts`.
  */
 
 import { stat } from "node:fs/promises";

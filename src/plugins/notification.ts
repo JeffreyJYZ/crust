@@ -1,16 +1,6 @@
 /**
- * `crust:notification` — user notifications.
- *
- * The plugin owns no framework. It takes the native half as a `post` adapter,
- * so macOS supplies `darwinNotificationAdapter()` from
- * `platform/darwin/notifications.ts` and a platform without a notification
- * center keeps answering with a typed `NotImplemented`.
- *
- * The one rule this file exists to enforce: **`delivered` is true only when the
- * OS said it accepted the notification.** An adapter answers with a `status`
- * and a `reason`; status `0` is the only one that maps to `delivered: true`, and
- * every other status is passed on as `delivered: false` with the reason intact.
- * A missing permission is therefore never a silent success.
+ * `crust:notification` — user notifications. The plugin owns no framework: macOS supplies `darwinNotificationAdapter()` and a platform without a notification center keeps answering a typed `NotImplemented`.
+ * The rule this file enforces: **`delivered` is true only when the OS said it accepted it.** Status `0` is the only one mapping to `delivered: true`; anything else passes on as `delivered: false` with the reason intact, so a missing permission is never a silent success.
  */
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
@@ -23,12 +13,10 @@ export interface NotifyOptions {
 	/** Caller-chosen dedupe key. */
 	id?: string;
 	/**
-	 * How long to wait for the system permission prompt, in milliseconds.
-	 *
-	 * The first `notify` on macOS raises that prompt and nothing is delivered until a human
-	 * answers it, so a caller that wants one call to work passes something human-sized
-	 * (30 000 is reasonable). The default, 1500 ms, asks and reports "not answered yet",
-	 * which is what every earlier version did on a first run.
+	 * How long to wait for the system permission prompt, in milliseconds. The first
+	 * `notify` on macOS raises it and nothing is delivered until a human answers, so a
+	 * caller wanting one call to work passes something human-sized (30 000); the default
+	 * 1500 ms asks and reports "not answered yet", as every earlier version did.
 	 */
 	waitMs?: number;
 }
@@ -51,24 +39,14 @@ export interface NotificationPost {
 }
 
 /**
- * The native half of `crust:notification`.
- *
- * `post` is called for one notification and answers with the OS's own status:
- * `0` delivered, `1` authorization pending or denied, `2` a class or selector is
- * missing, `3` the API returned an error. The numbers are
- * `NOTIFICATION_STATUS` in `platform/darwin/notifications.ts`.
+ * The native half of `crust:notification`. `post` handles one notification and answers the OS's own status: `0` delivered, `1` authorization pending or denied, `2` a class or selector is missing, `3` the API returned an error — `NOTIFICATION_STATUS` in `platform/darwin/notifications.ts`.
  */
 export interface NotificationAdapter {
 	post(options: NotifyOptions): NotificationPost | Promise<NotificationPost>;
 }
 
 /**
- * The pre-adapter contract, kept because it is published.
- *
- * An adapter that only knows `notify` has no way to report an OS delivery
- * status, so its own success object is passed through unchanged rather than
- * dressed up as `{ delivered, reason }`. Implement {@link NotificationAdapter}
- * instead.
+ * The pre-adapter contract, kept because it is published. An adapter that only knows `notify` cannot report an OS delivery status, so its own success object passes through unchanged rather than dressed up as `{ delivered, reason }`. Implement {@link NotificationAdapter} instead.
  *
  * @deprecated implement `NotificationAdapter.post`
  */
@@ -112,10 +90,9 @@ export function createNotificationPlugin(
 		commands: {
 			/**
 			 * There is no synchronous way to ask for the authorization state:
-			 * `UNUserNotificationCenter` answers only through a completion handler,
-			 * which the native unit consumes inside `post`. So a real adapter has no
-			 * separate probe, and saying so is the honest answer rather than
-			 * inventing a "granted" that was never read.
+			 * `UNUserNotificationCenter` answers only through a completion handler, which
+			 * the native unit consumes inside `post`. Saying so beats inventing a "granted"
+			 * that was never read.
 			 */
 			requestPermission: async (): Promise<NotificationPermission | NotImplemented> => {
 				if (!adapter) return missing("requestPermission");

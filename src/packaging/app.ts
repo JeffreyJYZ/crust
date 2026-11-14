@@ -1,20 +1,6 @@
 /**
- * Assemble an `.app` bundle around a compiled Bun binary.
- *
- * The layout is the one DESIGN.md §8 specifies, and it is the probe's layout
- * that launched (research/packaging.md §3):
- *
- *   X.app/Contents/Info.plist
- *   X.app/Contents/PkgInfo
- *   X.app/Contents/MacOS/<binary>
- *   X.app/Contents/Resources/icon.icns
- *
- * The `.app` is the shipping unit, not the binary. A bare Mach-O is not
- * double-clickable and, when quarantined, is killed by the kernel with SIGKILL
- * 137 and no message at all (research/packaging.md §6).
- *
- * The plist body and the key lists live in `plist.ts` and are re-exported here,
- * so `./app` stays the one import path.
+ * Assemble an `.app` bundle around a compiled Bun binary — the layout `site/app/docs/design/page.mdx` specifies, which launched in the probe (`research/packaging.md` §3): `Contents/{Info.plist,PkgInfo,MacOS/<binary>,Resources/icon.icns}`.
+ * The `.app` is the shipping unit, not the binary: a bare Mach-O is not double-clickable and, when quarantined, is killed with SIGKILL 137 and no message at all (`research/packaging.md` §6). Plist body and key lists in `plist.ts`.
  */
 
 import { chmod, copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -52,11 +38,7 @@ export interface AssembledApp {
 }
 
 /**
- * Build `X.app` around `binary`.
- *
- * Idempotent: an existing bundle at the same path is replaced. Never signs —
- * signing is `sign.ts`, and keeping them apart is what lets the build step be
- * re-run without re-signing.
+ * Build `X.app` around `binary`. Idempotent — an existing bundle at the same path is replaced — and it never signs, which is what lets the build step be re-run without re-signing.
  */
 export async function assembleApp(options: AssembleAppOptions): Promise<AssembledApp> {
 	const outDir = resolve(options.outDir ?? "dist");

@@ -58,12 +58,7 @@ export const SHEET_POLL_INTERVAL_MS = 16;
 export const SHEET_CANCEL_TIMEOUT_MS = 2000;
 
 /**
- * The refusal a `busy` status becomes.
- *
- * Pure so the message is asserted without a window: it has to name the panel
- * that is already up, because "busy" alone tells a page nothing it can act on,
- * and it has to name the way out, because the page's only other option is a
- * human.
+ * The refusal a `busy` status becomes. Pure so the message is asserted without a window: it must name the panel already up, because "busy" alone tells a page nothing actionable, and the way out, because the page's only other option is a human.
  */
 export function busyRefusal(command: string, kind: number): string {
 	const up =

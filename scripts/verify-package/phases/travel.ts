@@ -26,17 +26,9 @@ export async function checkTravel(stage: Stage): Promise<void> {
 	}
 
 	// ---- docs ---------------------------------------------------------
-	// `crust init` vends a text instruction to open the docs, so the docs are
-	// part of what was received, not part of the repo's own furniture.
-	const docs = (await filesUnder(join(ROOT, "docs"))).filter((path) => path.endsWith(".md"));
-	const missingDocs = docs.filter((path) => !shipped(`docs/${path}`));
-	check(
-		"docs/*.md travel in the tarball",
-		docs.length > 0 && missingDocs.length === 0,
-		`${missingDocs.length} of ${docs.length} missing: ${missingDocs.join(", ")}`,
-		`${docs.length} files`,
-	);
-	check("DESIGN.md travels in the tarball", shipped("DESIGN.md"), "DESIGN.md missing");
+	// The documentation is a site under `site/`, with its own dependencies and build
+	// output, so it is a repository artefact rather than part of what an install
+	// receives. What a user gets, and what an editor opens, is README.md.
 	check("README.md travels in the tarball", shipped("README.md"), "README.md missing");
 
 	// ---- what must not travel -----------------------------------------
@@ -44,6 +36,7 @@ export async function checkTravel(stage: Stage): Promise<void> {
 		"research/",
 		"examples/",
 		"spike/",
+		"site/",
 		"node_modules/",
 		".crust/",
 		".git/",

@@ -12,13 +12,7 @@ import { projectSources } from "./scan.ts";
 const NOT_PAGE_CODE = /\.(?:config|test|spec|d)\.ts$/i;
 
 /**
- * Page-side `.ts` modules the backend watcher will treat as backend code.
- *
- * `crust dev` skips frontend extensions (`.tsx`, `.jsx`, `.css`, …) for a
- * `dev.url` project, but `.ts` is deliberately not among them because the
- * backend entry is one. A page module written as `.ts` therefore restarts the
- * runtime on every save and rotates the bridge token. The entry, config, test,
- * declaration and watched-out paths are excluded; what remains is the trap.
+ * Page-side `.ts` modules the backend watcher will treat as backend code. `crust dev` skips frontend extensions (`.tsx`, `.jsx`, `.css`) for a `dev.url` project, but `.ts` is deliberately not among them because the backend entry is one — so a page module written as `.ts` restarts the runtime on every save and rotates the bridge token. Entry, config, test, declaration and watched-out paths are excluded; what remains is the trap.
  */
 export async function pageSideTypeScript(dir: string, entry?: string): Promise<string[]> {
 	const root = resolve(dir);

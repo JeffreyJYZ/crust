@@ -1,9 +1,5 @@
 /**
- * `crust:window`'s argument reading and typed failures.
- *
- * A page payload is whatever the bridge parsed, never a checked value, so every
- * reader here answers `undefined` rather than throwing and every failure is a
- * shape the page can branch on. Nothing in this module touches an adapter.
+ * `crust:window`'s argument reading and typed failures. A page payload is whatever the bridge parsed, never a checked value, so every reader answers `undefined` rather than throwing and every failure is a shape a page can branch on. Nothing here touches an adapter.
  */
 
 import { notImplemented, type NotImplemented } from "./define";

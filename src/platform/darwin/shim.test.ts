@@ -102,11 +102,10 @@ describe("darwin shim", () => {
 	});
 
 	/**
-	 * The non-blocking path with no window. `runModal=0` needs a key window to
-	 * sheet on; this process has none, so the shim must refuse before sending
-	 * anything — a `-beginSheetModalForWindow:` with a nil window is an ObjC
-	 * exception, which is a SIGABRT with no JavaScript error. Nothing here
-	 * touches the screen, so no human is needed.
+	 * The non-blocking path with no window. `runModal=0` needs a key window to sheet on;
+	 * this process has none, so the shim must refuse before sending anything — a
+	 * `-beginSheetModalForWindow:` with a nil window is an ObjC exception, a SIGABRT with
+	 * no JavaScript error. Nothing here touches the screen.
 	 */
 	test("runModal=0 with no window returns a defined status, not a crash", () => {
 		// Five arguments, in the shim's order: title, filter list, dirs, multiple,

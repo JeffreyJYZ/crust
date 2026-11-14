@@ -1,0 +1,143 @@
+:root {
+	--bg: #0b0b0c;
+	--panel: #131315;
+	--fg: #e7e7e6;
+	--muted: #93938f;
+	--line: #2a2a2d;
+	--accent: #7aa2f7;
+	--code-bg: #17171a;
+	color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+	:root {
+		--bg: #fbfbfa;
+		--panel: #f3f3f1;
+		--fg: #16161a;
+		--muted: #63635f;
+		--line: #dededa;
+		--accent: #1e56c8;
+		--code-bg: #f1f1ee;
+		color-scheme: light;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+	font-size: 15px;
+	line-height: 1.65;
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+code,
+pre,
+kbd {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.9em;
+}
+
+:not(pre) > code {
+	background: var(--code-bg);
+	border: 0.5px solid var(--line);
+	border-radius: 4px;
+	padding: 0.1em 0.35em;
+}
+
+pre {
+	background: var(--code-bg);
+	border: 0.5px solid var(--line);
+	border-radius: 8px;
+	padding: 14px 16px;
+	overflow-x: auto;
+}
+
+hr {
+	border: 0;
+	border-top: 0.5px solid var(--line);
+	margin: 32px 0;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.25;
+	margin: 0 0 12px;
+}
+
+h1 {
+	font-size: 28px;
+}
+
+h2 {
+	font-size: 19px;
+	margin-top: 36px;
+}
+
+h3 {
+	font-size: 16px;
+	margin-top: 24px;
+}
+
+p,
+ul,
+ol,
+table {
+	margin: 0 0 14px;
+}
+
+ul,
+ol {
+	padding-left: 20px;
+}
+
+li {
+	margin-bottom: 6px;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+}
+
+th,
+td {
+	text-align: left;
+	padding: 7px 10px;
+	border-bottom: 0.5px solid var(--line);
+	vertical-align: top;
+}
+
+th {
+	color: var(--muted);
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 11px;
+}
+
+blockquote {
+	margin: 0 0 14px;
+	padding: 2px 0 2px 14px;
+	border-left: 2px solid var(--line);
+	color: var(--muted);
+}

@@ -1,9 +1,5 @@
 /**
- * `window.create`'s argument rules and its one optional native member.
- *
- * Both are refusal-side proofs: an invalid payload never reaches a platform, and
- * an adapter written before `create` existed still satisfies `WindowNative`
- * while answering honestly. The happy path is `window-create.test.ts`.
+ * `window.create`'s argument rules and its one optional native member — both refusal-side proofs: an invalid payload never reaches a platform, and an adapter written before `create` existed still satisfies `WindowNative` while answering honestly. Happy path in `window-create.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";

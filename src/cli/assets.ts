@@ -4,12 +4,7 @@ import { join, resolve } from "node:path";
 import { crustRoot } from "./util.ts";
 
 /**
- * A file crust ships with itself: a template, a doc, the C shim.
- *
- * Two places it can live. In a checkout it is a real file under the package root,
- * which is what a contributor edits. In a `bun build --compile` output the same
- * paths are embedded with `--asset`, and `crustRoot` collapses to `/` — the binary
- * has no checkout — so a disk read has to fall back to what the executable carries.
+ * A file crust ships with itself: a template, a doc, the C shim. In a checkout it is a real file under the package root; in a `bun build --compile` output the same paths are embedded with `--asset` and `crustRoot` collapses to `/`, so a disk read must fall back to what the executable carries.
  */
 export type CrustAsset = {
 	/** Path relative to the crust root, always with forward slashes. */
@@ -25,11 +20,7 @@ function nameOf(blob: Blob): string | undefined {
 }
 
 /**
- * Embedded files under a crust-root-relative directory.
- *
- * `--asset` preserves the path relative to the build root, so `--asset=templates`
- * yields `templates/react/main.ts` and not `main.ts`. A directory therefore has to
- * be matched by prefix rather than by basename.
+ * Embedded files under a crust-root-relative directory. `--asset` preserves the path relative to the build root, so `--asset=templates` yields `templates/react/main.ts` and a directory must be matched by prefix rather than by basename.
  */
 function embeddedUnder(dir: string): CrustAsset[] {
 	const blobs = Bun.embeddedFiles ?? [];

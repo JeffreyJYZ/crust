@@ -1,9 +1,5 @@
 /**
- * Process helpers shared by the packaging modules.
- *
- * Everything here shells out to a tool macOS already ships. crust adds no
- * dependency for packaging: `bun build`, `codesign`, `spctl`, `hdiutil`,
- * `sips` and `iconutil` are the whole toolchain.
+ * Process helpers shared by the packaging modules. Everything shells out to a tool macOS ships: `bun build`, `codesign`, `spctl`, `hdiutil`, `sips` and `iconutil` are the whole toolchain, with no dependency added.
  */
 
 export interface RunResult {
@@ -44,11 +40,7 @@ export async function runOrThrow(command: string[], options: RunOptions = {}): P
 }
 
 /**
- * Allocated size in KiB, the way the packaging probe measured it.
- *
- * `du -sk` reports allocated blocks, so this is the figure research/packaging.md
- * quotes (86,580 KiB for the 85 MiB binary plus metadata). It is deliberately
- * not a sum of logical file sizes: the two differ by one block per file.
+ * Allocated size in KiB, the way the packaging probe measured it: `du -sk` reports allocated blocks, so this is the figure `research/packaging.md` quotes (86,580 KiB for the 85 MiB binary plus metadata). Deliberately not a sum of logical sizes — those differ by one block per file.
  */
 export async function allocatedKiB(path: string): Promise<number> {
 	const result = await runOrThrow(["du", "-sk", path]);

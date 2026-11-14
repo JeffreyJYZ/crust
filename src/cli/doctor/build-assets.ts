@@ -11,13 +11,7 @@ import { crustRoot, exists } from "../util.ts";
 import type { Check } from "./check.ts";
 
 /**
- * What `crust build` would embed, decided without compiling anything.
- *
- * A named `build.assets` is a promise of an `index.html`; a missing or stale
- * directory is why a built app opens on a blank page, so it fails here with the
- * path and the command that produces it. When the setting is absent the old
- * `public/` rule stands — except for a project that runs `beforeBuildCommand`
- * and has no `public/index.html`, where crust would silently embed nothing.
+ * What `crust build` would embed, decided without compiling anything. A named `build.assets` promises an `index.html`, and a missing or stale directory is why a built app opens blank, so it fails here with the path and the producing command. Without the setting the old `public/` rule stands — except a project that runs `beforeBuildCommand` and has no `public/index.html`, where crust would silently embed nothing.
  */
 export async function checkAssets(dir: string, config: CrustConfig): Promise<Check> {
 	const setting = config.build?.assets;

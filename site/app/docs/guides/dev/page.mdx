@@ -1,0 +1,87 @@
+# Dev server
+
+`crust dev` owns the backend process. The frontend stays with its own dev server, so HMR is not
+crust's job and UI state survives a page edit.
+
+## `crust dev`
+
+```sh
+crust dev                          # current directory
+crust dev --dir examples/dogear
+crust dev --entry src/main.ts      # default: src/main.ts, then main.ts
+```
+
+What happens, in order:
+
+| step | behaviour |
+| --- | --- |
+| config | loads `crust.config.ts` or `crust.json` |
+| frontend | spawns `dev.beforeDevCommand` in the project directory, un-awaited, output inherited |
+| dev URL | waits up to 30 s for `dev.url` to accept a TCP connection |
+| runtime | runs the backend in a child process, because the platform's `quit()` calls `process.exit` |
+| page | `dev.url` when set; otherwise the bridge serves `public/index.html` |
+
+### The dev URL wait
+
+The window loads `dev.url` exactly once, at creation, and cannot retry. On a cold start Vite needs
+0.7–1.1 s to listen while the window appears at 0.2–0.4 s, so without the wait the page request
+went into a closed port and nothing ever rendered — 4 of 8 runs, and 4 of 4 from a directory with
+no pre-bundled dependencies. `crust dev` therefore probes the URL first and fails after 30 s rather
+than opening a window on a page that will never load.
+
+### The port
+
+The bridge allows exactly the origin `dev.url` names, so pin the port (`strictPort` for Vite, `-p`
+for `next dev`); a dev server that picks a different port is a page whose calls are refused.
+
+## What restarts the backend
+
+The watcher covers the backend entry's directory. On a `dev.url` project that directory holds your
+UI too, so frontend extensions are skipped — a restart rotates the bridge token and the page
+already open starts failing its calls.
+
+| saved file | effect |
+| --- | --- |
+| `.ts`, `.js` | runtime restarts, bridge token rotates |
+| `.tsx`, `.jsx`, `.css`, `.scss`, `.sass`, `.less`, `.html`, images, fonts | nothing — the dev server owns HMR |
+
+`.ts` is not skipped because the backend entry is one. That is the one trap: a page module written
+as `.ts` restarts the backend on every save. Rename it `.tsx`, or move it under a skipped directory
+such as `public/`. `crust doctor` names any file in that position.
+
+## `crust dev app.tsx`
+
+A positional ending in `.tsx`, `.jsx`, `.ts` or `.js` runs that one file as an app: no
+`crust.config.ts`, no `main.ts`, one 900×700 window.
+
+| rule | behaviour |
+| --- | --- |
+| shape | the file must exist, and its directory must hold no `crust.config.ts` or `crust.json`; a config beside it means a project, and crust refuses |
+| `export default` in the source | treated as a React component, mounted into `#root` with `react-dom/client` from the file's own directory |
+| no default export | loaded for its side effects; the file renders the document itself |
+| commands | `info` and `echo` only — there is no backend module to register more |
+| edit | rebuilds `page.js`, writes a reload marker, the page reloads; the runtime is never restarted |
+
+It deliberately lacks HMR (a save is a full reload), watching of imported modules and CSS, a
+config surface, a custom backend and type checking. Add `crust.config.ts` and `main.ts` when the
+app needs any of them.
+
+## `crust doctor`
+
+```sh
+crust doctor
+crust doctor --dir my-app
+```
+
+One line per check in the order a failure actually happens: platform, Bun, config, macOS version,
+shim compiles, bridge, dev port, dev URL, backend entry, page-side `.ts` modules, window layer,
+known-fatal traps, assets, templates, bundle. It exits 1 and prints `<n> checks failed`; a clean
+project ends `all checks passed`, exit 0.
+
+Three lines matter for dev:
+
+| line | `[fail]` means |
+| --- | --- |
+| `dev port` | a process holds the port and answers nothing, so a `strictPort` server cannot start |
+| `dev url` | the dev server is not running or is on another port |
+| `dev watch` | `.ts` page modules the watcher will treat as backend code; a note, not a failure |

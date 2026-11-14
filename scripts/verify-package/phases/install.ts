@@ -1,10 +1,5 @@
 /**
- * The install phase: `bun add <tarball>` into an empty project, then the real
- * `crust --help`, every declared export, and `crust init probe --react` there.
- *
- * A passing `--help` is the load-bearing check: it imports every CLI module, so
- * a specifier that only resolves inside this checkout fails here instead of in
- * the user's first command line.
+ * The install phase: `bun add <tarball>` into an empty project, then the real `crust --help`, every declared export, and `crust init probe --react`. `--help` is load-bearing: it imports every CLI module, so a specifier resolving only in this checkout fails here rather than in the user's first command.
  */
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
