@@ -21,7 +21,8 @@ export const BINARY = join(BUNDLE, "Contents", "MacOS", "crust-app");
  * modules, so this is read from the directory rather than remembered: a count in
  * a constant silently rots the moment an example gains a file.
  */
-const ASSET_COUNT = (await Array.fromAsync(new Bun.Glob("*").scan(join(PROJECT_DIR, "public")))).length;
+const ASSET_COUNT = (await Array.fromAsync(new Bun.Glob("*").scan(join(PROJECT_DIR, "public"))))
+	.length;
 
 /** `undefined` means the build failed: every later assertion is unknowable. */
 export async function buildPhase(verdict: Verdict): Promise<boolean> {
