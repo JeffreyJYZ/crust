@@ -40,7 +40,7 @@ const page = `<!doctype html>
 			const answer = await window.crust.invoke("notification", "notify", {
 				title: "crust e2e",
 				body: "delivery is asserted, not assumed",
-				waitMs: 60000,
+				waitMs: 20000,
 			});
 			text = JSON.stringify(answer);
 		} catch (error) {
@@ -150,12 +150,20 @@ export default {
 			reported !== "",
 			reported || `no page line in ${out.slice(-300)}${err.slice(-200)}`,
 		);
+		// Three outcomes and they are different findings. `delivered:true` is the OS
+		// scheduling it; a refusal names a cause; "has not answered yet" means macOS is
+		// showing a prompt for this brand-new identifier and no person clicked it — a
+		// machine cannot answer that, so the run proves nothing either way.
+		const delivered = reported.includes('"delivered":true');
+		const unproven = !delivered && reported.includes("has not answered yet");
 		verdict.check(
 			"delivered",
-			reported.includes('"delivered":true'),
-			reported.includes('"delivered":true')
+			delivered,
+			delivered
 				? `the OS scheduled it: ${reported}`
-				: `the OS refused: ${reported || "no answer"}`,
+				: unproven
+					? "UNPROVEN — macOS is showing a permission prompt for this new identifier; click Allow and run again"
+					: `the OS refused: ${reported || "no answer"}`,
 		);
 
 		verdict.check(
