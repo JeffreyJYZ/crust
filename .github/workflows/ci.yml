@@ -53,6 +53,20 @@ jobs:
 
       - run: bun run test
 
+      # The 200-line cap and the docs site's internal links. Both are cheap file walks,
+      # and both fail on a rule nothing else would notice: a file that grows past the cap
+      # during review, and a link to a page that was renamed or deleted.
+      - run: bun run check:lines
+      - run: bun run check:links
+
+      # The docs site is a Next app in its own directory with its own lockfile, so it
+      # needs its own install. A build failure here is a page that does not compile.
+      - name: docs site
+        run: |
+          cd site
+          bun install --frozen-lockfile
+          bun run build
+
       # Packs a tarball, installs it into a temp dir and runs `crust --help` and
       # `crust init probe --react` from the installed copy. This is the only check
       # that catches a package shipping without a file it needs, so it is not optional.
