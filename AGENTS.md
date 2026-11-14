@@ -13,14 +13,21 @@ live in `DESIGN.md`; research reports in `research/`.
 - **Every lane is `opencode-go/deepseek-v4.1-flash#high`** and pins it explicitly, since the global
   config sets no `model`. (Command Code was the lane until 2026-11-13; the OpenCode Go shelf
   replaced it when that usage reset.)
-- **The gate is `bun check` && `bun run test` && `bun run e2e`**, plus `bun run e2e:notes` when the
-  multi-file path is touched, `bun run e2e:single` when the single-file mode is touched,
-  `bun run e2e:dev:react` when the dev-server path is touched (it drives a real Vite through
-  `crust dev`), `bun run e2e:window` when the `window` plugin is touched, `bun run e2e:notify`
-  when `notification` is touched (it builds under `~/.cache`, because macOS refuses that
-  authorization to a bundle in the system temp directory), and `bun run e2e:dogear` when a
-  plugin surface changes — it is the widest example and exercises `fs`, the window title and
-  the tray from a page. A green gate is the only proof a landing is safe.
+- **The gate is `bun check` && `bun run test` && `bun run e2e` && `bun run check:lines`**, plus
+  `bun run e2e:notes` when the multi-file path is touched, `bun run e2e:single` when the
+  single-file mode is touched, `bun run e2e:dev:react` when the dev-server path is touched (it
+  drives a real Vite through `crust dev`), `bun run e2e:window` when the `window` plugin is
+  touched, `bun run e2e:notify` when `notification` is touched — diagnostic, not gate: it
+  builds under `~/.cache` (macOS refuses that authorization from the system temp directory)
+  and needs a person to answer the permission prompt, because an unanswered prompt is
+  recorded as a denial for that identifier, which then answers code 1 forever; `--fresh-id`
+  asks about a brand-new identifier. And
+  `bun run e2e:dogear` when a plugin surface changes — it is the widest example and exercises
+  `fs`, the window title and the tray from a page. A green gate is the only proof a landing is safe.
+- **Every file stays at or under 200 lines, tests and examples included** (user, 2026-11-14) —
+  `bun run check:lines` is the measurement, so a file that outgrows the cap fails the gate
+  instead of being remembered. Split by responsibility; never trim a comment that records a
+  measured reason to make the number.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty** (`open -a Ghostty`) — a probe that opens a test window leaves the human looking at it and switching back by hand (user, 2026-11-13). And capture *before* touching the shell: a screenshot taken after a command shows the terminal over the app, not the app.
