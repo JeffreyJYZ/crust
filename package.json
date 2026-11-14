@@ -1,6 +1,6 @@
 {
 	"name": "crust",
-	"version": "0.1.10",
+	"version": "0.1.11",
 	"description": "A Bun-native desktop app framework. No Rust. Just crust.",
 	"license": "MIT",
 	"type": "module",
