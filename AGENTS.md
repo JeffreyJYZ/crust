@@ -35,3 +35,5 @@ the hard way:
 - `-windowNumber` never clears after `-close`; liveness is `visible || miniaturized || appHidden`.
 - Every `bun:ffi` declaration's arity must match its C prototype — `src/platform/darwin/arity.test.ts`
   fails the suite otherwise.
+- **Crash reports live in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones in `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence (the same trap that made a real crash report read as "none").
+- **Hardened runtime needs `com.apple.security.cs.allow-unsigned-executable-memory`, not just `allow-jit`** — TinyCC writes code into ordinary unsigned executable memory, so `--options runtime` without it gives an app that launches, creates no page and prints nothing, exit 0; the `.ips` says `SIGKILL (Code Signature Invalid)`, `Invalid Page`. Measured 2026-11-14, fixed in `src/packaging/sign.ts` and asserted in `src/packaging/sign.test.ts`.

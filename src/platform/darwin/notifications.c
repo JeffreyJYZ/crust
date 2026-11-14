@@ -381,16 +381,20 @@ static int nf_post_modern(const char *title, const char *body, int auth_wait_ms)
 			}
 			nf_cat(detail, sizeof detail, ")");
 			nf_cat(line, NF_REASON_BYTES, detail);
-			// Apple's rule, measured here: an ad-hoc signature is refused outright. The three
-			// variants tried on 2026-11-13 — plain ad-hoc, registered with lsregister, re-signed
-			// with a distinct identifier, and copied into ~/Applications — all answered code 1
-			// in UNErrorDomain. Nothing a user can click changes that, so say what would.
+			// Measured on 2026-11-14, and it overturns the earlier reading: this is not about
+			// the signature. The same bundle identifier answered code 1 ad-hoc, under an
+			// Apple-issued Apple Development certificate, launched directly and through
+			// LaunchServices, from dist and from ~/Applications. A *fresh* bundle identifier
+			// answered `delivered: true` under ad-hoc and under Apple Development alike, in
+			// both locations. So authorization is cached per bundle identifier, and once that
+			// identifier is recorded as denied nothing re-asks; the way out is a new identifier.
 			if (nf_error_code == 1 && nf_same(nf_error_domain, "UNErrorDomain")) {
 				nf_cat(line, NF_REASON_BYTES,
-				       ". macOS refuses notifications to a bundle it does not trust: crust signs "
-				       "ad-hoc, and this surface needs a Developer ID signature (`crust sign` with "
-				       "CRUST_SIGNING_IDENTITY). Measured, not guessed — registering the bundle and "
-				       "re-signing ad-hoc both still answer this");
+				       ". macOS caches notification authorization per bundle identifier, and this "
+				       "one is recorded as denied — the signature is not the cause (ad-hoc and an "
+				       "Apple Development certificate both deliver under a fresh identifier). Give "
+				       "the app a new CFBundleIdentifier in crust.config.ts, e.g. app.id, and it is "
+				       "asked again");
 			}
 		}
 		nf_set(nf_reason, NF_REASON_BYTES, line);
