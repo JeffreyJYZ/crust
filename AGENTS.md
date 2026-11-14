@@ -16,9 +16,11 @@ live in `DESIGN.md`; research reports in `research/`.
 - **The gate is `bun check` && `bun run test` && `bun run e2e`**, plus `bun run e2e:notes` when the
   multi-file path is touched, `bun run e2e:single` when the single-file mode is touched,
   `bun run e2e:dev:react` when the dev-server path is touched (it drives a real Vite through
-  `crust dev`), `bun run e2e:window` when the `window` plugin is touched, and
-  `bun run e2e:dogear` when a plugin surface changes — it is the widest example and exercises
-  `fs`, the window title and the tray from a page. A green gate is the only proof a landing is safe.
+  `crust dev`), `bun run e2e:window` when the `window` plugin is touched, `bun run e2e:notify`
+  when `notification` is touched (it builds under `~/.cache`, because macOS refuses that
+  authorization to a bundle in the system temp directory), and `bun run e2e:dogear` when a
+  plugin surface changes — it is the widest example and exercises `fs`, the window title and
+  the tray from a page. A green gate is the only proof a landing is safe.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty** (`open -a Ghostty`) — a probe that opens a test window leaves the human looking at it and switching back by hand (user, 2026-11-13). And capture *before* touching the shell: a screenshot taken after a command shows the terminal over the app, not the app.

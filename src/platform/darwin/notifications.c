@@ -381,20 +381,21 @@ static int nf_post_modern(const char *title, const char *body, int auth_wait_ms)
 			}
 			nf_cat(detail, sizeof detail, ")");
 			nf_cat(line, NF_REASON_BYTES, detail);
-			// Measured on 2026-11-14, and it overturns the earlier reading: this is not about
-			// the signature. The same bundle identifier answered code 1 ad-hoc, under an
-			// Apple-issued Apple Development certificate, launched directly and through
-			// LaunchServices, from dist and from ~/Applications. A *fresh* bundle identifier
-			// answered `delivered: true` under ad-hoc and under Apple Development alike, in
-			// both locations. So authorization is cached per bundle identifier, and once that
-			// identifier is recorded as denied nothing re-asks; the way out is a new identifier.
+			// Measured on 2026-11-14, and the signature is not a cause. Two things refuse this,
+			// each isolated by holding the other constant with a fresh identifier and ad-hoc
+			// signing: a bundle running from the system temp directory (identical bundle in
+			// `/var/folders/…T` answered code 1 while the copy in `~/dev` delivered, twice each
+			// way), and a bundle identifier macOS already recorded as denied, which is never
+			// re-asked no matter what signs it — the original probe id answered code 1 ad-hoc,
+			// under an Apple Development certificate, via LaunchServices and from ~/Applications.
 			if (nf_error_code == 1 && nf_same(nf_error_domain, "UNErrorDomain")) {
 				nf_cat(line, NF_REASON_BYTES,
-				       ". macOS caches notification authorization per bundle identifier, and this "
-				       "one is recorded as denied — the signature is not the cause (ad-hoc and an "
-				       "Apple Development certificate both deliver under a fresh identifier). Give "
-				       "the app a new CFBundleIdentifier in crust.config.ts, e.g. app.id, and it is "
-				       "asked again");
+				       ". macOS refuses this authorization in two measured cases: the .app runs "
+				       "from the system temp directory (a copy under /var/folders answered code 1 "
+				       "while the identical bundle in ~/dev delivered), or this bundle identifier "
+				       "was recorded as denied earlier and is never asked again. The signature is "
+				       "not the cause. Run the app from a normal directory, and change app.id in "
+				       "crust.config.ts if this identifier was refused before");
 			}
 		}
 		nf_set(nf_reason, NF_REASON_BYTES, line);
