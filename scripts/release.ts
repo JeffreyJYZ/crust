@@ -14,68 +14,27 @@
  *
  * Requires a clean tree on `main`, and the `gh` identity that may push the tap branch
  * (jyzbot). It does not merge: tap `main` is protected and the review is the point.
+ *
+ * The shell and the failure counter are `release/git.ts`; the gate is
+ * `release/gate.ts`.
  */
-import { $ } from "bun";
+import { gate } from "./release/gate.ts";
+import {
+	fail,
+	failureCount,
+	gitEnv,
+	nextVersion,
+	REPO,
+	REMOTE,
+	sh,
+	step,
+	TAP_DIR,
+	TAP_REMOTE,
+} from "./release/git.ts";
 
 const args = Bun.argv.slice(2);
 const dry = args.includes("--dry");
 const level = args.includes("--minor") ? "minor" : args.includes("--major") ? "major" : "patch";
-
-const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
-const TAP_DIR =
-	process.env.CRUST_TAP ??
-	"~/dev/worktrees/homebrew-tap/main".replace("~", process.env.HOME ?? "~");
-const ASKPASS = "/Users/jyz/dev/bin/git-askpass-gh";
-const REMOTE = "https://github.com/JeffreyJYZ/crust.git";
-const TAP_REMOTE = "bot";
-
-let failures = 0;
-function step(label: string, detail: string): void {
-	console.log(`  ${label.padEnd(10)}${detail}`);
-}
-function fail(label: string, detail: string): void {
-	failures++;
-	console.log(`  FAIL ${label.padEnd(6)}${detail}`);
-}
-
-/** Run a command and return trimmed stdout, throwing with its stderr on failure. */
-async function sh(cmd: string[], cwd = REPO, env: Record<string, string> = {}): Promise<string> {
-	const proc = Bun.spawn(cmd, {
-		cwd,
-		env: { ...process.env, ...env },
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [out, err, code] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if (code !== 0) throw new Error(`${cmd.join(" ")} exited ${code}: ${err.trim() || out.trim()}`);
-	return out.trim();
-}
-
-/** Same as `sh`, but stdout and stderr together: `bun test` prints its totals to stderr. */
-async function shAll(cmd: string[], cwd = REPO): Promise<string> {
-	const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
-	const [out, err, code] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if (code !== 0) throw new Error(`${cmd.join(" ")} exited ${code}: ${err.trim() || out.trim()}`);
-	return `${out}${err}`;
-}
-
-function nextVersion(current: string, kind: string): string {
-	const [major = 0, minor = 0, patch = 0] = current.split(".").map((part) => Number(part));
-	if (kind === "major") return `${major + 1}.0.0`;
-	if (kind === "minor") return `${major}.${minor + 1}.0`;
-	return `${major}.${minor}.${patch + 1}`;
-}
-
-const token = (await sh(["gh", "auth", "token", "--user", "jyzbot"])).trim();
-const gitEnv = { GH_TOKEN: token, GIT_ASKPASS: ASKPASS, GIT_TERMINAL_PROMPT: "0" };
 
 // ---- 1. Preconditions ------------------------------------------------------
 const dirty = await sh(["git", "status", "--porcelain"]);
@@ -100,39 +59,8 @@ if (dry) {
 }
 
 // ---- 2. Gate ---------------------------------------------------------------
-// The fast half of the gate. e2e suites need a desktop session and minutes; they are
-// run by hand before a release, and CI runs them on every PR.
-// The summary matters more than the last line: a test that prints to stdout leaves its
-// own output after bun's totals, and "before true" is not a verdict.
-for (const [label, cmd, summarise] of [
-	[
-		"check",
-		["bun", "check"],
-		(out: string) => out.split("\n").find((row) => row.includes("No type errors")) ?? "ok",
-	],
-	[
-		"test",
-		["bun", "run", "test"],
-		(out: string) => {
-			// bun test paints its totals, and the escape codes sit between the count and
-			// the word often enough that a raw match reports "? passed" — which is how a
-			// release log claimed nothing at all about the suite it had just run.
-			const plain = out.replaceAll(/\u001b\[[0-9;]*m/g, "");
-			const passed = /(\d+)\s+pass/.exec(plain)?.[1] ?? "?";
-			const failed = /(\d+)\s+fail/.exec(plain)?.[1] ?? "?";
-			if (passed === "?" || failed === "?") return `ran, totals not parsed (exit 0)`;
-			return `${passed} passed, ${failed} failed`;
-		},
-	],
-] as const) {
-	try {
-		const out = await sh([...cmd]);
-		step(label, summarise(out));
-	} catch (error) {
-		fail(label, error instanceof Error ? error.message : String(error));
-	}
-}
-if (failures > 0) process.exit(1);
+await gate();
+if (failureCount() > 0) process.exit(1);
 
 // ---- 3. Bump, commit, tag --------------------------------------------------
 await Bun.write(

@@ -3,10 +3,8 @@
  *
  * Two things are proven here and nothing else: the C unit compiles through
  * `cc()`, links AppKit and Foundation, and exports exactly the symbols the
- * plugin half declares; and the plugin is honest — a missing adapter says
- * `not-implemented`, a bad argument is its own typed failure, an adapter that
- * refuses is a value the page can branch on, and a click reaches both the
- * in-process handler and the `tray:click` event.
+ * plugin half declares; and the plugin's five commands reach an adapter and
+ * relay every click. The refusal side is `tray-failures.test.ts`.
  *
  * No `NSStatusItem` is created. A live status item is a real menu-bar item and
  * needs a human to see it; the compile test above it is what runs here.
@@ -14,53 +12,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { STATUS_BAR_SYMBOL_NAMES, statusBar } from "@/platform/darwin/status-bar.ts";
-import { isNotImplemented, type PluginContext } from "@/plugins/define";
-import { PluginRegistry } from "@/plugins/registry";
-import {
-	createTrayPlugin,
-	TRAY_COMMANDS,
-	TrayAdapterError,
-	type TrayMenuItem,
-	type TrayNative,
-	trayPlugin,
-} from "@/plugins/tray";
-
-interface FakeTray extends TrayNative {
-	calls: string[];
-	items: readonly TrayMenuItem[];
-}
-
-function fakeAdapter(): FakeTray {
-	const adapter: FakeTray = {
-		calls: [],
-		items: [],
-		setTitle(text) {
-			adapter.calls.push(`setTitle:${text}`);
-		},
-		setMenu(items) {
-			adapter.calls.push(`setMenu:${items.map((item) => item.label).join(",")}`);
-			adapter.items = items;
-		},
-		show() {
-			adapter.calls.push("show");
-		},
-		hide() {
-			adapter.calls.push("hide");
-		},
-		destroy() {
-			adapter.calls.push("destroy");
-		},
-	};
-	return adapter;
-}
-
-function recordingContext(): { ctx: PluginContext; events: Array<[string, unknown]> } {
-	const events: Array<[string, unknown]> = [];
-	return {
-		events,
-		ctx: { emit: (event, data) => events.push([event, data]) },
-	};
-}
+import { fakeAdapter, recordingContext } from "./tray-fake.ts";
+import { createTrayPlugin, TRAY_COMMANDS, trayPlugin } from "./tray.ts";
 
 describe("status_bar.c", () => {
 	test("compiles through cc() and links AppKit", () => {
@@ -177,126 +130,5 @@ describe("tray commands with an adapter", () => {
 
 		expect(() => adapter.items[0]?.onClick?.()).not.toThrow();
 		expect(events).toEqual([["tray:click", { index: 0, label: "Boom" }]]);
-	});
-});
-
-describe("typed failures", () => {
-	test("a missing or non-string title is its own typed failure", () => {
-		const plugin = createTrayPlugin(fakeAdapter());
-
-		expect(plugin.commands.setTitle({} as { text: string })).toMatchObject({
-			ok: false,
-			code: "invalid-text",
-		});
-		expect(plugin.commands.setTitle({ text: 7 } as unknown as { text: string })).toMatchObject({
-			ok: false,
-			code: "invalid-text",
-		});
-	});
-
-	test("a malformed menu is an invalid-menu failure at the first bad row", () => {
-		const plugin = createTrayPlugin(fakeAdapter());
-
-		expect(plugin.commands.setMenu({} as { items: [] })).toMatchObject({
-			ok: false,
-			code: "invalid-menu",
-		});
-		expect(
-			plugin.commands.setMenu({ items: "nope" } as unknown as { items: [] }),
-		).toMatchObject({ ok: false, code: "invalid-menu" });
-		expect(plugin.commands.setMenu({ items: [{ label: "" }] })).toMatchObject({
-			ok: false,
-			code: "invalid-menu",
-		});
-		expect(plugin.commands.setMenu({ items: [{} as { label: string }] })).toMatchObject({
-			ok: false,
-			code: "invalid-menu",
-		});
-		expect(
-			plugin.commands.setMenu({
-				items: [{ label: "x", onClick: 7 } as unknown as TrayMenuItem],
-			}),
-		).toMatchObject({ ok: false, code: "invalid-menu" });
-	});
-
-	test("an adapter that throws is a typed value, not a propagated error", () => {
-		const plugin = createTrayPlugin({
-			setTitle: () => {
-				throw new TrayAdapterError("destroyed", "status item is gone");
-			},
-			setMenu: () => {},
-			show: () => {},
-			hide: () => {},
-			destroy: () => {
-				throw new Error("boom");
-			},
-		});
-
-		expect(plugin.commands.setTitle({ text: "x" })).toMatchObject({
-			ok: false,
-			code: "destroyed",
-			message: "status item is gone",
-		});
-		expect(plugin.commands.destroy()).toMatchObject({
-			ok: false,
-			code: "handler-error",
-			message: "boom",
-		});
-	});
-
-	test("a partial adapter is an unknown-adapter failure, not a TypeError", () => {
-		const plugin = createTrayPlugin({ setTitle: () => {} } as unknown as TrayNative);
-		expect(plugin.commands.show()).toMatchObject({ ok: false, code: "unknown-adapter" });
-		expect(plugin.commands.hide()).toMatchObject({ ok: false, code: "unknown-adapter" });
-		expect(plugin.commands.setMenu({ items: [] })).toMatchObject({
-			ok: false,
-			code: "unknown-adapter",
-		});
-	});
-});
-
-describe("no adapter", () => {
-	test("every command answers a structured not-implemented naming NSStatusBar", () => {
-		const plugin = createTrayPlugin();
-		const results = [
-			plugin.commands.setTitle({ text: "x" }),
-			plugin.commands.setMenu({ items: [{ label: "Open" }] }),
-			plugin.commands.show(),
-			plugin.commands.hide(),
-			plugin.commands.destroy(),
-		];
-
-		for (const result of results) {
-			expect(isNotImplemented(result)).toBe(true);
-			if (isNotImplemented(result)) expect(result.requires).toBe("NSStatusBar");
-		}
-	});
-
-	test("the registry turns that into a not-implemented CrustError", async () => {
-		const registry = new PluginRegistry().register(createTrayPlugin());
-		await expect(registry.invoke("tray", "show", {}, { emit: () => {} })).rejects.toMatchObject(
-			{ code: "not-implemented", requires: "NSStatusBar" },
-		);
-	});
-});
-
-describe("through the registry", () => {
-	test("an adapted plugin answers values a page can branch on", async () => {
-		const adapter = fakeAdapter();
-		const registry = new PluginRegistry().register(createTrayPlugin(adapter));
-		const ctx = { emit: () => {} };
-
-		expect(await registry.invoke("tray", "setTitle", { text: "From page" }, ctx)).toEqual({
-			ok: true,
-			text: "From page",
-		});
-		expect(await registry.invoke("tray", "show", {}, ctx)).toEqual({ ok: true, active: true });
-
-		// A dead command on a bad argument resolves a value; only a missing
-		// plugin, command or adapter is a rejection.
-		expect(await registry.invoke("tray", "setTitle", { text: 1 }, ctx)).toMatchObject({
-			ok: false,
-			code: "invalid-text",
-		});
 	});
 });

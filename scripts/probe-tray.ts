@@ -32,326 +32,26 @@
  *
  * Exit status is 0 whenever the measurements themselves ran, including when the
  * item turned out to be invisible; the report says which answer it found.
+ *
+ * The measurement code lives beside this entry: `tray/bitmap.ts` decodes what
+ * `screencapture` wrote, `tray/capture.ts` takes the captures, and
+ * `tray/analysis.ts` compares them. Only the run and its JSON report are here.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createPlatform } from "@/platform/darwin/index.ts";
 import { createStatusBar, type StatusBarReadback } from "@/platform/darwin/status-bar.ts";
-
-/** Long and wide enough to be unmistakable at 2x, short enough for one buffer. */
-const TITLE = "CRUSTTRAY";
-
-/** The menu-bar strip, in points: full width, the height of a notched bar plus slack. */
-const STRIP_HEIGHT = 60;
-
-/** A pixel counts as changed when its luminance moves by more than this. */
-const CHANGE_THRESHOLD = 24;
-
-/** A pixel counts as "text" when it is this bright or brighter. */
-const TEXT_THRESHOLD = 140;
-
-/** NSWindowOcclusionStateVisible, bit 2 — the WindowServer's own "on screen". */
-const OCCLUSION_VISIBLE = 2;
-
-const DIR = join(tmpdir(), "crust-tray-probe");
-
-// --- bitmap ----------------------------------------------------------------
-
-interface Bitmap {
-	readonly path: string;
-	readonly bytes: number;
-	readonly width: number;
-	readonly height: number;
-	readonly lum: Float32Array;
-}
-
-/**
- * Decode the BMP `screencapture -t bmp` writes: 32 bpp, BI_BITFIELDS, masks
- * inside a V4/V5 header, and a negative height meaning top-down. Masks are read
- * from the file rather than assumed, so a channel reorder is a decode error and
- * not a silent colour shift.
- */
-function decodeBmp(path: string): Bitmap {
-	const buffer = readFileSync(path);
-	const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-	if (view.getUint16(0, true) !== 0x4d42) throw new Error(`${path}: not a BMP`);
-
-	const headerSize = view.getUint32(14, true);
-	const width = view.getInt32(18, true);
-	const rawHeight = view.getInt32(22, true);
-	const bpp = view.getUint16(28, true);
-	const compression = view.getUint32(30, true);
-	const pixelOffset = view.getUint32(10, true);
-
-	if (bpp !== 32) throw new Error(`${path}: expected 32 bpp, got ${bpp}`);
-	if (headerSize < 52) throw new Error(`${path}: no channel masks in the header`);
-	if (compression !== 3 && compression !== 6) {
-		throw new Error(`${path}: expected BI_BITFIELDS, got compression ${compression}`);
-	}
-
-	const redMask = view.getUint32(14 + 40, true) >>> 0;
-	const greenMask = view.getUint32(14 + 44, true) >>> 0;
-	const blueMask = view.getUint32(14 + 48, true) >>> 0;
-
-	const shiftOf = (mask: number): number => {
-		if (mask === 0) return 0;
-		let shift = 0;
-		while (((mask >>> shift) & 1) === 0) shift++;
-		return shift;
-	};
-	const maxOf = (mask: number): number => (mask === 0 ? 1 : mask >>> shiftOf(mask));
-	const rShift = shiftOf(redMask);
-	const gShift = shiftOf(greenMask);
-	const bShift = shiftOf(blueMask);
-	const rMax = maxOf(redMask);
-	const gMax = maxOf(greenMask);
-	const bMax = maxOf(blueMask);
-
-	const height = Math.abs(rawHeight);
-	const topDown = rawHeight < 0;
-	const stride = width * 4;
-	const lum = new Float32Array(width * height);
-
-	for (let y = 0; y < height; y++) {
-		const row = topDown ? y : height - 1 - y;
-		const base = pixelOffset + row * stride;
-		for (let x = 0; x < width; x++) {
-			const pixel = view.getUint32(base + x * 4, true) >>> 0;
-			const r = ((pixel & redMask) >>> rShift) * (255 / rMax);
-			const g = ((pixel & greenMask) >>> gShift) * (255 / gMax);
-			const b = ((pixel & blueMask) >>> bShift) * (255 / bMax);
-			lum[y * width + x] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-		}
-	}
-
-	return { path, bytes: buffer.byteLength, width, height, lum };
-}
-
-// --- capture ---------------------------------------------------------------
-
-interface Capture {
-	readonly name: string;
-	readonly bitmap: Bitmap | null;
-	/** Empty when the capture succeeded; the exact stderr otherwise. */
-	readonly error: string;
-}
-
-let screen = { x: 0, y: 0, w: 0, h: 0 };
-
-function capture(name: string, region: string | null, extra: string[] = []): Capture {
-	const path = join(DIR, `${name}.bmp`);
-	const args = ["screencapture", "-x", "-t", "bmp"];
-	if (region !== null) args.push("-R", region);
-	const proc = Bun.spawnSync({ cmd: [...args, ...extra, path], stdout: "pipe", stderr: "pipe" });
-	const stderr = proc.stderr.toString().trim();
-	if (proc.exitCode !== 0) {
-		return { name, bitmap: null, error: `exit ${proc.exitCode}: ${stderr || "(no stderr)"}` };
-	}
-	try {
-		return { name, bitmap: decodeBmp(path), error: "" };
-	} catch (error) {
-		return {
-			name,
-			bitmap: null,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
-}
-
-/** The display rectangle in points, which is what `-R` takes. */
-function desktopBounds(): { x: number; y: number; w: number; h: number } {
-	const proc = Bun.spawnSync({
-		cmd: ["osascript", "-e", 'tell application "Finder" to get bounds of window of desktop'],
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const text = proc.stdout.toString().trim();
-	const parts = text.split(",").map((piece) => Number(piece.trim()));
-	const [right, bottom] = [parts[2] ?? Number.NaN, parts[3] ?? Number.NaN];
-	if (proc.exitCode !== 0 || parts.length !== 4 || !Number.isFinite(right)) {
-		throw new Error(`desktop bounds unreadable: ${text || proc.stderr.toString().trim()}`);
-	}
-	return { x: 0, y: 0, w: right, h: Number.isFinite(bottom) ? bottom : 0 };
-}
-
-/** `-R` string for a rect in top-left screen points, clamped to the display. */
-function regionOf(rect: { x: number; y: number; width: number; height: number }): string | null {
-	const x = Math.round(Math.max(0, Math.min(screen.w - 1, rect.x)));
-	const y = Math.round(Math.max(0, Math.min(screen.h - 1, rect.y)));
-	const w = Math.round(Math.min(rect.width, screen.w - x));
-	const h = Math.round(Math.min(rect.height, screen.h - y));
-	if (!(w > 0) || !(h > 0)) return null;
-	return `${x},${y},${w},${h}`;
-}
-
-// --- pixel analysis --------------------------------------------------------
-
-interface Stats {
-	readonly mean: number;
-	readonly max: number;
-	readonly bright: number;
-	readonly pixels: number;
-}
-
-/** Luminance stats over a band of rows, in capture pixels. */
-function stats(bitmap: Bitmap, rows?: { from: number; to: number }): Stats {
-	const from = Math.max(0, rows?.from ?? 0);
-	const to = Math.min(bitmap.height, rows?.to ?? bitmap.height);
-	let sum = 0;
-	let max = 0;
-	let bright = 0;
-	let pixels = 0;
-	for (let y = from; y < to; y++) {
-		for (let x = 0; x < bitmap.width; x++) {
-			const value = bitmap.lum[y * bitmap.width + x] ?? 0;
-			sum += value;
-			if (value > max) max = value;
-			if (value >= TEXT_THRESHOLD) bright++;
-			pixels++;
-		}
-	}
-	return { mean: pixels === 0 ? 0 : sum / pixels, max, bright, pixels };
-}
-
-interface Cluster {
-	/** Bounding box in capture pixels. */
-	readonly x: number;
-	readonly y: number;
-	readonly w: number;
-	readonly h: number;
-	readonly pixels: number;
-	readonly brightAfter: number;
-	readonly meanAfter: number;
-	readonly meanBefore: number;
-}
-
-/**
- * Connected regions where the two captures differ, found by flood fill over the
- * changed mask. A status item is a wide horizontal run; a clock tick is narrow,
- * so the width ordering is what tells them apart.
- */
-function clusters(before: Bitmap, after: Bitmap, limit = 6): Cluster[] {
-	if (before.width !== after.width || before.height !== after.height) {
-		throw new Error(
-			`captures differ in size: ${before.width}x${before.height} against ` +
-				`${after.width}x${after.height}`,
-		);
-	}
-	const width = after.width;
-	const height = after.height;
-	const count = width * height;
-	const changed = new Uint8Array(count);
-	let changedCount = 0;
-	for (let index = 0; index < count; index++) {
-		const a = before.lum[index] ?? 0;
-		const b = after.lum[index] ?? 0;
-		if (Math.abs(a - b) > CHANGE_THRESHOLD) {
-			changed[index] = 1;
-			changedCount++;
-		}
-	}
-	if (changedCount === 0) return [];
-
-	const seen = new Uint8Array(count);
-	const stack = new Int32Array(count);
-	const found: Cluster[] = [];
-
-	for (let start = 0; start < count; start++) {
-		if (changed[start] === 0 || seen[start] === 1) continue;
-		let top = 0;
-		stack[top++] = start;
-		seen[start] = 1;
-		let minX = width;
-		let maxX = -1;
-		let minY = height;
-		let maxY = -1;
-		let pixels = 0;
-		let brightAfter = 0;
-		let sumAfter = 0;
-		let sumBefore = 0;
-
-		while (top > 0) {
-			const index = stack[--top] ?? 0;
-			const x = index % width;
-			const y = (index - x) / width;
-			pixels++;
-			if (x < minX) minX = x;
-			if (x > maxX) maxX = x;
-			if (y < minY) minY = y;
-			if (y > maxY) maxY = y;
-			const afterValue = after.lum[index] ?? 0;
-			sumAfter += afterValue;
-			sumBefore += before.lum[index] ?? 0;
-			if (afterValue >= TEXT_THRESHOLD) brightAfter++;
-
-			const neighbours = [
-				x > 0 ? index - 1 : -1,
-				x + 1 < width ? index + 1 : -1,
-				y > 0 ? index - width : -1,
-				y + 1 < height ? index + width : -1,
-			];
-			for (const next of neighbours) {
-				if (next < 0 || changed[next] === 0 || seen[next] === 1) continue;
-				seen[next] = 1;
-				stack[top++] = next;
-			}
-		}
-
-		found.push({
-			x: minX,
-			y: minY,
-			w: maxX - minX + 1,
-			h: maxY - minY + 1,
-			pixels,
-			brightAfter,
-			meanAfter: sumAfter / pixels,
-			meanBefore: sumBefore / pixels,
-		});
-	}
-
-	found.sort((a, b) => b.w - a.w || b.pixels - a.pixels);
-	return found.slice(0, limit);
-}
-
-/** A cluster in points, which is the unit a human reads a menu bar in. */
-function inPoints(cluster: Cluster, scale: number): Record<string, number> {
-	const round = (value: number): number => Math.round(value * 10) / 10;
-	return {
-		x: round(cluster.x / scale),
-		y: round(cluster.y / scale),
-		width: round(cluster.w / scale),
-		height: round(cluster.h / scale),
-		pixels: cluster.pixels,
-		brightAfter: cluster.brightAfter,
-		meanAfter: round(cluster.meanAfter),
-		meanBefore: round(cluster.meanBefore),
-	};
-}
-
-function measured(shot: Capture, scale: number, rows?: { from: number; to: number }): unknown {
-	if (shot.bitmap === null) return { error: shot.error };
-	const band = stats(shot.bitmap, rows);
-	return {
-		path: shot.bitmap.path,
-		bytes: shot.bitmap.bytes,
-		width: shot.bitmap.width,
-		height: shot.bitmap.height,
-		meanLuminance: Math.round(band.mean * 10) / 10,
-		maxLuminance: Math.round(band.max * 10) / 10,
-		brightPixels: band.bright,
-		scale,
-	};
-}
-
-// --- run -------------------------------------------------------------------
+import { clusters, inPoints, measured, screenRect, stats } from "./tray/analysis.ts";
+import { capture, desktopBounds, regionOf, setScreen } from "./tray/capture.ts";
+import { DIR, OCCLUSION_VISIBLE, STRIP_HEIGHT, TITLE } from "./tray/constants.ts";
 
 async function main(): Promise<void> {
 	mkdirSync(DIR, { recursive: true });
 
-	screen = desktopBounds();
-	const strip = `${screen.x},${screen.y},${screen.w},${STRIP_HEIGHT}`;
+	const bounds = desktopBounds();
+	setScreen(bounds);
+	const strip = `${bounds.x},${bounds.y},${bounds.w},${STRIP_HEIGHT}`;
 
 	const platform = createPlatform({ appName: "crust tray probe" });
 	await platform.start();
@@ -371,7 +71,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	const scale = baseline.bitmap.width / STRIP_HEIGHT > 0 ? baseline.bitmap.width / screen.w : 0;
+	const scale = baseline.bitmap.width / STRIP_HEIGHT > 0 ? baseline.bitmap.width / bounds.w : 0;
 	const barHeight = baseline.bitmap.height / scale;
 	const barBand = { from: 0, to: Math.round(barHeight * 0.62) };
 
@@ -437,7 +137,7 @@ async function main(): Promise<void> {
 	report({
 		title: TITLE,
 		region: strip,
-		screen,
+		screen: bounds,
 		scale,
 		captureAvailable: true,
 		// A drawn menu bar has text in its top band; a fullscreen window does not.
@@ -466,6 +166,7 @@ function frameToTopLeft(frame: { x: number; y: number; width: number; height: nu
 	width: number;
 	height: number;
 } {
+	const screen = screenRect();
 	return {
 		x: frame.x,
 		y: screen.h - (frame.y + frame.height),

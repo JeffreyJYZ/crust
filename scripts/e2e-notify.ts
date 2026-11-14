@@ -40,7 +40,7 @@ const page = `<!doctype html>
 			const answer = await window.crust.invoke("notification", "notify", {
 				title: "crust e2e",
 				body: "delivery is asserted, not assumed",
-				waitMs: 20000,
+				waitMs: 60000,
 			});
 			text = JSON.stringify(answer);
 		} catch (error) {
@@ -66,7 +66,15 @@ await app.run();
 
 async function main(): Promise<number> {
 	const verdict = new Verdict();
-	const id = `land.jyz.crust-notify-e2e-${Math.random().toString(36).slice(2, 10)}`;
+	// One stable identifier, not a random one. macOS remembers an authorization decision
+	// per bundle identifier, so a stable id means a person clicks Allow **once ever** and
+	// every later run is unattended; a fresh id asks again every time, which made this
+	// suite need a human on each run (measured 2026-11-14). `--fresh-id` exists for the
+	// opposite case: proving a brand-new identifier still gets asked, or working around
+	// an identifier that has been recorded as denied.
+	const id = argv.includes("--fresh-id")
+		? `land.jyz.crust-notify-e2e-${Math.random().toString(36).slice(2, 10)}`
+		: "land.jyz.crust-notify-e2e";
 	// Built under `~/.cache`, **not** `os.tmpdir()`. Measured 2026-11-14: the identical bundle
 	// with a fresh identifier delivers from `~/dev` and answers code 1 from `/var/folders/…T`,
 	// twice each way. A notification-gated app has to live outside the system temp directory.
@@ -129,7 +137,7 @@ export default {
 		const deadline = setTimeout(() => {
 			timedOut = true;
 			child.kill("SIGKILL");
-		}, 45_000);
+		}, 90_000);
 		const code = await child.exited;
 		clearTimeout(deadline);
 		const out = await stdout;
@@ -138,7 +146,7 @@ export default {
 		verdict.check(
 			"exit 0",
 			code === 0 && !timedOut,
-			timedOut ? "killed at the 45 s deadline" : `exited ${code}`,
+			timedOut ? "killed at the 90 s deadline" : `exited ${code}`,
 		);
 		const reported =
 			out
@@ -156,14 +164,17 @@ export default {
 		// machine cannot answer that, so the run proves nothing either way.
 		const delivered = reported.includes('"delivered":true');
 		const unproven = !delivered && reported.includes("has not answered yet");
+		const denied = reported.includes("recorded as denied");
 		verdict.check(
 			"delivered",
 			delivered,
 			delivered
 				? `the OS scheduled it: ${reported}`
 				: unproven
-					? "UNPROVEN — macOS is showing a permission prompt for this new identifier; click Allow and run again"
-					: `the OS refused: ${reported || "no answer"}`,
+					? "UNPROVEN — macOS is showing a permission prompt for this identifier; click Allow and run again (once only)"
+					: denied
+						? `${reported}\n          the stable identifier was refused on this machine; re-run with --fresh-id`
+						: `the OS refused: ${reported || "no answer"}`,
 		);
 
 		verdict.check(

@@ -15,6 +15,9 @@
  * `onClick` for in-process callers, but the bridge transports JSON, so a page
  * cannot send a function. Every click is therefore also pushed as a `tray:click`
  * event carrying `{ index, label }`, which is how page code learns about it.
+ *
+ * The vocabulary lives in `tray-types.ts` and the argument rules in
+ * `tray-args.ts`; this file is the commands.
  */
 
 import {
@@ -24,167 +27,19 @@ import {
 	type PluginContext,
 	type PluginDefinition,
 } from "./define";
+import { emitClick, failure, invalidMenu, invalidText, readItems, readText } from "./tray-args.ts";
+import type {
+	TrayDestroyResult,
+	TrayFailure,
+	TrayMenuResult,
+	TrayNative,
+	TrayResult,
+	TraySetMenuArgs,
+	TraySetTitleArgs,
+	TrayTitleResult,
+} from "./tray-types.ts";
 
-/** A menu row: the label the item shows plus an optional in-process handler. */
-export interface TrayMenuItem {
-	/** Non-empty text. */
-	label: string;
-	/** Called when the row is clicked. Over the bridge this cannot arrive; use `tray:click`. */
-	onClick?: () => void;
-}
-
-/**
- * The v1 option bag, kept for the plugin entry point's re-export.
- *
- * It belongs to the draft where one `set` call carried everything; the five
- * commands replaced it. An adapter that grows an icon or a tooltip can read it,
- * but nothing in these commands does.
- */
-export interface TrayOptions {
-	/** SF Symbol name or absolute image path. */
-	icon?: string;
-	/** Initial text beside the icon. */
-	title?: string;
-	tooltip?: string;
-}
-
-/** What `show` and `hide` answer: whether the item is now on the menu bar. */
-export interface TrayResult {
-	readonly ok: true;
-	readonly active: boolean;
-}
-
-export interface TrayTitleResult {
-	readonly ok: true;
-	readonly text: string;
-}
-
-export interface TrayMenuResult {
-	readonly ok: true;
-	readonly labels: string[];
-}
-
-export interface TrayDestroyResult {
-	readonly ok: true;
-	readonly destroyed: true;
-}
-
-/** The native half, supplied by the platform. One live item per adapter. */
-export interface TrayNative {
-	setTitle(text: string): void;
-	/** Replace the whole menu. An empty list detaches it. */
-	setMenu(items: readonly TrayMenuItem[]): void;
-	show(): void;
-	hide(): void;
-	/** Remove the item and release the adapter's claim on it. */
-	destroy(): void;
-}
-
-/** Why a tray command could not answer. */
-export type TrayErrorCode =
-	"invalid-text" | "invalid-menu" | "unknown-adapter" | "destroyed" | "handler-error";
-
-/** The typed failure every command returns instead of throwing or resolving undefined. */
-export interface TrayFailure {
-	readonly ok: false;
-	readonly code: TrayErrorCode;
-	readonly message: string;
-}
-
-/**
- * What an adapter throws when it refuses an act. It is a plain `Error` subclass
- * on purpose: the plugin converts it, the bridge never sees it.
- */
-export class TrayAdapterError extends Error {
-	readonly code: TrayErrorCode;
-
-	constructor(code: TrayErrorCode, message: string) {
-		super(message);
-		this.name = "TrayAdapterError";
-		this.code = code;
-	}
-}
-
-export interface TraySetTitleArgs {
-	text: string;
-}
-
-export interface TraySetMenuArgs {
-	items: readonly TrayMenuItem[];
-}
-
-/** The command names, in the order the plugin declares them. */
-export const TRAY_COMMANDS = ["setTitle", "setMenu", "show", "hide", "destroy"] as const;
-
-/** Any adapter throw becomes a value; nothing escapes into the bridge. */
-function failure(error: unknown): TrayFailure {
-	const code = error instanceof TrayAdapterError ? error.code : "handler-error";
-	const message = error instanceof Error ? error.message : String(error);
-	return { ok: false, code, message };
-}
-
-function invalidText(args: unknown): TrayFailure {
-	const seen = typeof args === "object" && args !== null ? JSON.stringify(args) : String(args);
-	return {
-		ok: false,
-		code: "invalid-text",
-		message: `crust: tray.setTitle needs { text } with a string, got ${seen}`,
-	};
-}
-
-function invalidMenu(args: unknown, reason: string): TrayFailure {
-	const seen = typeof args === "object" && args !== null ? JSON.stringify(args) : String(args);
-	return {
-		ok: false,
-		code: "invalid-menu",
-		message: `crust: tray.setMenu ${reason}, got ${seen}`,
-	};
-}
-
-/**
- * A page payload is whatever the bridge parsed, so each argument is read
- * defensively: a missing or wrong-typed value is its own typed error rather
- * than a `TypeError` from deep inside the adapter.
- */
-function readText(args: unknown): string | undefined {
-	if (typeof args !== "object" || args === null) return undefined;
-	const value = (args as { text?: unknown }).text;
-	return typeof value === "string" ? value : undefined;
-}
-
-/** Every row needs a non-empty label; a handler is optional and must be a function. */
-function readItems(args: unknown): TrayMenuItem[] | string {
-	if (typeof args !== "object" || args === null) return "needs { items }";
-	const value = (args as { items?: unknown }).items;
-	if (!Array.isArray(value)) return "needs { items } with an array";
-	const items: TrayMenuItem[] = [];
-	for (let index = 0; index < value.length; index++) {
-		const entry: unknown = value[index];
-		if (typeof entry !== "object" || entry === null)
-			return `needs item ${index} to be an object`;
-		const label = (entry as { label?: unknown }).label;
-		if (typeof label !== "string" || label.length === 0) {
-			return `needs item ${index} to carry a non-empty label`;
-		}
-		const onClick = (entry as { onClick?: unknown }).onClick;
-		if (onClick !== undefined && typeof onClick !== "function") {
-			return `needs item ${index}.onClick to be a function when given`;
-		}
-		items.push({ label, onClick: onClick as (() => void) | undefined });
-	}
-	return items;
-}
-
-function emitClick(ctx: unknown, payload: { index: number; label: string }): void {
-	if (typeof ctx !== "object" || ctx === null) return;
-	const emit = (ctx as { emit?: unknown }).emit;
-	if (typeof emit !== "function") return;
-	try {
-		(emit as (event: string, data: unknown) => void).call(ctx, "tray:click", payload);
-	} catch {
-		// A page listener must never turn a click into an exception inside AppKit.
-	}
-}
+export * from "./tray-types.ts";
 
 export function createTrayPlugin(adapter?: TrayNative): PluginDefinition<
 	"tray",

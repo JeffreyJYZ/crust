@@ -7,11 +7,15 @@
  *
  * This cost a real defect: a four-argument call to the five-argument
  * `shim_open_panel` put `allowMultiple` into `runModal` and opened a modal file
- * picker inside the test suite. The test parses both files and compares arity, so
+ * picker inside the test suite. The test parses both sides and compares arity, so
  * that mistake fails here instead of on someone's screen.
+ *
+ * Both sides may be split across several files by responsibility — the C unit
+ * stays one translation unit by concatenation, and the binding may live in its
+ * own module — so the test finds them instead of naming one path.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const DIR = import.meta.dir;
@@ -80,8 +84,43 @@ function declaredArities(source: string): Map<string, number> {
 	return arities;
 }
 
-const shimC = readFileSync(join(DIR, "shim.c"), "utf8");
-const indexTs = readFileSync(join(DIR, "index.ts"), "utf8");
+/**
+ * Every C source under this directory that defines a `shim_*` function, joined
+ * in path order. One file or several parts both read as one unit, which is what
+ * `cc()` compiles.
+ */
+function shimCSource(): string {
+	const files: string[] = [];
+	const walk = (dir: string): void => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const path = join(dir, entry.name);
+			if (entry.isDirectory()) walk(path);
+			else if (entry.name.endsWith(".c")) files.push(path);
+		}
+	};
+	walk(DIR);
+	const parts = files
+		.map((path) => [path, readFileSync(path, "utf8")] as const)
+		.filter(([, source]) => /\bshim_[a-z_]*\s*\(/.test(source))
+		.sort(([left], [right]) => left.localeCompare(right));
+	if (parts.length === 0) throw new Error("crust: no C source defines the shim functions");
+	return parts.map(([, source]) => source).join("\n");
+}
+
+/** The module holding the shim's `symbols: { … }` block, whatever it is called. */
+function bindingSource(): string {
+	const candidates = readdirSync(DIR)
+		.filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+		.sort();
+	for (const name of candidates) {
+		const source = readFileSync(join(DIR, name), "utf8");
+		if (source.includes("symbols: {") && source.includes("shim_window_new")) return source;
+	}
+	throw new Error("crust: no module declares the shim bindings");
+}
+
+const shimC = shimCSource();
+const indexTs = bindingSource();
 
 describe("bun:ffi declarations match the C prototypes", () => {
 	const c = cArities(shimC);

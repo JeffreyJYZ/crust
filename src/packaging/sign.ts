@@ -10,40 +10,22 @@
  * The spctl refusal is not a bug in this code. An ad-hoc signature cannot be
  * notarized, so Gatekeeper refuses an ad-hoc bundle on any machine that did not
  * build it. That is the whole distribution story until a Developer ID
- * certificate exists, and `reality()` below prints it rather than hiding it.
+ * certificate exists, and `signingReality()` in `reality.ts` prints it rather
+ * than hiding it.
+ *
+ * The entitlement plist lives in `entitlements.ts`, verification in `verify.ts`,
+ * and both are re-exported here so `./sign` stays the one import path.
  */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runOrThrow, run } from "./exec";
+import { join } from "node:path";
+import { JIT_ENTITLEMENT_PLIST } from "./entitlements";
+import { runOrThrow } from "./exec";
 
-/**
- * The hardened-runtime entitlements crust needs, both measured on 2026-11-14.
- *
- * `allow-jit` is the one Apple documents for JIT and it is required, but it is
- * **not sufficient**: it permits `MAP_JIT` pages, and the TinyCC inside Bun
- * instead writes machine code into ordinary unsigned executable memory. Sealed
- * with `allow-jit` alone, a signed app starts, creates no page and prints
- * nothing — `crust sign` produced exactly that on a notify probe, exit stayed 0
- * and only the silence showed it. `allow-unsigned-executable-memory` is what
- * makes the same bundle run.
- *
- * This also corrects an earlier note: that probe tested `new Function` inside
- * the *Bun* process, which is not the blocked path, so "no entitlement needed"
- * was never a safe reading of it.
- */
-export const JIT_ENTITLEMENT_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>com.apple.security.cs.allow-jit</key>
-	<true/>
-	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-	<true/>
-</dict>
-</plist>
-`;
+export * from "./entitlements.ts";
+export * from "./reality.ts";
+export * from "./verify.ts";
 
 export type SignMode = "adhoc" | "developer-id";
 
@@ -69,18 +51,6 @@ export interface SignResult {
 	identity: string;
 	hardenedRuntime: boolean;
 	entitled: boolean;
-}
-
-export interface VerifyResult {
-	valid: boolean;
-	exitCode: number;
-	output: string;
-}
-
-export interface GatekeeperResult {
-	accepted: boolean;
-	exitCode: number;
-	raw: string;
 }
 
 /**
@@ -136,77 +106,4 @@ export async function signApp(options: SignOptions): Promise<SignResult> {
 	}
 
 	return { appPath: options.appPath, mode, identity, hardenedRuntime, entitled };
-}
-
-/** `codesign --verify` — cheap, local, no Gatekeeper, no network. */
-export async function verifySignature(appPath: string): Promise<VerifyResult> {
-	const result = await run(["codesign", "--verify", "--verbose=4", appPath]);
-	return {
-		valid: result.code === 0,
-		exitCode: result.code,
-		output: (result.stderr || result.stdout).trim(),
-	};
-}
-
-/**
- * `codesign -dv` — read the signature without validating every sealed file.
- *
- * This is the cheap half of verification and the one to use in a loop or in CI
- * where a full `--verify` plus `spctl` pair costs real time per artefact.
- */
-export async function describeSignature(appPath: string): Promise<string> {
-	const result = await run(["codesign", "-dv", "--verbose=4", appPath]);
-	return (result.stderr || result.stdout).trim();
-}
-
-/**
- * Ask Gatekeeper. Expensive, and the answer is already known for ad-hoc.
- *
- * Included because `crust sign` must be able to tell the user the truth about
- * their own signature, and because a Developer ID build answers differently.
- * Call it once per artefact, never per check.
- */
-export async function assessGatekeeper(appPath: string): Promise<GatekeeperResult> {
-	const result = await run(["spctl", "-a", "-vvv", appPath]);
-	return {
-		accepted: result.code === 0,
-		exitCode: result.code,
-		raw: (result.stderr || result.stdout).trim(),
-	};
-}
-
-/**
- * The lines a build must print, whether or not the user asks.
- *
- * Ad-hoc is rejected by Gatekeeper on every other machine, so an app can only
- * be distributed once a Developer ID exists. Printing that on success is the
- * difference between an honest tool and one that implies a signed app is
- * shippable.
- */
-export function signingReality(result: SignResult): string[] {
-	const lines = [
-		`signed ${result.appPath} — ${result.mode}${result.hardenedRuntime ? " + hardened runtime" : ""}`,
-	];
-
-	if (result.mode === "adhoc") {
-		lines.push(
-			"spctl rejects this bundle (exit 3): an ad-hoc signature cannot be notarized, " +
-				"so it runs local builds only. Distributing it means the recipient clears " +
-				"quarantine (xattr -dr com.apple.quarantine) or right-clicks Open, once.",
-		);
-		lines.push(
-			"Distribution requires a Developer ID Application certificate: Developer ID " +
-				"codesign, notarytool submit --wait, then stapler staple.",
-		);
-	}
-
-	if (result.entitled) {
-		lines.push(
-			"com.apple.security.cs.allow-jit is sealed. Its necessity is unproven for Bun's " +
-				"runtime — codegen ran under --options runtime with no entitlement at all. " +
-				"WKWebView's WebContent process is the unmeasured case.",
-		);
-	}
-
-	return lines;
 }

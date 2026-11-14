@@ -21,62 +21,25 @@
  *
  * Nothing is left running and every temporary directory is removed, including on
  * failure: the survivor patterns are checked after both runs, not only after the last.
+ *
+ * The binary, the page and the bare environment are `dev-binary/fixture.ts`.
  */
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
-import { clearSurvivors, probe, survivorsOf, Verdict } from "./e2e-harness.ts";
-
-const REPO_ROOT = resolve(import.meta.dir, "..");
-const BIN = resolve(REPO_ROOT, process.env.CRUST_BIN ?? "dist/crust");
-
-/** The window, the shim compile and WebKit's web process, generously bounded. */
-const DEV_TIMEOUT_MS = 45_000;
-
-/** The line the page's own `invoke` produces, printed by the framework's `info` command. */
-const INFO = /info\s+app answered the page/;
-/** The payload proving `echo` returned what the page sent. */
-const ECHO = /echo\s+\{"from":"page","ok":true\}/;
-/** The scaffold's page calls `greet`, and `main.ts` logs the answer. */
-const GREET = /greet\s+hello crust \(page call answered\)/;
-/** The scaffold's `ready` handler, so the project path proves a window too. */
-const WINDOW = /window\s+open/;
-
-const SINGLE_PAGE = `// No default export: this page owns the DOM and proves the round trip itself.
-const reply = await window.crust.invoke("info", { from: "page" });
-document.title = \`info:\${reply.app}:\${reply.single}\`;
-document.body.textContent = \`reply \${JSON.stringify(reply)}\`;
-await window.crust.invoke("echo", { from: "page", ok: true });
-`;
-
-/**
- * A minimal environment: enough for WebKit and for `tmpdir()` to agree with this
- * process, and a PATH with no Bun in it. `env -i` is used rather than a spawn option so
- * the proof does not depend on this harness's own environment leaking anything in.
- */
-function bare(path: string): string[] {
-	return [
-		"/usr/bin/env",
-		"-i",
-		`PATH=${path}`,
-		`HOME=${process.env.HOME ?? ""}`,
-		`TMPDIR=${tmpdir()}`,
-		BIN,
-	];
-}
-
-/** The PATH a machine that installed crust alone has. */
-const NO_BUN_PATH = "/usr/bin:/bin";
-
-function lastLine(text: string): string {
-	return (
-		text
-			.split("\n")
-			.filter((row) => row.trim().length > 0)
-			.at(-1)
-			?.trim() ?? ""
-	);
-}
+import { basename, join } from "node:path";
+import { clearSurvivors, survivorsOf, Verdict } from "./e2e-harness.ts";
+import { lastLine } from "./lib/text.ts";
+import { runOnce } from "./dev-binary/run.ts";
+import {
+	BIN,
+	bare,
+	ECHO,
+	GREET,
+	INFO,
+	NO_BUN_PATH,
+	SINGLE_PAGE,
+	WINDOW,
+} from "./dev-binary/fixture.ts";
 
 async function main(): Promise<number> {
 	if (process.platform !== "darwin") {
@@ -150,58 +113,11 @@ async function main(): Promise<number> {
 	for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
 
 	try {
-		/**
-		 * One windowed run, stopped by the same SIGTERM its own stop handler sees, then
-		 * checked for the lines only a live page produces. The probe waits for the *last*
-		 * of them, because stopping on the first would cut the run before the rest arrived.
-		 */
-		const run = async (
-			label: string,
-			command: string[],
-			cwd: string,
-			expect: readonly RegExp[],
-		) => {
-			const last = expect.at(-1);
-			if (last === undefined) throw new Error(`${label}: no line to wait for`);
-			if (process.env.CRUST_E2E_TRACE === "1")
-				console.log(`trace ${label}: cwd=${cwd} cmd=${JSON.stringify(command)}`);
-			const result = await probe({
-				command,
-				cwd,
-				match: last,
-				timeoutMs: DEV_TIMEOUT_MS,
-			});
-			const text = result.stdout;
-			const failed = expect.filter((pattern) => !pattern.test(text));
-			verdict.check(
-				label,
-				failed.length === 0,
-				failed.length === 0
-					? `${result.matched} (${((result.matchedMs ?? 0) / 1000).toFixed(2)} s)`
-					: `missing ${failed.map(String).join(", ")} — ` +
-							(lastLine(result.stdout) ||
-								lastLine(result.stderr) ||
-								"nothing printed"),
-			);
-			let clean = result.code === 0;
-			if (!clean) {
-				// A run that had to be killed at the deadline proves nothing about the stop
-				// path, and saying so beats reporting only the first failing line.
-				const why = result.timedOut
-					? `did not answer within ${DEV_TIMEOUT_MS / 1000} s`
-					: `exit ${result.code ?? "null"}${result.signal ? ` (${String(result.signal)})` : ""}`;
-				console.log(`note  ${label}: ${why}`);
-				clean = false;
-			}
-			verdict.check(
-				`${label} exit`,
-				clean,
-				clean ? "exit 0 after SIGTERM to the process group" : "see the note above",
-			);
-		};
-
-		await run("single, bun", [BIN, "dev", page], single, [INFO, ECHO]);
-		await run("single, no bun", [...bare(NO_BUN_PATH), "dev", page], single, [INFO, ECHO]);
+		await runOnce(verdict, "single, bun", [BIN, "dev", page], single, [INFO, ECHO]);
+		await runOnce(verdict, "single, no bun", [...bare(NO_BUN_PATH), "dev", page], single, [
+			INFO,
+			ECHO,
+		]);
 
 		// The runner the single-file path generated imports the framework by absolute
 		// path, so a missing tree means the child resolved nothing. It is materialised by
@@ -232,10 +148,13 @@ async function main(): Promise<number> {
 		if (scaffolded && treeExists) {
 			await mkdir(join(project, "node_modules"), { recursive: true });
 			await symlink(tree, join(project, "node_modules", "crust"), "dir");
-			await run("project, no bun", [...bare(NO_BUN_PATH), "dev", "--dir", project], project, [
-				WINDOW,
-				GREET,
-			]);
+			await runOnce(
+				verdict,
+				"project, no bun",
+				[...bare(NO_BUN_PATH), "dev", "--dir", project],
+				project,
+				[WINDOW, GREET],
+			);
 		}
 
 		// 3. Nothing survives: each probe signalled the process group rather than the parent

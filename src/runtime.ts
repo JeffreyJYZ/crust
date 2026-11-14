@@ -16,18 +16,32 @@
  * An invoke that matches no handler is the bridge's structured error, never a
  * crash: `app.invoke` throws a plain Error and the bridge serialises it.
  *
+ * The pieces sit beside this file: `runtime-shim.ts` (the page shim and plugin
+ * selection), `runtime-plugins.ts` (the native four and the `app` namespace) and
+ * `runtime-host.ts` (port, document and entry).
+ *
  * Run directly, this module IS the backend process:
  *
  *   bun run src/runtime.ts --config <path> --entry <path>
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { APP_NAMESPACE, app, type App, type CommandHandler } from "@/app.ts";
+import { app, type App, type CommandHandler } from "@/app.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig, validateConfig } from "@/config";
-import type { DarwinPlatform } from "@/platform/darwin";
+import { type DarwinPlatform } from "@/platform/darwin";
+import { PluginRegistry } from "@/plugins";
+import {
+	isDirectory,
+	preferredPortFor,
+	readIndex,
+	resolveEntry,
+	originOf,
+} from "./runtime-host.ts";
+import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
+import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
+import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
-import { createWindowPlugin, type PluginDefinition, PluginRegistry, definePlugin } from "@/plugins";
 
 export interface StartAppOptions {
 	/** Config file, relative to the working directory. */
@@ -54,175 +68,11 @@ export interface StartAppOptions {
 }
 
 /**
- * The page-side shim, installed after the bridge's own bootstrap.
- *
- * `installCrust` speaks `(plugin, command, args)`, which is what plugin calls
- * use. DESIGN.md §5 has the page call `invoke("greet", { name })` for an app
- * command, so a two-argument call is routed to the `app` namespace. A string
- * second argument is the explicit plugin form and passes through untouched.
- */
-const INVOKE_SHIM = `<script>(function () {
-	var api = window.crust;
-	if (!api || typeof api.invoke !== "function") return;
-	var raw = api.invoke.bind(api);
-	api.invoke = function (name, command, args) {
-		if (typeof command === "string") return raw(name, command, args);
-		return raw("${APP_NAMESPACE}", "invoke", { name: name, args: command === undefined ? {} : command });
-	};
-})();</script>`;
-
-/** Put the shim where the parser reaches it before any page script. */
-function injectShim(html: string): string {
-	const bodyOpen = /<body[^>]*>/i;
-	if (bodyOpen.test(html)) return html.replace(bodyOpen, (tag) => `${tag}${INVOKE_SHIM}`);
-	return `${INVOKE_SHIM}${html}`;
-}
-
-/** `crust:fs` -> `fs`; a bare `fs` is accepted too. */
-function pluginName(entry: string): string {
-	return entry.startsWith("crust:") ? entry.slice("crust:".length) : entry;
-}
-
-/** The core plugins the config asked for, or all four when it names none. */
-function selectedPlugins(
-	config: CrustConfig,
-	core: readonly PluginDefinition[],
-): PluginDefinition[] {
-	if (!config.plugins || config.plugins.length === 0) return [...core];
-	const wanted = config.plugins.map(pluginName);
-	const known = core.map((plugin) => plugin.name);
-	for (const name of wanted) {
-		if (!known.includes(name)) {
-			throw new Error(`crust: unknown plugin "${name}" — v1 ships ${known.join(", ")}`);
-		}
-	}
-	return core.filter((plugin) => wanted.includes(plugin.name));
-}
-
-/**
- * Swap in the platform's native plugins.
- *
- * `dialog` and `window` are the two plugins with a native half in v1. Each
- * default export answers `not-implemented`; the real answer needs AppKit,
- * which arrives through that plugin's own `create*Plugin` hook. The window
- * plugin additionally needs the running platform to read labels from, which is
- * why it is appended here rather than living in `corePlugins`.
- *
- * No platform, or not macOS, means the honest answers stay: a headless bridge
- * and a non-macOS platform are unchanged, and the plugin is still registered
- * under its own name so `selectedPlugins` matches `config.plugins`.
- */
-async function nativePlugins(
-	core: readonly PluginDefinition[],
-	platform: DarwinPlatform | undefined,
-): Promise<PluginDefinition[]> {
-	const { createDialogPlugin, createNotificationPlugin, createTrayPlugin } =
-		await import("@/plugins");
-	if (!platform || process.platform !== "darwin") {
-		return [...core.filter((plugin) => plugin.name !== "window"), createWindowPlugin()];
-	}
-	const darwin = await import("@/platform/darwin");
-	const notifications = await import("@/platform/darwin/notifications");
-	const statusBar = await import("@/platform/darwin/status-bar");
-	return [
-		...core.map((plugin) => {
-			switch (plugin.name) {
-				case "dialog":
-					return createDialogPlugin(darwin.darwinDialogAdapter());
-				case "tray":
-					return createTrayPlugin(statusBar.createStatusBar());
-				case "notification":
-					return createNotificationPlugin(notifications.darwinNotificationAdapter());
-				default:
-					return plugin;
-			}
-		}),
-		createWindowPlugin(darwin.darwinWindowAdapter(platform)),
-	];
-}
-
-/** The origin a dev server serves from, or undefined when the URL is unusable. */
-function originOf(url: string): string | undefined {
-	try {
-		return new URL(url).origin;
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * A stable port for an app, derived from its id.
- *
- * The bridge used to bind `0`, which makes the page's origin change every launch
- * and discards localStorage, IndexedDB, service workers and per-origin caches.
- * Deriving from the id keeps the origin stable across runs; the caller walks
- * upward when the port is taken, and falls back to ephemeral rather than failing.
- */
-function preferredPortFor(appId: string): number {
-	let hash = 2166136261;
-	for (let index = 0; index < appId.length; index++) {
-		hash ^= appId.charCodeAt(index);
-		hash = Math.imul(hash, 16777619);
-	}
-	return 45000 + ((hash >>> 0) % 4000);
-}
-
-async function isDirectory(path: string): Promise<boolean> {
-	try {
-		return (await Bun.file(path).stat()).isDirectory();
-	} catch {
-		return false;
-	}
-}
-
-/**
- * The backend entry: an explicit path must exist; otherwise `src/main.ts` then
- * `main.ts`, matching the CLI's rule so both entry points agree.
- */
-async function resolveEntry(explicit: string | undefined): Promise<string | undefined> {
-	if (explicit) {
-		const path = resolve(explicit);
-		return (await Bun.file(path).exists()) ? path : undefined;
-	}
-	for (const candidate of ["src/main.ts", "main.ts"]) {
-		const path = resolve(candidate);
-		if (await Bun.file(path).exists()) return path;
-	}
-	return undefined;
-}
-
-/** The document the bridge will serve, from the binary's assets or from disk. */ async function readIndex(
-	root: string | undefined,
-	assets?: AssetTable,
-): Promise<string | undefined> {
-	const embedded = assets?.["/index.html"];
-	if (typeof embedded === "string") return embedded;
-	if (!root) return undefined;
-	const file = Bun.file(join(root, "index.html"));
-	return (await file.exists()) ? await file.text() : undefined;
-}
-
-/**
  * Start a crust app. Resolves once the user's entry has run and `app.run()`
  * has opened its windows; the process then stays alive on the pump and the
  * bridge, which is the intended shape (there is no `run()` return to await).
  * The returned handle is the bridge that was started, so a test can stop it.
  */
-let signalsRegistered = false;
-
-/**
- * SIGINT/SIGTERM must end the process wherever `startApp` runs, including inside
- * a compiled binary where `import.meta.main` never fires. Guarded, so a second
- * call cannot install the handlers twice.
- */
-function registerShutdownSignals(): void {
-	if (signalsRegistered) return;
-	signalsRegistered = true;
-	for (const signal of ["SIGINT", "SIGTERM"] as const) {
-		process.on(signal, () => process.exit(0));
-	}
-}
-
 export async function startApp(options: StartAppOptions = {}): Promise<BridgeHandle> {
 	registerShutdownSignals();
 	const config =
@@ -232,25 +82,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	const projectDir = options.configPath ? dirname(resolve(options.configPath)) : process.cwd();
 	const root = options.root ?? join(projectDir, "public");
 
-	// The app namespace is the same object for every launch: commands registered
-	// by main.ts after the bridge starts are still reachable, because the handler
-	// closes over `app` rather than snapshotting its command table.
-	const appPlugin = definePlugin({
-		name: APP_NAMESPACE,
-		commands: {
-			invoke: async (payload: unknown) => {
-				const { name, args } = (payload ?? {}) as { name?: unknown; args?: unknown };
-				if (typeof name !== "string" || name.length === 0) {
-					throw new Error("crust: app.invoke needs { name, args }");
-				}
-				const commandArgs =
-					typeof args === "object" && args !== null && !Array.isArray(args)
-						? (args as Record<string, unknown>)
-						: {};
-				return await app.invoke(name, commandArgs);
-			},
-		},
-	});
+	const appPlugin = createAppNamespacePlugin();
 
 	const core = (await import("@/plugins")).corePlugins;
 	const attachPlatform = options.attachPlatform !== false;
@@ -258,7 +90,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	// labels and native pointers from the same instance `app.attach` receives.
 	// Constructing it starts nothing; `app.run()` calls `start()`.
 	const darwinPlatform = attachPlatform ? await import("@/platform/darwin") : undefined;
-	const platform = darwinPlatform?.createPlatform({ appName: config.app.name });
+	const platform: DarwinPlatform | undefined = darwinPlatform?.createPlatform({
+		appName: config.app.name,
+	});
 	const plugins = await nativePlugins(core, platform);
 
 	const frontendRoot = (await isDirectory(root)) ? root : undefined;
@@ -347,15 +181,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 }
 
 /** The one argument parser both this module and the CLI accept. */
-export function parseRuntimeArgs(argv: readonly string[]): { configPath?: string; entry?: string } {
-	const parsed: { configPath?: string; entry?: string } = {};
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "--config") parsed.configPath = argv[++index];
-		else if (arg === "--entry") parsed.entry = argv[++index];
-	}
-	return parsed;
-}
+export { parseRuntimeArgs } from "./runtime-process.ts";
 
 if (import.meta.main) {
 	const args = parseRuntimeArgs(process.argv.slice(2));

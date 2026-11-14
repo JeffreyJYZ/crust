@@ -7,7 +7,9 @@ import { PANEL_KIND, PANEL_STATUS, PREFLIGHT, preflightError, shim } from "./ind
 import { SHIM_PART_PATHS } from "./shim-source.ts";
 
 /** The parts, read from disk, in the order the unit compiles. */
-const SHIM_PARTS = SHIM_PART_PATHS.map((path) => readFileSync(join(import.meta.dir, "..", "..", "..", path), "utf8"));
+const SHIM_PARTS = SHIM_PART_PATHS.map((path) =>
+	readFileSync(join(import.meta.dir, "..", "..", "..", path), "utf8"),
+);
 
 /** `SHIM_PANEL_NO_RESPONSE` in the shim source: the sheet has not answered yet. */
 const SHIM_PANEL_NO_RESPONSE = -1;

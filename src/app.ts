@@ -2,9 +2,9 @@
  * The public app surface.
  *
  * `main.ts` registers commands, mounts plugins and adds listeners, then awaits
- * `app.run()`. The window machinery lives behind the `Platform` seam below, so
- * the macOS implementation can be plugged in without this file knowing AppKit
- * exists.
+ * `app.run()`. The window machinery lives behind the `Platform` seam declared in
+ * `app-types.ts`, so the macOS implementation can be plugged in without this
+ * file knowing AppKit exists.
  *
  * `run()` works two ways. Through `startApp` (both `crust dev` and a built app)
  * the platform and the config are attached before `main.ts` is imported, and
@@ -13,95 +13,25 @@
  * bare (`bun src/main.ts`) it loads both itself: the config from the project
  * directory and the platform through a lazy import, so the macOS layer is not
  * linked into a process that never opens a window.
+ *
+ * The types live in `app-types.ts` and everything that needs no instance in
+ * `app-loop.ts`; both are re-exported here so `./app.ts` stays the one path.
  */
 import { CrustError } from "@/bridge/errors";
-import { type CrustConfig, type WindowConfig, loadConfig } from "@/config";
-import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
-import { corePlugins, windowPlugin } from "./plugins/index.ts";
-
-/** Where a window points and how it is sized. Mirrors a config window entry. */
-export interface WindowOptions {
-	label: string;
-	url?: string;
-	width?: number;
-	height?: number;
-	minWidth?: number;
-	title?: string;
-}
-
-/** A created window. The label is what `Platform.window(label)` looks it up by. */
-export interface WindowHandle {
-	label: string;
-}
-
-/**
- * The whole native surface crust depends on. One implementation per OS.
- *
- * `start` brings up the application; `pump` starts the Cocoa run loop pump on
- * a timer; `createWindow` opens a window; `window` returns it or undefined once
- * it has closed; `quit` ends the application.
- */
-export interface Platform {
-	start(): Promise<void>;
-	pump(intervalMs: number): void;
-	createWindow(options: WindowOptions): WindowHandle;
-	window(label: string): WindowHandle | undefined;
-	quit(): void;
-}
-
-export type AppEvent = "ready" | "window-all-closed";
-export type AppListener = () => void | Promise<void>;
-export type CommandHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
-
-/**
- * The namespace a two-argument `window.crust.invoke(name, args)` is rewritten
- * into by the shim `startApp` injects. Reserved: no project plugin may claim it.
- */
-export const APP_NAMESPACE = "app";
-
-/** Builds the bridge on demand and returns the URL its pages load from. */
-export type BridgeFactory = (config: CrustConfig) => string;
-
-/**
- * Names a project plugin may not claim.
- *
- * The core four are `corePlugins`; `window` is appended by `startApp` and is
- * therefore not in that list; `app` is the runtime's own namespace. A name is a
- * namespace, so a duplicate is an overlap in the handler table rather than an
- * override — refused instead of silently shadowing a built-in.
- */
-const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
+import { type CrustConfig, loadConfig } from "@/config";
+import { emit, loadPlatform, mountable, openWindows, watchWindows } from "./app-loop.ts";
+import {
 	APP_NAMESPACE,
-	windowPlugin.name,
-	...corePlugins.map((plugin) => plugin.name),
-]);
+	type AppEvent,
+	type AppListener,
+	type BridgeFactory,
+	type CommandHandler,
+	PUMP_INTERVAL_MS,
+	type Platform,
+} from "./app-types.ts";
+import { type PluginDefinition } from "./plugins/define.ts";
 
-/** Cocoa pump tick, from DESIGN.md §3: a 16 ms tick with a 0.25 ms slice holds. */
-export const PUMP_INTERVAL_MS = 16;
-
-/** How often `run` checks whether every window has closed, when someone listens. */
-const WINDOW_CHECK_INTERVAL_MS = 250;
-
-/**
- * An absolute URL is mandatory: the platform hands it to `NSURL` as-is, and a
- * relative one becomes `about:blank` there. `dev.url` wins verbatim (it is the
- * Vite origin), otherwise the window is served by the bridge.
- */
-function windowUrl(
-	window: WindowConfig,
-	devUrl: string | undefined,
-	bridgeUrl: string | undefined,
-): string {
-	const path = window.url ?? "/";
-	if (devUrl) return devUrl;
-	if (!bridgeUrl) {
-		throw new Error(
-			"crust: no page URL — set dev.url, or start through `crust dev` / a built app " +
-				"so the bridge can serve the page",
-		);
-	}
-	return `${bridgeUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-}
+export * from "./app-types.ts";
 
 export class App {
 	readonly #commands = new Map<string, CommandHandler>();
@@ -112,7 +42,6 @@ export class App {
 	#bridgeUrl?: string;
 	#bridgeFactory?: BridgeFactory;
 	#started = false;
-	#closedNotified = false;
 	#windowCheck?: ReturnType<typeof setInterval>;
 
 	/**
@@ -172,36 +101,15 @@ export class App {
 	 * Mount a plugin of your own, so a page reaches it as
 	 * `window.crust.invoke("<name>", "<command>", args)`.
 	 *
-	 * `definePlugin` already checks the shape, so this reuses it and adds the
-	 * two rules a mount needs: the name is a namespace and must be unused — a
-	 * duplicate, a built-in name (`fs`, `dialog`, `notification`, `tray`,
-	 * `window`) or the reserved `app` namespace is refused, never shadowed —
-	 * and the mount must happen before `run()`.
+	 * The name is a namespace, so a duplicate, a built-in name or the reserved
+	 * `app` namespace is refused rather than shadowed — `mountable` in
+	 * `app-loop.ts` owns those rules — and the mount must happen before `run()`.
 	 */
 	use(plugin: PluginDefinition): this {
 		if (this.#started)
 			throw new Error("crust: cannot mount a plugin after app.run() has started");
-		if (typeof plugin !== "object" || plugin === null)
-			throw new CrustError(
-				"bad-request",
-				"app.use: not a plugin definition (expected { name, commands })",
-			);
-
-		const definition = definePlugin(plugin);
-		const name = definition.name;
-		if (name === APP_NAMESPACE) {
-			throw new CrustError("bad-request", `app.use: "${name}" is the reserved app namespace`);
-		}
-		if (RESERVED_PLUGIN_NAMES.has(name)) {
-			throw new CrustError(
-				"bad-request",
-				`app.use: "${name}" is a built-in plugin — a name is a namespace, so pick another`,
-			);
-		}
-		if (this.#plugins.has(name)) {
-			throw new CrustError("bad-request", `app.use: plugin "${name}" is already mounted`);
-		}
-		this.#plugins.set(name, definition);
+		const definition = mountable(plugin, this.#plugins);
+		this.#plugins.set(definition.name, definition);
 		return this;
 	}
 
@@ -239,7 +147,7 @@ export class App {
 	async run(): Promise<void> {
 		if (this.#started) throw new Error("crust: app.run() was already called");
 		const config = this.#config ?? (await loadConfig()).config;
-		const platform = this.#platform ?? (await this.#loadPlatform(config));
+		const platform = this.#platform ?? (await loadPlatform(config));
 		this.#config = config;
 		this.#platform = platform;
 		// A deferred bridge starts here, after the entry's plugins and commands
@@ -250,58 +158,21 @@ export class App {
 
 		this.#started = true;
 		await platform.start();
-		for (const window of config.windows) {
-			platform.createWindow({
-				...window,
-				url: windowUrl(window, config.dev?.url, this.#bridgeUrl),
-			});
-			// A window that exists but never appears is the worst failure: the page runs, the
-			// bridge answers, and the screen is empty. Say what was created so a silent window
-			// is visible in the log rather than inferred from a user's "nothing happened".
-			console.log(`  window    ${window.label} created`);
-		}
-		await this.#emit("ready");
+		openWindows(platform, config, this.#bridgeUrl);
+		await emit(this.#listeners, "ready");
 		platform.pump(PUMP_INTERVAL_MS);
 
-		if (this.#listeners.get("window-all-closed")?.size) this.#watchWindows(config, platform);
+		if (this.#listeners.get("window-all-closed")?.size) {
+			this.#windowCheck = watchWindows(config, platform, () => {
+				void emit(this.#listeners, "window-all-closed").then(() => platform.quit());
+			});
+		}
 	}
 
 	/** Quit the application, closing every window and stopping the pump timer. */
 	quit(): void {
 		this.#stopWatching();
 		this.#platform?.quit();
-	}
-
-	/**
-	 * The only dynamic import of the native layer. Keeping it lazy is what lets
-	 * `bun check` and the bridge tests load this module on any machine, and why
-	 * a process that never calls `run()` never compiles the shim.
-	 */
-	async #loadPlatform(config: CrustConfig): Promise<Platform> {
-		if (process.platform !== "darwin") {
-			throw new Error(`crust: no platform for ${process.platform} — macOS only for v1`);
-		}
-		const darwin = await import("@/platform/darwin");
-		return darwin.createPlatform({ appName: config.app.name });
-	}
-
-	async #emit(event: AppEvent): Promise<void> {
-		const listeners = this.#listeners.get(event);
-		if (!listeners) return;
-		for (const listener of listeners) await listener();
-	}
-
-	#watchWindows(config: CrustConfig, platform: Platform): void {
-		this.#windowCheck = setInterval(() => {
-			if (this.#closedNotified) return;
-			const open = config.windows.some((window: WindowConfig) =>
-				platform.window(window.label),
-			);
-			if (open) return;
-			this.#closedNotified = true;
-			void this.#emit("window-all-closed").then(() => platform.quit());
-		}, WINDOW_CHECK_INTERVAL_MS);
-		this.#windowCheck.unref?.();
 	}
 
 	#stopWatching(): void {
