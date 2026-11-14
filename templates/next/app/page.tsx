@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 /** The page-side bridge the crust window injects; only what this page touches. */
@@ -54,6 +55,9 @@ export default function Page() {
 			</h1>
 			<p style={{ margin: 0, minHeight: "1.5em", color: "LinkText" }}>{answer}</p>
 			<p style={{ margin: 0, fontSize: 12, color: "GrayText" }}>{status}</p>
+			<Link href="/about" style={{ fontSize: 13 }}>
+				another page →
+			</Link>
 		</div>
 	);
 }

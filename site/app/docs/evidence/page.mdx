@@ -67,6 +67,7 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 | what was run | result |
 | --- | --- |
 | `bun run verify:first-run`, plain, React and Next scaffolds | scaffold → `bun install` → `crust build` → bundle → a window that answered a page call, on 0.1.15 and 0.1.16 |
+| a person clicking through a `--next` export | start page → `/about` → back, through the window's own router, no reload and the bridge still answering after both moves |
 | the three scaffolds, built from a scaffold rather than the checkout | plain 3 files / 85.25 MiB, React 2 files / 85.45 MiB, Next 21 files / 85.83 MiB with `invoke("greet")` answered |
 | `bun run e2e:single`, 19 assertions | dev answers the page; the built bundle answers with cwd `/`; a save rebuilds without restarting the runtime; a syntax error leaves the last good bundle running |
 | `bun run verify:package` | 31 checks against a 140.5 KiB tarball (the docs site is a repo artefact and does not ship), installed into a temp directory and run from the installed copy alone |
@@ -75,7 +76,6 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 ## What is not proven
 
 - **Developer ID signing.** No such certificate exists on this machine, so `crust sign`'s path is written and never exercised, and Gatekeeper's behaviour on a recipient's Mac is untested. Ad-hoc is the only signature observed.
-- **A human clicking through a Next static export.** The export is measured end to end through `crust build` and the served document, a `_next` chunk, `/about`, a 403 on a missing asset and the page's invoke; client-side navigation and hydration are proven only by that served markup.
 - **AppKit's overwrite prompt.** Nothing has replaced an existing file through `savePanel`, so the prompt is documented from AppKit's behaviour, not observed.
 - **The free-standing panel at runtime.** A windowless app's `beginWithCompletionHandler:` path has its adapter half tested; the AppKit half has never been entered.
 - **A warm first launch, and anything timed from inside the page.** Every cold-start worst case is a cold page cache, and the page's own `ready` marker is resolved but never reported back to the backend, so it is not timed.

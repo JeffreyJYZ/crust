@@ -7,6 +7,7 @@ describe("listAssets", () => {
 		const assets = await listAssets("templates/next");
 		const names = assets.map((asset) => asset.relative);
 		expect(names).toEqual([
+			"app/about/page.tsx",
 			"app/layout.tsx",
 			"app/page.tsx",
 			"crust.config.ts",
