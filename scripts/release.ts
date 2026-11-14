@@ -52,11 +52,11 @@ await Bun.write(
 	`${REPO}/package.json`,
 	`${JSON.stringify({ ...manifest, version }, null, "\t")}\n`,
 );
-// Install examples pin the tag, so README's commands move with it. docs/install.md is
-// deliberately excluded: it carries *measured* answers — what bunx returned for a tag on a
-// fresh cache, what a stale cache returned — and rewriting the tag there pairs a new tag
-// with an old measurement, which is how 0.1.9 shipped a table claiming #v0.1.9 answers
-// 0.1.8. Re-measure that page by hand instead (`BUN_INSTALL=<tmp> bunx …#<tag> --version`).
+// Install examples pin the tag, so README's commands move with it. The docs site is
+// deliberately excluded: its pages state *measured* answers — what bunx returned for a tag
+// on a fresh cache — and rewriting a tag there pairs a new tag with an old measurement,
+// which is how 0.1.9 shipped a table claiming #v0.1.9 answers 0.1.8. Re-measure by hand
+// (`BUN_INSTALL=<tmp> bunx …#<tag> --version`) and edit the install page.
 {
 	const path = `${REPO}/README.md`;
 	const text = await Bun.file(path).text();
@@ -65,7 +65,7 @@ await Bun.write(
 	step("pins", `README.md${updated === text ? " (no change)" : ""}`);
 }
 await sh(["git", "add", "package.json", "README.md"]);
-console.log("  note      re-measure the bunx table in docs/install.md for this tag");
+console.log("  note      re-measure the bunx tag in site/app/docs/start/install for this tag");
 await sh([
 	"git",
 	"-c",

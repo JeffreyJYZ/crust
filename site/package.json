@@ -3,14 +3,15 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "next dev --port 4321",
-		"build": "next build",
+		"dev": "next dev --webpack --port 4321",
+		"build": "next build --webpack",
 		"start": "next start --port 4321"
 	},
 	"dependencies": {
 		"next": "^16.3.1",
 		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
+		"react-dom": "^19.2.8",
+		"remark-gfm": "^4.0.1"
 	},
 	"devDependencies": {
 		"@mdx-js/loader": "^3.1.1",
