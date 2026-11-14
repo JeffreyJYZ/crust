@@ -893,12 +893,11 @@ export class DarwinPlatform implements Platform {
 		if (this.#activated) return;
 		this.#activated = true;
 		if (!this.#app) return;
+		// `-activate` is the modern NSApplication call (macOS 14 replaced
+		// `activateIgnoringOtherApps:` with it). macOS still refuses activation for a process
+		// LaunchServices did not start — an unbundled `crust dev` runtime logs `active no` — but
+		// a click on the window activates it, so the refusal is not a dead end.
 		try {
-			// macOS 14 replaced `activateIgnoringOtherApps:` with a plain `-activate`, and the
-			// old selector is a no-op for a process macOS will not activate — an unbundled
-			// `crust dev` runtime, which is the case that rendered a page and then went blank:
-			// the web content is treated as occluded while the app is not active, so WebKit
-			// stops drawing exactly where a user sees UI appear and then disappear.
 			S.v0(this.#app, "activate");
 		} catch {
 			// Older systems: fall back to the deprecated call, still better than nothing.
