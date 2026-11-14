@@ -20,8 +20,9 @@ live in `DESIGN.md`; research reports in `research/`.
   touched, `bun run e2e:notify` when `notification` is touched — diagnostic, not gate: it
   builds under `~/.cache` (macOS refuses that authorization from the system temp directory)
   and needs a person to answer the permission prompt, because an unanswered prompt is
-  recorded as a denial for that identifier, which then answers code 1 forever; `--fresh-id`
-  asks about a brand-new identifier. And
+  recorded as a denial for that identifier. A denial is reversible in System Settings →
+  Notifications (measured: a four-times-refused id delivered with no rebuild), and
+  `--fresh-id` asks about a brand-new identifier. And
   `bun run e2e:dogear` when a plugin surface changes — it is the widest example and exercises
   `fs`, the window title and the tray from a page. A green gate is the only proof a landing is safe.
 - **Every file stays at or under 200 lines, tests and examples included** (user, 2026-11-14) —

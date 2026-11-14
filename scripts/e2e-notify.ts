@@ -164,16 +164,16 @@ export default {
 		// machine cannot answer that, so the run proves nothing either way.
 		const delivered = reported.includes('"delivered":true');
 		const unproven = !delivered && reported.includes("has not answered yet");
-		const denied = reported.includes("recorded as denied");
+		const denied = reported.includes("recorded as denied") || reported.includes("was refused");
 		verdict.check(
 			"delivered",
 			delivered,
 			delivered
 				? `the OS scheduled it: ${reported}`
 				: unproven
-					? "UNPROVEN — macOS is showing a permission prompt for this identifier; click Allow and run again (once only)"
+					? "UNPROVEN — macOS is showing a permission prompt; allow it, or enable the app in System Settings > Notifications, and run again"
 					: denied
-						? `${reported}\n          the stable identifier was refused on this machine; re-run with --fresh-id`
+						? `${reported}\n          turn this app back on in System Settings > Notifications (a denial is reversible), or re-run with --fresh-id`
 						: `the OS refused: ${reported || "no answer"}`,
 		);
 

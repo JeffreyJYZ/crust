@@ -112,14 +112,15 @@ static int nf_post_modern(const char *title, const char *body, int auth_wait_ms)
 			// way), and a bundle identifier macOS already recorded as denied, which is never
 			// re-asked no matter what signs it — the original probe id answered code 1 ad-hoc,
 			// under an Apple Development certificate, via LaunchServices and from ~/Applications.
+			// A recorded denial is *not* permanent: switching that app back on in System
+			// Settings → Notifications made the same probe id deliver with no rebuild.
 			if (nf_error_code == 1 && nf_same(nf_error_domain, "UNErrorDomain")) {
 				nf_cat(line, NF_REASON_BYTES,
 				       ". macOS refuses this authorization in two measured cases: the .app runs "
-				       "from the system temp directory (a copy under /var/folders answered code 1 "
-				       "while the identical bundle in ~/dev delivered), or this bundle identifier "
-				       "was recorded as denied earlier and is never asked again. The signature is "
-				       "not the cause. Run the app from a normal directory, and change app.id in "
-				       "crust.config.ts if this identifier was refused before");
+				       "from the system temp directory, or this bundle identifier was recorded as "
+				       "denied earlier. The signature is not the cause. Turn the app back on in "
+				       "System Settings > Notifications (a denial is reversible, measured), or run "
+				       "from a normal directory, or change app.id in crust.config.ts");
 			}
 		}
 		nf_set(nf_reason, NF_REASON_BYTES, line);
