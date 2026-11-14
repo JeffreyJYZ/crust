@@ -50,6 +50,21 @@ A label that is already open is `duplicate-label`: the platform map is keyed by 
 - **A closed label can be created again.** `create` releases the stale native entry first, so reuse works; a *live* label is refused before anything is touched.
 - **Closing the last window ends the app** only when a `window-all-closed` listener exists — the check runs on a 250 ms poll and calls `quit()` after the listeners. With no listener the app keeps running with no window.
 
+## Menu bar and shortcuts
+
+crust installs a real `NSApp.mainMenu` at startup, because AppKit carries the standard
+shortcuts on menu items — without one, ⌘Q, ⌘C and ⌘V do nothing at all.
+
+| menu | items |
+| --- | --- |
+| app menu (the app's name) | **Quit**, ⌘Q |
+| Edit | Undo ⌘Z, Redo ⇧⌘Z, Cut ⌘X, Copy ⌘C, Paste ⌘V, Select All ⌘A |
+
+Every item targets `nil`, so the action goes to whatever has focus — the webview's text field
+included. Verified by hand in a built app: copy, paste and quit all fire, 2026-11-14. The menu
+bar only appears while the app is active; an unbundled `crust dev` process cannot activate, so
+click its window first.
+
 ## Events
 
 ```ts

@@ -12,6 +12,7 @@ Everything below was run on macOS 27.0.1, arm64 (M4 Air), Bun 1.4.4+38afee6c8, a
 | 200 invokes on the shipped bridge | 0.067 ms median, 0.475 ms p99 on a reused connection; 0.149 ms / 0.361 ms when each call opens one |
 | pump tick delivery over three seconds | a 0.25 ms slice delivered 186 of 187 ticks (99.5%); 4 ms delivered 82.4%, worse than not pumping at all (184 of 187) |
 | `-windowNumber` before and after `-close` | 517 both times, one millisecond apart and a second later — hence liveness is `visible \|\| miniaturized \|\| appHidden` |
+| a person pressed ⌘C, ⌘V and ⌘Q in a built app | text copied and pasted in the editor, and the app quit — the menu bar is installed, so AppKit dispatches the standard shortcuts |
 | a page whose window never appeared | `active no`, `isOnActiveSpace 0` while its JavaScript kept invoking; fixed with `setCollectionBehavior` 257 and `orderFrontRegardless` |
 
 Bridge refusals are measured too: a missing or wrong token is `401`, absent or foreign `Origin` is `403`, own origin is `200`.
