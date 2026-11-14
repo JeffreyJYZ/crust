@@ -108,6 +108,9 @@ function compile() {
 			shim_window_is_key: { args: [P], returns: I32 },
 			shim_window_is_miniaturized: { args: [P], returns: I32 },
 
+			shim_on_main_runloop: { args: [], returns: I32 },
+			shim_window_is_on_active_space: { args: [P], returns: I32 },
+
 			shim_app_load: { args: [], returns: I32 },
 			shim_pool_new: { args: [], returns: P },
 			shim_pool_init: { args: [P], returns: P },
@@ -191,6 +194,9 @@ export interface Shim {
 		shim_window_is_released_when_closed: LooseSymbol;
 		shim_window_is_key: LooseSymbol;
 		shim_window_is_miniaturized: LooseSymbol;
+
+		shim_on_main_runloop: LooseSymbol;
+		shim_window_is_on_active_space: LooseSymbol;
 
 		shim_app_load: LooseSymbol;
 		shim_pool_new: LooseSymbol;
@@ -306,6 +312,7 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "contentView"],
 	["NSWindow", "makeKeyAndOrderFront:"],
 	["NSWindow", "orderFrontRegardless"],
+	["NSWindow", "setCollectionBehavior:"],
 	["NSWindow", "setTitle:"],
 	["NSWindow", "title"],
 	["NSWindow", "setContentMinSize:"],
@@ -318,12 +325,14 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["WKWebView", "init"],
 	["WKWebView", "loadRequest:"],
 	["NSApplication", "setActivationPolicy:"],
+	["NSApplication", "finishLaunching"],
 	["NSApplication", "isHidden"],
 	["NSApplication", "activate"],
 	["NSApplication", "isActive"],
 	["NSApplication", "activateIgnoringOtherApps:"],
 	["NSApplication", "terminate:"],
 	["NSView", "addSubview:"],
+	["NSView", "setWantsLayer:"],
 	["NSView", "setTranslatesAutoresizingMaskIntoConstraints:"],
 	["NSLayoutConstraint", "setActive:"],
 ];
@@ -620,12 +629,23 @@ export class DarwinPlatform implements Platform {
 		if (!app) throw new Error("+[NSApplication sharedApplication] returned null");
 		this.#app = app;
 		S.vq1(app, "setActivationPolicy:", 0);
+		// A real app finishes launching before it runs; without this the process sits
+		// half-launched, macOS never considers it properly running, and WebKit drops the
+		// window layer a few seconds in while the page keeps executing.
+		try {
+			S.v0(app, "finishLaunching");
+		} catch {
+			// Older systems may refuse before the run loop starts; nothing else depends on it.
+		}
 		this.ensureRunLoopMode();
 		this.#started = true;
 		// Recorded because an inactive app is one macOS will not let you click into, and an
 		// unbundled `crust dev` runtime is exactly the case where activation is refused.
 		try {
 			console.log(`  active    ${S.b0(this.#app ?? 0, "isActive") ? "yes" : "no"}`);
+			console.log(
+				`  runloop   main thread owns it: ${Number(shim().symbols.shim_on_main_runloop() ?? -1) === 1 ? "yes" : "no"}`,
+			);
 		} catch {
 			// Diagnostics only.
 		}
@@ -701,6 +721,10 @@ export class DarwinPlatform implements Platform {
 		const content = S.p0(win, "contentView");
 		if (!content) throw new Error("-[NSWindow contentView] returned null");
 		S.v1(content, "addSubview:", web);
+		// Layer-backed content. Without this a window's backing can be torn down when the app
+		// resigns active, and the page keeps running while its pixels disappear — measured with
+		// a heartbeat page: six invokes arrived while the window was empty.
+		S.vb1(content, "setWantsLayer:", 1);
 		S.vb1(web, "setTranslatesAutoresizingMaskIntoConstraints:", 0);
 		S.vb1(content, "setTranslatesAutoresizingMaskIntoConstraints:", 0);
 
@@ -736,6 +760,15 @@ export class DarwinPlatform implements Platform {
 		// screen, silently. This raises it above its siblings without needing activation, so a
 		// dev session and a bundle behave the same.
 		S.v0(win, "orderFrontRegardless");
+		// `canJoinAllSpaces | fullScreenAuxiliary` = 257. A launched app's window otherwise
+		// lands on the desktop Space while the user is in a fullscreen one: it is created,
+		// visible to AppKit, and on no Space they can see (measured: `on active space 0` with
+		// the app unable to activate). This is what makes an app appear where it was launched.
+		try {
+			S.vq1(win, "setCollectionBehavior:", 257);
+		} catch {
+			// Older systems: the default behaviour is the fallback.
+		}
 		this.activateOnce();
 
 		// A relative URL needs the bridge server, which the platform does not own;
@@ -753,7 +786,9 @@ export class DarwinPlatform implements Platform {
 		try {
 			const number = Number(shim().symbols.shim_window_number(win) ?? 0);
 			const visible = Number(shim().symbols.shim_window_is_visible(win) ?? 0);
-			console.log(`  window    ${label} number ${number}, visible ${visible}`);
+			console.log(
+				`  window    ${label} number ${number}, visible ${visible}, on active space ${Number(shim().symbols.shim_window_is_on_active_space(win) ?? -1)}`,
+			);
 		} catch {
 			// Diagnostics only.
 		}

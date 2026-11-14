@@ -155,6 +155,20 @@ A compiled CLI has no checkout to point a child at: `frameworkRoot` (`src/cli/fr
 
 The failure is not subtle when it happens, and it only reproduces with an installed crust: a built app launched outside its project directory died with `no crust config in /`, and `crust dev` answered `crust: unknown command "greet"` for a command that was registered. A checkout hides both, because `link:` makes the two specifiers one realpath — which is why the e2e suites accept `CRUST_BIN` and are run against an installed tarball, not only against this tree.
 
+## A window that never appears
+
+The most misleading failure this framework has had. A page paints, its JavaScript keeps running, and the window shows nothing — which reads as a rendering bug and is not one.
+
+Measured 2026-11-14, three readings in this order:
+
+```
+active    no
+runloop   main thread owns it: yes
+window    main number 3181, visible 1, on active space 0
+```
+
+`isOnActiveSpace 0` was the answer: a launched app's window lands on the desktop Space while the user sits in a fullscreen one, so it is created, visible to AppKit, and on no Space anyone can see. `screencapture -l` then returns an empty frame, which is why screenshots made it look like the window had gone blank. Two lines in `createWindow` fix it: `setCollectionBehavior:` with `canJoinAllSpaces | fullScreenAuxiliary` (257), and `orderFrontRegardless` for the activation an unlaunched process is refused. The `runloop` line exists because the obvious suspect was the pump, and ruling it out took one boolean.
+
 ## Where a frontend comes from
 
 Three paths, one bridge, and each one is a different file's business:
