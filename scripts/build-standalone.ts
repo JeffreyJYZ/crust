@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Build crust as one standalone executable and prove it works with no checkout: `bun build --compile --asset` embeds the templates, docs and `src/` tree that `dev` and `build` materialise at runtime, and the checks run the binary from a bare environment and an unrelated directory.
+ * Build crust as one standalone executable and prove it works with no checkout: `bun build --compile --asset` embeds the templates and `src/` tree that `dev` and `build` materialise at runtime, and the checks run the binary from a bare environment and an unrelated directory.
  */
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,7 +13,7 @@ const outdir = join(root, "dist");
 const outfile = join(outdir, "crust");
 
 /** Everything crust reads from its own package at runtime. */
-const ASSETS = ["src", "templates", "docs", "tsconfig.json", "package.json"] as const;
+const ASSETS = ["src", "templates", "tsconfig.json", "package.json"] as const;
 
 /** The bare environment a user's machine has, so nothing leaks in from this one. */
 const BARE_ENV = { PATH: "/usr/bin:/bin" };
