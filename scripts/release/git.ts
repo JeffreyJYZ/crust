@@ -2,7 +2,10 @@
  * The release script's shell: one place that spawns a command, one place that
  * counts a failure, and the identities both git and `gh` push as.
  */
-export const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+// Two levels up: this file lives in `scripts/release/`, so `..` alone would hand the
+// release script `scripts/package.json` — which is exactly how the first run of the
+// split failed (ENOENT on that path).
+export const REPO = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 export const TAP_DIR =
 	process.env.CRUST_TAP ??
 	"~/dev/worktrees/homebrew-tap/main".replace("~", process.env.HOME ?? "~");
