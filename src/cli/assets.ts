@@ -89,7 +89,7 @@ export async function readAsset(relative: string): Promise<Uint8Array | undefine
 		const exact = blobs.find((candidate) => nameOf(candidate) === name);
 		if (exact) return new Uint8Array(await exact.arrayBuffer());
 		// Embedding does not always keep the whole path. `--asset=src/platform/darwin`
-		// yields `darwin/shim.c` — the asset's own top-level name and below — and
+		// yields `darwin/shim/10_prelude.c` — the asset's own top-level name and below — and
 		// `--asset=<file>` yields just the basename. So a lookup falls back to the
 		// basename, and only when exactly one embedded file carries it: two `main.ts`
 		// in the tree must not resolve to each other.
