@@ -27,7 +27,7 @@ seeds `welcome.md` on first run.
 - **A way out of a sheet.** `dialog.cancel` ends whatever picker is up, the way
   the panel's own Cancel button would: the invoke that is waiting for a pick
   resolves `{ paths: [] }`, and nothing is written. It is a menu-bar row rather
-  than a page button because a picker is a *sheet* — AppKit disables the window
+  than a page button because a picker is a _sheet_ — AppKit disables the window
   it is attached to, so a control behind it could never be clicked, while the
   menu bar is outside that window.
 - **The native folder picker.** `dialog.openPanel` opens an `NSOpenPanel` as a
@@ -120,7 +120,7 @@ of `~/Documents/Dogear`. The same lines appear in the **Diagnostics** panel, whi
 also has a **Run self-check** button.
 
 That is eleven steps, and the last one is the save panel. Everything but the
-panels is a real answer from a real call. A *pick* needs a human, so no run has
+panels is a real answer from a real call. A _pick_ needs a human, so no run has
 ever completed one — which is why the save-panel step writes nothing even in the
 branch where it is handed a path — and the save panel is left up, unresolved, on
 purpose. The folder sheet is the one panel answer a run can produce, and step 10
@@ -139,7 +139,7 @@ dispatches it; the click that reaches that switch is not.
 ## Two things that cost a debugging session
 
 - **The backend entry belongs under `desktop/`, and the page modules are `.tsx`.**
-  `crust dev` watches the backend entry's *directory*, recursively — so an entry
+  `crust dev` watches the backend entry's _directory_, recursively — so an entry
   at the project root means the whole project is watched, `src/` included. A
   restart rotates the bridge token, and the page already on screen then fails with
   a missing bearer token. The CLI skips a dev-server project's `.tsx` and `.css`
@@ -150,7 +150,10 @@ dispatches it; the click that reaches that switch is not.
   reaches them. `--entry desktop/main.ts` keeps the watch to `desktop/`, and
   `bridge.tsx`, `notes.tsx` and `selfcheck.tsx` are named that way on purpose:
   they hold no JSX, and the extension is what keeps a save in them from restarting
-  the backend if the entry ever moves to the root.
+  the backend if the entry ever moves to the root. Every page module follows the same
+  rule — `api.tsx`, `store.tsx`, `files.tsx`, `editing.tsx`, `dialogs.tsx`, `chrome.tsx`
+  and the self-check's own files are `.tsx` for that reason, not because they render
+  markup.
 - **Every path the page sends to `fs` must be absolute.** A launched `.app` runs
   with `/` as its working directory, so a relative path resolves to `/welcome.md`
   and fails with `not-found`. The page has no idea where the bundle came from, so
@@ -164,18 +167,31 @@ dispatches it; the click that reaches that switch is not.
 crust.config.ts     the app: dev url, one window, the Vite build hooks
 desktop/main.ts     backend: boot (create + seed the folder), log, quit
 index.html          Vite's entry; the page mounts at #root
-src/App.tsx         the UI: list, editor, rename/delete, tray, window title
+src/App.tsx         composition: the hooks below, wired to the components
+src/api.tsx         every plugin and app call the page makes
+src/store.tsx       shared state: folder, notes, status line, log, inline edit
+src/files.tsx       list, open, save — the draft/saved pair behind "unsaved"
+src/editing.tsx     create, rename, delete
+src/dialogs.tsx     open panel, save panel, cancel panel
+src/chrome.tsx      boot, the tray, window close/focus, ⌘S
+src/ui/             the markup: Toolbar, NoteList, Editor, StatusBar, Diagnostics
 src/notes.tsx       note rules shared by the page and its self-check
 src/bridge.tsx      the typed window.crust surface this app uses
-src/selfcheck.tsx   the PASS/FAIL sequence behind DOGEAR_SELFCHECK=1
-src/styles.css      dark by default, light from prefers-color-scheme
+src/selfcheck.tsx   the run behind DOGEAR_SELFCHECK=1: eleven steps, then done
+src/selfcheck/      checks.tsx (the harness), steps.tsx (1-8), panels.tsx (9-10)
+src/styles/         base, sidebar, editor, status — imported in that order
 vite.config.ts      React + the crust plugin, port pinned to dev.url
 ```
 
 Notes:
-- The three page modules that end in `.tsx` hold no JSX. The extension is what
-  keeps a save in them out of the backend watcher; the reason is in the section
-  above.
+
+- The page modules are named `.tsx` on purpose, including the ones that hold no JSX.
+  The extension is what keeps a save in them out of the backend watcher; the reason is
+  in the section above.
+- Every file is at most 200 lines, which is why `App.tsx` is composition only and the
+  behaviour lives in one hook per responsibility. The split follows what changes
+  together, so a call the self-check makes and a call the UI makes land in `api.tsx`
+  rather than drifting into two spellings of the same invoke.
 - The app never writes outside the notes folder, and the only file it creates for
   itself is the `_selfcheck.md` scratch file, which it renames and deletes again.
 - `bun.lock` is gitignored here on purpose: the example pins `crust` as a

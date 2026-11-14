@@ -20,8 +20,10 @@ confirmation. No framework, no bundler, no external request.
   file and asserts it is exactly one segment inside `notes/`. A `lstat` before
   every read, write and delete refuses a symlink, so a planted link cannot lead
   out of the directory either.
-- **A frontend a built app can embed.** `public/` is three files — HTML, CSS,
-  JS — served fresh by the bridge in dev and embedded whole in the bundle.
+- **A frontend a built app can embed.** `public/` is plain files and no build
+  step — HTML, three stylesheets, and three ES modules (the page, its bridge calls,
+  its list rendering) — served fresh by the bridge in dev and embedded whole in the
+  bundle. Nothing is inlined and nothing is fetched from outside the app.
 - **Dark by default, light from `prefers-color-scheme`**, with no web font.
 - **Keyboard-only use.** Tab reaches every control, ↑/↓ (and Home/End) move
   through the list, Enter opens, ⌘S (or Ctrl+S) saves, Escape cancels a delete.
@@ -74,12 +76,12 @@ filesystem writes.
 
 ## The commands
 
-| Command | Arguments | Result |
-| --- | --- | --- |
-| `notes.list` | — | `{ names }`, sorted, `.md` removed |
-| `notes.read` | `{ name }` | `{ name, text }` |
-| `notes.write` | `{ name, text }` | `{ name, bytes }` |
-| `notes.remove` | `{ name }` | `{ name }` |
+| Command        | Arguments        | Result                             |
+| -------------- | ---------------- | ---------------------------------- |
+| `notes.list`   | —                | `{ names }`, sorted, `.md` removed |
+| `notes.read`   | `{ name }`       | `{ name, text }`                   |
+| `notes.write`  | `{ name, text }` | `{ name, bytes }`                  |
+| `notes.remove` | `{ name }`       | `{ name }`                         |
 
 The page reaches them through the two-argument shim form,
 `window.crust.invoke("notes.read", { name })`, which routes to the `app`
@@ -88,3 +90,23 @@ namespace. `crust:fs` is still the plugin the config names; `remove` uses
 for the same reason.
 
 Limits: a name is at most 64 characters, and a note body at most 256 KiB.
+
+## Layout
+
+```
+main.ts             backend: the four commands, over paths.ts and crust:fs
+paths.ts            the name guard, tested without an app
+public/index.html   the document: three stylesheets, one module entry
+public/style.css    tokens, the reset, the shell, the sidebar header
+public/notes.css    the list rows and the inline delete confirmation
+public/editor.css   the editor pane
+public/app.js       state, the four commands, the wiring
+public/api.js       the bridge envelope and the status line
+public/view.js      the sidebar's DOM, and the arrow keys that move through it
+```
+
+`app.js` is the only module the document names; it imports the other two, so a
+built app embeds seven files and still makes no request of its own. The split is
+by responsibility rather than by size: `api.js` is the only place a command's
+`{ ok, value }` envelope is unwrapped, and `view.js` is the only place the list's
+DOM is built.

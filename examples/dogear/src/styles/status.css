@@ -1,0 +1,78 @@
+/* The status bar and the diagnostics panel under it. */
+
+.status {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 7px 18px;
+	border-top: 1px solid var(--line);
+	background: var(--panel-2);
+	font-family: var(--mono);
+	font-size: 11px;
+	min-height: 32px;
+}
+
+.badge {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--muted);
+	flex: none;
+}
+
+.badge.ok {
+	background: var(--ok);
+}
+
+.badge.bad {
+	background: var(--bad);
+}
+
+.status-text {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bridge {
+	color: var(--muted);
+}
+
+.diagnostics {
+	border-top: 1px solid var(--line);
+	background: var(--panel);
+	max-height: 34vh;
+}
+
+.diagnostics summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 8px 18px;
+	font-family: var(--mono);
+	font-size: 11px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--muted);
+	cursor: pointer;
+	list-style: none;
+}
+
+.diagnostics summary::-webkit-details-marker {
+	display: none;
+}
+
+.diagnostics pre {
+	margin: 0;
+	padding: 4px 18px 14px;
+	max-height: 26vh;
+	overflow: auto;
+	font-family: var(--mono);
+	font-size: 11px;
+	line-height: 1.6;
+	color: var(--text);
+	white-space: pre-wrap;
+	word-break: break-word;
+}

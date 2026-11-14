@@ -1,0 +1,68 @@
+/* The two panes and the sidebar list. */
+
+.panes {
+	display: grid;
+	grid-template-columns: 244px 1fr;
+	min-height: 0;
+}
+
+.list {
+	border-right: 1px solid var(--line);
+	background: var(--panel);
+	overflow: auto;
+	padding: 14px 10px;
+}
+
+.list > .eyebrow {
+	padding: 0 8px 10px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.list ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.list .empty {
+	color: var(--muted);
+	padding: 0 8px;
+}
+
+.row {
+	display: flex;
+	width: 100%;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	padding: 7px 8px;
+	text-align: left;
+}
+
+.row:hover {
+	background: var(--panel-2);
+	border-color: transparent;
+}
+
+.row.active {
+	background: var(--panel-2);
+	border-color: var(--line);
+}
+
+.row .name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.row .meta {
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+	flex: none;
+}

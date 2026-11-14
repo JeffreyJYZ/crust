@@ -1,0 +1,114 @@
+/* The sidebar's list: rows, the delete button that appears on hover or focus,
+   and the inline "Delete …?" confirmation that replaces a row. */
+
+.notes {
+	flex: 1;
+	min-height: 0;
+	margin: 0;
+	padding: 8px;
+	list-style: none;
+	overflow-y: auto;
+}
+
+.notes li {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border-radius: 6px;
+}
+
+.notes li + li {
+	margin-top: 2px;
+}
+
+.note {
+	flex: 1;
+	min-width: 0;
+	padding: 8px 10px;
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.note:hover {
+	background: var(--panel-raised);
+}
+
+.note[aria-current="true"] {
+	background: var(--panel-raised);
+	border-color: var(--line);
+	color: var(--accent);
+}
+
+.delete {
+	flex: none;
+	padding: 6px 8px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	color: var(--muted);
+	font-size: 12px;
+	cursor: pointer;
+	opacity: 0;
+}
+
+.notes li:hover .delete,
+.notes li:focus-within .delete,
+.delete:focus-visible {
+	opacity: 1;
+}
+
+.delete:hover {
+	color: var(--danger);
+	border-color: var(--line);
+}
+
+.notes li.confirming {
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px;
+	background: var(--panel-raised);
+	border: 1px solid var(--line);
+}
+
+.confirm-text {
+	flex-basis: 100%;
+	color: var(--muted);
+	font-size: 12px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.confirm-yes,
+.confirm-no {
+	flex: 1;
+	padding: 6px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--line);
+	background: transparent;
+	cursor: pointer;
+}
+
+.confirm-yes {
+	color: var(--danger);
+	border-color: var(--danger);
+}
+
+.empty {
+	padding: 10px;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.hint {
+	margin: 0;
+	padding: 10px 16px 14px;
+	color: var(--muted);
+	font-size: 11px;
+	border-top: 1px solid var(--line);
+}

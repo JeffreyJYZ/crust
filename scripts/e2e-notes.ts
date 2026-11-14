@@ -2,7 +2,7 @@
  * The end-to-end proof for the multi-file app: `examples/notes`.
  *
  * `e2e.ts` proves the smallest path — one command, one asset-free page. This one
- * proves the shape a real app has: three files under `public/` embedded in the
+ * proves the shape a real app has: everything under `public/` (seven files, counted rather than asserted) embedded in the
  * bundle, a backend that owns its state, and a page that calls a command on load.
  * Everything goes through the real path: `crust build` compiles and signs the
  * bundle, then the binary inside it is launched directly — never `open`, which

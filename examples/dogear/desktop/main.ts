@@ -67,7 +67,9 @@ app.command("log", async (args) => {
 		// Append, never truncate: this file exists to prove what a human did, and a second
 		// click must not erase the first.
 		try {
-			const existing = await Bun.file(logFile).text().catch(() => "");
+			const existing = await Bun.file(logFile)
+				.text()
+				.catch(() => "");
 			await Bun.write(logFile, `${existing}${new Date().toISOString()}  ${line}\n`);
 		} catch {
 			// A log that cannot be written must not break the app.

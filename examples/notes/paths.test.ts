@@ -60,7 +60,14 @@ describe("resolveNotePath", () => {
 	});
 
 	test("every accepted path stays inside the directory it was given", () => {
-		for (const name of ["a", "A1", "note-2", "with.dots", "under_score", "x".repeat(MAX_NAME_LENGTH)]) {
+		for (const name of [
+			"a",
+			"A1",
+			"note-2",
+			"with.dots",
+			"under_score",
+			"x".repeat(MAX_NAME_LENGTH),
+		]) {
 			const result = resolveNotePath(name, BASE);
 			expect(result.ok).toBe(true);
 			if (!result.ok) continue;

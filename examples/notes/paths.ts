@@ -31,7 +31,11 @@ export type NotePathResult = NotePath | NotePathFailure;
 function refuse(name: unknown, reason: string): NotePathFailure {
 	const shown = typeof name === "string" ? JSON.stringify(name) : String(name);
 	console.log(`  notes     refused ${shown}: ${reason}`);
-	return { ok: false, code: "bad-name", message: `${shown} is not a usable note name — ${reason}` };
+	return {
+		ok: false,
+		code: "bad-name",
+		message: `${shown} is not a usable note name — ${reason}`,
+	};
 }
 
 /**

@@ -5,6 +5,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Notes</title>
 		<link rel="stylesheet" href="/style.css" />
+		<link rel="stylesheet" href="/notes.css" />
+		<link rel="stylesheet" href="/editor.css" />
 	</head>
 	<body>
 		<div class="app">
@@ -42,8 +44,8 @@
 				></textarea>
 			</main>
 		</div>
-		<!-- Served from /app.js by the bridge; a built app embeds it. No inline
-		script, no style, no external request. -->
-		<script src="/app.js"></script>
+		<!-- Served from /app.js, which imports /api.js and /view.js; a built app
+		embeds all three. No inline script, no style, no external request. -->
+		<script type="module" src="/app.js"></script>
 	</body>
 </html>

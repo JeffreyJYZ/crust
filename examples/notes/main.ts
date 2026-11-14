@@ -71,7 +71,10 @@ app.command("notes.list", async (): Promise<Ok<{ names: string[] }> | Failure> =
 		console.log(`  notes     listed ${names.length} (page call answered)`);
 		return { ok: true, value: { names } };
 	} catch (error) {
-		return fail("io-error", `notes.list: ${error instanceof Error ? error.message : String(error)}`);
+		return fail(
+			"io-error",
+			`notes.list: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 });
 
@@ -108,7 +111,10 @@ app.command("notes.write", async (args): Promise<Ok<{ name: string; bytes: numbe
 	if (blocked) return blocked;
 
 	try {
-		const { bytes } = await fsPlugin.commands.writeTextFile({ path: target.path, contents: text });
+		const { bytes } = await fsPlugin.commands.writeTextFile({
+			path: target.path,
+			contents: text,
+		});
 		return { ok: true, value: { name: target.name, bytes } };
 	} catch (error) {
 		return pluginFailure("notes.write", error);
@@ -132,7 +138,10 @@ app.command("notes.remove", async (args): Promise<Ok<{ name: string }> | Failure
 		if ((error as { code?: unknown }).code === "ENOENT") {
 			return fail("not-found", `notes.remove: no note named ${JSON.stringify(target.name)}`);
 		}
-		return fail("io-error", `notes.remove: ${error instanceof Error ? error.message : String(error)}`);
+		return fail(
+			"io-error",
+			`notes.remove: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 });
 
