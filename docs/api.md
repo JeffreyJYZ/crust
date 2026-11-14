@@ -1,6 +1,6 @@
 # crust API reference
 
-`crust` 0.1.8, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
+`crust` 0.1.12, macOS arm64 only for v1. This page documents every export of the package root (`import … from "crust"`), the plugin entry point (`import … from "crust/plugin"`), and the dev-server plugin (`import { crust } from "crust/vite"`).
 
 Each signature, default and error message below was read from the source file named beside it in this working tree. What was *run* is narrower, and [Unverified](#unverified) lists the four claims this page deliberately does not make: a completed dialog pick (the sheet itself has been shown, held open and cancelled), a tray item seen on screen and a delivered notification have not been observed, and the Next static-export path is observed only through `crust build`, never through a human clicking around the exported app. Everything else below, including the Next build pipeline, both single-file modes and `window.create`, has a script or a recorded run behind it.
 
