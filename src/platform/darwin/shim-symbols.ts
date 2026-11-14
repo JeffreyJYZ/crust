@@ -61,6 +61,10 @@ export interface Shim {
 		shim_pool_init: LooseSymbol;
 		shim_pool_drain: LooseSymbol;
 
+		shim_menu_install: LooseSymbol;
+		shim_menu_ready: LooseSymbol;
+		shim_menu_has: LooseSymbol;
+
 		shim_mode: LooseSymbol;
 		shim_mode_ok: LooseSymbol;
 		shim_pump: LooseSymbol;

@@ -33,7 +33,7 @@ Four rules, each measured on a real bundle.
 1. **No certificate is needed.** A bundle built by `crust build` and ad-hoc signed delivers. A Developer ID is not required, and an Apple Development certificate changes nothing.
 2. **A bundle running from the system temp directory is refused.** The identical app delivered from `~/dev` and answered `code 1` from `/var/folders/…T`, twice each way. Run the built app from a normal directory.
 3. **An identifier macOS recorded as denied is not re-asked.** It keeps answering `code 1` whatever you sign it with. It is reversible: switching the app back on in System Settings, under Notifications, made the same identifier deliver, with no rebuild and no new identifier. Change `app.id` only when the app never appears in that list.
-4. **An unanswered prompt is recorded as a denial.** The first post on a new identifier raises the prompt, and an identifier that was never answered answers `code 1` from then on. On an ad-hoc bundle that prompt can show as an unresolvable spinner rather than an Allow pair, which spends the identifier.
+4. **An unanswered prompt is recorded as a denial.** The first post on a new identifier raises the prompt; answer it once and later posts are silent, but leave it unanswered and that identifier answers `code 1` from then on. On an ad-hoc bundle the prompt can appear as an unresolvable spinner rather than an Allow pair, which spends the identifier the same way. A person answered it on 2026-11-14: Allow, then `{"delivered": true}`.
 
 ## waitMs
 

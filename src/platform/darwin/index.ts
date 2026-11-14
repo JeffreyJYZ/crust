@@ -99,6 +99,13 @@ function compile() {
 			shim_pool_init: { args: [P], returns: P },
 			shim_pool_drain: { args: [P], returns: V },
 
+			// The main menu: install once at startup, then read it back without a
+			// window or a key press. `shim_menu_has` names one shortcut pair so a
+			// test can report which one is missing instead of just failing.
+			shim_menu_install: { args: [P], returns: I32 },
+			shim_menu_ready: { args: [], returns: I32 },
+			shim_menu_has: { args: [P, P], returns: I32 },
+
 			shim_mode: { args: [], returns: P },
 			shim_mode_ok: { args: [P], returns: I32 },
 			shim_pump: { args: [P], returns: I32 },

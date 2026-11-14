@@ -46,7 +46,7 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 | fresh identifier, ad-hoc, then Apple Development, from `dist/` and `~/Applications` | delivered under both signatures |
 | identical bundle from the system temp directory | `code 1`, twice each way |
 | an identifier recorded as denied, switched back on in System Settings | delivered on the same identifier with no rebuild |
-| `bun run e2e:notify` | 6/6 on 0.1.14; now diagnostic, because a first post raises a prompt only a person can answer |
+| `bun run e2e:notify --fresh-id` | a person clicked **Allow** on the first-post prompt, then `{"delivered": true}` — 6/6 assertions. Unanswered, the same prompt spends the identifier, so this is a one-shot answer |
 
 ## Packaging
 

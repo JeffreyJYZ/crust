@@ -65,6 +65,11 @@ const internalClassSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSOpenPanel", "openPanel"],
 	["NSSavePanel", "savePanel"],
 	["NSMutableArray", "array"],
+	// The main menu's C section: a submenu is alloc'd, and a separator is the class
+	// method AppKit provides for one.
+	["NSMenu", "alloc"],
+	["NSMenuItem", "alloc"],
+	["NSMenuItem", "separatorItem"],
 ];
 
 const internalInstanceSelectors: ReadonlyArray<readonly [string, string]> = [
@@ -104,6 +109,19 @@ const internalInstanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSArray", "objectAtIndex:"],
 	["NSURL", "path"],
 	["NSString", "UTF8String"],
+	// The main menu. Every one of these is sent from C, so they are verified here:
+	// the app menu and the Edit menu are the only carriers of ⌘Q, ⌘C and ⌘V.
+	["NSApplication", "setMainMenu:"],
+	["NSApplication", "mainMenu"],
+	["NSMenu", "initWithTitle:"],
+	["NSMenu", "addItem:"],
+	["NSMenu", "numberOfItems"],
+	["NSMenu", "itemAtIndex:"],
+	["NSMenuItem", "initWithTitle:action:keyEquivalent:"],
+	["NSMenuItem", "setSubmenu:"],
+	["NSMenuItem", "submenu"],
+	["NSMenuItem", "action"],
+	["NSMenuItem", "keyEquivalent"],
 ];
 
 export const PREFLIGHT: readonly PreflightEntry[] = [

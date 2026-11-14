@@ -2,7 +2,7 @@
  * Bringing NSApplication up, in the measured order: compile the shim, preflight every selector, then `NSApplicationLoad` → `sharedApplication` → policy. The caller owns the pump and the run-loop mode, so this returns the app object alone.
  */
 import { shim } from "./index.ts";
-import { cls, S } from "./objc.ts";
+import { cls, cstr, S } from "./objc.ts";
 import { PREFLIGHT, preflightError } from "./preflight.ts";
 
 export function startAppKit(appName: string): number {
@@ -29,5 +29,10 @@ export function startAppKit(appName: string): number {
 	} catch {
 		// Older systems may refuse before the run loop starts; nothing else depends on it.
 	}
+	// ⌘Q, ⌘C and ⌘V are carried by main-menu items, so an app with no menu bar has
+	// none of them. A refusal costs the shortcuts, not the app, so it is reported
+	// and never thrown; `shim_menu_ready` is the readback a test asserts.
+	const installed = Number(shim().symbols.shim_menu_install(cstr(appName)) ?? 0);
+	if (!installed) console.warn(`${appName}: no main menu — ⌘Q, ⌘C and ⌘V will not work`);
 	return app;
 }

@@ -7,6 +7,7 @@ import sends from "./shim/20_sends.c" with { type: "text" };
 import webview from "./shim/30_webview.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import app from "./shim/50_app.c" with { type: "text" };
+import menu from "./shim/55_menu.c" with { type: "text" };
 import panels from "./shim/60_panels.c" with { type: "text" };
 import sheetBlock from "./shim/70_sheet_block.c" with { type: "text" };
 import openPanel from "./shim/75_open_panel.c" with { type: "text" };
@@ -20,6 +21,7 @@ export const SHIM_PARTS = [
 	webview,
 	window,
 	app,
+	menu,
 	panels,
 	sheetBlock,
 	openPanel,
@@ -40,6 +42,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/darwin/shim/30_webview.c",
 	"src/platform/darwin/shim/40_window.c",
 	"src/platform/darwin/shim/50_app.c",
+	"src/platform/darwin/shim/55_menu.c",
 	"src/platform/darwin/shim/60_panels.c",
 	"src/platform/darwin/shim/70_sheet_block.c",
 	"src/platform/darwin/shim/75_open_panel.c",
