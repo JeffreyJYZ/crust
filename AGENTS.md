@@ -22,6 +22,7 @@ live in `DESIGN.md`; research reports in `research/`.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is also the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty** (`open -a Ghostty`) — a probe that opens a test window leaves the human looking at it and switching back by hand (user, 2026-11-13). And capture *before* touching the shell: a screenshot taken after a command shows the terminal over the app, not the app.
+- **Say so before anything that takes focus, moves a window or asks for a physical click** (user, 2026-11-14: "anything placement-ish or physical clicks, u gotta tell me first or i'll just move back — it's my screen"). A probe that steals focus makes the human switch tabs, and then my capture shows their screen, not the app — which is how a working tray click was written off as a placement bug. Their own report ("I clicked it, the app said saved") outranks a missing log line: the instance predated the log file.
 
 ## Things that cost a crash or a wrong answer
 
