@@ -13,6 +13,9 @@ import { join } from "node:path";
 import { app } from "crust";
 import { fsPlugin } from "crust/plugin";
 
+/** Where page lines are appended once `boot` has told us the notes directory. */
+let logFile: string | undefined;
+
 const SEED = `# Welcome to Dogear
 
 A note is a markdown file on disk. This one lives where the app keeps its notes.
@@ -41,6 +44,10 @@ function notesDir(): string {
 app.command("boot", async () => {
 	const dir = notesDir();
 	await mkdir(dir, { recursive: true });
+	// A click is the one thing no script can produce, so the app keeps its own log: a
+	// LaunchServices launch has no terminal, and shell redirection is lost the moment a
+	// second instance is already running. Every page line lands here as well as on stdout.
+	logFile = join(dir, "dogear.log");
 	// The seed goes through the same plugin the page uses, so a first run
 	// exercises the write path instead of a second filesystem implementation.
 	const { entries } = await fsPlugin.commands.list({ path: dir });
@@ -53,9 +60,19 @@ app.command("boot", async () => {
 });
 
 /** The page's line reaches the terminal, which is where a scripted run reads it. */
-app.command("log", (args) => {
+app.command("log", async (args) => {
 	const line = typeof args.line === "string" ? args.line : "";
 	console.log(`  page      ${line}`);
+	if (logFile !== undefined) {
+		// Append, never truncate: this file exists to prove what a human did, and a second
+		// click must not erase the first.
+		try {
+			const existing = await Bun.file(logFile).text().catch(() => "");
+			await Bun.write(logFile, `${existing}${new Date().toISOString()}  ${line}\n`);
+		} catch {
+			// A log that cannot be written must not break the app.
+		}
+	}
 	return "printed";
 });
 

@@ -239,18 +239,15 @@ The honest size claim is **"no bundled Chromium"**, never "as small as Tauri": T
 
 Everything else in this README has a script behind it. Two surfaces need hands on the keyboard, and one of them has now been done.
 
-**Verified by a person on 2026-11-14:** picking a folder in `dialog.openPanel` and saving through `dialog.savePanel` both work in a built app — the sheets opened, a folder was chosen, a file was written, and the UI updated. Nobody automated this; it is a human report, which is the only proof available for a click.
+**Verified by a person on 2026-11-14:** picking a folder in `dialog.openPanel`, saving through `dialog.savePanel`, and clicking a **tray menu row** all work in a built app — the sheets opened, a folder was chosen, a file was written, the UI updated, and the tray row fired. Nobody automated this; it is a human report, which is the only proof a click can have. The run was not redirected, so the `tray click — <label>` line was not captured — the app logs it, and redirecting with `open --stdout` shows it next time.
 
-**Still open: a tray click.**
+**Still open: notification delivery**, refused by macOS for an ad-hoc signature (`UNErrorDomain code 1`, measured four ways). Signing paths, cheapest first:
 
-```sh
-crust build --dir examples/dogear --entry desktop/main.ts
-open --stdout /tmp/dogear.log examples/dogear/dist/Dogear.app
-```
+- **Free Apple ID** → Xcode → *Personal Team* issues an **Apple Development** certificate at no charge. That is Apple-issued and trusted by the system, so it is the first thing to try for notifications; notarization still needs the paid programme, but authorisation may not. This needs a person signed into Xcode — nothing here can do it for you.
+- **Self-signed code-signing certificate**: measured on 2026-11-14 in a temporary keychain. `security import` reports `1 identity imported`, and `codesign` then answers `no identity found` — a self-signed root has to be trusted through `security add-trusted-cert`, which is a system trust setting and not something a framework should install on a user's machine. Not a path crust will take.
+- **Developer ID** ($99/yr): the only route that also distributes and notarises.
 
-Click the crust icon in the menu bar and choose **Save now**. This needs a normal Space: on a fullscreen Space macOS draws no menu bar at all, which is why the item went unseen for so long. Success: the status line says the note was saved, plus `tray click — Save now` in `/tmp/dogear.log`.
-
-On `crust dev`: a window launched from a plain `bun` process logs `active    no` at startup, because macOS only activates a process LaunchServices started — but **clicking the window activates it**, so the dev loop works; the built bundle opened normally logs `active    yes`. Both render: the window was fixed to join the current Space, and captures confirm full pages in each case.
+Until one of those exists, the plugin reports the OS's refusal verbatim and never claims a delivery.
 
 If either behaves differently from that, the line to send is the log output around it; both paths record what they received before acting on it.
 

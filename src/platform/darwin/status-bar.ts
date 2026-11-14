@@ -65,6 +65,7 @@ export const STATUS_BAR_SYMBOL_NAMES = [
 	"tray_menu_end",
 	"tray_menu_clear",
 	"tray_menu_count",
+	"tray_menu_activate",
 	"tray_item_index",
 	"tray_destroy",
 ] as const;
@@ -112,6 +113,7 @@ function compile(): StatusBarShim {
 			tray_menu_end: { args: [P], returns: I32 },
 			tray_menu_clear: { args: [P], returns: I32 },
 			tray_menu_count: { args: [P], returns: I32 },
+			tray_menu_activate: { args: [P, I32], returns: I32 },
 			tray_item_index: { args: [P], returns: I32 },
 			tray_destroy: { args: [P], returns: V },
 		},
@@ -208,9 +210,22 @@ export interface StatusBar {
 	destroy(): void;
 	/** What AppKit reports about the item right now. State, not pixels. */
 	readback(): StatusBarReadback;
+	/**
+	 * Fire a row through AppKit's own target/action, exactly as a click does.
+	 *
+	 * A test seam, not an input synthesizer: it never moves the cursor. It answers whether
+	 * the row wiring and the click trampoline work, which is otherwise only provable by a
+	 * human click on an item macOS may have hidden behind the notch.
+	 */
+	activateRow(index: number): boolean;
 }
 
 let live: StatusBar | undefined;
+
+/** The status item this process already has, if any. A second one cannot exist. */
+export function currentStatusBar(): StatusBar | undefined {
+	return live;
+}
 
 // The click trampoline is one per process: the runtime class registers one IMP,
 // so a second JSCallback would never be reached. The dispatch target is swapped
@@ -323,6 +338,13 @@ export function createStatusBar(): StatusBar {
 			clickRoute = undefined;
 			native.symbols.tray_destroy(item);
 			live = undefined;
+		},
+
+		activateRow(index: number): boolean {
+			const target = requireLive("activateRow");
+			const count = Number(native.symbols.tray_menu_count(target) ?? -1);
+			if (!Number.isInteger(index) || index < 0 || index >= count) return false;
+			return Number(native.symbols.tray_menu_activate(target, index) ?? 0) === 1;
 		},
 
 		readback(): StatusBarReadback {

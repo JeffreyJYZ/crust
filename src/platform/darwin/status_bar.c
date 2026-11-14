@@ -399,6 +399,28 @@ int tray_menu_count(obj_t item) {
 	                                                          sel_registerName("numberOfItems"));
 }
 
+// Fire one row the way AppKit does when it is clicked: `sendAction:to:from:` on the
+// application, with the row as sender. This is a *test seam*, not an input synthesizer —
+// it exercises target/action wiring and the trampoline, and never touches the cursor.
+// Returns 1 when AppKit delivered the action.
+int tray_menu_activate(obj_t item, int index) {
+	if (!item || index < 0) return 0;
+	if (!tray_has_instance("NSStatusItem", "menu")) return 0;
+	obj_t menu = ((obj_t (*)(void *, void *))objc_msgSend)(item, sel_registerName("menu"));
+	if (!menu || !tray_responds(menu, "itemAtIndex:")) return 0;
+	obj_t row = ((obj_t (*)(void *, void *, long long))objc_msgSend)(
+	    menu, sel_registerName("itemAtIndex:"), (long long)index);
+	if (!row) return 0;
+	obj_t action = ((obj_t (*)(void *, void *))objc_msgSend)(row, sel_registerName("action"));
+	obj_t target = ((obj_t (*)(void *, void *))objc_msgSend)(row, sel_registerName("target"));
+	if (!action) return 0;
+	obj_t app = ((obj_t (*)(void *, void *))objc_msgSend)(
+	    objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
+	if (!app) return 0;
+	return (int)(char)((char (*)(void *, void *, obj_t, obj_t, obj_t))objc_msgSend)(
+	    app, sel_registerName("sendAction:to:from:"), action, target, row);
+}
+
 // The clicked row's index, read from the sender AppKit passes to the IMP.
 int tray_item_index(obj_t sender) {
 	if (!sender || !tray_responds(sender, "tag")) return -1;
