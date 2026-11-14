@@ -1280,9 +1280,15 @@ export function darwinDialogAdapter(
 		const sheet = send(0);
 		if (sheet === PANEL_STATUS.sheetStarted) return await awaitSheet("openPanel");
 
-		// No window to attach a sheet to, so the only way to show a panel at all
-		// is -runModal, which blocks this thread until the user answers.
-		if (sheet === PANEL_STATUS.noWindow) return immediate(send(1));
+		// No window to attach a sheet to, so the panel is presented on its own.
+		// It still reports through the sheet poll — the shim uses
+		// `-beginWithCompletionHandler:` rather than the blocking `-runModal`,
+		// which is what lets a windowless app cancel or await it.
+		if (sheet === PANEL_STATUS.noWindow) {
+			const free = send(1);
+			if (free === PANEL_STATUS.sheetStarted) return await awaitSheet("openPanel");
+			return immediate(free);
+		}
 
 		return immediate(sheet);
 	};
@@ -1302,7 +1308,11 @@ export function darwinDialogAdapter(
 
 		const sheet = send(0);
 		if (sheet === PANEL_STATUS.sheetStarted) return await awaitSheet("savePanel");
-		if (sheet === PANEL_STATUS.noWindow) return immediate(send(1), "savePanel");
+		if (sheet === PANEL_STATUS.noWindow) {
+			const free = send(1);
+			if (free === PANEL_STATUS.sheetStarted) return await awaitSheet("savePanel");
+			return immediate(free, "savePanel");
+		}
 
 		return immediate(sheet, "savePanel");
 	};

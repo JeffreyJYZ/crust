@@ -283,6 +283,8 @@ class FakePanel implements PanelShim {
 	sheets = 0;
 	/** Calls that took the blocking `-runModal` fallback. */
 	modalCalls = 0;
+	/** When true, the sheet attempt answers `noWindow`, as a windowless app does. */
+	windowless = false;
 
 	private start(kind: number): number {
 		if (this.kind !== PANEL_KIND.none && !this.done) return PANEL_STATUS.busy;
@@ -294,7 +296,17 @@ class FakePanel implements PanelShim {
 		return PANEL_STATUS.sheetStarted;
 	}
 
-	openPanel(): number {
+	openPanel(
+		_title = "",
+		_types = "",
+		_directory = 0,
+		_multiple = 0,
+		runModal = 0,
+	): number {
+		// A windowless app answers `noWindow` to the sheet attempt; the adapter then
+		// resends with the free-standing presentation, which reports through the poll.
+		if (this.windowless && runModal === 0) return PANEL_STATUS.noWindow;
+		if (runModal === 1) this.modalCalls++;
 		return this.start(PANEL_KIND.open);
 	}
 
@@ -377,6 +389,36 @@ describe("dialog adapter", () => {
 
 		fake.answer(["/tmp/one.md"]);
 		expect(await first).toEqual({ paths: ["/tmp/one.md"] });
+	});
+
+	/**
+	 * A windowless app cannot attach a sheet, and the old fallback blocked the JS
+	 * thread on `-runModal` — so nothing, `dialog.cancel` included, could ever answer
+	 * it. The adapter now resends into the free-standing presentation and awaits the
+	 * same poll, which is what these two tests pin down without needing a window.
+	 */
+	test("a windowless panel is awaited through the poll, not resolved at once", async () => {
+		const fake = new FakePanel();
+		fake.windowless = true;
+		const adapter = darwinDialogAdapter(fake);
+
+		const pick = adapter.pickOpen({ title: "free-standing" });
+		expect(fake.modalCalls).toBe(1);
+		expect(fake.sheets).toBe(1);
+		expect(fake.sheetDone()).toBe(false);
+
+		fake.answer(["/tmp/free.md"]);
+		expect(await pick).toEqual({ paths: ["/tmp/free.md"] });
+	});
+
+	test("a windowless panel can be cancelled, which the blocking fallback could not", async () => {
+		const fake = new FakePanel();
+		fake.windowless = true;
+		const adapter = darwinDialogAdapter(fake);
+
+		const pick = adapter.pickOpen({});
+		expect(await adapter.cancel()).toEqual({ cancelled: true, paths: [] });
+		expect(await pick).toEqual({ paths: [] });
 	});
 
 	/** A refused save panel says so with the open panel's name, not a bare "busy". */

@@ -756,16 +756,23 @@ int shim_open_panel(const char *title, const char *types, int allowDirectories, 
 		return SHIM_PANEL_SHEET_STARTED;
 	}
 
-	if (!panel_has_instance("NSOpenPanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
-	// Nothing can answer while -runModal blocks this thread, so the storage the
-	// collect below writes into may be cleared here, immediately before it.
+	if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
+	// No window to attach a sheet to, so present the panel on its own. `-runModal`
+	// would block this thread until a human answers, and a windowless app would
+	// then have no way out at all: nothing else can run, so `dialog.cancel` never
+	// gets the chance to fire. `-beginWithCompletionHandler:` presents the same
+	// panel, returns at once and reports through the same completion block, so the
+	// poll and the cancel below work here unchanged (measured 2026-11-14).
+	if (!panel_has_instance("NSOpenPanel", "beginWithCompletionHandler:"))
+		return SHIM_PANEL_UNSUPPORTED;
 	panel_reset();
-	long long response =
-	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
-	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
-
-	panel_collect(panel);
-	return panel_paths_used > 0 ? SHIM_PANEL_PICKED : SHIM_PANEL_CANCELLED;
+	panel_sheet_panel = panel;
+	panel_sheet_is_save = 0;
+	panel_sheet_done = 0;
+	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
+	((void (*)(void *, void *, obj_t))objc_msgSend)(
+	    panel, sel_registerName("beginWithCompletionHandler:"), (obj_t)&panel_sheet_block);
+	return SHIM_PANEL_SHEET_STARTED;
 }
 
 int shim_open_panel_count(void) { return panel_paths_used; }
@@ -836,14 +843,19 @@ int shim_save_panel(const char *title, const char *suggested_name, const char *t
 		return SHIM_PANEL_SHEET_STARTED;
 	}
 
-	if (!panel_has_instance("NSSavePanel", "runModal")) return SHIM_PANEL_UNSUPPORTED;
+	if (!panel_sheet_block_init()) return SHIM_PANEL_UNSUPPORTED;
+	// Same reason as the open panel below-free-standing case: a windowless save
+	// panel must not block the thread, or the app can never cancel it.
+	if (!panel_has_instance("NSSavePanel", "beginWithCompletionHandler:"))
+		return SHIM_PANEL_UNSUPPORTED;
 	panel_reset();
-	long long response =
-	    ((long long (*)(void *, void *))objc_msgSend)(panel, sel_registerName("runModal"));
-	if (response != 1 /* NSModalResponseOK */) return SHIM_PANEL_CANCELLED;
-
-	panel_collect_save(panel);
-	return panel_paths_used > 0 ? SHIM_PANEL_PICKED : SHIM_PANEL_CANCELLED;
+	panel_sheet_panel = panel;
+	panel_sheet_is_save = 1;
+	panel_sheet_done = 0;
+	panel_sheet_response = SHIM_PANEL_NO_RESPONSE;
+	((void (*)(void *, void *, obj_t))objc_msgSend)(
+	    panel, sel_registerName("beginWithCompletionHandler:"), (obj_t)&panel_sheet_block);
+	return SHIM_PANEL_SHEET_STARTED;
 }
 
 // --- sheet result, for a caller that polls instead of blocking --------------
