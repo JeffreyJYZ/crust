@@ -22,6 +22,7 @@ Bridge refusals are measured too: a missing or wrong token is `401`, absent or f
 | --- | --- |
 | open panel driven through the plugin | `sheetStarted`, still pending 400 ms later, `-cancel:` resolved `{ paths: [] }` through the 16 ms poll |
 | save panel, then a person picked a folder and saved a file | sheet opened, a folder was chosen, a file written, the UI updated — a human report, not an automated one |
+| a person saved over an existing file through `savePanel` | AppKit's own replace prompt appeared ("already exists, replace?"), Replace wrote it, and the note's mtime moved |
 | a second panel while a sheet is up | refused with a message naming the sheet that is up and naming `dialog.cancel` as the way out |
 | windowless app, adapter half | the pick stays pending and `cancel` settles it |
 
@@ -76,6 +77,5 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 ## What is not proven
 
 - **Developer ID signing.** No such certificate exists on this machine, so `crust sign`'s path is written and never exercised, and Gatekeeper's behaviour on a recipient's Mac is untested. Ad-hoc is the only signature observed.
-- **AppKit's overwrite prompt.** Nothing has replaced an existing file through `savePanel`, so the prompt is documented from AppKit's behaviour, not observed.
 - **The free-standing panel at runtime.** A windowless app's `beginWithCompletionHandler:` path has its adapter half tested; the AppKit half has never been entered.
 - **A warm first launch, and anything timed from inside the page.** Every cold-start worst case is a cold page cache, and the page's own `ready` marker is resolved but never reported back to the backend, so it is not timed.
