@@ -8,6 +8,9 @@
 import { app } from "crust";
 import { attempt, proofs, proveClipboard, proveMenu } from "./proofs.ts";
 import { proveDeepLink, proveFs, proveTray } from "./proofs-system.ts";
+import { proveShell, proveStore, proveStronghold } from "./proofs-data.ts";
+import { proveDialog, proveOpener, proveOs } from "./proofs-io.ts";
+import { proveAutostart, proveLogging, provePositioner, proveWindowState } from "./proofs-state.ts";
 import { proveNotification, proveUpdater } from "./proofs-update.ts";
 import { proveChrome, proveShortcut } from "./proofs-window.ts";
 import { proveKeyPress } from "./proofs-keypress.ts";
@@ -26,6 +29,16 @@ async function main(): Promise<void> {
 	await attempt("fs", proveFs);
 	await attempt("tray", proveTray);
 	await attempt("deep-link", proveDeepLink);
+	await attempt("shell", proveShell);
+	await attempt("store", proveStore);
+	await attempt("stronghold", proveStronghold);
+	await attempt("dialog", proveDialog);
+	await attempt("opener", proveOpener);
+	await attempt("os", proveOs);
+	await attempt("autostart", proveAutostart);
+	await attempt("logging", proveLogging);
+	await attempt("window-state", proveWindowState);
+	await attempt("positioner", provePositioner);
 	const passed = proofs.filter((proof) => proof.ok).length;
 	const verdict = passed === proofs.length ? "PASS" : "FAIL";
 	console.log(`parity: ${verdict} ${passed}/${proofs.length}`);
