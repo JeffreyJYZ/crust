@@ -52,6 +52,12 @@ export interface ShellConfig {
 	cwdRoot?: string;
 }
 
+/** What `crust:fs` may touch. Absent means no restriction, which is every app that never configures it. */
+export interface FsConfig {
+	/** Absolute path prefixes every `fs` command must resolve inside. */
+	scope?: string[];
+}
+
 /**
  * The updater's defaults; the section existing is what registers `crust:updater`, so an app with no
  * update story carries no download-and-replace surface at all.
@@ -72,6 +78,7 @@ export interface CrustConfig {
 	build?: BuildConfig;
 	plugins?: string[];
 	security?: SecurityConfig;
+	fs?: FsConfig;
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
 }

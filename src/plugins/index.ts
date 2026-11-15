@@ -9,6 +9,7 @@ import { fsPlugin } from "./fs";
 import { createLoggingPlugin, loggingPlugin } from "./logging";
 import { createNotificationPlugin, notificationPlugin } from "./notification";
 import { PluginRegistry } from "./registry";
+import { strongholdPlugin } from "./stronghold";
 import { createTrayPlugin, trayPlugin } from "./tray";
 
 export {
@@ -38,7 +39,9 @@ export {
 	type SavePanelResult,
 } from "./dialog";
 export {
+	createFsPlugin,
 	fsPlugin,
+	type FsScopeOptions,
 	type ReadTextFileArgs,
 	type WriteTextFileArgs,
 	type WriteTextFileResult,
@@ -117,6 +120,28 @@ export {
 	type LoggingAdapter,
 } from "./logging";
 export {
+	createStrongholdPlugin,
+	KDF_ITERATIONS,
+	KDF_NAME,
+	SALT_BYTES,
+	STORE_FILE,
+	STORE_VERSION,
+	strongholdPlugin,
+	type CloseResult,
+	type GetResult,
+	type KeysResult,
+	type OpenArgs,
+	type OpenResult,
+	type Sealed,
+	type SetArgs,
+	type SetResult,
+	type StrongholdEntry,
+	type StrongholdErrorCode,
+	type StrongholdFailure,
+	type StrongholdFile,
+	type StrongholdOptions,
+} from "./stronghold";
+export {
 	createDeepLink,
 	deepLink,
 	parseDeepLink,
@@ -144,6 +169,7 @@ export {
 	type ShellOptions,
 	type SpawnOutcome,
 } from "./shell";
+export { createStorePlugin, defaultStoreRoot, type StoreAdapter, storePlugin } from "./store";
 
 /**
  * The plugins that need no platform instance. `window` sits outside this list
@@ -163,6 +189,7 @@ export const corePlugins = [
 	trayPlugin,
 	autostartPlugin,
 	loggingPlugin,
+	strongholdPlugin,
 ] as const satisfies readonly PluginDefinition[];
 
 /** Every core plugin in one registry, ready for `startBridge({ handlers })`. */

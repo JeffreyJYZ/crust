@@ -2,7 +2,8 @@
  * The runtime parity proof: `examples/parity-probe` is built the way a user builds, launched
  * from `/` by its own bundle binary, and its stdout has to carry one line per surface the
  * parity matrix used to mark "same" on compile evidence alone — menu, clipboard PNG,
- * window chrome and the shortcut seam — plus a `parity:` summary and exit 0.
+ * window chrome, the shortcut seam, the updater swap, the notification the OS answered, the
+ * filesystem round trip, the menu-bar item and the deep link — plus a `parity:` summary and exit 0.
  * The app exits on its own, so the probe's deadline is a hang guard, not the normal path.
  */
 
@@ -28,10 +29,31 @@ const CLIPBOARD = /^clipboard png \d+ bytes, first 8 89 50 4e 47 0d 0a 1a 0a$/m;
 const RESTORED = /^clipboard restored: true$/m;
 const CHROME = /^chrome\s+opacity 0\.75, decorations false$/m;
 const SHORTCUT = /^shortcut\s+(emitted: command\+shift\+k|seam unavailable.*)$/m;
+/**
+ * A posted Cmd+Shift+K is answered by the window server or it is not; both are honest
+ * outcomes, and the line says which, so a machine without a focused session still passes
+ * on the recorded reason rather than pretending a press was delivered.
+ */
+const KEYPRESS = /^shortcut-press (delivered: .+|not delivered: .+)$/m;
+/**
+ * The swap is deterministic — two temp bundles and `node:fs` — so only the proved line passes.
+ * A notification is proved either way: the OS scheduling it, or refusing it with its own reason.
+ */
+const UPDATER = /^updater swapped old->\.old new->app$/m;
+const NOTIFICATION = /^notification (delivered: .+|refused: .+)$/m;
+/**
+ * The filesystem, menu-bar and deep-link proofs are all real on macOS, so only the proved form
+ * passes: the file must land inside this app's own data root, the item must report two rows and
+ * `visible: true`, and the URL must come back through the plugin with its parsed parts.
+ */
+const FS = /^fs ok \d+ bytes at .*Application Support\/land\.jyz\.parity-probe\/.*$/m;
+const TRAY = /^tray items: 2 visible: true$/m;
+const DEEP_LINK =
+	/^deep-link probe:\/\/open\/42\?tab=notes scheme=probe path=\/42 host=open query=tab=notes$/m;
 const SUMMARY = /^parity: (PASS|FAIL) \d+\/\d+$/m;
 
-/** Shim compile, AppKit, four proofs: measured a few seconds, bounded generously. */
-const APP_TIMEOUT_MS = 30_000;
+/** Shim compile, AppKit, nine proofs — the notification and status-bar C units compile here too. */
+const APP_TIMEOUT_MS = 45_000;
 
 function seconds(ms: number | null): string {
 	return ms === null ? "no exit" : `${(ms / 1000).toFixed(2)} s`;
@@ -74,7 +96,20 @@ async function main(): Promise<number> {
 			: `crust build exited ${build.code} — ${lastLine(build.stderr) || lastLine(build.stdout) || "no output"}`,
 	);
 	if (!buildOk) {
-		for (const name of ["binary", "menu", "clipboard", "chrome", "shortcut", "exit 0", "no survivors"]) {
+		for (const name of [
+			"binary",
+			"menu",
+			"clipboard",
+			"chrome",
+			"shortcut",
+			"updater",
+			"notification",
+			"fs",
+			"tray",
+			"deep-link",
+			"exit 0",
+			"no survivors",
+		]) {
 			verdict.check(name, false, "not checked — crust build failed");
 		}
 		if (!built) console.log(build.stdout + build.stderr);
@@ -108,6 +143,12 @@ async function main(): Promise<number> {
 		["clipboard", CLIPBOARD],
 		["chrome", CHROME],
 		["shortcut", SHORTCUT],
+		["shortcut-press", KEYPRESS],
+		["updater", UPDATER],
+		["notification", NOTIFICATION],
+		["fs", FS],
+		["tray", TRAY],
+		["deep-link", DEEP_LINK],
 	] as const) {
 		const line = lineOf(run.stdout, pattern);
 		verdict.check(name, line !== null, line ?? missing(name));

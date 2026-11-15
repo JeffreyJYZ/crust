@@ -51,9 +51,10 @@ describe("registry", () => {
 			"tray",
 			"autostart",
 			"logging",
+			"stronghold",
 		]);
-		expect(registry.size).toBe(6);
-		expect(corePlugins.length).toBe(6);
+		expect(registry.size).toBe(7);
+		expect(corePlugins.length).toBe(7);
 
 		const dir = await tempDir();
 		const path = join(dir, "note.txt");

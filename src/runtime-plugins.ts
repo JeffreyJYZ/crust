@@ -3,7 +3,7 @@
  */
 
 import { APP_NAMESPACE, app } from "@/app.ts";
-import type { ShellConfig, UpdaterConfig } from "@/config";
+import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
 import { createWindowPlugin, definePlugin, type PluginDefinition } from "@/plugins";
 
 /**
@@ -32,6 +32,8 @@ export function createAppNamespacePlugin(): PluginDefinition {
 export interface NativePluginOptions {
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
+	/** Filesystem scope: when set, every `fs` command must resolve inside it. */
+	fs?: FsConfig;
 }
 
 /** A bare `ShellConfig` is the third argument this function took before `updater` existed. */
@@ -51,20 +53,30 @@ export async function nativePlugins(
 	platform: import("@/platform/darwin").DarwinPlatform | undefined,
 	options: NativePluginOptions | ShellConfig = {},
 ): Promise<PluginDefinition[]> {
-	const { shell, updater } = optionsOf(options);
+	const { shell, updater, fs } = optionsOf(options);
+	// `fs` carries the config's scope when one exists; with no scope the plugin
+	// behaves exactly as before, which is what keeps existing apps working.
+	const scoped = (plugin: PluginDefinition): PluginDefinition =>
+		plugin.name === "fs" && fs?.scope !== undefined
+			? (createFsPlugin({ allow: fs.scope }) as PluginDefinition)
+			: plugin;
 	const {
 		createDialogPlugin,
 		createNotificationPlugin,
 		createShellPlugin,
+		createStorePlugin,
 		createTrayPlugin,
 		createUpdaterPlugin,
 	} = await import("@/plugins");
 	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
 	const updaterPlugins = updater === undefined ? [] : [createUpdaterPlugin(undefined, updater)];
+	// `store` has no native half and needs no adapter, so it is the same plugin on every platform.
+	const storePlugin = createStorePlugin();
 	if (!platform || process.platform !== "darwin") {
 		return [
-			...core.filter((plugin) => plugin.name !== "window"),
+			...core.filter((plugin) => plugin.name !== "window").map(scoped),
 			createWindowPlugin(),
+			storePlugin,
 			shellPlugin,
 			...updaterPlugins,
 		];
@@ -78,6 +90,7 @@ export async function nativePlugins(
 	const shortcuts = await import("@/platform/darwin/shortcuts");
 	const screen = await import("@/platform/darwin/screen");
 	const {
+		createFsPlugin,
 		createClipboardPlugin,
 		createOpenerPlugin,
 		createOsPlugin,
@@ -90,7 +103,7 @@ export async function nativePlugins(
 	const deepLinkPlugin = deepLink.plugin;
 	const windowAdapter = darwin.darwinWindowAdapter(platform);
 	return [
-		...core.map((plugin) => {
+		...core.map(scoped).map((plugin) => {
 			switch (plugin.name) {
 				case "dialog":
 					return createDialogPlugin(darwin.darwinDialogAdapter());
@@ -111,6 +124,7 @@ export async function nativePlugins(
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
 		createMenuPlugin(darwin.darwinMenuAdapter()),
 		deepLinkPlugin,
+		storePlugin,
 		shellPlugin,
 		...updaterPlugins,
 	];

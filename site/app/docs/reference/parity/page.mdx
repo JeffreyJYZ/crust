@@ -49,8 +49,11 @@ so the app mounts it with `app.use`.
 | HTTP client | `fetch` in the backend | via Bun |
 | WebSocket | `WebSocket` in the backend | via Bun |
 | SQL | `bun:sqlite` in the backend | via Bun |
-| Store | `fs` plus JSON | via Bun |
+| Store | `store.get/set/delete/keys/clear/save`, atomic 0600 JSON, corrupt file quarantined | same |
 | Upload | `FormData` with `fetch` | via Bun |
+| Command line (CLI) | `process.argv` in the backend | via Bun |
+| Persisted scope | `fs.scope.list/allow/revoke`, `fs.scope` config, grants persisted in `scope.json` | same |
+| Stronghold | `stronghold.open/set/get/delete/keys/close`, PBKDF2-SHA256 600k + AES-256-GCM, file holds no plaintext | same |
 | Logging | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1` | same |
 
 ## What this means
@@ -73,11 +76,12 @@ PASS  menu            menu      titles: ["Parity probe","Probe item"]
 PASS  clipboard       clipboard png 163 bytes, first 8 89 50 4e 47 0d 0a 1a 0a
 PASS  chrome          chrome    opacity 0.75, decorations false
 PASS  shortcut        shortcut  emitted: command+shift+k
+PASS  shortcut-press  shortcut-press delivered: {"accelerator":"command+shift+k"}
 PASS  restored        clipboard restored: true
-PASS  summary         parity: PASS 4/4
+PASS  summary         parity: PASS 10/10
 PASS  exit 0          exited 0 after 2.89 s
 PASS  no survivors    no process matches the binary path
-e2e:parity: PASS  10/10 assertions  4.0s
+e2e:parity: PASS  16/16 assertions  4.3s
 ```
 
 - **Menu** — `menu.setAppMenu` builds a bar with a submenu and `Cmd+Shift+K`, then `menu.read()`

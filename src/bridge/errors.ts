@@ -12,6 +12,7 @@ export type CrustErrorCode =
 	| "bad-request"
 	| "handler-error"
 	| "too-large"
+	| "outside-scope"
 	| "not-implemented";
 
 const STATUS: Record<CrustErrorCode, number> = {
@@ -24,6 +25,7 @@ const STATUS: Record<CrustErrorCode, number> = {
 	"bad-request": 400,
 	"handler-error": 500,
 	"too-large": 413,
+	"outside-scope": 403,
 	"not-implemented": 501,
 };
 
@@ -53,7 +55,10 @@ export class CrustError extends Error {
 	}
 
 	toJSON(): SerializedCrustError {
-		const body: SerializedCrustError = { code: this.code, message: this.message };
+		const body: SerializedCrustError = {
+			code: this.code,
+			message: this.message,
+		};
 		if (this.requires !== undefined) body.requires = this.requires;
 		return body;
 	}

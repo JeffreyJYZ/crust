@@ -1,13 +1,16 @@
 /**
- * `crust:fs` — text files, directories and their metadata. Every failure carries a structured code (`not-found`, `bad-request`), and nothing here is synchronous because one blocking handler stalls every other invoke on the bridge (`research/bridge.md` §Concurrency).
+ * `crust:fs` — text files, directories and their metadata. Every failure carries a structured code (`not-found`, `bad-request`, `outside-scope`), and nothing here is synchronous because one blocking handler stalls every other invoke on the bridge (`research/bridge.md` §Concurrency).
  * `list`, `stat`, `remove` and `rename` exist because a real app asked: notes on disk need a listing and a delete, and without them every app reimplements path handling.
  */
 
-import { rename as renamePath, rm, readdir, stat as statPath } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { readdir, rename as renamePath, rm, stat as statPath } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 import { definePlugin } from "./define";
+import { createFsScope, type FsScopeOptions, scopeCommands } from "./fs-scope.ts";
+
+export type { FsScopeOptions } from "./fs-scope.ts";
 
 export interface ReadTextFileArgs {
 	/** Absolute or cwd-relative path. */
@@ -74,18 +77,6 @@ export interface RenameResult {
 	path: string;
 }
 
-function requirePath(value: unknown): string {
-	if (typeof value !== "string" || value.length === 0) {
-		throw new CrustError("bad-request", 'fs: "path" must be a non-empty string');
-	}
-	return value;
-}
-
-/** Absolute form, so a returned path is usable from a page whose cwd is `/`. */
-function absolute(path: string): string {
-	return isAbsolute(path) ? path : resolve(path);
-}
-
 /** A missing path is `not-found`, which is the one filesystem error worth naming. */
 function missing(error: unknown, path: string, command: string): never {
 	const code = (error as { code?: string } | undefined)?.code;
@@ -93,77 +84,95 @@ function missing(error: unknown, path: string, command: string): never {
 	throw error;
 }
 
-export const fsPlugin = definePlugin({
-	name: "fs",
-	commands: {
-		readTextFile: async ({ path }: ReadTextFileArgs): Promise<string> => {
-			const file = requirePath(path);
-			const handle = Bun.file(file);
-			if (!(await handle.exists())) {
-				throw new CrustError("not-found", `fs.readTextFile: no file at ${file}`);
-			}
-			return handle.text();
+/** Run one filesystem call, naming it and the path when it fails. */
+function attempt<Result>(command: string, path: string, run: Promise<Result>): Promise<Result> {
+	return run.catch((error: unknown) => missing(error, path, command));
+}
+
+/** The plugin, with the config's `fs.scope` (and any persisted grant) as its boundary. */
+export function createFsPlugin(options: FsScopeOptions = {}) {
+	const scope = createFsScope(options);
+
+	/** A path argument, refused unless it resolves inside the scope. No-op with nothing configured. */
+	const scoped = async (value: unknown): Promise<string> => {
+		if (typeof value !== "string" || value.length === 0) {
+			throw new CrustError("bad-request", 'fs: "path" must be a non-empty string');
+		}
+		await scope.check(value);
+		return value;
+	};
+
+	return definePlugin({
+		name: "fs",
+		commands: {
+			readTextFile: async ({ path }: ReadTextFileArgs): Promise<string> => {
+				const file = await scoped(path);
+				const handle = Bun.file(file);
+				if (!(await handle.exists())) {
+					throw new CrustError("not-found", `fs.readTextFile: no file at ${file}`);
+				}
+				return handle.text();
+			},
+			writeTextFile: async ({
+				path,
+				contents,
+			}: WriteTextFileArgs): Promise<WriteTextFileResult> => {
+				const file = await scoped(path);
+				if (typeof contents !== "string") {
+					throw new CrustError(
+						"bad-request",
+						'fs.writeTextFile: "contents" must be a string',
+					);
+				}
+				const bytes = await Bun.write(file, contents);
+				return { bytes };
+			},
+			list: async ({ path }: ListArgs): Promise<ListResult> => {
+				const dir = await scoped(path);
+				const entries = await attempt("list", dir, readdir(dir, { withFileTypes: true }));
+				const listed: ListEntry[] = [];
+				for (const entry of entries) {
+					const full = resolve(dir, entry.name);
+					const info = entry.isDirectory()
+						? undefined
+						: await statPath(full).catch(() => undefined);
+					listed.push({
+						name: entry.name,
+						path: full,
+						directory: entry.isDirectory(),
+						size: info?.size ?? 0,
+					});
+				}
+				return {
+					entries: listed.sort((left, right) => left.name.localeCompare(right.name)),
+				};
+			},
+			stat: async ({ path }: StatArgs): Promise<StatResult> => {
+				const target = await scoped(path);
+				const info = await attempt("stat", target, statPath(target));
+				return {
+					path: resolve(target),
+					directory: info.isDirectory(),
+					size: info.isDirectory() ? 0 : info.size,
+					modified: info.mtimeMs,
+				};
+			},
+			remove: async ({ path, recursive }: RemoveArgs): Promise<RemoveResult> => {
+				const target = await scoped(path);
+				await attempt("remove", target, rm(target, { recursive: recursive === true }));
+				return { removed: true, path: resolve(target) };
+			},
+			rename: async ({ from, to }: RenameArgs): Promise<RenameResult> => {
+				// Both ends: a rename out of a prefix leaks the file as surely as a read.
+				const source = await scoped(from);
+				const destination = await scoped(to);
+				await attempt("rename", source, renamePath(source, destination));
+				return { path: resolve(destination) };
+			},
+			...scopeCommands(scope),
 		},
-		writeTextFile: async ({
-			path,
-			contents,
-		}: WriteTextFileArgs): Promise<WriteTextFileResult> => {
-			const file = requirePath(path);
-			if (typeof contents !== "string") {
-				throw new CrustError(
-					"bad-request",
-					'fs.writeTextFile: "contents" must be a string',
-				);
-			}
-			const bytes = await Bun.write(file, contents);
-			return { bytes };
-		},
-		list: async ({ path }: ListArgs): Promise<ListResult> => {
-			const dir = requirePath(path);
-			const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) =>
-				missing(error, dir, "list"),
-			);
-			const listed: ListEntry[] = [];
-			for (const entry of entries) {
-				const full = resolve(dir, entry.name);
-				const info = entry.isDirectory()
-					? undefined
-					: await statPath(full).catch(() => undefined);
-				listed.push({
-					name: entry.name,
-					path: full,
-					directory: entry.isDirectory(),
-					size: info?.size ?? 0,
-				});
-			}
-			return { entries: listed.sort((left, right) => left.name.localeCompare(right.name)) };
-		},
-		stat: async ({ path }: StatArgs): Promise<StatResult> => {
-			const target = requirePath(path);
-			const info = await statPath(target).catch((error: unknown) =>
-				missing(error, target, "stat"),
-			);
-			return {
-				path: absolute(target),
-				directory: info.isDirectory(),
-				size: info.isDirectory() ? 0 : info.size,
-				modified: info.mtimeMs,
-			};
-		},
-		remove: async ({ path, recursive }: RemoveArgs): Promise<RemoveResult> => {
-			const target = requirePath(path);
-			await rm(target, { recursive: recursive === true }).catch((error: unknown) =>
-				missing(error, target, "remove"),
-			);
-			return { removed: true, path: absolute(target) };
-		},
-		rename: async ({ from, to }: RenameArgs): Promise<RenameResult> => {
-			const source = requirePath(from);
-			const destination = requirePath(to);
-			await renamePath(source, destination).catch((error: unknown) =>
-				missing(error, source, "rename"),
-			);
-			return { path: absolute(destination) };
-		},
-	},
-});
+	});
+}
+
+/** The default registration: no configured scope, so no restriction. */
+export const fsPlugin = createFsPlugin();
