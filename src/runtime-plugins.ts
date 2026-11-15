@@ -84,6 +84,7 @@ export async function nativePlugins(
 		createShortcutsPlugin,
 		createWindowStatePlugin,
 		createPositionerPlugin,
+		createMenuPlugin,
 		deepLink,
 	} = await import("@/plugins");
 	const deepLinkPlugin = deepLink.plugin;
@@ -108,6 +109,7 @@ export async function nativePlugins(
 		createShortcutsPlugin(shortcuts.darwinShortcutsAdapter()),
 		createWindowStatePlugin({ native: windowAdapter }),
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
+		createMenuPlugin(darwin.darwinMenuAdapter()),
 		deepLinkPlugin,
 		shellPlugin,
 		...updaterPlugins,

@@ -18,6 +18,14 @@ extern long RegisterEventHotKey(unsigned int keycode, unsigned int modifiers,
 extern long UnregisterEventHotKey(void *ref);
 extern long GetEventParameter(void *event, unsigned int name, unsigned int type, void *outType,
                               unsigned long size, unsigned long *outSize, void *outData);
+// `CreateEvent` is the Carbon form that writes the event into an out parameter and
+// answers OSStatus — not a pointer return. Reading its status as a pointer crashed.
+extern long CreateEvent(void *allocator, unsigned int cls, unsigned int kind, double when,
+                        unsigned int attributes, void **outEvent);
+extern long SetEventParameter(void *event, unsigned int name, unsigned int type, unsigned long size,
+                              const void *data);
+extern long SendEventToEventTarget(void *event, void *target);
+extern void ReleaseEvent(void *event);
 
 // Carbon's constants, spelled out because no header is reachable: 'keyb',
 // kEventHotKeyPressed, kEventParamDirectObject ('----') and typeEventHotKeyID.
@@ -107,4 +115,58 @@ int shortcut_unregister_all(void) {
 		shortcut_ids[i] = 0;
 	}
 	return removed;
+}
+
+// One synthetic press: the event the window server would have sent, built here
+// instead. Deliberately not CGEventPost — that goes through the HID system and
+// needs an accessibility grant, while this never leaves the process's own target.
+static void *shortcut_press(int id) {
+	void *event = 0;
+	if (CreateEvent(0, SHORTCUT_CLASS, SHORTCUT_PRESSED, 0.0, 0, &event) != 0) return 0;
+	if (!event) return 0;
+	shortcut_hotkey_id payload;
+	payload.signature = SHORTCUT_SIGNATURE;
+	payload.id = (unsigned int)id;
+	if (SetEventParameter(event, SHORTCUT_PARAM, SHORTCUT_TYPE, sizeof payload, &payload) != 0) {
+		ReleaseEvent(event);
+		return 0;
+	}
+	return event;
+}
+
+// Fire a hot key this unit registered, answering 1 only then: the id table is the
+// guard, so a caller cannot invent a press for an id the OS never handed out.
+int shortcut_dispatch(int id) {
+	if (!shortcut_imp || !shortcut_handler) return 0;
+	int live = 0;
+	for (int i = 0; i < SHORTCUT_MAX; i++)
+		if (shortcut_refs[i] && (int)shortcut_ids[i] == id) live = 1;
+	if (!live) return 0;
+	void *event = shortcut_press(id);
+	if (!event) return 0;
+	long status = SendEventToEventTarget(event, GetApplicationEventTarget());
+	ReleaseEvent(event);
+	return status == 0 ? 1 : 0;
+}
+
+// Every Carbon call the dispatch path makes, as a bitmask: 1 CreateEvent, 2
+// SetEventParameter, 4 GetEventParameter, 8 SendEventToEventTarget, 16 the target.
+// A symbol the loader never resolved faults on the first real press, so this
+// resolves each one now and reads the id back out of the event it built.
+int shortcut_event_abi(void) {
+	if (!GetApplicationEventTarget()) return 0;
+	int bits = 16;
+	void *event = shortcut_press(0x7FFFFFFF);
+	if (!event) return bits;
+	bits |= 1 | 2;
+	shortcut_hotkey_id got;
+	got.signature = 0;
+	got.id = 0;
+	if (GetEventParameter(event, SHORTCUT_PARAM, SHORTCUT_TYPE, 0, sizeof got, 0, &got) == 0 &&
+	    got.signature == SHORTCUT_SIGNATURE && got.id == 0x7FFFFFFFu)
+		bits |= 4;
+	SendEventToEventTarget(event, GetApplicationEventTarget());
+	bits |= 8;
+	ReleaseEvent(event);
+	return bits;
 }
