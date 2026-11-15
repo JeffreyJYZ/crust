@@ -48,6 +48,10 @@ A green gate is the only proof a landing is safe.
   without it gives an app that launches, creates no page, prints nothing and exits 0 (the `.ips` says
   `SIGKILL (Code Signature Invalid)`, `Invalid Page`). Fixed in `src/packaging/sign.ts`, asserted in
   `src/packaging/sign.test.ts`.
+- **A template change moves the standalone gate's expected file counts** — `scripts/build-standalone.ts`
+  pins how many files `crust init --next/--react/(none)` writes (the glob skips `.gitignore`, which is
+  checked separately). Adding the `/about` route took `--next` from 7 to 8 and left the macOS job red
+  until the number was updated, so change the count in the same commit as the template.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty**
