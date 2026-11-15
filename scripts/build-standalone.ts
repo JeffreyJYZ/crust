@@ -64,7 +64,7 @@ async function main(): Promise<void> {
 	const workspace = await mkdtemp(join(tmpdir(), "crust-standalone-"));
 	try {
 		for (const [flag, count] of [
-			["--next", 7],
+			["--next", 8],
 			["--react", 6],
 			["", 6],
 		] as const) {
