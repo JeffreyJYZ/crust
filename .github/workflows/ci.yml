@@ -127,6 +127,15 @@ jobs:
         if: steps.window.outputs.available == 'true'
         run: bun run e2e
 
+      # The parity probe is the only proof that the native surfaces work rather
+      # than compile: it reads a built menu back out of AppKit, round-trips a PNG
+      # through the pasteboard, toggles opacity and decorations on a real window
+      # and fires a Carbon hot key. Without it on CI, a surface can regress to
+      # "it still links" and nothing notices.
+      - name: e2e parity
+        if: steps.window.outputs.available == 'true'
+        run: bun run e2e:parity
+
       # Whether this change touches the multi-file path, i.e. the runtime or the
       # `examples/notes` app. On a push to main there is no PR base, so it runs.
       - name: multi-file e2e decision
