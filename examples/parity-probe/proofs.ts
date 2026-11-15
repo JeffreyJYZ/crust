@@ -31,7 +31,13 @@ export function mark(name: string, ok: boolean): boolean {
 	return ok;
 }
 
-function reason(error: unknown): string {
+/** Name a surface that could not run and record nothing, so the summary counts only proofs that ran. */
+export function skip(name: string, why: string): boolean {
+	console.log(`${name.padEnd(9)} skipped: ${why}`);
+	return true;
+}
+
+export function reason(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
@@ -122,11 +128,11 @@ export function proveClipboard(): boolean {
 	}
 }
 
-/** One proof's throw must not take the other three with it. */
-export function attempt(name: string, body: () => boolean): void {
+/** One proof's throw must not take the others with it. Async, because two proofs touch the disk and the OS. */
+export async function attempt(name: string, body: () => boolean | Promise<boolean>): Promise<void> {
 	const before = proofs.length;
 	try {
-		body();
+		await body();
 	} catch (error) {
 		if (proofs.length === before) mark(name, false);
 		console.log(`${name.padEnd(9)} threw: ${reason(error)}`);

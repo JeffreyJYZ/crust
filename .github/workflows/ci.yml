@@ -58,6 +58,9 @@ jobs:
       # during review, and a link to a page that was renamed or deleted.
       - run: bun run check:lines
       - run: bun run check:links
+      # The parity matrix is hand-written, so this pins Tauri's official feature
+      # names against its rows: a surface cannot go missing from it unnoticed.
+      - run: bun run check:parity
 
       # The docs site is a Next app in its own directory with its own lockfile, so it
       # needs its own install. A build failure here is a page that does not compile.

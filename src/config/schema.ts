@@ -7,14 +7,15 @@ import type { CrustConfig } from "./types.ts";
 import { validateApp } from "./validate-app.ts";
 import { validateBuild } from "./validate-build.ts";
 import { validateDev } from "./validate-dev.ts";
+import { validateFs } from "./validate-fs.ts";
 import { validateSecurity } from "./validate-security.ts";
 import { validateShell } from "./validate-shell.ts";
 import { validateUpdater } from "./validate-updater.ts";
 import { validateWindows } from "./validate-windows.ts";
 import { Validator } from "./validator.ts";
 
-export * from "./types.ts";
 export { ConfigError } from "./issues.ts";
+export * from "./types.ts";
 
 const ROOT_KEYS = [
 	"app",
@@ -23,6 +24,7 @@ const ROOT_KEYS = [
 	"build",
 	"plugins",
 	"security",
+	"fs",
 	"shell",
 	"updater",
 ] as const;
@@ -45,6 +47,7 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		if (root.plugins !== undefined) v.stringArray(root, "plugins", "config");
 
 		validateSecurity(v, root.security);
+		validateFs(v, root.fs);
 		validateShell(v, root.shell);
 		validateUpdater(v, root.updater);
 	}

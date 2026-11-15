@@ -81,7 +81,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		appName: config.app.name,
 	});
 	const plugins = [
-		...(await nativePlugins(core, platform, { shell: config.shell, updater: config.updater })),
+		...(await nativePlugins(core, platform, { shell: config.shell, updater: config.updater, fs: config.fs })),
 		single.plugin,
 	];
 
