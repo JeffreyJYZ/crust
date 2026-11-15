@@ -18,9 +18,9 @@ so the app mounts it with `app.use`.
 
 | Tauri | crust | Status |
 | --- | --- | --- |
-| Windows | `window`, 19 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize | partial — no decorations, opacity, cursor or theme control |
+| Windows | `window`, 25 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize, decorations, opacity, cursor | same |
 | Webviews | one `WKWebView` per window | same |
-| Menus | app menu and Edit menu in `shim/55_menu.c` | partial — no custom app menu, no context menus |
+| Menus | `menu.setAppMenu/showContext/reset`, `NSMenu` in `98`+`99` | same |
 | Tray | `tray` plugin with menu rows | same |
 | Events | `crust.listen` over SSE, `PluginContext.emit` | same |
 | Path | `node:path` in the backend | via Bun |
@@ -34,24 +34,24 @@ so the app mounts it with `app.use`.
 | Dialog | `dialog.open`, `dialog.save` | same |
 | File system | `fs.read/write/list/stat/rename/remove` | same |
 | Notification | `notification.send` | same |
-| Clipboard | `clipboard.read/write` | partial — text only; `readImage`/`writeImage` answer `not-implemented` |
+| Clipboard | `clipboard.read/write/readImage/writeImage` — text and PNG bytes | same |
 | Opener | `opener.openPath/openUrl/revealItem` | same |
-| OS information | `os.info`, `os.locale` | partial — no family, exe extension or OS type |
+| OS information | `os.info` (family, arch, version, uptime, exe extension), `os.locale`, `os.paths` | same |
 | Global shortcut | `shortcut.register/unregister/unregisterAll/isRegistered/list` | same |
-| Shell / sidecar | `shell.spawn/output/kill/list`, allowlisted by config | partial — no stdin, no pty |
+| Shell / sidecar | `shell.spawn/output/write/close/kill/list`, stdin pipe, `shell-output` events bounded at 500 lines, allowlisted by config | same |
 | Single instance | `single-instance.acquire/release/activate` | same — the runtime locks `app.id` at launch |
-| Deep linking | `deep-link.scheme/url` | module only — the scheme, and the URL held now |
+| Deep linking | `deep-link.scheme/url`; `build.urlScheme` writes `CFBundleURLTypes`, the launch URL is claimed in `app.start()` | same |
 | Autostart | `autostart.enable/disable/isEnabled` | same |
-| Updater | `updater.check/download/install` | module only — no relaunch, no signature check |
-| Window state | `window-state.save/restore/forget` | partial — size and position only, one label per call |
-| Positioner | `positioner.center/topLeft/topRight/bottomLeft/bottomRight` | partial — five presets, no tray anchors |
+| Updater | `updater.check/download/install/relaunch`, sha256 + Ed25519 verify, atomic bundle swap, `open -n` relaunch, registered from `updater` config | same |
+| Window state | `window-state.save/restore/forget` plus `saveAll/restoreAll/forgetAll` | same |
+| Positioner | nine presets: center, four corners, four edge midpoints | same |
 | Process | `process` in the backend | via Bun |
 | HTTP client | `fetch` in the backend | via Bun |
 | WebSocket | `WebSocket` in the backend | via Bun |
 | SQL | `bun:sqlite` in the backend | via Bun |
 | Store | `fs` plus JSON | via Bun |
 | Upload | `FormData` with `fetch` | via Bun |
-| Logging | `logging.setLevel/level/write/tail` | partial — no trace level, no rotation |
+| Logging | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1` | same |
 
 ## What this means
 
