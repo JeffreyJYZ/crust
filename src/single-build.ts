@@ -3,7 +3,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import type { SingleApp } from "./single-detect.ts";
 import {
 	documentSource,
@@ -45,6 +45,16 @@ export async function buildPage(app: SingleApp, options: { dev: boolean }): Prom
 		? join(app.dir, ".crust", "single")
 		: join(app.dir, "dist", "single");
 	await mkdir(outDir, { recursive: true });
+
+	// An `.html` entry is the document, not a module: copy it verbatim so the
+	// page keeps its own markup, and skip the bundler entirely.
+	if (extname(app.file).toLowerCase() === ".html") {
+		await writeFile(join(outDir, "index.html"), await Bun.file(app.file).text(), "utf8");
+		if (options.dev) {
+			await writeFile(join(outDir, RELOAD_FILE), `${Date.now()}\n`, "utf8");
+		}
+		return { dir: outDir, entry: "index.html" };
+	}
 
 	const source = await Bun.file(app.file).text();
 	const react = hasDefaultExport(source);

@@ -7,7 +7,13 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { findConfig, type CrustConfig } from "@/config";
 
 /** The extensions a single-file positional may carry. */
-export const SINGLE_EXTENSIONS: ReadonlySet<string> = new Set([".tsx", ".jsx", ".ts", ".js"]);
+export const SINGLE_EXTENSIONS: ReadonlySet<string> = new Set([
+	".tsx",
+	".jsx",
+	".ts",
+	".js",
+	".html",
+]);
 
 /** The size of the one window a single file gets. */
 export const SINGLE_WINDOW = { width: 900, height: 700 } as const;
@@ -70,7 +76,7 @@ export async function detectSingle(options: {
 	if (!SINGLE_EXTENSIONS.has(extension)) {
 		return {
 			kind: "error",
-			message: `single-file mode needs a .tsx, .jsx, .ts or .js file, got ${extension || file}`,
+			message: `single-file mode needs a .tsx, .jsx, .ts, .js or .html file, got ${extension || file}`,
 		};
 	}
 

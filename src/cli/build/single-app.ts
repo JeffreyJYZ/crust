@@ -23,7 +23,12 @@ export async function buildSingle(app: SingleApp, minimumSystemVersion: string):
 	} catch (error) {
 		return fail("build", error instanceof Error ? error.message : String(error));
 	}
-	line("page", `${join(page.dir, "index.html")} + ${page.entry}`);
+	line(
+		"page",
+		page.entry === "index.html"
+			? join(page.dir, "index.html")
+			: `${join(page.dir, "index.html")} + ${page.entry}`,
+	);
 
 	const outDir = resolve(app.dir, "dist");
 	await mkdir(outDir, { recursive: true });
