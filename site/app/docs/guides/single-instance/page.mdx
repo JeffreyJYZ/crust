@@ -1,0 +1,63 @@
+# Single instance
+
+One running copy per app id. The runtime claims the lock before the platform is built, so a second
+launch raises the copy already running and never imports the entry or opens a window. It prints one
+line and exits.
+
+```text
+single    raised the running instance (pid 4812)
+```
+
+The lock is a file named after `app.id`, holding the owner's pid, created with `O_EXCL`, so the winner
+is whoever the filesystem says won. Locks live in
+`~/Library/Application Support/crust/single-instance/`, and an id is folded to `[A-Za-z0-9._-]` so it
+cannot escape that directory. A lock naming a dead pid is stale and is taken over, so a crash never
+locks the user out.
+
+The check is skipped, and nothing locks, when the launch is headless or not macOS, and when
+`CRUST_SINGLE_INSTANCE=0` is set.
+
+## acquire
+
+```js
+const result = await window.crust.invoke("single-instance", "acquire", { id: "land.jyz.notes" });
+// { acquired: false, pid: 4812, path: "…/land.jyz.notes.lock" }
+```
+
+`acquired: false` is a normal answer and carries the live holder's pid, which is what `activate`
+wants. `pid` is `0` when the lock file names no readable pid. A page rarely calls this — the runtime
+already holds the lock — but a second resource, such as a device or a socket, can be guarded the same
+way under its own id.
+
+## release
+
+```js
+await window.crust.invoke("single-instance", "release", { id: "land.jyz.notes" });
+// { released: true, path: "…/land.jyz.notes.lock" }
+```
+
+A live foreign holder keeps its lock: the answer is `{ released: false, path, pid }` and the file
+stays. Releasing a stale lock is not theft, because it names the same dead process `acquire` would
+take over. The runtime releases its own lock on exit, so a clean quit needs no call.
+
+## activate
+
+```js
+await window.crust.invoke("single-instance", "activate", { pid: 4812 });
+// { activated: true, status: 0, reason: "…" }
+```
+
+Raises the process that already holds the lock. `activated` is the system's word, not the adapter's
+optimism: only status `0` counts. On macOS this is `NSRunningApplication -activateWithOptions:`; on a
+launch where the check was skipped it answers `not-implemented` naming `single-instance`, because
+there is no running copy to raise.
+
+## Failure codes
+
+| shape | when |
+| --- | --- |
+| `handler-error` | `id` is empty, `.`, `..` or contains a separator, or `pid` is not an integer in 1…2147483647 |
+| `not-implemented` | `activate` ran on a launch that skipped the check |
+
+`acquire` and `release` answer their own objects and carry no code. The two argument refusals throw,
+and the bridge reports a throw as `handler-error` with the message intact.

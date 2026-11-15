@@ -1,0 +1,53 @@
+# Clipboard
+
+Plain text on the general pasteboard, through `NSPasteboard`. Registered on macOS under the name
+`clipboard`, so a page reaches it in a bundle and under `crust dev` alike.
+
+## Commands
+
+| command | arguments | answers |
+| --- | --- | --- |
+| `read` | none | `{ ok: true, text }` |
+| `write` | `{ text }` | `{ ok: true, written: true }` |
+| `readImage` | none | `not-implemented` |
+| `writeImage` | none | `not-implemented` |
+
+```js
+const { text } = await window.crust.invoke("clipboard", "read");
+```
+
+`text` is `""` when the pasteboard holds no text. A pasteboard that cannot be read at all is a
+different answer: the native half reports `null`, and the command answers `not-implemented` naming
+`NSPasteboard`. An empty clipboard and an unreadable one never collapse into the same value.
+
+## write
+
+```js
+const result = await window.crust.invoke("clipboard", "write", { text: "notes.md" });
+// { ok: true, written: true }
+```
+
+`written: true` means `-setString:forType:` itself returned yes, not that the adapter tried. A
+pasteboard that refuses comes back `write-failed` with the verdict in the message.
+
+The empty string is a real write. Only a non-string `text` is refused, because refusing `""` would
+make "clear the clipboard" impossible.
+
+## Images
+
+`readImage` and `writeImage` answer `not-implemented` and name the selector each waits on. An image
+is a second object graph in C — `NSImage` in, PNG or TIFF bytes out — so neither command answers an
+empty result that would read as "no image on the clipboard".
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `bad-request` | `write` got no `text`, or a `text` that is not a string |
+| `write-failed` | the pasteboard refused the string |
+| `unknown-adapter` | the adapter has no `readText` or `writeText` member |
+| `handler-error` | the adapter threw; the message is the throw's own |
+| `not-implemented` | no pasteboard here, or the read answered `null` |
+
+The typed failures arrive as a 200 with `{ ok: false, code, message }`, so branch on `result.ok`.
+`not-implemented` is the bridge's own error instead, carrying `requires: "NSPasteboard"`.

@@ -1,0 +1,85 @@
+# Updater
+
+Check, download, install — the updater minus the installer binary. **Module only: no runtime registers
+it**, because the endpoint and the bundle path are the app's. Mount it in your entry file:
+
+```ts
+// main.ts
+import { updaterPlugin } from "crust/plugin";
+
+app.use(updaterPlugin);
+```
+
+The default instance runs on `fetch` and `node:fs`, so it needs no platform. A test or a private
+transport passes its own adapter: `createUpdaterPlugin(adapter)`.
+
+## check
+
+```js
+const result = await window.crust.invoke("updater", "check", {
+	endpoint: "https://updates.jyz.land/notes.json",
+	currentVersion: "1.4.0",
+});
+// { available: true, version: "1.5.0", url: "https://…/Notes.app.zip", notes: "…", sha256: "…" }
+```
+
+The endpoint answers one JSON object:
+
+```json
+{ "version": "1.5.0", "url": "https://…/Notes.app.zip", "notes": "…", "sha256": "…" }
+```
+
+`version` and `url` are required; `notes` stays unparsed Markdown, and `sha256` is 64 hex characters.
+Versions compare numerically, so `0.10.0` beats `0.9.0` and `1.0.0` beats `1.0.0-beta.1`.
+
+`check` never rejects: no update is `{ available: false, version }`, and a failure is
+`{ available: false, error: { code, message } }`.
+
+## download
+
+```js
+const file = await window.crust.invoke("updater", "download", {
+	url: "https://…/Notes.app.zip",
+	sha256: "…",
+});
+// { ok: true, path: "/var/folders/…/crust-update-…/Notes.app.zip", bytes: 8_412_331, sha256: "…" }
+```
+
+`path` is inside a fresh temp directory the plugin made; the file name is the URL's last segment,
+reduced to `[A-Za-z0-9._-]`. With `sha256` present the digest is verified before anything is
+installed, and a mismatch is `hash-mismatch` carrying the digest that was actually computed.
+
+## install
+
+```js
+const done = await window.crust.invoke("updater", "install", {
+	path: "/var/folders/…/Notes.app",
+	appPath: "/Applications/Notes.app",
+});
+// { ok: true, appPath: "/Applications/Notes.app", backup: "/Applications/Notes.app.old" }
+```
+
+Both paths must already be `.app` directories — an archive is not extracted here. The new bundle is
+renamed over the old one, and the old one is parked at `<appPath>.old`, which is replaced on the next
+install. One rename on one volume is atomic; a cross-volume move fails rather than degrading into a
+copy that is no longer atomic.
+
+Nothing relaunches and nothing runs `codesign`: a replaced process cannot survive its own swap, and
+the signature belongs to whoever shipped the artifact. The page calls `app.quit()` when it wants the
+new bundle to start.
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `invalid-arguments` | a required string is missing, or `sha256` is not 64 hex characters |
+| `check-failed` | the manifest request answered non-2xx, or the fetch threw |
+| `bad-manifest` | the JSON is not an object, or `version`/`url`/`notes`/`sha256` has the wrong shape |
+| `download-failed` | the artifact request answered non-2xx, or the write threw |
+| `hash-mismatch` | the computed digest differs from the one asked for |
+| `install-failed` | the rename failed, including a cross-volume move |
+| `not-an-app-bundle` | either path is not an existing `.app` directory |
+| `handler-error` | an adapter threw something it could not name |
+
+`check` reports the first three inside `error`; `download` and `install` answer
+`{ ok: false, code, message, path? }`.

@@ -1,0 +1,66 @@
+# Parity with Tauri
+
+Tauri's feature list is cross-platform. crust is macOS 13+ on Apple silicon only, so this page
+compares against **Tauri's macOS column** and says plainly what is out of scope by design.
+
+Measured 2026-11-15 against the tree at `v0.1.21`. A row marked *same* means crust ships the
+capability; *partial* names the piece that is absent; *via Bun* means the backend half already has it
+and no page-facing API is needed; *module only* means the plugin exists but no runtime registers it,
+so the app mounts it with `app.use`.
+
+## Out of scope by design
+
+- Windows, Linux, iOS and Android targets.
+- Tauri's mobile-only features: barcode scanner, biometric, geolocation, haptics, NFC.
+- A Rust plugin ABI. crust plugins are TypeScript objects registered on the `App`.
+
+## Core
+
+| Tauri | crust | Status |
+| --- | --- | --- |
+| Windows | `window`, 19 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize | partial — no decorations, opacity, cursor or theme control |
+| Webviews | one `WKWebView` per window | same |
+| Menus | app menu and Edit menu in `shim/55_menu.c` | partial — no custom app menu, no context menus |
+| Tray | `tray` plugin with menu rows | same |
+| Events | `crust.listen` over SSE, `PluginContext.emit` | same |
+| Path | `node:path` in the backend | via Bun |
+| DPI, image | CSS pixels and `<img>` in the page | via Bun |
+| Localhost server | `crust dev`, and the bridge in production | same |
+
+## Plugins
+
+| Tauri plugin | crust | Status |
+| --- | --- | --- |
+| Dialog | `dialog.open`, `dialog.save` | same |
+| File system | `fs.read/write/list/stat/rename/remove` | same |
+| Notification | `notification.send` | same |
+| Clipboard | `clipboard.read/write` | partial — text only; `readImage`/`writeImage` answer `not-implemented` |
+| Opener | `opener.openPath/openUrl/revealItem` | same |
+| OS information | `os.info`, `os.locale` | partial — no family, exe extension or OS type |
+| Global shortcut | `shortcut.register/unregister/unregisterAll/isRegistered/list` | same |
+| Shell / sidecar | `shell.spawn/output/kill/list`, allowlisted by config | partial — no stdin, no pty |
+| Single instance | `single-instance.acquire/release/activate` | same — the runtime locks `app.id` at launch |
+| Deep linking | `deep-link.scheme/url` | module only — the scheme, and the URL held now |
+| Autostart | `autostart.enable/disable/isEnabled` | same |
+| Updater | `updater.check/download/install` | module only — no relaunch, no signature check |
+| Window state | `window-state.save/restore/forget` | partial — size and position only, one label per call |
+| Positioner | `positioner.center/topLeft/topRight/bottomLeft/bottomRight` | partial — five presets, no tray anchors |
+| Process | `process` in the backend | via Bun |
+| HTTP client | `fetch` in the backend | via Bun |
+| WebSocket | `WebSocket` in the backend | via Bun |
+| SQL | `bun:sqlite` in the backend | via Bun |
+| Store | `fs` plus JSON | via Bun |
+| Upload | `FormData` with `fetch` | via Bun |
+| Logging | `logging.setLevel/level/write/tail` | partial — no trace level, no rotation |
+
+## What this means
+
+Counting the rows above — 29 in all — crust ships **11 outright**, has **8 more available through
+Bun** with no extra API, is **partial on 8** (windows, menus, clipboard, OS information, shell, window
+state, positioner, logging), and ships **2 as modules the app registers itself** (deep linking,
+updater). None is missing.
+
+The *partial* rows are depth, not absence: each names the piece that does not exist, so the gap is
+readable. The *module only* rows are one `app.use` away — the plugin, its argument rules and its
+failure codes are written and tested; what it lacks is a decision only the app can make: which scheme
+it registers, and which endpoint it trusts.

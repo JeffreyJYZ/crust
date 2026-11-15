@@ -1,0 +1,80 @@
+# Opener and OS
+
+Two small surfaces: hand a path or a URL to the OS, and ask the machine what it is. macOS registers
+them as `opener` and `os`, so both are page-callable.
+
+## openPath
+
+```js
+const result = await window.crust.invoke("opener", "openPath", { path: "/Users/you/notes.md" });
+// { ok: true, path: "/Users/you/notes.md" }
+```
+
+Opens the file or folder in whatever app owns its type, the way a double-click would. A relative path
+resolves against the process working directory and the answer carries the absolute path that was
+handed over.
+
+`~` is not expanded: the path goes through `node:path`, which treats a leading tilde as a directory
+name. Pass an absolute path.
+
+## openUrl
+
+```js
+await window.crust.invoke("opener", "openUrl", { url: "https://crust.dev" });
+// { ok: true, url: "https://crust.dev" }
+```
+
+Opens the URL in the default handler for its scheme: `https` in the browser, `mailto` in Mail. A
+string without a scheme is refused `bad-request`, because `-openURL:` would answer no anyway.
+
+## revealItem
+
+```js
+await window.crust.invoke("opener", "revealItem", { path: "/Users/you/notes.md" });
+// { ok: true, path: "/Users/you/notes.md", revealed: true }
+```
+
+Selects the item in a Finder window, opening one if the folder is not already on screen. `revealed`
+is always true: the send has no answer, so reaching the object is the evidence.
+
+## os.info
+
+```js
+const info = await window.crust.invoke("os", "info");
+// { ok: true, platform: "darwin", arch: "arm64", hostname: "…", version: "27.0.1", appVersion: "1.4.0" }
+```
+
+| field | source |
+| --- | --- |
+| `platform` | `process.platform`, e.g. `"darwin"` |
+| `arch` | `process.arch`, i.e. `uname -m` |
+| `hostname` | `hostname()`, as the kernel reports it |
+| `version` | the OS product version |
+| `appVersion` | `CFBundleShortVersionString`, or `null` when the process carries no bundle |
+
+`version` is the operating system, never the app. `appVersion` is `null` under `crust dev`, which has
+no bundle identifier, and a real version in a built app.
+
+## os.locale
+
+```js
+const { locale } = await window.crust.invoke("os", "locale");
+// { ok: true, locale: "en-GB" }
+```
+
+A BCP-47 identifier, which is what a page should format dates in. It is the language macOS resolved
+for this user, not the one the bundle declares.
+
+## Failure codes
+
+| plugin | code | when |
+| --- | --- | --- |
+| `opener` | `bad-request` | a path or URL that is not a non-empty string, or a URL with no scheme |
+| `opener` | `not-found` | the OS reported nothing at that path |
+| `opener` | `handler-error` | the send was refused, or the adapter threw |
+| `opener` | `not-implemented` | no `NSWorkspace` on this platform |
+| `os` | `handler-error` | the adapter threw; the message names the command |
+| `os` | `not-implemented` | no `NSProcessInfo`, `NSLocale` or `NSBundle` here |
+
+Both plugins answer a plain object rather than rejecting, so a page branches on `result.ok`. The one
+exception is `not-implemented`, which is the bridge's own error and carries `requires`.
