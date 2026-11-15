@@ -10,7 +10,9 @@ export type UpdaterErrorCode =
 	| "bad-manifest"
 	| "download-failed"
 	| "hash-mismatch"
+	| "signature-mismatch"
 	| "install-failed"
+	| "relaunch-failed"
 	| "not-an-app-bundle"
 	| "handler-error";
 
@@ -33,6 +35,10 @@ export interface UpdateManifest {
 	notes?: string;
 	/** Lowercase hex. `download` verifies it when the manifest carries one. */
 	sha256?: string;
+	/** Base64 Ed25519 over the artifact bytes; present only together with `pubkey`. */
+	signature?: string;
+	/** Base64 of 32 raw bytes. A config `updater.pubkey` pins the key the app accepts. */
+	pubkey?: string;
 }
 
 /** What `check` answers, and never a throw: a page branches on `available`. */
@@ -42,6 +48,8 @@ export interface CheckResult {
 	readonly notes?: string;
 	readonly url?: string;
 	readonly sha256?: string;
+	readonly signature?: string;
+	readonly pubkey?: string;
 	readonly error?: UpdaterError;
 }
 
@@ -136,9 +144,9 @@ export function hashMismatch(path: string, actual: string, expected: string): Up
 	return { ok: false, code: "hash-mismatch", message, path };
 }
 
-/** Nothing is replaced unless both the target and the download are real `.app` directories. */
-export function notAppBundle(path: string, reason: string): UpdaterFailure {
-	const message = `crust: updater.install: ${path} ${reason}`;
+/** Nothing is replaced or started unless the path is a real `.app` directory. */
+export function notAppBundle(path: string, reason: string, command = "install"): UpdaterFailure {
+	const message = `crust: updater.${command}: ${path} ${reason}`;
 	return { ok: false, code: "not-an-app-bundle", message, path };
 }
 
@@ -155,34 +163,6 @@ export function readSha256(source: unknown): string | null | undefined {
 	const value = (source as Record<string, unknown>).sha256;
 	if (value === undefined) return undefined;
 	return isSha256Hex(value) ? value.toLowerCase() : null;
-}
-
-/**
- * A manifest is `{ version, url }` plus optional `notes` and `sha256`; anything else is refused
- * with the reason, because a manifest half-read would download the wrong file.
- */
-export function parseManifest(
-	value: unknown,
-): { ok: true; manifest: UpdateManifest } | { ok: false; reason: string } {
-	const fail = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return fail(`a manifest must be a JSON object, got ${seen(value)}`);
-	}
-	const source = value as Record<string, unknown>;
-	const version = readString(source, "version");
-	if (version === undefined) return fail('a manifest needs "version" as a non-empty string');
-	const url = readString(source, "url");
-	if (url === undefined) return fail('a manifest needs "url" as a non-empty string');
-	const manifest: UpdateManifest = { version, url };
-	if (source.notes !== undefined) {
-		if (typeof source.notes !== "string") return fail('"notes" must be a string when present');
-		manifest.notes = source.notes;
-	}
-	if (source.sha256 !== undefined) {
-		if (!isSha256Hex(source.sha256)) return fail('"sha256" must be 64 hex characters');
-		manifest.sha256 = source.sha256.toLowerCase();
-	}
-	return { ok: true, manifest };
 }
 
 /** The URL's last path segment kept to `[A-Za-z0-9._-]`, because it becomes a filename in a temp dir. */

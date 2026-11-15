@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	clipboardUnitStatus,
 	darwinClipboardAdapter,
+	IMAGE_CHUNK,
 	type ClipboardShim,
 	READ_CHUNK,
 } from "@/platform/darwin/clipboard.ts";
@@ -14,7 +15,14 @@ const notDarwin = process.platform !== "darwin";
 
 /** A shim that answers as told, so no case needs AppKit. */
 function shim(overrides: Partial<ClipboardShim> = {}): ClipboardShim {
-	return { available: () => true, read: () => 0, write: () => 1, ...overrides };
+	return {
+		available: () => true,
+		read: () => 0,
+		write: () => 1,
+		readImage: () => 0,
+		writeImage: () => 1,
+		...overrides,
+	};
 }
 
 /** Copy UTF-8 bytes into a caller buffer the way the C unit does, and report the full length. */
@@ -28,10 +36,18 @@ function fill(text: string) {
 	};
 }
 
+/** The same for image bytes, which are copied whole and carry no terminator. */
+function fillBytes(bytes: Uint8Array) {
+	return (into: Uint8Array): number => {
+		into.set(bytes.subarray(0, Math.min(bytes.length, into.length)));
+		return bytes.length;
+	};
+}
+
 describe("clipboard C unit", () => {
 	test.skipIf(notDarwin)("compiles through cc() and answers every selector", () => {
-		// `cc()` refuses a symbol it cannot resolve, and `available()` guards the
-		// four selectors in C, so this is the proof AppKit serves the unit.
+		// `cc()` refuses a symbol it cannot resolve, and both `available()` guards
+		// run in C, so this is the proof AppKit serves the text and image halves.
 		const status = clipboardUnitStatus();
 		expect(status.reason).toBe("compiled");
 		expect(status.available).toBe(true);
@@ -104,5 +120,68 @@ describe("clipboard adapter write", () => {
 		expect(darwinClipboardAdapter(shim({ write: () => 0 })).writeText("x")).toBe("refused");
 		expect(darwinClipboardAdapter(shim({ write: () => -1 })).writeText("x")).toBe("missing");
 		expect(darwinClipboardAdapter(shim({ write: () => 1 })).writeText("x")).toBe("written");
+	});
+});
+
+describe("clipboard adapter image read", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 8, 7]);
+
+	test("an image comes back as the exact bytes the pasteboard held", () => {
+		expect(darwinClipboardAdapter(shim({ readImage: fillBytes(PNG) })).readImage()).toEqual(
+			PNG,
+		);
+	});
+
+	test("a pasteboard holding no image is zero bytes, not a failure", () => {
+		expect(darwinClipboardAdapter(shim()).readImage()).toEqual(new Uint8Array(0));
+	});
+
+	test("a missing pasteboard is null, which the plugin reports as not-implemented", () => {
+		expect(darwinClipboardAdapter(shim({ readImage: () => -1 })).readImage()).toBeNull();
+	});
+
+	test("an image larger than the first buffer is re-read at its exact length", () => {
+		const bytes = new Uint8Array(IMAGE_CHUNK + 10).fill(7);
+		const sizes: number[] = [];
+		const adapter = darwinClipboardAdapter(
+			shim({
+				readImage: (into) => {
+					sizes.push(into.length);
+					return fillBytes(bytes)(into);
+				},
+			}),
+		);
+		const png = adapter.readImage();
+		expect(png?.length).toBe(bytes.length);
+		expect(png?.[bytes.length - 1]).toBe(7);
+		expect(sizes).toEqual([IMAGE_CHUNK, bytes.length]);
+	});
+});
+
+describe("clipboard adapter image write", () => {
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+	test("hands C the exact bytes and length, with no terminator added", () => {
+		let seen: { bytes: Uint8Array; length: number } | undefined;
+		const adapter = darwinClipboardAdapter(
+			shim({
+				writeImage: (bytes, length) => {
+					seen = { bytes, length };
+					return 1;
+				},
+			}),
+		);
+		expect(adapter.writeImage(PNG)).toBe("written");
+		expect(seen?.length).toBe(PNG.length);
+		expect(seen?.bytes).toBe(PNG);
+	});
+
+	test("the pasteboard's own status is the verdict, never optimism", () => {
+		expect(darwinClipboardAdapter(shim({ writeImage: () => 0 })).writeImage(PNG)).toBe(
+			"refused",
+		);
+		expect(darwinClipboardAdapter(shim({ writeImage: () => -1 })).writeImage(PNG)).toBe(
+			"missing",
+		);
 	});
 });

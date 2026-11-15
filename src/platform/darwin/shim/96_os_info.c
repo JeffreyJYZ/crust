@@ -52,6 +52,16 @@ const char *crust_os_locale(void) {
 	return buf;
 }
 
+// -[NSProcessInfo systemUptime] — seconds since boot, as a double because that is what the selector
+// returns. 0.0 when unreadable, which the plugin refuses rather than reporting a zero-length uptime.
+double crust_os_uptime(void) {
+	op_t cls = objc_getClass("NSProcessInfo");
+	if (!cls) return 0.0;
+	op_t info = ((op_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("processInfo"));
+	if (!info) return 0.0;
+	return ((double (*)(void *, void *))objc_msgSend)(info, sel_registerName("systemUptime"));
+}
+
 // -[NSBundle infoDictionary] CFBundleShortVersionString — the app's own version, "" when the
 // process is unbundled and therefore carries none.
 const char *crust_os_app_version(void) {

@@ -88,9 +88,24 @@ export { createWindowStatePlugin, windowStatePlugin } from "./window-persist";
 export { createPositionerPlugin, positionerPlugin } from "./positioner";
 export {
 	createUpdaterPlugin,
-	updaterPlugin,
+	decodeBase64,
+	ED25519_PUBKEY_BYTES,
+	ED25519_SIGNATURE_BYTES,
+	isEd25519Pubkey,
+	isSignature,
 	nodeUpdaterAdapter,
+	parseManifest,
+	readSignatureArgs,
+	type SignatureArgs,
+	signatureMismatch,
 	type UpdaterAdapter,
+	type UpdaterError,
+	type UpdaterErrorCode,
+	type UpdaterFailure,
+	type UpdaterOptions,
+	updaterPlugin,
+	type UpdateManifest,
+	verifyEd25519,
 } from "./updater";
 export {
 	createLoggingPlugin,

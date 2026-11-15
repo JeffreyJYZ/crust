@@ -105,6 +105,13 @@ function compile() {
 			shim_window_miniaturize: { args: [P], returns: V },
 			shim_window_deminiaturize: { args: [P], returns: V },
 
+			// The chrome commands: the alpha pair is C-side because no ladder
+			// prototype returns a double. The style mask and the cursor are plain
+			// sends, so they stay in JS.
+			shim_window_opacity: { args: [P], returns: F64 },
+			shim_window_set_opacity: { args: [P, F64], returns: V },
+			shim_cursor_visible: { args: [I32], returns: V },
+
 			shim_on_main_runloop: { args: [], returns: I32 },
 			shim_window_is_on_active_space: { args: [P], returns: I32 },
 
@@ -169,4 +176,6 @@ export { createPlatform, DarwinPlatform } from "./platform.ts";
 export { PREFLIGHT, preflightError, type PreflightEntry } from "./preflight.ts";
 export { awaitSheetResult, type SheetReadings } from "./sheet.ts";
 export { darwinWindowAdapter } from "./window-adapter.ts";
+export { CURSOR_SELECTOR, windowChromeSends, type WindowChromeSends } from "./window-chrome.ts";
+export { TITLE_BAR_MASK, windowChromeAdapter } from "./window-chrome-adapter.ts";
 export { darwinMenuAdapter } from "./menu-api.ts";

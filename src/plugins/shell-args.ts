@@ -9,6 +9,8 @@ export interface SpawnArgs {
 	args?: string[];
 	cwd?: string;
 	env?: Record<string, string>;
+	/** `"pipe"` gives `write` something to feed; the default `"ignore"` reads as immediate EOF. */
+	stdin?: "pipe" | "ignore";
 }
 
 export type ShellFailureCode =
@@ -17,7 +19,8 @@ export type ShellFailureCode =
 	| "program-outside-root"
 	| "cwd-not-allowed"
 	| "spawn-failed"
-	| "unknown-process";
+	| "unknown-process"
+	| "no-stdin";
 
 /** The refusal shape every `crust:shell` command answers with. */
 export interface ShellFailure {
@@ -44,12 +47,21 @@ export function readId(args: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** The id a command needs, or the refusal to answer with instead of throwing. */
+export function requireId(args: unknown, command: string): { ok: true; id: string } | ShellFailure {
+	const id = readId(args);
+	if (id !== undefined) return { ok: true, id };
+	return shellFailure("invalid-args", `shell.${command} needs { id } with a non-empty string`);
+}
+
 /** What `spawn` hands `Bun.spawn`, already checked. */
 export interface SpawnPlan {
 	ok: true;
 	cmd: string[];
 	cwd: string;
 	env: Record<string, string>;
+	/** Whether stdin is a pipe a page may write to. */
+	pipe: boolean;
 }
 
 export interface ShellRules {
@@ -74,9 +86,18 @@ function notAllowed(program: string, allow: readonly string[]): ShellFailure {
 
 export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellFailure {
 	if (typeof args !== "object" || args === null) {
-		return shellFailure("invalid-args", "shell.spawn needs { program, args?, cwd?, env? }");
+		return shellFailure(
+			"invalid-args",
+			"shell.spawn needs { program, args?, cwd?, env?, stdin? }",
+		);
 	}
-	const source = args as { program?: unknown; args?: unknown; cwd?: unknown; env?: unknown };
+	const source = args as {
+		program?: unknown;
+		args?: unknown;
+		cwd?: unknown;
+		env?: unknown;
+		stdin?: unknown;
+	};
 	const program = source.program;
 	if (typeof program !== "string" || program.length === 0 || program.includes("\0")) {
 		return shellFailure(
@@ -99,6 +120,14 @@ export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellF
 				`outside cwdRoot ${rules.root}`,
 		);
 	}
+
+	if (source.stdin !== undefined && source.stdin !== "pipe" && source.stdin !== "ignore") {
+		return shellFailure(
+			"invalid-args",
+			`shell.spawn: "stdin" must be "pipe" or "ignore", got ${JSON.stringify(source.stdin)}`,
+		);
+	}
+	const pipe = source.stdin === "pipe";
 
 	// A bare name is looked up on PATH; anything with a separator is a path, and
 	// it must both keep an allowed basename and resolve inside the root.
@@ -152,5 +181,5 @@ export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellF
 		}
 	}
 
-	return { ok: true, cmd: [target, ...argv], cwd, env };
+	return { ok: true, cmd: [target, ...argv], cwd, env, pipe };
 }

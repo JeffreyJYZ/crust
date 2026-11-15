@@ -52,6 +52,19 @@ export interface ShellConfig {
 	cwdRoot?: string;
 }
 
+/**
+ * The updater's defaults; the section existing is what registers `crust:updater`, so an app with no
+ * update story carries no download-and-replace surface at all.
+ */
+export interface UpdaterConfig {
+	/** Manifest URL `check` falls back to when the page passes none. */
+	endpoint?: string;
+	/** Base64 of 32 raw bytes: the only signing key this app accepts. */
+	pubkey?: string;
+	/** Whether the app wants a startup check; `updater.config` reports it. */
+	autoCheck?: boolean;
+}
+
 export interface CrustConfig {
 	app: AppConfig;
 	windows: WindowConfig[];
@@ -60,6 +73,7 @@ export interface CrustConfig {
 	plugins?: string[];
 	security?: SecurityConfig;
 	shell?: ShellConfig;
+	updater?: UpdaterConfig;
 }
 
 export interface ConfigIssue {

@@ -2,7 +2,7 @@
  * The window plugin's test double, shared by the `window.*.test.ts` suites and imported only by tests. `window.ts` has no knowledge of it; it lives apart so a 600-line suite could become four without the copies drifting.
  */
 
-import { type WindowNative, WindowAdapterError } from "./window-types.ts";
+import { type WindowCursor, type WindowNative, WindowAdapterError } from "./window-types.ts";
 
 export const ctx = { emit: () => {} };
 
@@ -16,9 +16,13 @@ export interface FakeWindow {
 	fullscreen: boolean;
 	minimized: boolean;
 	maximized: boolean;
+	/** The title bar; a fresh window has one, as `NSWindow` gives a titled window. */
+	decorated: boolean;
+	/** 0–1, fully opaque to start. */
+	opacity: number;
 }
 
-/** A fresh window: 800×600 at the origin, every flag off. */
+/** A fresh window: 800×600 at the origin, every flag off, fully opaque. */
 function blank(title?: string): FakeWindow {
 	return {
 		open: true,
@@ -28,6 +32,8 @@ function blank(title?: string): FakeWindow {
 		fullscreen: false,
 		minimized: false,
 		maximized: false,
+		decorated: true,
+		opacity: 1,
 	};
 }
 
@@ -37,9 +43,13 @@ function blank(title?: string): FakeWindow {
 export function fakeAdapter(labels: string[] = ["main"]): WindowNative & {
 	calls: string[];
 	windows: Map<string, FakeWindow>;
+	/** The app-wide pointer, which no label owns; `DarwinPlatform` has no window for it. */
+	pointer: () => { cursor: WindowCursor; visible: boolean };
 } {
 	const windows = new Map<string, FakeWindow>(labels.map((label) => [label, blank()]));
 	const calls: string[] = [];
+	let cursor: WindowCursor = "default";
+	let cursorVisible = true;
 	const require = (label: string): FakeWindow => {
 		const entry = windows.get(label);
 		if (!entry) {
@@ -50,6 +60,7 @@ export function fakeAdapter(labels: string[] = ["main"]): WindowNative & {
 	return {
 		calls,
 		windows,
+		pointer: () => ({ cursor, visible: cursorVisible }),
 		create: (options) => {
 			calls.push(
 				`create:${options.label}:${options.width ?? "-"}x${options.height ?? "-"}:` +
@@ -124,5 +135,23 @@ export function fakeAdapter(labels: string[] = ["main"]): WindowNative & {
 			require(label).maximized = true;
 		},
 		isMaximized: (label) => require(label).maximized,
+		setDecorations: (label, value) => {
+			calls.push(`setDecorations:${label}:${value}`);
+			require(label).decorated = value;
+		},
+		isDecorated: (label) => require(label).decorated,
+		setOpacity: (label, value) => {
+			calls.push(`setOpacity:${label}:${value}`);
+			require(label).opacity = value;
+		},
+		opacity: (label) => require(label).opacity,
+		setCursor: (next) => {
+			calls.push(`setCursor:${next}`);
+			cursor = next;
+		},
+		setCursorVisible: (visible) => {
+			calls.push(`setCursorVisible:${visible}`);
+			cursorVisible = visible;
+		},
 	};
 }

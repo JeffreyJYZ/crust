@@ -1,10 +1,15 @@
 /**
- * `positioner`'s five placements against a stated screen frame and a fake window. The numbers are the test: a corner that used the wrong edge still answers `ok`, so only the exact point proves it read AppKit's bottom-left origin.
+ * `positioner`'s nine placements against a stated screen frame and a fake window. The numbers are the test: a corner that used the wrong edge still answers `ok`, so only the exact point proves it read AppKit's bottom-left origin.
  */
 
 import { expect, test } from "bun:test";
 
-import { createPositionerPlugin, type PositionerNative, type ScreenBounds } from "./positioner.ts";
+import {
+	createPositionerPlugin,
+	POSITIONER_PLACEMENTS,
+	type PositionerNative,
+	type ScreenBounds,
+} from "./positioner.ts";
 import { WindowAdapterError } from "./window-types.ts";
 
 /** A 1440×875 visible frame above a 25-point dock, the shape `-[NSScreen visibleFrame]` answers. */
@@ -38,11 +43,22 @@ test("every placement lands on its own point of the visible frame", async () => 
 		topRight: { x: 640, y: 300 },
 		bottomLeft: { x: 0, y: 25 },
 		bottomRight: { x: 640, y: 25 },
+		topCenter: { x: 320, y: 300 },
+		bottomCenter: { x: 320, y: 25 },
+		leftCenter: { x: 0, y: 163 },
+		rightCenter: { x: 640, y: 163 },
 	} as const;
 
-	for (const [corner, point] of Object.entries(expected)) {
-		const answer = await plugin.commands[corner as keyof typeof expected]({ label: "main" });
-		expect(answer).toEqual({ ok: true, label: "main", x: point.x, y: point.y, placed: true });
+	expect(Object.keys(expected).sort()).toEqual([...POSITIONER_PLACEMENTS].sort());
+	for (const [placement, point] of Object.entries(expected)) {
+		const answer = await plugin.commands[placement as keyof typeof expected]({ label: "main" });
+		expect(answer).toEqual({
+			ok: true,
+			label: "main",
+			x: point.x,
+			y: point.y,
+			placed: true,
+		});
 	}
 	expect(adapter.placed).toEqual(Object.values(expected));
 });
@@ -59,7 +75,10 @@ test("the window is moved once per command, never resized", async () => {
 test("a screen reader is asked on every call, so a display change is picked up", async () => {
 	let screen: ScreenBounds = { x: 0, y: 0, width: 1000, height: 800 };
 	const adapter = fakeWindow({ width: 200, height: 100 });
-	const plugin = createPositionerPlugin({ native: adapter, screen: () => screen });
+	const plugin = createPositionerPlugin({
+		native: adapter,
+		screen: () => screen,
+	});
 
 	await plugin.commands.topRight({ label: "main" });
 	screen = { x: 100, y: 50, width: 400, height: 300 };
@@ -84,6 +103,39 @@ test("a window wider than the screen keeps a negative offset rather than being c
 		y: 12,
 		placed: true,
 	});
+	// The edge midpoints keep the overflow too: 1440 - 1600 halves to -80 on x,
+	// 25 + 875 - 901 = -1 on top, and 25 + (875 - 901) / 2 = 12 on the mid y.
+	const overflow = {
+		topCenter: { x: -80, y: -1 },
+		bottomCenter: { x: -80, y: 25 },
+		leftCenter: { x: 0, y: 12 },
+		rightCenter: { x: -160, y: 12 },
+	} as const;
+	for (const [placement, point] of Object.entries(overflow)) {
+		const answer = await plugin.commands[placement as keyof typeof overflow]({ label: "main" });
+		expect(answer).toMatchObject({ ok: true, x: point.x, y: point.y });
+	}
+});
+
+test("a half point of slack rounds up, on either axis", async () => {
+	// 401 - 300 = 101 of slack is 50.5, and 101 - 100 = 1 is 0.5: both round up
+	// once, so a truncated answer would read 50 and 0 here.
+	const adapter = fakeWindow({ width: 300, height: 100 });
+	const plugin = createPositionerPlugin({
+		native: adapter,
+		screen: { x: 0, y: 0, width: 401, height: 101 },
+	});
+
+	expect(await plugin.commands.center({ label: "main" })).toMatchObject({ x: 51, y: 1 });
+	const rounded = {
+		topCenter: { x: 51, y: 1 },
+		leftCenter: { x: 0, y: 1 },
+		rightCenter: { x: 101, y: 1 },
+	} as const;
+	for (const [placement, point] of Object.entries(rounded)) {
+		const answer = await plugin.commands[placement as keyof typeof rounded]({ label: "main" });
+		expect(answer).toMatchObject({ ok: true, x: point.x, y: point.y });
+	}
 });
 
 test("no usable screen frame is unknown-adapter, and nothing moves", async () => {

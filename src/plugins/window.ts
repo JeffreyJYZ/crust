@@ -5,6 +5,7 @@
 
 import { definePlugin, type NotImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, knownWindow, missingWindow, readLabel } from "./window-args.ts";
+import { type WindowChromeCommands, windowChromeCommands } from "./window-chrome.ts";
 import { createWindowCommand } from "./window-create.ts";
 import { type WindowStateCommands, windowStateCommands } from "./window-state.ts";
 import type {
@@ -32,7 +33,8 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 		setTitle: (args: WindowSetTitleArgs) => WindowTitleResult | WindowFailure | NotImplemented;
 		list: () => WindowListResult | WindowFailure | NotImplemented;
 		isOpen: (args: WindowLabelArgs) => WindowOpenResult | WindowFailure | NotImplemented;
-	} & WindowStateCommands
+	} & WindowStateCommands &
+		WindowChromeCommands
 > {
 	const act = <Result>(
 		command: string,
@@ -113,8 +115,10 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 					args,
 				),
 			// Size, position, always-on-top, fullscreen, minimize and maximize live
-			// in their own modules; they refuse in the same order `act` does.
+			// in their own modules; they refuse in the same order `act` does. So do
+			// the title bar, the opacity and the pointer.
 			...windowStateCommands(adapter),
+			...windowChromeCommands(adapter),
 		},
 	});
 }

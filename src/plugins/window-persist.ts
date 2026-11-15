@@ -1,12 +1,14 @@
 /**
  * `crust:window-state` — save, restore and forget a window's frame, so it reopens where it was. The native half and the data root are both injected: no AppKit here, and a test never writes into the real `Application Support`. The disk half (atomic write, the corrupt-is-empty rule) is `window-persist-store.ts`, re-exported below so callers import one module.
  * A corrupt or missing file is not an error — `restore` answers `{ restored: false }` and the window opens at its configured size, because refusing to open over a half-written JSON is worse than forgetting where it was.
+ * The `…All` commands act on every label `list()` reports in one file read and one write, and name each window they could not save or had nothing saved for; they live in `window-persist-all.ts`.
  */
 
 import { join } from "node:path";
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, readLabel, unknownWindow } from "./window-args.ts";
+import { type WindowStateAllCommands, windowStateAllCommands } from "./window-persist-all.ts";
 import {
 	defaultStateRoot,
 	readFrame,
@@ -24,6 +26,7 @@ import {
 } from "./window-types.ts";
 
 export * from "./window-persist-store.ts";
+export * from "./window-persist-all.ts";
 
 /**
  * The native half: `list` plus the four frame calls, optional exactly as `WindowStateNative` has them, so a platform adapter is passed straight in and a missing member answers `unknown-adapter` instead of failing to compile.
@@ -75,7 +78,7 @@ type WindowStateCommands = {
 	forget: (
 		args: WindowLabelArgs,
 	) => Promise<WindowStateForgetResult | WindowFailure | NotImplemented>;
-};
+} & WindowStateAllCommands;
 
 function missingState(command: string): NotImplemented {
 	return notImplemented(
@@ -169,6 +172,15 @@ export function createWindowStatePlugin(
 					await writeState(file, state);
 					return { ok: true as const, label, removed: true as const };
 				}),
+
+			// Every window at once: the plugin's own seam, handed over so the file is
+			// read and written once per call rather than once per window.
+			...windowStateAllCommands({
+				native: adapter,
+				file,
+				missing: missingState,
+				calls: frames,
+			}),
 		},
 	});
 }

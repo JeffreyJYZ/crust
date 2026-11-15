@@ -58,6 +58,7 @@ export interface OpenerUnit {
 		crust_os_version: (component: number) => number;
 		crust_os_locale: () => string | null;
 		crust_os_app_version: () => string | null;
+		crust_os_uptime: () => number;
 	};
 }
 
@@ -81,6 +82,7 @@ function compile(): OpenerUnit {
 			crust_os_version: { args: [I32], returns: I32 },
 			crust_os_locale: { args: [], returns: CS },
 			crust_os_app_version: { args: [], returns: CS },
+			crust_os_uptime: { args: [], returns: FFIType.f64 },
 		},
 	}) as unknown as OpenerUnit;
 }
@@ -94,7 +96,7 @@ export function unit(): OpenerUnit {
 
 /**
  * Compile the unit and report whether every export resolved. `cc()` refuses a declared symbol it
- * cannot find, so a successful compile proves all seven exist. Nothing is opened.
+ * cannot find, so a successful compile proves all eight exist. Nothing is opened.
  */
 export function openerUnitStatus(): { available: boolean; reason: string } {
 	try {
