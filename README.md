@@ -21,6 +21,7 @@ cd my-app && bun install && crust dev
 
 No scaffold wanted? `crust init my-app` is plain HTML with no bundler, `crust init my-app --next` is
 a Next.js static export, and `crust dev app.tsx` runs a single component file with no config at all.
+`crust dev page.html` serves an `.html` file the same way, copying it as the document.
 
 ## The model
 

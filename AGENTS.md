@@ -48,6 +48,10 @@ A green gate is the only proof a landing is safe.
   without it gives an app that launches, creates no page, prints nothing and exits 0 (the `.ips` says
   `SIGKILL (Code Signature Invalid)`, `Invalid Page`). Fixed in `src/packaging/sign.ts`, asserted in
   `src/packaging/sign.test.ts`.
+- **A template change moves the standalone gate's expected file counts** — `scripts/build-standalone.ts`
+  pins how many files `crust init --next/--react/(none)` writes (the glob skips `.gitignore`, which is
+  checked separately). Adding the `/about` route took `--next` from 7 to 8 and left the macOS job red
+  until the number was updated, so change the count in the same commit as the template.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty**
@@ -56,3 +60,11 @@ A green gate is the only proof a landing is safe.
 - **Say so before anything that takes focus, moves a window or asks for a physical click** — their
   screen is theirs. A performed click they reported outranks a missing log line, because
   instrumentation may predate the log file.
+
+## Docs site (`site/`)
+
+- **The UI is built on `@ui-sdk/react`** — read `site/node_modules/@ui-sdk/react/docs/llms.txt` first
+  and only the component pages a change needs; it ships no styles, so every look comes from the site's
+  own tokens in `site/app/globals.css`.
+- **Every page carries the `jyz.land` backlink** from the root layout footer; a new subdomain without
+  it is unfinished.

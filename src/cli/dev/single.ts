@@ -29,7 +29,10 @@ export async function devSingle(app: SingleApp): Promise<number> {
 	await writeFile(runner, devRunnerSource(app, page.dir, root), "utf8");
 
 	line("page", join(page.dir, "index.html"));
-	line("bundle", `${page.entry} (rebuilt on every change)`);
+	line(
+		page.entry === "index.html" ? "mode" : "bundle",
+		page.entry === "index.html" ? "static html (rebuilt on every change)" : `${page.entry} (rebuilt on every change)`,
+	);
 	line("window", `${app.config.windows[0]?.width}x${app.config.windows[0]?.height}`);
 	line("invoke", 'window.crust.invoke("info") answers from the framework');
 	console.log("");

@@ -1,3 +1,11 @@
+/* ui-sdk ships no styles: its layer is declared first so site rules win, and a
+   closed panel stays in the page for find-in-page while rendering nothing. */
+@layer ui-sdk {
+	:where([data-slot][hidden]:not([hidden="until-found"])) {
+		display: none !important;
+	}
+}
+
 :root {
 	--bg: #0b0b0c;
 	--panel: #131315;
@@ -36,6 +44,23 @@ body {
 	font-size: 15px;
 	line-height: 1.65;
 	-webkit-font-smoothing: antialiased;
+}
+
+/* Every jyz.land project links home: one muted line under the content. */
+footer.site {
+	padding: 32px 20px 40px;
+	text-align: center;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+}
+
+footer.site a {
+	color: var(--muted);
+}
+
+footer.site a:hover {
+	color: var(--fg);
 }
 
 a {

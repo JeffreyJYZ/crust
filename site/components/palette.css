@@ -1,0 +1,162 @@
+/*
+ * The ⌘K palette. Every colour is an existing token from `app/globals.css`, so the
+ * chrome follows the site's two schemes without a second theme. Rules are unlayered
+ * on purpose: they win over the `ui-sdk` layer, which only carries behaviour CSS.
+ */
+
+.palette-mount {
+	position: fixed;
+	top: 18px;
+	right: max(16px, calc((100vw - 1180px) / 2 + 20px));
+	z-index: 10;
+}
+
+.palette-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 9px;
+	background: var(--bg);
+	border: 0.5px solid var(--line);
+	border-radius: 4px;
+	color: var(--muted);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.palette-trigger:hover {
+	border-color: var(--muted);
+	color: var(--fg);
+}
+
+.palette-trigger:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.palette-trigger kbd,
+.palette-kbd,
+.palette-foot,
+.palette-group {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.palette-trigger kbd {
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.palette[data-slot="dialog-content"] {
+	position: fixed;
+	inset: 0;
+	margin: 12vh auto auto;
+	width: min(560px, calc(100vw - 32px));
+	max-height: 72vh;
+	padding: 0;
+	background: var(--bg);
+	border: 0.5px solid var(--line);
+	border-radius: 6px;
+	color: var(--fg);
+	overflow: hidden;
+}
+
+.palette[data-slot="dialog-content"]::backdrop {
+	background: rgb(0 0 0 / 0.45);
+}
+
+.palette-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 9px 14px;
+	border-bottom: 0.5px solid var(--line);
+}
+
+.palette-title {
+	margin: 0;
+	color: var(--muted);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.palette-kbd {
+	color: var(--muted);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+}
+
+.palette-input {
+	display: block;
+	width: 100%;
+	padding: 12px 14px;
+	background: transparent;
+	border: 0;
+	border-bottom: 0.5px solid var(--line);
+	color: var(--fg);
+	font: inherit;
+	font-size: 14px;
+	outline: none;
+}
+
+.palette-input::placeholder {
+	color: var(--muted);
+}
+
+.palette-input:focus {
+	border-bottom-color: var(--accent);
+}
+
+.palette-list {
+	max-height: 50vh;
+	padding: 6px;
+	overflow-y: auto;
+}
+
+.palette-item {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	color: var(--fg);
+	font-size: 14px;
+	cursor: default;
+}
+
+.palette-item[data-highlighted] {
+	background: var(--panel);
+	box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.palette-group {
+	color: var(--muted);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.palette-empty {
+	margin: 0;
+	padding: 16px 14px;
+	color: var(--muted);
+	font-size: 13px;
+}
+
+.palette-empty[hidden] {
+	display: none;
+}
+
+.palette-foot {
+	display: flex;
+	gap: 14px;
+	padding: 8px 14px;
+	border-top: 0.5px solid var(--line);
+	color: var(--muted);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+}

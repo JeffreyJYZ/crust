@@ -51,7 +51,7 @@ such as `public/`. `crust doctor` names any file in that position.
 
 ## `crust dev app.tsx`
 
-A positional ending in `.tsx`, `.jsx`, `.ts` or `.js` runs that one file as an app: no
+A positional ending in `.tsx`, `.jsx`, `.ts`, `.js` or `.html` runs that one file as an app: no
 `crust.config.ts`, no `main.ts`, one 900×700 window.
 
 | rule | behaviour |
@@ -62,7 +62,24 @@ A positional ending in `.tsx`, `.jsx`, `.ts` or `.js` runs that one file as an a
 | commands | `info` and `echo` only — there is no backend module to register more |
 | edit | rebuilds `page.js`, writes a reload marker, the page reloads; the runtime is never restarted |
 
-It deliberately lacks HMR (a save is a full reload), watching of imported modules and CSS, a
+### An `.html` entry
+
+```sh
+crust dev page.html      # the file is the document
+crust build page.html    # dist/page.app
+```
+
+An `.html` file is the page itself: crust copies it verbatim to `<dir>/.crust/single/index.html`, or
+`<dir>/dist/single/index.html` in a build, and skips the bundler, so nothing in it is rewritten. Dev
+prints `mode  static html (rebuilt on every change)`, and a save copies the file again.
+
+What crust does not add: no `#root` div, no `<script>` of its own, and no reload poller. The marker
+is still written, so a page reloads only if its own code fetches `__crust_reload.txt`. Files beside
+the entry are not copied, so a page that needs them should inline its CSS and script or reference
+files the app already serves. `window.crust` still arrives, because the bridge injects its bootstrap
+into the document it serves.
+
+It deliberately lacks HMR (a save rebuilds the page), watching of imported modules and CSS, a
 config surface, a custom backend and type checking. Add `crust.config.ts` and `main.ts` when the
 app needs any of them.
 
