@@ -57,6 +57,11 @@ export async function readState(file: string): Promise<Record<string, WindowFram
 	return state;
 }
 
+/** Drop the whole file; a missing file is already the empty state `readState` answers. */
+export async function clearState(file: string): Promise<void> {
+	await rm(file, { force: true });
+}
+
 /**
  * Write a temporary file in the same directory, then rename: a crash mid-write leaves the previous file intact rather than a truncated one `readState` would silently discard.
  */

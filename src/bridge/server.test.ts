@@ -3,7 +3,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { headers, invoke, readJson, SECRET, start, stopAll } from "./server/fixtures.ts";
+import { headers, invoke, PNG, readJson, SECRET, start, stopAll } from "./server/fixtures.ts";
 
 afterEach(stopAll);
 
@@ -119,5 +119,40 @@ describe("invoke", () => {
 		const body = await readJson(response);
 		expect(body.error.code).toBe("handler-error");
 		expect(body.error.message).toBe("handler blew up");
+	});
+});
+
+describe("binary results", () => {
+	test("bytes one level inside an object arrive tagged and decode to the same bytes", async () => {
+		const bridge = start();
+		const response = await invoke(
+			bridge,
+			headers(bridge, { authorization: `Bearer ${bridge.token}` }),
+			{ plugin: "test", command: "png" },
+		);
+		const body = await readJson(response);
+		expect(body.result.ok).toBe(true);
+		expect(typeof body.result.png.__crustBytes).toBe("string");
+		expect(new Uint8Array(Buffer.from(body.result.png.__crustBytes, "base64"))).toEqual(PNG);
+	});
+
+	test("bytes as the whole result are tagged too", async () => {
+		const bridge = start();
+		const response = await invoke(
+			bridge,
+			headers(bridge, { authorization: `Bearer ${bridge.token}` }),
+			{ plugin: "test", command: "pngBare" },
+		);
+		const body = await readJson(response);
+		expect(new Uint8Array(Buffer.from(body.result.__crustBytes, "base64"))).toEqual(PNG);
+	});
+
+	test("a text result is the same json bytes it always was", async () => {
+		const bridge = start();
+		const response = await invoke(
+			bridge,
+			headers(bridge, { authorization: `Bearer ${bridge.token}` }),
+		);
+		expect(await response.text()).toBe('{"ok":true,"result":{"hello":"world"}}');
 	});
 });

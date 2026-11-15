@@ -1,83 +1,54 @@
 /**
- * `crust:shell` — the page-facing process API: spawn an allowlisted program, read its bounded output, kill it, list what is live.
+ * `crust:shell` — the page-facing process API: spawn an allowlisted program, feed its stdin, read its bounded output, kill it, list what is live.
  * No shell is ever invoked, so a page's argument reaches the program as argv and never as a command line, and a program not named in `allow` is refused before any process exists.
  */
 
-import { constants } from "node:os";
 import { resolve } from "node:path";
 
-import { definePlugin, type PluginDefinition } from "./define";
+import { definePlugin, type PluginContext, type PluginDefinition } from "./define";
 import {
 	type ShellFailure,
 	type SpawnArgs,
 	parseSpawn,
-	readId,
+	requireId,
 	shellFailure,
 	unknownProcess,
 } from "./shell-args";
+import { type WriteArgs, noStdin, readWrite } from "./shell-stdin";
+import {
+	type Child,
+	createLineRing,
+	drain,
+	type Emit,
+	finished,
+	type LineRing,
+	lineSink,
+	signalName,
+} from "./shell-stream";
 
-export const SHELL_OUTPUT_LINES = 500; // per stream; older lines drop, so a chatty program cannot grow it
-const MAX_LINE = 8192; // a longer line is flushed in pieces, so a stream with no newline stays bounded
+export { createLineRing, SHELL_OUTPUT_LINES } from "./shell-stream";
+
 const MAX_RECORDS = 256; // finished records kept, so `output` still answers after exit
 
-export type LineRing = { push(line: string): void; lines(): string[] };
-
-export function createLineRing(limit = SHELL_OUTPUT_LINES): LineRing {
-	const kept: string[] = [];
-	return {
-		push(line) {
-			kept.push(line.length > MAX_LINE ? line.slice(0, MAX_LINE) : line);
-			if (kept.length > limit) kept.shift();
-		},
-		lines: () => [...kept],
-	};
-}
-
-type Child = Bun.Subprocess<"ignore", "pipe", "pipe">;
-
-/** Read one stream to its end, keeping only complete lines in the ring. */
-async function drain(stream: Child["stdout"], ring: LineRing): Promise<void> {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	let partial = "";
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		partial += decoder.decode(value, { stream: true });
-		const rows = partial.split("\n");
-		partial = rows.pop() ?? "";
-		for (const row of rows) ring.push(row);
-		if (partial.length > MAX_LINE) {
-			ring.push(partial);
-			partial = "";
-		}
-	}
-	partial += decoder.decode();
-	if (partial.length > 0) ring.push(partial);
-}
-
-/** A killed process reports a signal and no exit code, so either one means it is gone. */
-function finished(child: Child): boolean {
-	return child.exitCode !== null || child.signalCode !== null;
-}
-
-/** Bun names a signal, or reports a raw number when it has no name. */
-function signalName(signal: Child["signalCode"]): string | null {
-	if (signal === null || typeof signal === "string") return signal;
-	const named = Object.entries(constants.signals).find(([, value]) => value === signal);
-	return named ? named[0] : String(signal);
+/** A thrown value as the one line a refusal message can carry. */
+function text(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 export type SpawnOutcome = { ok: true; id: string } | ShellFailure;
+export type WriteOutcome = { ok: true; bytes: number } | ShellFailure;
+export type CloseOutcome = { ok: true; closed: boolean; id: string } | ShellFailure;
+export type KillOutcome = { ok: true; killed: boolean; id: string } | ShellFailure;
+export type ListOutcome = { ok: true; ids: string[] };
 export type OutputOutcome =
 	| { ok: true; stdout: string; stderr: string; exitCode: number | null; signal: string | null }
 	| ShellFailure;
-export type KillOutcome = { ok: true; killed: boolean; id: string } | ShellFailure;
-export type ListOutcome = { ok: true; ids: string[] };
 
 export type ShellCommands = {
 	spawn: (args: SpawnArgs) => Promise<SpawnOutcome>;
 	output: (args: { id: string }) => Promise<OutputOutcome>;
+	write: (args: WriteArgs) => Promise<WriteOutcome>;
+	close: (args: { id: string }) => Promise<CloseOutcome>;
 	kill: (args: { id: string }) => Promise<KillOutcome>;
 	list: () => ListOutcome;
 };
@@ -95,6 +66,8 @@ interface Live {
 	stdout: LineRing;
 	stderr: LineRing;
 	drained: Promise<void>;
+	/** Set once `close` ended stdin, so a later `write` answers `no-stdin` instead of throwing. */
+	stdinClosed: boolean;
 }
 
 export function createShellPlugin(
@@ -117,7 +90,7 @@ export function createShellPlugin(
 	return definePlugin({
 		name: "shell",
 		commands: {
-			spawn: async (args: SpawnArgs): Promise<SpawnOutcome> => {
+			spawn: async (args: SpawnArgs, ctx?: PluginContext): Promise<SpawnOutcome> => {
 				const plan = parseSpawn(args, { allow, root });
 				if (!plan.ok) return plan;
 				let child: Child;
@@ -126,38 +99,33 @@ export function createShellPlugin(
 						cmd: plan.cmd,
 						cwd: plan.cwd,
 						env: { ...process.env, ...plan.env },
-						stdin: "ignore",
+						stdin: plan.pipe ? "pipe" : "ignore",
 						stdout: "pipe",
 						stderr: "pipe",
 					});
 				} catch (error) {
-					const text = error instanceof Error ? error.message : String(error);
 					return shellFailure(
 						"spawn-failed",
-						`shell.spawn: ${JSON.stringify(plan.cmd[0])} could not start: ${text}`,
+						`shell.spawn: ${JSON.stringify(plan.cmd[0])} could not start: ${text(error)}`,
 					);
 				}
 				const id = `shell-${++next}`;
+				const emit: Emit | undefined = ctx?.emit;
 				const stdout = createLineRing();
 				const stderr = createLineRing();
 				const drained = Promise.all([
-					drain(child.stdout, stdout),
-					drain(child.stderr, stderr),
+					drain(child.stdout, stdout, lineSink(emit, id, "stdout")),
+					drain(child.stderr, stderr, lineSink(emit, id, "stderr")),
 				]).then(() => undefined);
-				processes.set(id, { id, child, stdout, stderr, drained });
+				processes.set(id, { id, child, stdout, stderr, drained, stdinClosed: false });
 				prune();
 				return { ok: true, id };
 			},
 			output: async (args: { id: string }): Promise<OutputOutcome> => {
-				const id = readId(args);
-				if (id === undefined) {
-					return shellFailure(
-						"invalid-args",
-						"shell.output needs { id } with a non-empty string",
-					);
-				}
-				const record = processes.get(id);
-				if (record === undefined) return unknownProcess("output", id);
+				const asked = requireId(args, "output");
+				if (!asked.ok) return asked;
+				const record = processes.get(asked.id);
+				if (record === undefined) return unknownProcess("output", asked.id);
 				// The pipe closes just after the exit, so the ring is complete only
 				// once the drain has ended.
 				if (finished(record.child)) await record.drained;
@@ -169,14 +137,47 @@ export function createShellPlugin(
 					signal: signalName(record.child.signalCode),
 				};
 			},
-			kill: async (args: { id: string }): Promise<KillOutcome> => {
-				const id = readId(args);
-				if (id === undefined) {
+			write: async (args: WriteArgs): Promise<WriteOutcome> => {
+				const parsed = readWrite(args);
+				if (parsed === undefined) {
 					return shellFailure(
 						"invalid-args",
-						"shell.kill needs { id } with a non-empty string",
+						'shell.write needs { id, data } with an id and a string "data"',
 					);
 				}
+				const record = processes.get(parsed.id);
+				if (record === undefined) return unknownProcess("write", parsed.id);
+				const sink = record.child.stdin;
+				if (sink === undefined || record.stdinClosed) return noStdin("write", parsed.id);
+				try {
+					await sink.write(parsed.data);
+					await sink.flush();
+				} catch (error) {
+					return noStdin("write", parsed.id, text(error));
+				}
+				return { ok: true, bytes: Buffer.byteLength(parsed.data) };
+			},
+			close: async (args: { id: string }): Promise<CloseOutcome> => {
+				const asked = requireId(args, "close");
+				if (!asked.ok) return asked;
+				const id = asked.id;
+				const record = processes.get(id);
+				if (record === undefined) return unknownProcess("close", id);
+				const sink = record.child.stdin;
+				if (sink === undefined || record.stdinClosed)
+					return { ok: true, closed: false, id };
+				record.stdinClosed = true;
+				try {
+					await sink.end();
+				} catch {
+					// An exited process already closed its own stdin; the page asked for that end.
+				}
+				return { ok: true, closed: true, id };
+			},
+			kill: async (args: { id: string }): Promise<KillOutcome> => {
+				const asked = requireId(args, "kill");
+				if (!asked.ok) return asked;
+				const id = asked.id;
 				const record = processes.get(id);
 				if (record === undefined) return unknownProcess("kill", id);
 				if (finished(record.child)) return { ok: true, killed: false, id };

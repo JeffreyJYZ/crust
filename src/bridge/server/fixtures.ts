@@ -10,6 +10,9 @@ import { startBridge, type BridgeHandle } from "../server.ts";
 
 export const SECRET = "SECRET-FILE-CONTENTS-THAT-MUST-NOT-LEAK";
 
+/** The eight PNG magic bytes plus a payload; the bridge only has to carry them intact. */
+export const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
 export const testPlugin = definePlugin({
 	name: "test",
 	commands: {
@@ -19,6 +22,10 @@ export const testPlugin = definePlugin({
 			throw new Error("handler blew up");
 		},
 		measureBytes: (args: unknown) => ({ bytes: (args as Uint8Array).byteLength }),
+		/** The shape `clipboard.readImage` answers, so the binary path needs no pasteboard. */
+		png: () => ({ ok: true, png: PNG }),
+		/** The same bytes as the whole result, which is the top-level case. */
+		pngBare: () => PNG,
 	},
 });
 

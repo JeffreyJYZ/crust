@@ -80,7 +80,10 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	const platform: DarwinPlatform | undefined = darwinPlatform?.createPlatform({
 		appName: config.app.name,
 	});
-	const plugins = [...(await nativePlugins(core, platform, config.shell)), single.plugin];
+	const plugins = [
+		...(await nativePlugins(core, platform, { shell: config.shell, updater: config.updater })),
+		single.plugin,
+	];
 
 	const frontendRoot = (await isDirectory(root)) ? root : undefined;
 	const indexHtml = await readIndex(frontendRoot, options.assets);

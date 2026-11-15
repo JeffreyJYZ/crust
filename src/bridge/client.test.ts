@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { definePlugin } from "../plugins/define";
 import { type CrustApi, installCrust } from "./client";
 import { startBridge, type BridgeHandle } from "./server";
+import { PNG } from "./server/fixtures.ts";
 
 const testPlugin = definePlugin({
 	name: "test",
@@ -14,6 +15,7 @@ const testPlugin = definePlugin({
 		boom: () => {
 			throw new Error("page saw the handler throw");
 		},
+		png: () => ({ ok: true, png: PNG }),
 	},
 });
 
@@ -125,6 +127,15 @@ describe("invoke", () => {
 			code: "handler-error",
 			message: "page saw the handler throw",
 		});
+	});
+
+	test("a binary result arrives as bytes, not as an object of indices", async () => {
+		const bridge = start();
+		const { api } = install(bridge);
+		const result = (await api.invoke("test", "png")) as { ok: boolean; png: Uint8Array };
+		expect(result.ok).toBe(true);
+		expect(result.png).toBeInstanceOf(Uint8Array);
+		expect(Array.from(result.png)).toEqual(Array.from(PNG));
 	});
 
 	test("a wrong token rejects unauthorized", async () => {

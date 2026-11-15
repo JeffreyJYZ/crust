@@ -62,6 +62,9 @@ export interface Shim {
 		shim_window_zoom: LooseSymbol;
 		shim_window_miniaturize: LooseSymbol;
 		shim_window_deminiaturize: LooseSymbol;
+		shim_window_opacity: LooseSymbol;
+		shim_window_set_opacity: LooseSymbol;
+		shim_cursor_visible: LooseSymbol;
 
 		shim_on_main_runloop: LooseSymbol;
 		shim_window_is_on_active_space: LooseSymbol;

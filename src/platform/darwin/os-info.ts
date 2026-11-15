@@ -12,6 +12,8 @@ export interface OsFactsSource {
 	locale(): string;
 	/** `CFBundleShortVersionString`, or null when the process carries no bundle. */
 	appVersion(): string | null;
+	/** Seconds since boot, from `-[NSProcessInfo systemUptime]`. */
+	uptime(): number;
 }
 
 /** The native half of `crust:os`; `createOsPlugin` accepts it structurally. */
@@ -31,6 +33,11 @@ export function darwinOsAdapter(): OsFactsSource {
 		appVersion: () => {
 			const version = String(unit().symbols.crust_os_app_version() ?? "");
 			return version.length > 0 ? version : null;
+		},
+		uptime: () => {
+			const seconds = Number(unit().symbols.crust_os_uptime() ?? 0);
+			if (!(seconds > 0)) throw new Error("NSProcessInfo did not report a system uptime");
+			return seconds;
 		},
 	};
 }

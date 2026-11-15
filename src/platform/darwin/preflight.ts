@@ -22,6 +22,15 @@ const classSelectors: ReadonlyArray<readonly [string, string]> = [
 		"constraintWithItem:attribute:relatedBy:toItem:attribute:multiplier:constant:",
 	],
 	["NSLayoutConstraint", "constraintWithItem:attribute:relatedBy:constant:"],
+	// One class method per cursor name in `WINDOW_CURSORS`, plus the hide/unhide
+	// pair the visibility command sends. All are class methods on NSCursor.
+	["NSCursor", "arrowCursor"],
+	["NSCursor", "pointingHandCursor"],
+	["NSCursor", "crosshairCursor"],
+	["NSCursor", "IBeamCursor"],
+	["NSCursor", "openHandCursor"],
+	["NSCursor", "hide"],
+	["NSCursor", "unhide"],
 ];
 
 const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
@@ -53,6 +62,13 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "zoom:"],
 	["NSWindow", "miniaturize:"],
 	["NSWindow", "deminiaturize:"],
+	// The chrome commands. `styleMask` above is the read; `setStyleMask:` is the
+	// title-bar toggle, and the alpha pair is the opacity. `-set` is how a cursor
+	// is applied, so NSCursor itself is verified as a receiver.
+	["NSWindow", "setStyleMask:"],
+	["NSWindow", "setAlphaValue:"],
+	["NSWindow", "alphaValue"],
+	["NSCursor", "set"],
 	["WKWebView", "init"],
 	["WKWebView", "loadRequest:"],
 	["NSApplication", "setActivationPolicy:"],

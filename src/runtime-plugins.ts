@@ -3,7 +3,7 @@
  */
 
 import { APP_NAMESPACE, app } from "@/app.ts";
-import type { ShellConfig } from "@/config";
+import type { ShellConfig, UpdaterConfig } from "@/config";
 import { createWindowPlugin, definePlugin, type PluginDefinition } from "@/plugins";
 
 /**
@@ -28,24 +28,45 @@ export function createAppNamespacePlugin(): PluginDefinition {
 	});
 }
 
+/** The config sections that change which plugin an app gets. */
+export interface NativePluginOptions {
+	shell?: ShellConfig;
+	updater?: UpdaterConfig;
+}
+
+/** A bare `ShellConfig` is the third argument this function took before `updater` existed. */
+function optionsOf(options: NativePluginOptions | ShellConfig): NativePluginOptions {
+	const named = "shell" in options || "updater" in options;
+	return named ? (options as NativePluginOptions) : { shell: options as ShellConfig };
+}
+
 /**
  * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
  * `shell` has no native half but needs the config's allowlist, so it is built here too: with no `shell` section the allowlist is empty and every `spawn` is refused by name.
+ * `updater` is registered only when the config has an `updater` section: an app with no update story then carries no download-and-replace surface, and naming it in `plugins` is the unknown-plugin error it should be.
  * No platform, or not macOS, keeps the honest answers and still registers the plugin under its own name so `selectedPlugins` matches `config.plugins`.
  */
 export async function nativePlugins(
 	core: readonly PluginDefinition[],
 	platform: import("@/platform/darwin").DarwinPlatform | undefined,
-	shell?: ShellConfig,
+	options: NativePluginOptions | ShellConfig = {},
 ): Promise<PluginDefinition[]> {
-	const { createDialogPlugin, createNotificationPlugin, createShellPlugin, createTrayPlugin } =
-		await import("@/plugins");
+	const { shell, updater } = optionsOf(options);
+	const {
+		createDialogPlugin,
+		createNotificationPlugin,
+		createShellPlugin,
+		createTrayPlugin,
+		createUpdaterPlugin,
+	} = await import("@/plugins");
 	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
+	const updaterPlugins = updater === undefined ? [] : [createUpdaterPlugin(undefined, updater)];
 	if (!platform || process.platform !== "darwin") {
 		return [
 			...core.filter((plugin) => plugin.name !== "window"),
 			createWindowPlugin(),
 			shellPlugin,
+			...updaterPlugins,
 		];
 	}
 	const darwin = await import("@/platform/darwin");
@@ -89,5 +110,6 @@ export async function nativePlugins(
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
 		deepLinkPlugin,
 		shellPlugin,
+		...updaterPlugins,
 	];
 }

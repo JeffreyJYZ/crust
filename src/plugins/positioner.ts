@@ -1,9 +1,9 @@
 /**
- * `crust:positioner` — put a window in one of five places on the main screen: centred, or a corner of its visible frame. The screen's visible frame is injected, never queried, so this module holds no AppKit and a test states the screen it means.
+ * `crust:positioner` — put a window at one of nine places on the main screen: centred, a corner, or an edge midpoint of its visible frame. The screen's visible frame is injected, never queried, so this module holds no AppKit and a test states the screen it means.
  * `y` grows upward, as AppKit's does, so "top" is the largest `y`: a `topLeft` window sits under the menu bar and a `bottomLeft` one above the dock.
  */
 
-import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
+import { definePlugin, type NotImplemented, notImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, readLabel, unknownWindow } from "./window-args.ts";
 import {
 	WindowAdapterError,
@@ -46,19 +46,24 @@ export interface PositionerOptions {
 	screen?: ScreenSource;
 }
 
-type PositionerCommands = {
-	center: (args: WindowLabelArgs) => Promise<PositionerResult | WindowFailure | NotImplemented>;
-	topLeft: (args: WindowLabelArgs) => Promise<PositionerResult | WindowFailure | NotImplemented>;
-	topRight: (args: WindowLabelArgs) => Promise<PositionerResult | WindowFailure | NotImplemented>;
-	bottomLeft: (
-		args: WindowLabelArgs,
-	) => Promise<PositionerResult | WindowFailure | NotImplemented>;
-	bottomRight: (
-		args: WindowLabelArgs,
-	) => Promise<PositionerResult | WindowFailure | NotImplemented>;
-};
+/** The placements Tauri names, in the order this plugin declares them. */
+export const POSITIONER_PLACEMENTS = [
+	"center",
+	"topLeft",
+	"topRight",
+	"bottomLeft",
+	"bottomRight",
+	"topCenter",
+	"bottomCenter",
+	"leftCenter",
+	"rightCenter",
+] as const;
 
-type Corner = "center" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
+export type Placement = (typeof POSITIONER_PLACEMENTS)[number];
+
+type PositionerAnswer = Promise<PositionerResult | WindowFailure | NotImplemented>;
+
+type PositionerCommands = Record<Placement, (args: WindowLabelArgs) => PositionerAnswer>;
 
 function isNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
@@ -72,9 +77,12 @@ function usable(bounds: ScreenBounds | undefined): ScreenBounds | undefined {
 	return width > 0 && height > 0 ? bounds : undefined;
 }
 
-/** Where a window of `size` lands for `corner`, rounded to whole points because a move takes points. */
+/**
+ * Where a window of `size` lands for `placement`, rounded to whole points because a move takes points.
+ * A window larger than the screen keeps the negative offset: clamping would report a success the user cannot see.
+ */
 function place(
-	corner: Corner,
+	placement: Placement,
 	screen: ScreenBounds,
 	size: { width: number; height: number },
 ): { x: number; y: number } {
@@ -82,7 +90,10 @@ function place(
 	const right = Math.round(screen.x + screen.width - size.width);
 	const bottom = Math.round(screen.y);
 	const top = Math.round(screen.y + screen.height - size.height);
-	switch (corner) {
+	// One half-up `Math.round` on the slack, offset from the near edge, so every centred axis agrees.
+	const middleX = left + Math.round((screen.width - size.width) / 2);
+	const middleY = bottom + Math.round((screen.height - size.height) / 2);
+	switch (placement) {
 		case "topLeft":
 			return { x: left, y: top };
 		case "topRight":
@@ -91,11 +102,16 @@ function place(
 			return { x: left, y: bottom };
 		case "bottomRight":
 			return { x: right, y: bottom };
+		case "topCenter":
+			return { x: middleX, y: top };
+		case "bottomCenter":
+			return { x: middleX, y: bottom };
+		case "leftCenter":
+			return { x: left, y: middleY };
+		case "rightCenter":
+			return { x: right, y: middleY };
 		default:
-			return {
-				x: left + Math.round((screen.width - size.width) / 2),
-				y: bottom + Math.round((screen.height - size.height) / 2),
-			};
+			return { x: middleX, y: middleY };
 	}
 }
 
@@ -129,8 +145,8 @@ export function createPositionerPlugin(
 		}
 	};
 
-	const command = (corner: Corner) => (args: WindowLabelArgs) =>
-		act(corner, args, (native, label) => {
+	const command = (placement: Placement) => (args: WindowLabelArgs) =>
+		act(placement, args, (native, label) => {
 			const { getSize, setPosition } = native;
 			if (!getSize || !setPosition) {
 				throw new WindowAdapterError(
@@ -142,11 +158,11 @@ export function createPositionerPlugin(
 			if (screen === undefined) {
 				throw new WindowAdapterError(
 					"unknown-adapter",
-					`crust: positioner.${corner} has no usable screen frame; pass one as { screen }`,
+					`crust: positioner.${placement} has no usable screen frame; pass one as { screen }`,
 				);
 			}
 			// `.call` keeps `this` on a platform whose adapter is a class.
-			const { x, y } = place(corner, screen, getSize.call(native, label));
+			const { x, y } = place(placement, screen, getSize.call(native, label));
 			setPosition.call(native, label, { x, y });
 			return { ok: true as const, label, x, y, placed: true as const };
 		});
@@ -159,6 +175,10 @@ export function createPositionerPlugin(
 			topRight: command("topRight"),
 			bottomLeft: command("bottomLeft"),
 			bottomRight: command("bottomRight"),
+			topCenter: command("topCenter"),
+			bottomCenter: command("bottomCenter"),
+			leftCenter: command("leftCenter"),
+			rightCenter: command("rightCenter"),
 		},
 	});
 }

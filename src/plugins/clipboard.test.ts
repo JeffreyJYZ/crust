@@ -1,9 +1,8 @@
 /**
- * `crust:clipboard` proofs that need no pasteboard: every case drives a fake adapter, so nothing here reads or writes the user's clipboard. The native unit is proven separately in `platform/darwin/clipboard.test.ts`.
+ * `crust:clipboard` text proofs that need no pasteboard: every case drives a fake adapter, so nothing here reads or writes the user's clipboard. The image commands are proven in `clipboard-image.test.ts` and the native unit in `platform/darwin/clipboard.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";
-import { isNotImplemented } from "@/plugins/define.ts";
 import {
 	clipboardPlugin,
 	type ClipboardAdapter,
@@ -11,6 +10,7 @@ import {
 	type ClipboardWriteArgs,
 	createClipboardPlugin,
 } from "@/plugins/clipboard.ts";
+import { isNotImplemented } from "@/plugins/define.ts";
 
 /** An adapter that records what it was asked and answers as told. */
 function fake(overrides: Partial<ClipboardAdapter> = {}): ClipboardAdapter & {
@@ -24,6 +24,8 @@ function fake(overrides: Partial<ClipboardAdapter> = {}): ClipboardAdapter & {
 			written.push(text);
 			return "written";
 		},
+		readImage: () => new Uint8Array(0),
+		writeImage: () => "written",
 		...overrides,
 	};
 }
@@ -31,7 +33,7 @@ function fake(overrides: Partial<ClipboardAdapter> = {}): ClipboardAdapter & {
 describe("clipboard without an adapter", () => {
 	test("names NSPasteboard instead of answering an empty clipboard", async () => {
 		const plugin = createClipboardPlugin();
-		for (const command of ["read", "write"] as const) {
+		for (const command of ["read", "write", "readImage", "writeImage"] as const) {
 			const answer = await plugin.commands[command]();
 			expect(isNotImplemented(answer)).toBe(true);
 			if (isNotImplemented(answer)) {
@@ -39,18 +41,6 @@ describe("clipboard without an adapter", () => {
 				expect(answer.requires).toBe("NSPasteboard");
 			}
 		}
-	});
-
-	test("a skipped image command names the selector it waits on", async () => {
-		const plugin = createClipboardPlugin();
-		const read = await plugin.commands.readImage();
-		expect(isNotImplemented(read)).toBe(true);
-		if (isNotImplemented(read)) {
-			expect(read.requires).toBe("NSPasteboard -readObjectsForClasses:options:");
-		}
-		const write = await plugin.commands.writeImage();
-		expect(isNotImplemented(write)).toBe(true);
-		if (isNotImplemented(write)) expect(write.requires).toBe("NSPasteboard -writeObjects:");
 	});
 
 	test("the default registration is the adapter-less one", () => {
@@ -100,8 +90,7 @@ describe("clipboard read", () => {
 
 	test("an adapter missing readText is named, not called", async () => {
 		const plugin = createClipboardPlugin({} as ClipboardAdapter);
-		const answer = await plugin.commands.read();
-		expect(answer).toEqual({
+		expect(await plugin.commands.read()).toEqual({
 			ok: false,
 			code: "unknown-adapter",
 			message: "crust: clipboard adapter does not implement readText",

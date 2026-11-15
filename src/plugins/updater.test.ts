@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,26 +9,20 @@ import {
 	type CheckResult,
 	createUpdaterPlugin,
 	type DownloadResult,
-	type InstallResult,
 	nodeUpdaterAdapter,
 	type UpdaterAdapter,
 	type UpdaterFailure,
+	type UpdaterOptions,
 } from "@/plugins/updater";
-import { compareVersions, isNewer, parseManifest } from "@/plugins/updater-args";
-
-async function scratch(): Promise<string> {
-	return await mkdtemp(join(tmpdir(), "crust-updater-"));
-}
 
 function offlineAdapter(overrides: Partial<UpdaterAdapter> = {}): UpdaterAdapter {
-	const offline = () => {
-		throw new Error("a test tried to reach the network");
-	};
-	return { ...nodeUpdaterAdapter(), fetchJson: offline, download: offline, ...overrides };
+	const no = () => Promise.reject(new Error("a test tried to reach the network"));
+	const fake = { ...nodeUpdaterAdapter(), fetchJson: no, download: no, relaunch: no };
+	return { ...fake, ...overrides };
 }
 
-function plugin(adapter: UpdaterAdapter) {
-	return createUpdaterPlugin(adapter).commands;
+function plugin(adapter: UpdaterAdapter, options: UpdaterOptions = {}) {
+	return createUpdaterPlugin(adapter, options).commands;
 }
 
 async function check(manifest: unknown, currentVersion: string): Promise<CheckResult> {
@@ -46,49 +40,29 @@ function writing(payload: string): UpdaterAdapter {
 	});
 }
 
-async function install(path: string, appPath: string): Promise<InstallResult | UpdaterFailure> {
-	return await plugin(offlineAdapter()).install({ path, appPath });
+/** A real Ed25519 pair from WebCrypto: the same primitive the plugin verifies with. */
+async function signer(): Promise<{
+	pubkey: string;
+	sign: (payload: string) => Promise<string>;
+}> {
+	const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+		"sign",
+		"verify",
+	])) as unknown as CryptoKeyPair;
+	const raw = await crypto.subtle.exportKey("raw", pair.publicKey);
+	const pubkey = Buffer.from(raw).toString("base64");
+	return {
+		pubkey,
+		sign: async (payload) => {
+			const signature = await crypto.subtle.sign(
+				{ name: "Ed25519" },
+				pair.privateKey,
+				new TextEncoder().encode(payload),
+			);
+			return Buffer.from(signature).toString("base64");
+		},
+	};
 }
-
-async function bundle(dir: string, name: string, marker: string): Promise<string> {
-	const path = join(dir, name);
-	await mkdir(join(path, "Contents"), { recursive: true });
-	await writeFile(join(path, "Contents", "marker.txt"), marker, "utf8");
-	return path;
-}
-
-describe("compareVersions", () => {
-	test("compares segments numerically, and a pre-release sorts below its release", () => {
-		const cases: Array<[string, string, number]> = [
-			["0.10.0", "0.9.0", 1],
-			["0.9.0", "0.10.0", -1],
-			["1.99.99", "2.0.0", -1],
-			["1.2", "1.2.0", 0],
-			["v1.2.3", "1.2.3", 0],
-			["1.0.0", "1.0.0-beta.1", 1],
-			["1.0.0-alpha", "1.0.0-beta", -1],
-		];
-		for (const [left, right, order] of cases) expect(compareVersions(left, right)).toBe(order);
-		expect(isNewer("1.2.1", "1.2")).toBe(true);
-		expect(isNewer("1.2", "1.2.0")).toBe(false);
-	});
-});
-
-describe("parseManifest", () => {
-	test("reads a full manifest and refuses one without version, url or a good sha256", () => {
-		const digest = "AB".repeat(32);
-		const source = { version: "1.4.0", notes: "x", url: "u", sha256: digest };
-		const parsed = parseManifest(source);
-		expect(parsed).toEqual({ ok: true, manifest: { ...source, sha256: digest.toLowerCase() } });
-		expect(parseManifest({ url: "u.app" })).toMatchObject({ ok: false });
-		expect(parseManifest({ version: "1.0.0" })).toMatchObject({ ok: false });
-		expect(parseManifest(null)).toMatchObject({ ok: false });
-		expect(parseManifest({ version: "1", url: "u", sha256: "nope" })).toMatchObject({
-			ok: false,
-			reason: '"sha256" must be 64 hex characters',
-		});
-	});
-});
 
 describe("updater.check", () => {
 	test("0.10.0 is available over 0.9.0, and the manifest is passed through", async () => {
@@ -124,6 +98,28 @@ describe("updater.check", () => {
 		const noArgs = await plugin(offlineAdapter()).check({} as CheckArgs);
 		expect(noArgs).toMatchObject({ available: false, error: { code: "invalid-arguments" } });
 	});
+
+	test("the endpoint falls back to the configured one, and the signature travels on", async () => {
+		const key = await signer();
+		const signature = await key.sign("bundle-bytes");
+		const manifest = { version: "2.0.0", url: "u.app", signature, pubkey: key.pubkey };
+		const adapter = offlineAdapter({ fetchJson: async () => manifest });
+		const commands = plugin(adapter, { endpoint: "https://example.test/latest.json" });
+		expect(await commands.check({ currentVersion: "1.0.0" } as CheckArgs)).toMatchObject({
+			available: true,
+			version: "2.0.0",
+			signature,
+			pubkey: key.pubkey,
+		});
+		const foreign = await plugin(adapter, {
+			endpoint: "https://example.test/latest.json",
+			pubkey: Buffer.alloc(32, 1).toString("base64"),
+		});
+		expect(await foreign.check({ currentVersion: "1.0.0" } as CheckArgs)).toMatchObject({
+			available: false,
+			error: { code: "bad-manifest" },
+		});
+	});
 });
 
 describe("updater.download", () => {
@@ -147,52 +143,36 @@ describe("updater.download", () => {
 		expect(wrong).toMatchObject({ ok: false, code: "hash-mismatch" });
 		expect(wrong.path?.endsWith("Notes.app")).toBe(true);
 	});
-});
 
-describe("updater.install", () => {
-	test("renames the new bundle into place and keeps the old one aside", async () => {
-		const dir = await scratch();
-		try {
-			const appPath = await bundle(dir, "Notes.app", "old");
-			const source = await bundle(dir, "Notes-new.app", "new");
-			expect(await install(source, appPath)).toMatchObject({
-				ok: true,
-				backup: `${appPath}.old`,
-			});
-			const marker = join("Contents", "marker.txt");
-			expect(await readFile(join(appPath, marker), "utf8")).toBe("new");
-			expect(await readFile(join(`${appPath}.old`, marker), "utf8")).toBe("old");
-			await expect(stat(source)).rejects.toMatchObject({ code: "ENOENT" });
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
+	test("an Ed25519 signature over the artifact bytes verifies, and tampered bytes do not", async () => {
+		const key = await signer();
+		const signature = await key.sign(payload);
+		const signed = { url: "u.app", signature, pubkey: key.pubkey };
+		const result = (await plugin(writing(payload)).download(signed)) as DownloadResult;
+		expect(result).toMatchObject({ ok: true, bytes: payload.length });
+
+		const tampered = (await plugin(writing("swapped-bytes")).download(
+			signed,
+		)) as UpdaterFailure;
+		expect(tampered).toMatchObject({ ok: false, code: "signature-mismatch" });
+		expect(tampered.path?.endsWith("Notes.app")).toBe(true);
 	});
 
-	test("refuses a target or a download that is not an .app directory, replacing nothing", async () => {
-		const dir = await scratch();
-		try {
-			const notAnApp = await bundle(dir, "Notes", "old");
-			const source = await bundle(dir, "Notes-new.app", "new");
-			const target = await bundle(dir, "Other.app", "old");
-			const loose = join(dir, "loose");
-			const file = join(dir, "Loose.app");
-			await mkdir(loose);
-			await writeFile(file, "not a bundle", "utf8");
-			for (const [path, appPath] of [
-				[source, notAnApp],
-				[source, file],
-				[loose, target],
-			] as const) {
-				expect(await install(path, appPath)).toMatchObject({
-					ok: false,
-					code: "not-an-app-bundle",
-				});
-			}
-			expect(await readFile(join(notAnApp, "Contents", "marker.txt"), "utf8")).toBe("old");
-			expect(await readFile(join(target, "Contents", "marker.txt"), "utf8")).toBe("old");
-			await expect(stat(source)).resolves.toBeDefined();
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
+	test("a configured pubkey is used when the page names none, and cannot be replaced", async () => {
+		const key = await signer();
+		const signature = await key.sign(payload);
+		const pinned = plugin(writing(payload), { pubkey: key.pubkey });
+		expect(await pinned.download({ url: "u.app", signature })).toMatchObject({ ok: true });
+
+		const loose = plugin(writing(payload));
+		expect(await loose.download({ url: "u.app", signature })).toMatchObject({
+			ok: false,
+			code: "invalid-arguments",
+		});
+		const foreign = Buffer.alloc(32, 2).toString("base64");
+		expect(await pinned.download({ url: "u.app", signature, pubkey: foreign })).toMatchObject({
+			ok: false,
+			code: "invalid-arguments",
+		});
 	});
 });

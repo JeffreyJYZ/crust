@@ -7,6 +7,7 @@
 import type { PluginContext } from "../../plugins/define";
 import { type CommandHandler, isNotImplemented } from "../../plugins/define";
 import { CrustError, toCrustError } from "../errors";
+import { encodeResult } from "./bytes.ts";
 import { errorResponse, jsonResponse } from "./http.ts";
 
 /** Bodies over this size are refused before parsing, as the probe measured. */
@@ -62,7 +63,11 @@ export async function invokeRequest(
 			if (bytes.byteLength > MAX_BODY_BYTES) {
 				throw new CrustError("too-large", "payload too large");
 			}
-			return jsonResponse({ ok: true, result: await run(plugin, command, bytes) }, 200, cors);
+			return jsonResponse(
+				{ ok: true, result: encodeResult(await run(plugin, command, bytes)) },
+				200,
+				cors,
+			);
 		}
 
 		const text = await request.text();
@@ -82,11 +87,8 @@ export async function invokeRequest(
 		if (typeof parsed.plugin !== "string" || typeof parsed.command !== "string") {
 			throw new CrustError("bad-request", "body needs { plugin, command, args }");
 		}
-		return jsonResponse(
-			{ ok: true, result: await run(parsed.plugin, parsed.command, parsed.args) },
-			200,
-			cors,
-		);
+		const result = await run(parsed.plugin, parsed.command, parsed.args);
+		return jsonResponse({ ok: true, result: encodeResult(result) }, 200, cors);
 	} catch (error) {
 		return errorResponse(error, cors);
 	}

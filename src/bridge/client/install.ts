@@ -30,7 +30,7 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	const markHandshake = () => {
 		if (handshaken) return;
 		handshaken = true;
-		if (resolveReady) resolveReady();
+		resolveReady?.();
 	};
 
 	const decode = (raw: unknown): unknown => {
@@ -69,29 +69,36 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	};
 
 	const listen = <T = unknown>(event: string, fn: (payload: T) => void): (() => void) => {
-		let set = listeners.get(event);
-		if (!set) {
-			set = new Set();
-			listeners.set(event, set);
-		}
-		set.add(fn as (payload: unknown) => void);
+		const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();
+		listeners.set(event, set);
+		const handler = fn as (payload: unknown) => void;
+		set.add(handler);
 		attach(event);
 		return () => {
-			set?.delete(fn as (payload: unknown) => void);
-			if (set && set.size === 0) listeners.delete(event);
+			set.delete(handler);
+			if (set.size === 0) listeners.delete(event);
 		};
 	};
 
 	const once = <T = unknown>(event: string): Promise<T> =>
 		new Promise<T>((resolve) => {
-			let pending = waiters.get(event);
-			if (!pending) {
-				pending = [];
-				waiters.set(event, pending);
-			}
+			const pending = waiters.get(event) ?? [];
+			if (!waiters.has(event)) waiters.set(event, pending);
 			pending.push(resolve as (payload: unknown) => void);
 			attach(event);
 		});
+
+	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep.
+	const fromBase64 = (text: string): Uint8Array =>
+		Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+
+	const revive = (value: any, depth: number): any => {
+		if (depth > 1 || value === null || typeof value !== "object") return value;
+		if (typeof value.__crustBytes === "string") return fromBase64(value.__crustBytes);
+		const out: any = Array.isArray(value) ? [] : {};
+		for (const key of Object.keys(value)) out[key] = revive(value[key], depth + 1);
+		return out;
+	};
 
 	class InvokeFailure extends Error implements T.CrustInvokeError {
 		readonly code: string;
@@ -114,10 +121,7 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		}
 		const response = await fetchImpl.call(scope, `${base}/_crust/invoke`, {
 			method: "POST",
-			headers: {
-				authorization: `Bearer ${token}`,
-				"content-type": "application/json",
-			},
+			headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
 			body: JSON.stringify({ plugin, command, args: args === undefined ? null : args }),
 		});
 		const text = await response.text();
@@ -141,15 +145,14 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 			);
 		}
 		markHandshake();
-		return body.result;
+		return revive(body.result, 0);
 	};
 
 	// Two call forms on one entry point, and the same code on every serving
-	// path. `invoke(plugin, command, args)` is the plugin form; a second
+	// path: `invoke(plugin, command, args)` is the plugin form, and a second
 	// argument that is not a string is the app form, `invoke(name, args)`, which
-	// routes through the always-registered `app` namespace. The name is written
-	// here rather than imported because this function's own source text is the
-	// page's copy of it.
+	// routes through the always-registered `app` namespace. Both names are
+	// written here because this function's own source text is the page's copy.
 	const APP = "app";
 	const invoke = (name: string, command?: unknown, args?: unknown): Promise<unknown> => {
 		if (typeof command === "string") return call(name, command, args);

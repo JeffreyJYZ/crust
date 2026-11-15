@@ -89,12 +89,31 @@ describe("logging level", () => {
 		}
 	});
 
+	test("trace is the lowest level, accepted and written when it is configured", async () => {
+		const root = await scratch();
+		try {
+			const plugin = pluginAt(root);
+			expect(call(plugin, "setLevel", { level: "trace" })).toEqual({
+				level: "trace",
+				changed: true,
+			});
+			const result = await (call(plugin, "write", {
+				level: "trace",
+				message: "finest detail",
+			}) as Promise<WriteResult>);
+			expect(result.written).toBe(true);
+			expect(result.line).toBe("2026-11-15T00:00:00.000Z TRACE finest detail");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	test("an unknown level is refused, not written as-is", async () => {
 		const root = await scratch();
 		try {
 			const plugin = pluginAt(root);
 			const result = await (call(plugin, "write", {
-				level: "trace",
+				level: "verbose",
 				message: "nope",
 			}) as Promise<WriteResult>);
 			expect(result).toEqual({ written: false, reason: "bad-level" });
