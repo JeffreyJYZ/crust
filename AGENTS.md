@@ -56,3 +56,11 @@ A green gate is the only proof a landing is safe.
 - **Say so before anything that takes focus, moves a window or asks for a physical click** — their
   screen is theirs. A performed click they reported outranks a missing log line, because
   instrumentation may predate the log file.
+
+## Docs site (`site/`)
+
+- **The UI is built on `@ui-sdk/react`** — read `site/node_modules/@ui-sdk/react/docs/llms.txt` first
+  and only the component pages a change needs; it ships no styles, so every look comes from the site's
+  own tokens in `site/app/globals.css`.
+- **Every page carries the `jyz.land` backlink** from the root layout footer; a new subdomain without
+  it is unfinished.
