@@ -24,6 +24,12 @@ export interface AssembleAppOptions {
 	iconPath?: string;
 	/** `LSMinimumSystemVersion`, e.g. `13.0`. */
 	minimumSystemVersion: string;
+	/**
+	 * A custom URL scheme to register in `Info.plist`. When set, macOS routes
+	 * `<scheme>://…` links to this bundle and the app delegate hears them; absent
+	 * leaves `CFBundleURLTypes` out entirely, so no link is ever routed here.
+	 */
+	urlScheme?: string;
 	/** Directory the bundle is created in. Defaults to `dist`. */
 	outDir?: string;
 }
@@ -100,6 +106,7 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 			version: options.version,
 			minimumSystemVersion: options.minimumSystemVersion,
 			hasIcon,
+			urlScheme: options.urlScheme,
 		}),
 		"utf8",
 	);

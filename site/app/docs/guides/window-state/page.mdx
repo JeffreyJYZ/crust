@@ -1,0 +1,70 @@
+# Window state
+
+Where a window was, and where to put it. Two plugins, both registered on macOS: `window-state` saves
+and restores a frame, `positioner` moves a window to a fixed place on the main screen.
+
+## save, restore, forget
+
+```js
+await window.crust.invoke("window-state", "save", { label: "main" });
+// { ok: true, label: "main", frame: { x: 120, y: 80, width: 900, height: 640 } }
+```
+
+| command | arguments | answers |
+| --- | --- | --- |
+| `save` | `{ label }` | `{ ok: true, label, frame }` |
+| `restore` | `{ label }` | `{ ok: true, label, restored, frame? }` |
+| `forget` | `{ label }` | `{ ok: true, label, removed }` |
+
+`restore` applies the stored size and then the stored position, and reports the frame it applied. With
+no entry it answers `restored: false` and no `frame` — that is an answer, not a failure, and the
+window stays at its configured size. `forget` answers `removed: false` when there was nothing stored.
+
+## Where the file is
+
+One JSON file, `window-state.json`, holding `{ label: { x, y, width, height } }`. It sits under
+`CRUST_DATA_DIR` when that is set, else `~/Library/Application Support/<app>/`, where `<app>` is the
+name the plugin was built with (`crust` for the default instance).
+
+A missing, unreadable or corrupt file reads as an empty state: refusing to open a window over a
+half-written JSON is worse than forgetting where it was. Every write is a temp file renamed into
+place, so a crash mid-write leaves the previous file intact.
+
+```js
+app.on("ready", async () => {
+	await window.crust.invoke("window-state", "restore", { label: "main" });
+});
+```
+
+## positioner
+
+Five places, on the main screen's visible frame — the one that excludes the menu bar and the Dock:
+
+| command | arguments | answers |
+| --- | --- | --- |
+| `center` | `{ label }` | `{ ok: true, label, x, y, placed: true }` |
+| `topLeft` | `{ label }` | same |
+| `topRight` | `{ label }` | same |
+| `bottomLeft` | `{ label }` | same |
+| `bottomRight` | `{ label }` | same |
+
+```js
+await window.crust.invoke("positioner", "topRight", { label: "palette" });
+// { ok: true, label: "palette", x: 1420, y: 780, placed: true }
+```
+
+`y` grows upward, as AppKit's does, so "top" is the largest `y`: a `topLeft` window sits under the
+menu bar and a `bottomLeft` one above the Dock. Coordinates are whole points, rounded once.
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `invalid-label` | `label` missing or not a non-empty string |
+| `unknown-window` | no open window holds that label |
+| `unknown-adapter` | the adapter lacks a member the command needs, or no screen frame is usable |
+| `handler-error` | the adapter threw, or a getter answered no geometry |
+| `not-implemented` | no window adapter on this platform, so neither plugin can act |
+
+`not-implemented` is the bridge's own error and carries `requires: "NSWindow"`; the rest arrive as a
+200 with `{ ok: false, code, message }`.

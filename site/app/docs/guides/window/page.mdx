@@ -38,8 +38,36 @@ await window.crust.invoke("window", "create", {
 | `setTitle` | `{ label, title }` | `{ ok: true, label, title }` |
 | `list` | none | `{ ok: true, labels }` |
 | `isOpen` | `{ label }` | `{ ok: true, label, open }` |
+| `setSize` | `{ label, width, height }` | `{ ok: true, label, width, height }` |
+| `getSize` | `{ label }` | `{ ok: true, label, width, height }` |
+| `setPosition` | `{ label, x, y }` | `{ ok: true, label, x, y }` |
+| `getPosition` | `{ label }` | `{ ok: true, label, x, y }` |
+| `setAlwaysOnTop` | `{ label, value }` | `{ ok: true, label, alwaysOnTop }` |
+| `isAlwaysOnTop` | `{ label }` | `{ ok: true, label, alwaysOnTop }` |
+| `setFullscreen` | `{ label, value }` | `{ ok: true, label, fullscreen }` |
+| `isFullscreen` | `{ label }` | `{ ok: true, label, fullscreen }` |
+| `minimize` | `{ label }` | `{ ok: true, label, minimized: true }` |
+| `unminimize` | `{ label }` | `{ ok: true, label, minimized: false }` |
+| `isMinimized` | `{ label }` | `{ ok: true, label, minimized }` |
+| `maximize` | `{ label }` | `{ ok: true, label, maximized: true }` |
+| `isMaximized` | `{ label }` | `{ ok: true, label, maximized }` |
 
-Success is `{ ok: true, … }`. Failure is an ordinary 200 with `{ ok: false, code, message, label? }`, where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
+Success is `{ ok: true, … }`. Failure is an ordinary 200 with `{ ok: false, code, message, label? }`, where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-position`, `invalid-value`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
+
+## Size and position
+
+```js
+await window.crust.invoke("window", "setSize", { label: "main", width: 900, height: 640 });
+await window.crust.invoke("window", "setPosition", { label: "main", x: 120, y: 80 });
+```
+
+- **Size is two positive integers, refused not clamped.** `0` and `12.5` are `invalid-size`, because a silently resized window hides the bug.
+- **Position is two integers, and negative is real.** A negative `x` is a window on a display left of the main one, so only a non-integer is `invalid-position`.
+- **`y` grows upward, as AppKit's.** A larger `y` is nearer the top of the screen.
+- **A flag takes a real boolean.** `"false"` would read as on, so a string is `invalid-value`; `setAlwaysOnTop` and `setFullscreen` both answer the state that follows.
+- **The three toggles report the state, not "done".** `minimize` answers `minimized: true`, `unminimize` answers `minimized: false`, and each getter answers the window's own answer.
+- **A getter answers `false` rather than guessing.** The adapter's optional member is compared with `=== true`, so a platform without it reads `false`.
+- **A member the adapter lacks is `unknown-adapter`**, naming the member and the command, never a silent no-op.
 
 A label that is already open is `duplicate-label`: the platform map is keyed by label, and a second window would replace the first.
 

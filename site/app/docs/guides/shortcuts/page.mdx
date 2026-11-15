@@ -1,0 +1,65 @@
+# Shortcuts
+
+Process-wide hot keys, through Carbon's `RegisterEventHotKey`. The plugin is named `shortcut`
+(singular) and macOS registers it, so a page can call it directly.
+
+## register
+
+```js
+const result = await window.crust.invoke("shortcut", "register", {
+	accelerator: "CommandOrControl+Shift+K",
+});
+// { ok: true, accelerator: "command+shift+k" }
+```
+
+A registration answers the canonical spelling, and that is the name every other command matches, so
+`Cmd+Shift+K` and `command+shift+k` are one hot key and a second registration of either is refused.
+
+The accelerator is modifiers, then the key, joined by `+`:
+
+| part | accepted |
+| --- | --- |
+| modifier | `command`, `control`, `option`, `shift`; aliases `cmd`, `cmdorctrl`, `commandorcontrol`, `ctrl`, `alt`, `opt` |
+| key | `a`–`z`, `0`–`9`, `f1`–`f19`, the named keys `escape tab space enter backspace forwarddelete insert home end pageup pagedown up down left right`, the punctuation `- = [ ] ; ' , . /` and the backtick |
+
+The last token is the key and everything before it is a modifier. Canonical order is command,
+control, option, shift.
+
+## The press
+
+A hot key fires outside any command, so it arrives as an event:
+
+```js
+const off = window.crust.listen("shortcut", ({ accelerator }) => {
+	console.log(accelerator); // "command+shift+k"
+});
+```
+
+The event carries the canonical accelerator, and it fires whether or not the app is frontmost — that
+is what makes it global. `off()` unsubscribes.
+
+## Commands
+
+| command | arguments | answers |
+| --- | --- | --- |
+| `register` | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregister` | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregisterAll` | none | `{ removed }` |
+| `isRegistered` | `{ accelerator }` | boolean |
+| `list` | none | canonical accelerators |
+
+`isRegistered` answers `false` for a malformed accelerator instead of a failure, and `list` reads the
+registry the plugin owns, so neither needs an OS round-trip.
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `bad-accelerator` | a token the grammar has no name for; `part` is that token, verbatim |
+| `already-registered` | this process already holds that canonical accelerator |
+| `not-registered` | `unregister` named one nothing holds |
+| `native-failed` | `RegisterEventHotKey` refused, or the C unit would not compile |
+| `not-implemented` | no adapter, so nothing can reach the window server |
+
+`bad-accelerator` and `native-failed` carry `part` when a token can be named, so a settings UI can
+point at the broken piece rather than quoting the whole string.

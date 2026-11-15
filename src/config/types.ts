@@ -32,10 +32,24 @@ export interface BuildConfig {
 	assets?: string;
 	/** LSMinimumSystemVersion in Info.plist. */
 	minimumSystemVersion?: string;
+	/**
+	 * A custom URL scheme the bundle claims (`crust://…`). Written into the
+	 * bundle's `Info.plist` as `CFBundleURLTypes`, which is what makes macOS
+	 * hand those URLs to this app instead of opening a browser.
+	 */
+	urlScheme?: string;
 }
 
 export interface SecurityConfig {
 	csp?: string;
+}
+
+/** What `crust:shell` may run; absent means nothing, because the allowlist is deny-by-default. */
+export interface ShellConfig {
+	/** Program names, or absolute paths, a page may spawn. */
+	allow?: string[];
+	/** Directory every `cwd` and every path-form program must stay inside. */
+	cwdRoot?: string;
 }
 
 export interface CrustConfig {
@@ -45,6 +59,7 @@ export interface CrustConfig {
 	build?: BuildConfig;
 	plugins?: string[];
 	security?: SecurityConfig;
+	shell?: ShellConfig;
 }
 
 export interface ConfigIssue {

@@ -1,6 +1,11 @@
 import type { Validator } from "./validator.ts";
 
-export const BUILD_KEYS = ["beforeBuildCommand", "assets", "minimumSystemVersion"] as const;
+export const BUILD_KEYS = [
+	"beforeBuildCommand",
+	"assets",
+	"minimumSystemVersion",
+	"urlScheme",
+] as const;
 
 export function validateBuild(v: Validator, value: unknown): void {
 	if (value === undefined) return;
@@ -10,4 +15,5 @@ export function validateBuild(v: Validator, value: unknown): void {
 	v.string(build, "beforeBuildCommand", "build", false);
 	v.string(build, "assets", "build", false);
 	v.string(build, "minimumSystemVersion", "build", false);
+	v.string(build, "urlScheme", "build", false);
 }

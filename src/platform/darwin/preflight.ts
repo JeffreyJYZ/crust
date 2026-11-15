@@ -40,6 +40,19 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSWindow", "isReleasedWhenClosed"],
 	["NSWindow", "isKeyWindow"],
 	["NSWindow", "close"],
+	// The state commands. `styleMask` is the read beside the `toggleFullScreen:`
+	// flip: bit 14 is NSWindowStyleMaskFullScreen, and `-isFullScreen` does not
+	// resolve on macOS 27 (measured 2026-11-15), so the mask is the state.
+	["NSWindow", "setFrame:display:"],
+	["NSWindow", "frame"],
+	["NSWindow", "setLevel:"],
+	["NSWindow", "level"],
+	["NSWindow", "styleMask"],
+	["NSWindow", "toggleFullScreen:"],
+	["NSWindow", "isZoomed"],
+	["NSWindow", "zoom:"],
+	["NSWindow", "miniaturize:"],
+	["NSWindow", "deminiaturize:"],
 	["WKWebView", "init"],
 	["WKWebView", "loadRequest:"],
 	["NSApplication", "setActivationPolicy:"],

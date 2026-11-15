@@ -52,6 +52,16 @@ export interface Shim {
 		shim_window_is_released_when_closed: LooseSymbol;
 		shim_window_is_key: LooseSymbol;
 		shim_window_is_miniaturized: LooseSymbol;
+		shim_window_set_frame: LooseSymbol;
+		shim_window_frame_num: LooseSymbol;
+		shim_window_set_level: LooseSymbol;
+		shim_window_level: LooseSymbol;
+		shim_window_is_fullscreen: LooseSymbol;
+		shim_window_toggle_fullscreen: LooseSymbol;
+		shim_window_is_zoomed: LooseSymbol;
+		shim_window_zoom: LooseSymbol;
+		shim_window_miniaturize: LooseSymbol;
+		shim_window_deminiaturize: LooseSymbol;
 
 		shim_on_main_runloop: LooseSymbol;
 		shim_window_is_on_active_space: LooseSymbol;

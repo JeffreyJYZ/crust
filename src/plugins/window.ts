@@ -1,11 +1,12 @@
 /**
- * `crust:window` — create, close, focus, title, list, isOpen. `NSWindow` is AppKit and this module owns none: the native half is a parameter, so it works unchanged on a platform with none, and without an adapter every command returns a typed `NotImplemented` naming the selector — never a silent undefined, never a resolved fake.
+ * `crust:window` — create, close, focus, title, list, isOpen, plus the state group (size, position, always-on-top, fullscreen, minimize, maximize). `NSWindow` is AppKit and this module owns none: the native half is a parameter, so it works unchanged on a platform with none, and without an adapter every command returns a typed `NotImplemented` naming the selector — never a silent undefined, never a resolved fake.
  * `create` is the one command whose native half is optional (it postdates the other five), so an old adapter still compiles and answers `unknown-adapter`; its macOS implementation is `DarwinPlatform.createWindow`, and this file never grows a second one. The adapter contract carries rules the type cannot: an untracked label throws `WindowAdapterError("unknown-window")` and one already held throws `duplicate-label` rather than replacing the entry — `DarwinPlatform` keeps a closed window addressable, so only it can tell "gone from `list`" from "still in the map". Both become values before the bridge.
  */
 
 import { definePlugin, type NotImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, knownWindow, missingWindow, readLabel } from "./window-args.ts";
 import { createWindowCommand } from "./window-create.ts";
+import { type WindowStateCommands, windowStateCommands } from "./window-state.ts";
 import type {
 	WindowCloseResult,
 	WindowCreateArgs,
@@ -31,7 +32,7 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 		setTitle: (args: WindowSetTitleArgs) => WindowTitleResult | WindowFailure | NotImplemented;
 		list: () => WindowListResult | WindowFailure | NotImplemented;
 		isOpen: (args: WindowLabelArgs) => WindowOpenResult | WindowFailure | NotImplemented;
-	}
+	} & WindowStateCommands
 > {
 	const act = <Result>(
 		command: string,
@@ -111,6 +112,9 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 					(native, label) => ({ ok: true as const, label, open: native.isOpen(label) }),
 					args,
 				),
+			// Size, position, always-on-top, fullscreen, minimize and maximize live
+			// in their own modules; they refuse in the same order `act` does.
+			...windowStateCommands(adapter),
 		},
 	});
 }

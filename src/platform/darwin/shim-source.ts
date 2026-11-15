@@ -13,6 +13,7 @@ import sheetBlock from "./shim/70_sheet_block.c" with { type: "text" };
 import openPanel from "./shim/75_open_panel.c" with { type: "text" };
 import savePanel from "./shim/80_save_panel.c" with { type: "text" };
 import sheetResult from "./shim/85_sheet_result.c" with { type: "text" };
+import windowState from "./shim/92_window_state.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
@@ -27,6 +28,7 @@ export const SHIM_PARTS = [
 	openPanel,
 	savePanel,
 	sheetResult,
+	windowState,
 ] as const;
 
 /**
@@ -48,6 +50,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/darwin/shim/75_open_panel.c",
 	"src/platform/darwin/shim/80_save_panel.c",
 	"src/platform/darwin/shim/85_sheet_result.c",
+	"src/platform/darwin/shim/92_window_state.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

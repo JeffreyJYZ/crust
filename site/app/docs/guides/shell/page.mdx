@@ -1,0 +1,68 @@
+# Shell
+
+Spawn an allowlisted program, read its bounded output, kill it, list what is live. The runtime
+registers it under `shell`, and the config decides what a page may run:
+
+```ts
+// crust.config.ts
+shell: {
+	allow: ["git", "/opt/homebrew/bin/ffmpeg"],
+	cwdRoot: "/Users/you/project",
+},
+```
+
+`allow` names the programs a page may run: a bare name, or an absolute path. A relative path is
+refused, because it would resolve against a `cwd` the page supplies and so name different programs.
+An absent `shell` section means an empty allowlist and every `spawn` is refused by name — the default
+is deny, never allow.
+
+`cwdRoot` is the only directory a `cwd` or a path-form program may resolve inside. Absent, it is the
+process working directory; a built app runs from `/`, so name it.
+
+No shell is ever invoked: a page's argument reaches the program as argv, never as a command line, so
+there is no quoting to get wrong and no `sh -c` to inject into.
+
+## Commands
+
+| command | arguments | answers |
+| --- | --- | --- |
+| `spawn` | `{ program, args?, cwd?, env? }` | `{ ok: true, id }` |
+| `output` | `{ id }` | `{ ok: true, stdout, stderr, exitCode, signal }` |
+| `kill` | `{ id }` | `{ ok: true, killed, id }` |
+| `list` | none | `{ ok: true, ids }` |
+
+```js
+const { id } = await window.crust.invoke("shell", "spawn", {
+	program: "git",
+	args: ["status", "--short"],
+});
+const out = await window.crust.invoke("shell", "output", { id });
+```
+
+`spawn` answers as soon as the process exists, not when it ends. `output` reads what has been
+collected so far and is complete only after the process is gone; `exitCode` is `null` for a killed
+process, which reports `signal` instead. `list` holds live processes only, while `output` still
+answers for a finished one.
+
+## Limits
+
+- **500 lines per stream.** Older lines drop, so a chatty program cannot grow the buffer.
+- **8192 characters per line.** A longer line is kept in pieces rather than unbounded.
+- **256 finished records.** Past that the oldest record is dropped and its `output` becomes
+  `unknown-process`.
+- **No stdin, no pty.** A program that prompts gets nothing; one that needs a terminal is out of
+  scope.
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `invalid-args` | `program` empty or not a string, `args` not an array of strings, `env` not an object of strings, or no `{ id }` |
+| `program-not-allowed` | the basename is not in `allow` |
+| `program-outside-root` | a path-form program resolves outside `cwdRoot` |
+| `cwd-not-allowed` | `cwd` resolves outside `cwdRoot` |
+| `spawn-failed` | the program was allowed and still would not start |
+| `unknown-process` | no live or kept record with that id |
+
+Every one is a 200 with `{ ok: false, code, message }`, and the refusal happens before any process
+exists: `program-not-allowed` means nothing was started.

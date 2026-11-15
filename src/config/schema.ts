@@ -8,13 +8,14 @@ import { validateApp } from "./validate-app.ts";
 import { validateBuild } from "./validate-build.ts";
 import { validateDev } from "./validate-dev.ts";
 import { validateSecurity } from "./validate-security.ts";
+import { validateShell } from "./validate-shell.ts";
 import { validateWindows } from "./validate-windows.ts";
 import { Validator } from "./validator.ts";
 
 export * from "./types.ts";
 export { ConfigError } from "./issues.ts";
 
-const ROOT_KEYS = ["app", "windows", "dev", "build", "plugins", "security"] as const;
+const ROOT_KEYS = ["app", "windows", "dev", "build", "plugins", "security", "shell"] as const;
 
 /**
  * Validate an already-parsed config object.
@@ -34,6 +35,7 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		if (root.plugins !== undefined) v.stringArray(root, "plugins", "config");
 
 		validateSecurity(v, root.security);
+		validateShell(v, root.shell);
 	}
 
 	if (v.issues.length > 0) throw new ConfigError(source, v.issues);

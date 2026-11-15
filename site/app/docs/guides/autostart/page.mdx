@@ -1,0 +1,48 @@
+# Autostart
+
+Launch at login, as a LaunchAgent: `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`.
+Registered on macOS under `autostart`, so a page can call it.
+
+## enable
+
+```js
+const result = await window.crust.invoke("autostart", "enable", {
+	appPath: "/Applications/Notes.app",
+});
+// { ok: true, enabled: true, plistPath: "/Users/you/Library/LaunchAgents/land.jyz.notes.plist" }
+```
+
+| argument | notes |
+| --- | --- |
+| `appPath` | required; the absolute path of the `.app` bundle |
+| `bundleId` | optional; defaults to the app's own `CFBundleIdentifier` |
+
+The id is read from the bundle's `Contents/Info.plist` when it is not passed, so a built app needs no
+second copy of its identifier. A bare executable has no bundle to read, so it needs an explicit
+`bundleId`.
+
+The plist is written to a sibling temp file and renamed into place, so launchd never reads a half
+plist. Nothing calls `launchctl`: the file takes effect at the next login.
+
+## disable and isEnabled
+
+```js
+await window.crust.invoke("autostart", "disable", {});
+// { ok: true, enabled: false, plistPath: "…/land.jyz.notes.plist" }
+
+const { enabled } = await window.crust.invoke("autostart", "isEnabled", {});
+```
+
+Both take an optional `{ bundleId }`. After one `enable` the plugin remembers the id it used, so a
+page that enabled at first launch needs no argument later. `isEnabled` is a file existence test on
+that plist, which is exactly what launchd reads.
+
+## Failure codes
+
+| code | when |
+| --- | --- |
+| `bad-request` | `appPath` empty or not a string, no bundle id known yet, or the bundle declares none |
+| `not-found` | nothing exists at `appPath` |
+| `handler-error` | the write or the delete failed; the message is the filesystem's |
+
+Every command answers a typed object rather than throwing, and a refusal names the path it refused.

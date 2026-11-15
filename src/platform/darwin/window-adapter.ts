@@ -2,6 +2,7 @@ import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import { shim } from "./index.ts";
 import { cstr, S } from "./objc.ts";
 import type { DarwinPlatform } from "./platform.ts";
+import { windowStateAdapter } from "./window-state-adapter.ts";
 
 // --- window adapter --------------------------------------------------------
 
@@ -47,6 +48,9 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 	};
 
 	return {
+		// Geometry, level and the three toggles, each on the same `require`, so an
+		// unknown label refuses there too.
+		...windowStateAdapter(require),
 		/**
 		 * One `platform.window(label)` answers both questions: a handle means a live window and is refused, `undefined` means absent *or* closed and the call has already pruned the closed entry — which stops `createWindow` refusing a label nobody can see in `list`. The live case throws before any release.
 		 */

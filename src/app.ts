@@ -125,6 +125,17 @@ export class App {
 
 		this.#started = true;
 		await platform.start();
+		// A deep link arrives before any page exists: the launch URL is claimed
+		// here, and the plugin's `url()` answers it once a page asks.
+		if (process.platform === "darwin") {
+			const link = await import("@/platform/darwin/deep-link");
+			link.installDeepLinkHandler();
+			const launched = link.takeLaunchUrl();
+			if (launched) {
+				const { deepLink } = await import("@/plugins");
+				deepLink.launch(launched);
+			}
+		}
 		openWindows(platform, config, this.#bridgeUrl);
 		await emit(this.#listeners, "ready");
 		platform.pump(PUMP_INTERVAL_MS);

@@ -18,6 +18,7 @@ import {
 } from "./runtime-host.ts";
 import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
 import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
+import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 
@@ -64,6 +65,14 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 
 	const core = (await import("@/plugins")).corePlugins;
 	const attachPlatform = options.attachPlatform !== false;
+	// One running copy per app id: the lock is claimed before the platform
+	// exists, so a second launch raises the copy already running and never
+	// builds AppKit, imports the entry, or opens a window.
+	const single = await claimSingleInstance({ config, attachPlatform });
+	if (!single.acquired) {
+		await quitSecondInstance(single.pid, { activate: single.activate });
+		process.exit(0);
+	}
 	// The platform is built before the plugins because the window adapter reads
 	// labels and native pointers from the same instance `app.attach` receives.
 	// Constructing it starts nothing; `app.run()` calls `start()`.
@@ -71,7 +80,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	const platform: DarwinPlatform | undefined = darwinPlatform?.createPlatform({
 		appName: config.app.name,
 	});
-	const plugins = await nativePlugins(core, platform);
+	const plugins = [...(await nativePlugins(core, platform, config.shell)), single.plugin];
 
 	const frontendRoot = (await isDirectory(root)) ? root : undefined;
 	const indexHtml = await readIndex(frontendRoot, options.assets);
