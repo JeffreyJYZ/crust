@@ -1,6 +1,10 @@
 /**
- * `crust:window`'s public vocabulary: what a create asks for, what the native half must supply, and every shape a command answers. Split out of `window.ts`, which re-exports all of it so the contract stays readable beside the commands.
+ * `crust:window`'s public vocabulary: what a create asks for, what the native half must supply, and every shape a command answers. Split out of `window.ts`, which re-exports all of it so the contract stays readable beside the commands. The state half — size, position, always-on-top, fullscreen, minimize, maximize — is `window-state-types.ts`, re-exported here.
  */
+
+import type { WindowStateNative } from "./window-state-types.ts";
+
+export * from "./window-state-types.ts";
 
 /** What `window.create` asks a platform to build. */
 export interface WindowCreateOptions {
@@ -22,7 +26,7 @@ export interface WindowCreateOptions {
 }
 
 /** The native half, supplied by the platform. */
-export interface WindowNative {
+export interface WindowNative extends WindowStateNative {
 	/**
 	 * Build a real window with its webview, load `options.url` (or the app's document) and track it under `options.label`. Optional because it postdates the other five commands: an adapter without it still satisfies this interface and the plugin answers `unknown-adapter`.
 	 * On macOS it is `DarwinPlatform.createWindow(options)`, whose own documented limits are the adapter's to close: a relative URL cannot be handed to `NSURL` (the adapter resolves it against the document it knows), and a label a *closed* window still holds must be released first with `platform.window(label)` — measured: without that release, re-creating a closed label throws `createWindow: window "…" already exists`.
@@ -50,6 +54,8 @@ export type WindowErrorCode =
 	| "unknown-window"
 	| "invalid-label"
 	| "invalid-size"
+	| "invalid-position"
+	| "invalid-value"
 	| "invalid-url"
 	| "duplicate-label"
 	| "unknown-adapter"
@@ -130,4 +136,24 @@ export interface WindowCreateArgs {
 }
 
 /** The command names, in the order the plugin declares them. */
-export const WINDOW_COMMANDS = ["create", "close", "focus", "setTitle", "list", "isOpen"] as const;
+export const WINDOW_COMMANDS = [
+	"create",
+	"close",
+	"focus",
+	"setTitle",
+	"list",
+	"isOpen",
+	"setSize",
+	"getSize",
+	"setPosition",
+	"getPosition",
+	"setAlwaysOnTop",
+	"isAlwaysOnTop",
+	"setFullscreen",
+	"isFullscreen",
+	"minimize",
+	"unminimize",
+	"isMinimized",
+	"maximize",
+	"isMaximized",
+] as const;

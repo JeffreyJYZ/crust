@@ -18,6 +18,19 @@ describe("no adapter", () => {
 			plugin.commands.setTitle({ label: "main", title: "x" }),
 			plugin.commands.list(),
 			plugin.commands.isOpen({ label: "main" }),
+			plugin.commands.setSize({ label: "main", width: 800, height: 600 }),
+			plugin.commands.getSize({ label: "main" }),
+			plugin.commands.setPosition({ label: "main", x: 0, y: 0 }),
+			plugin.commands.getPosition({ label: "main" }),
+			plugin.commands.setAlwaysOnTop({ label: "main", value: true }),
+			plugin.commands.isAlwaysOnTop({ label: "main" }),
+			plugin.commands.setFullscreen({ label: "main", value: true }),
+			plugin.commands.isFullscreen({ label: "main" }),
+			plugin.commands.minimize({ label: "main" }),
+			plugin.commands.unminimize({ label: "main" }),
+			plugin.commands.isMinimized({ label: "main" }),
+			plugin.commands.maximize({ label: "main" }),
+			plugin.commands.isMaximized({ label: "main" }),
 		];
 
 		for (const result of results) {

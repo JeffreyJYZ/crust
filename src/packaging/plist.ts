@@ -3,6 +3,8 @@
  * release verifier checks against.
  */
 
+import { deepLinkPlistEntry, mergeDeepLinkPlist } from "./deep-link.ts";
+
 /**
  * String-valued keys `verify-release` insists on. Exported so the verifier and
  * the writer cannot drift: one list, both sides.
@@ -39,8 +41,15 @@ export function infoPlist(options: {
 	minimumSystemVersion: string;
 	/** Whether `Resources/icon.icns` was written. */
 	hasIcon: boolean;
+	/**
+	 * A custom scheme to register in `CFBundleURLTypes`, so macOS routes that
+	 * scheme here. Absent means the key is absent: a bundle with no scheme is not
+	 * a bundle that accepts links, and an empty `CFBundleURLTypes` is a plist
+	 * LaunchServices reads as a claim on nothing.
+	 */
+	urlScheme?: string;
 }): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -78,4 +87,9 @@ export function infoPlist(options: {
 	}</dict>
 </plist>
 `;
+	// The URL name is the bundle identifier, not the scheme: LaunchServices keys on
+	// that name, so two apps claiming one scheme are distinguishable to it.
+	return options.urlScheme === undefined
+		? body
+		: mergeDeepLinkPlist(body, deepLinkPlistEntry(options.urlScheme, { name: options.id }));
 }

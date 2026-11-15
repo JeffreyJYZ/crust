@@ -42,11 +42,18 @@ describe("definePlugin", () => {
 });
 
 describe("registry", () => {
-	test("registers the four core plugins and runs fs end to end", async () => {
+	test("registers every core plugin and runs fs end to end", async () => {
 		const registry = coreRegistry();
-		expect(registry.names()).toEqual(["fs", "dialog", "notification", "tray"]);
-		expect(registry.size).toBe(4);
-		expect(corePlugins.length).toBe(4);
+		expect(registry.names()).toEqual([
+			"fs",
+			"dialog",
+			"notification",
+			"tray",
+			"autostart",
+			"logging",
+		]);
+		expect(registry.size).toBe(6);
+		expect(corePlugins.length).toBe(6);
 
 		const dir = await tempDir();
 		const path = join(dir, "note.txt");

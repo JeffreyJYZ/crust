@@ -91,6 +91,20 @@ function compile() {
 			shim_window_is_key: { args: [P], returns: I32 },
 			shim_window_is_miniaturized: { args: [P], returns: I32 },
 
+			// The state commands: the frame in and out (one component at a time,
+			// because an NSRect return needs a struct prototype bun:ffi has no
+			// type for), the window level, and the window-level toggles.
+			shim_window_set_frame: { args: [P, F64, F64, F64, F64], returns: V },
+			shim_window_frame_num: { args: [P, I32], returns: F64 },
+			shim_window_set_level: { args: [P, I64], returns: V },
+			shim_window_level: { args: [P], returns: I64 },
+			shim_window_is_fullscreen: { args: [P], returns: I32 },
+			shim_window_toggle_fullscreen: { args: [P], returns: V },
+			shim_window_is_zoomed: { args: [P], returns: I32 },
+			shim_window_zoom: { args: [P], returns: V },
+			shim_window_miniaturize: { args: [P], returns: V },
+			shim_window_deminiaturize: { args: [P], returns: V },
+
 			shim_on_main_runloop: { args: [], returns: I32 },
 			shim_window_is_on_active_space: { args: [P], returns: I32 },
 
@@ -155,3 +169,4 @@ export { createPlatform, DarwinPlatform } from "./platform.ts";
 export { PREFLIGHT, preflightError, type PreflightEntry } from "./preflight.ts";
 export { awaitSheetResult, type SheetReadings } from "./sheet.ts";
 export { darwinWindowAdapter } from "./window-adapter.ts";
+export { darwinMenuAdapter } from "./menu-api.ts";

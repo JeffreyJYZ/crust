@@ -109,6 +109,7 @@ export async function build(options: CliOptions): Promise<number> {
 			version: config.app.version,
 			iconPath,
 			minimumSystemVersion,
+			urlScheme: config.build?.urlScheme,
 		},
 	});
 

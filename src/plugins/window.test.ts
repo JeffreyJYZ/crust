@@ -8,7 +8,7 @@ import { WindowAdapterError } from "./window-types.ts";
 import { createWindowPlugin, WINDOW_COMMANDS, windowPlugin } from "./window.ts";
 
 describe("window plugin shape", () => {
-	test("is named window and declares exactly the six commands", () => {
+	test("is named window and declares exactly the commands WINDOW_COMMANDS names", () => {
 		const plugin = createWindowPlugin(fakeAdapter());
 		expect(plugin.name).toBe("window");
 		expect(Object.keys(plugin.commands).sort()).toEqual([...WINDOW_COMMANDS].sort());

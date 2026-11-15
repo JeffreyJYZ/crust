@@ -66,12 +66,17 @@ export function duplicateLabel(label: string): WindowFailure {
 	};
 }
 
-export function invalidSize(args: unknown, key: "width" | "height", value: unknown): WindowFailure {
+export function invalidSize(
+	args: unknown,
+	key: "width" | "height",
+	value: unknown,
+	command = "create",
+): WindowFailure {
 	return {
 		ok: false,
 		code: "invalid-size",
 		message:
-			`crust: window.create ${key} must be a positive integer, got ${JSON.stringify(value)}` +
+			`crust: window.${command} ${key} must be a positive integer, got ${JSON.stringify(value)}` +
 			` in ${JSON.stringify(args)}`,
 	};
 }
