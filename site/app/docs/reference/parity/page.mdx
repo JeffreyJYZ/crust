@@ -33,12 +33,12 @@ so the app mounts it with `app.use`.
 | --- | --- | --- |
 | Dialog | `dialog.open`, `dialog.save` | same |
 | File system | `fs.read/write/list/stat/rename/remove` | same |
-| Notification | `notification.send` | same |
+| Notifications | `notification.send` | same |
 | Clipboard | `clipboard.read/write/readImage/writeImage` — text and PNG bytes | same |
 | Opener | `opener.openPath/openUrl/revealItem` | same |
 | OS information | `os.info` (family, arch, version, uptime, exe extension), `os.locale`, `os.paths` | same |
 | Global shortcut | `shortcut.register/unregister/unregisterAll/isRegistered/list` | same |
-| Shell / sidecar | `shell.spawn/output/write/close/kill/list`, stdin pipe, `shell-output` events bounded at 500 lines, allowlisted by config | same |
+| Shell | `shell.spawn/output/write/close/kill/list`, stdin pipe, `shell-output` events bounded at 500 lines, allowlisted by config | same |
 | Single instance | `single-instance.acquire/release/activate` | same — the runtime locks `app.id` at launch |
 | Deep linking | `deep-link.scheme/url`; `build.urlScheme` writes `CFBundleURLTypes`, the launch URL is claimed in `app.start()` | same |
 | Autostart | `autostart.enable/disable/isEnabled` | same |
