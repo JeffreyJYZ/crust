@@ -18,7 +18,9 @@ import {
 	type MenuFailureCode,
 	type MenuItemPlan,
 } from "./menu-spec";
+import type { MenuDefaultResult, MenuReadItem, MenuReadResult } from "./menu-read";
 
+export * from "./menu-read";
 export * from "./menu-spec";
 
 export interface MenuFailure {
@@ -48,6 +50,9 @@ export interface MenuAdapter {
 		at: { readonly x: number; readonly y: number },
 	): void;
 	reset(): void;
+	/** The live bar as AppKit holds it; optional, so a write-only adapter still builds. */
+	read?(): readonly MenuReadItem[];
+	isDefault?(): boolean;
 	onSelect(handler: (id: string) => void): () => void;
 }
 
@@ -63,11 +68,13 @@ export function createMenuPlugin(adapter?: MenuAdapter): PluginDefinition<
 			ctx?: PluginContext,
 		) => MenuResult | MenuFailure | NotImplemented;
 		reset: () => MenuResetResult | MenuFailure | NotImplemented;
+		read: () => MenuReadResult | MenuFailure | NotImplemented;
+		isDefault: () => MenuDefaultResult | MenuFailure | NotImplemented;
 	}
 > {
 	const missing = (command: string) =>
 		notImplemented(
-			`menu.${command} needs NSMenu: -[NSMenu initWithTitle:], -addItemWithTitle:action:keyEquivalent: and -setMainMenu: are AppKit, and this platform has no adapter for them. Pass a MenuAdapter to createMenuPlugin when one is reachable.`,
+			`menu.${command} needs NSMenu: NSApplication's menu bar, NSMenu and NSMenuItem are AppKit, and this platform has no adapter for them. Pass a MenuAdapter to createMenuPlugin when one is reachable.`,
 			"NSMenu",
 		);
 
@@ -151,6 +158,25 @@ export function createMenuPlugin(adapter?: MenuAdapter): PluginDefinition<
 					adapter.reset();
 					return { ok: true, reset: true } satisfies MenuResetResult;
 				});
+			},
+
+			read: () => {
+				if (!adapter) return missing("read");
+				const reader = adapter.read;
+				if (typeof reader !== "function") return unknownMember("read");
+				return attempt(
+					() => ({ ok: true, items: [...reader.call(adapter)] }) satisfies MenuReadResult,
+				);
+			},
+
+			isDefault: () => {
+				if (!adapter) return missing("isDefault");
+				const check = adapter.isDefault;
+				if (typeof check !== "function") return unknownMember("isDefault");
+				return attempt(
+					() =>
+						({ ok: true, isDefault: check.call(adapter) }) satisfies MenuDefaultResult,
+				);
 			},
 		},
 	});

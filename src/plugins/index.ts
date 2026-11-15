@@ -86,6 +86,7 @@ export { createOsPlugin, osPlugin, type OsAdapter } from "./os";
 export { createShortcutsPlugin, shortcutsPlugin, type ShortcutAdapter } from "./shortcuts";
 export { createWindowStatePlugin, windowStatePlugin } from "./window-persist";
 export { createPositionerPlugin, positionerPlugin } from "./positioner";
+export { createMenuPlugin, menuPlugin, type MenuAdapter } from "./menu";
 export {
 	createUpdaterPlugin,
 	decodeBase64,

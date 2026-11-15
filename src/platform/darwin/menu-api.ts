@@ -1,89 +1,19 @@
 /**
- * The macOS half of `crust:menu`: NSMenu over bun:ffi, in its own unit (`shim/98_menu_api.c` plus the context part `99_menu_context.c`) because the window shim's parts are one unit assembled in `shim-source.ts` and this one must compile alone, the way `90_clipboard.c` does.
+ * The macOS half of `crust:menu`: NSMenu over bun:ffi, in its own unit (`shim/98_menu_api.c` with the readback `98_menu_read.c` and the context `99_menu_context.c`) because the window shim's parts are one unit assembled in `shim-source.ts` and this one must compile alone, the way `90_clipboard.c` does. The compiler and its symbol list live in `menu-ffi.ts`.
  * **Selection.** The seam is the status item's, reused verbatim: one runtime class whose `crustMenuSelected:` IMP is the JSCallback passed to `menu_api_target`, one static target instance (because `-setTarget:` is unretained), and the row's `tag` read back in C as the index into the live id list.
  */
 
-import { cc, FFIType, JSCallback, ptr } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { FFIType, JSCallback } from "bun:ffi";
 
 import type { MenuAdapter, MenuItemPlan, MenuModifier } from "@/plugins/menu";
 import { shim } from "./index.ts";
+import { type MenuUnit, menuUnit } from "./menu-ffi.ts";
 import { popContextMenu } from "./menu-context.ts";
+import { isDefaultMenu, readMenu } from "./menu-readback.ts";
 import { cstr } from "./objc.ts";
 import { cbuf, checked } from "./status-bar-args.ts";
 
-// A compiled binary has no `import.meta.dir`, so the C unit travels inside the binary
-// as text and is materialised before `cc()` sees it. The two parts are one unit.
-import apiSource from "./shim/98_menu_api.c" with { type: "text" };
-import contextSource from "./shim/99_menu_context.c" with { type: "text" };
-
-const unitSource = [apiSource, contextSource].join("");
-
-const P = FFIType.ptr;
-const I32 = FFIType.i32;
-const I64 = FFIType.i64;
-const F64 = FFIType.f64;
-
-/** The unit's exports, as `bun:ffi` hands them back. */
-export interface MenuUnit {
-	symbols: {
-		menu_api_target: (imp: number) => number;
-		menu_api_begin: () => number;
-		menu_api_item: (
-			label: number,
-			len: number,
-			key: number,
-			keyLen: number,
-			mask: number,
-			tag: number,
-		) => number;
-		menu_api_submenu: (
-			label: number,
-			len: number,
-			key: number,
-			keyLen: number,
-			mask: number,
-		) => number;
-		menu_api_separator: () => number;
-		menu_api_close: () => number;
-		menu_api_install: () => number;
-		menu_api_popup: (x: number, y: number) => number;
-		menu_api_tag: (sender: number) => number;
-	};
-}
-
-function compile(): MenuUnit {
-	/** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
-	const hash = createHash("sha256").update(unitSource).digest("hex").slice(0, 16);
-	const file = join(tmpdir(), `crust-menu-${hash}.c`);
-	if (!existsSync(file)) writeFileSync(file, unitSource);
-
-	return cc({
-		source: file,
-		flags: ["-framework", "AppKit", "-framework", "Foundation"],
-		symbols: {
-			menu_api_target: { args: [P], returns: I32 },
-			menu_api_begin: { args: [], returns: I32 },
-			menu_api_item: { args: [P, I64, P, I64, I32, I32], returns: I32 },
-			menu_api_submenu: { args: [P, I64, P, I64, I32], returns: I32 },
-			menu_api_separator: { args: [], returns: I32 },
-			menu_api_close: { args: [], returns: I32 },
-			menu_api_install: { args: [], returns: I32 },
-			menu_api_popup: { args: [F64, F64], returns: I32 },
-			menu_api_tag: { args: [P], returns: I32 },
-		},
-	}) as unknown as MenuUnit;
-}
-
-let unitOnce: MenuUnit | undefined;
-
-/** Compile at most once per process; `cc()` costs 3–30 ms. */
-export function menuUnit(): MenuUnit {
-	return (unitOnce ??= compile());
-}
+export { type MenuUnit, menuUnit } from "./menu-ffi.ts";
 
 /** NSEventModifierFlags: command 1<<20, shift 1<<17, option 1<<19, control 1<<18. */
 const MASK: Record<MenuModifier, number> = {
@@ -99,8 +29,8 @@ function maskOf(modifiers: readonly MenuModifier[]): number {
 	return mask;
 }
 
-// The ids of the rows built last, indexed by the tag C reports: a click carries an
-// index, and this is what turns it into the id a page hears.
+// Rows built last, indexed by the tag C reports: a click carries an index, and this
+// is what turns it into the id a page hears.
 let ids: string[] = [];
 let route: ((id: string) => void) | undefined;
 
@@ -151,7 +81,7 @@ function channel(unit: MenuUnit): number {
 					// An exception crossing back into AppKit aborts the process.
 				}
 			},
-			{ args: [P, P, P], returns: FFIType.void },
+			{ args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.void },
 		);
 	}
 	const raw: unknown = callback.ptr;
@@ -161,7 +91,7 @@ function channel(unit: MenuUnit): number {
 }
 
 /**
- * Build the menu adapter. The unit compiles on the first command, not at import, and `appName` names the bar `reset()` restores — the same name `startAppKit` installed, so pass the configured one when it is not `crust`.
+ * Build the menu adapter. The unit compiles on the first command, not at import, and `appName` names the bar `reset()` restores — the same name `startAppKit` installed, so pass the configured one when it is not `crust`. `read` and `isDefault` answer from the live bar, which is the only proof a rebuild landed.
  */
 export function darwinMenuAdapter(options: { appName?: string } = {}): MenuAdapter {
 	const appName = options.appName ?? "crust";
@@ -189,6 +119,8 @@ export function darwinMenuAdapter(options: { appName?: string } = {}): MenuAdapt
 			// The default bar is 55_menu.c's, so it is reused rather than rebuilt here.
 			checked(shim().symbols.shim_menu_install(cstr(appName)), "restore the default menu");
 		},
+		read: () => readMenu(unit),
+		isDefault: () => isDefaultMenu(unit, appName),
 		onSelect(handler: (id: string) => void): () => void {
 			route = handler;
 			return () => {

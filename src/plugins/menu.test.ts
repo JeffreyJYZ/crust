@@ -61,13 +61,15 @@ describe("menu plugin shape", () => {
 	test("is named menu, declares three commands and is frozen", () => {
 		const plugin = createMenuPlugin(fake());
 		expect(plugin.name).toBe("menu");
-		expect(Object.keys(plugin.commands).sort()).toEqual(["reset", "setAppMenu", "showContext"]);
+		const names = Object.keys(plugin.commands).sort();
+		expect(names).toEqual(["isDefault", "read", "reset", "setAppMenu", "showContext"]);
 		expect(Object.isFrozen(plugin)).toBe(true);
 	});
 
 	test("the default registration answers not-implemented and names NSMenu", async () => {
 		expect(menuPlugin.name).toBe("menu");
-		for (const command of ["setAppMenu", "showContext", "reset"] as const) {
+		const commands = ["setAppMenu", "showContext", "reset", "read", "isDefault"] as const;
+		for (const command of commands) {
 			const answer = await menuPlugin.commands[command]({ items: [], x: 0, y: 0 });
 			expect(isNotImplemented(answer)).toBe(true);
 			if (isNotImplemented(answer)) expect(answer.requires).toBe("NSMenu");

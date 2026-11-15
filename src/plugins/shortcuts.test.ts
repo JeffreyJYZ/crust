@@ -1,6 +1,5 @@
 /**
- * `crust:shortcut` proofs that need no hot key: the grammar, the registry and the emit path, each against a fake adapter, plus a compile-and-link of the Carbon unit.
- * Nothing here registers a real hot key, so the suite never swallows a key on the machine it runs on; whether macOS delivers a press is stated as unproven in the report rather than faked.
+ * `crust:shortcut` proofs that need no hot key: the grammar, the registry and the emit path, each against a fake adapter. The Carbon half has its own suite in `platform/darwin/shortcuts.test.ts`, so nothing here registers a real hot key and the suite never swallows a key on the machine it runs on.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -12,9 +11,6 @@ import {
 	parseAccelerator,
 	type ShortcutAdapter,
 } from "@/plugins/shortcuts.ts";
-import { shortcutUnitStatus } from "@/platform/darwin/shortcuts.ts";
-
-const darwinOnly = process.platform !== "darwin";
 
 /** The context the bridge always passes; nothing here is pushed to a page. */
 const quiet: PluginContext = { emit: () => undefined };
@@ -169,7 +165,9 @@ describe("shortcut plugin against a fake adapter", () => {
 		const ctx: PluginContext = {
 			emit: (event: string, data: unknown) => emitted.push([event, data]),
 		};
-		await plugin.commands.register({ accelerator: "Cmd+Shift+K" }, ctx);
+		await plugin.commands.register({ accelerator: "CommandOrControl+Shift+K" }, ctx);
+		// Registering is not a press: the page hears nothing until the hot key fires.
+		expect(emitted).toEqual([]);
 		fake.fire("command+shift+k");
 		expect(emitted).toEqual([["shortcut", { accelerator: "command+shift+k" }]]);
 	});
@@ -188,13 +186,5 @@ describe("shortcut plugin without an adapter", () => {
 		}
 		expect(plugin.commands.list()).toEqual([]);
 		expect(plugin.commands.isRegistered({ accelerator: "Cmd+K" })).toBe(false);
-	});
-});
-
-describe("shortcut C unit", () => {
-	test.skipIf(darwinOnly)("compiles and links Carbon through cc()", () => {
-		const status = shortcutUnitStatus();
-		expect(status.reason).toBe("compiled");
-		expect(status.available).toBe(true);
 	});
 });
