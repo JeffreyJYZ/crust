@@ -19,7 +19,6 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPlatform, defaultBackend, preflightError } from "../src/platform/windows/index.ts";
-import { linkReport, shimPath, tccCommand } from "../src/platform/windows/ffi.ts";
 import { Verdict } from "./e2e-harness.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 
@@ -30,13 +29,11 @@ function message(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Why a compile failed, in the terms the linker used: the message, the exact command line the shim
- * was compiled with, and the file each library resolved to. A missing library is what produces a
- * wall of unresolved references, so it is named instead of being left to be inferred.
- */
-function compileFailure(error: unknown): string[] {
-	return [message(error), tccCommand(shimPath()), ...linkReport()];
+/** A multi-line message: the first line after the prefix, the rest aligned under it. */
+function print(prefix: string, text: string): void {
+	const [first, ...rest] = text.split("\n");
+	console.log(`${prefix}${first ?? ""}`);
+	for (const line of rest) console.log(`${" ".repeat(prefix.length)}${line}`);
 }
 
 async function main(): Promise<number> {
@@ -79,29 +76,26 @@ async function main(): Promise<number> {
 	// Win32 and COM export, so a missing entry point surfaces as a compile failure below.
 	const missing = preflightError(report);
 	if (missing) {
-		console.log(`unavailable: ${missing}`);
+		print("unavailable: ", missing);
 		verdict.check("preflight", false, missing.split("\n")[0] ?? missing);
 		return verdict.report("windows:smoke");
 	}
 	verdict.check("preflight", true, "the runtime and loader the shim needs are both present");
 
 	// 2. COM, the window class, then a real window and controller. A machine that refuses any of
-	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *compile*
-	//    is the exception: it is a defect in crust, so it prints the command line and the library
-	//    each name resolved to, which is the difference between "16 unresolved references" and the
-	//    one library that was missing.
+	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
+	//    the exception: `compile()` attaches the exact tcc command line and the file each library
+	//    resolved to, so the failure names the cause instead of being inferred from the throw.
 	const platform = createPlatform({ appName: "crust-smoke", userDataDir: USER_DATA });
 	try {
 		await platform.start();
 	} catch (error) {
-		const [first, ...rest] = compileFailure(error);
-		console.log(`unavailable: ${first ?? "the shim did not compile"}`);
-		for (const line of rest) console.log(`             ${line}`);
-		verdict.check("shim", false, first ?? "the shim did not compile");
+		print("unavailable: ", message(error));
+		verdict.check("shim", false, message(error).split("\n")[0] ?? "the shim did not build");
 		return verdict.report("windows:smoke");
 	}
 	if (platform.unavailable) {
-		console.log(`unavailable: ${platform.unavailable}`);
+		print("unavailable: ", platform.unavailable);
 		verdict.check(
 			"com + class",
 			false,

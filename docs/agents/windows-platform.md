@@ -80,7 +80,8 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 - **The system directory is already a library path on PE** — `tcc_add_systemdir` calls `GetSystemDirectoryA` and adds it, so `-L<System32>` is belt-and-braces rather than the mechanism.
 - **`gdi32` is deliberately not linked** — nothing in the unit calls a gdi32 export: `GetClientRect` is user32 and no device context is created.
 - **`link.test.ts` pins the whole seam** — the three libraries, no `-l` among the flags, the `-L` rule, the exact command line a failure prints, and that every `PREFLIGHT` module is either linked or resolved at runtime.
-- **The smoke prints that command line when the shim will not compile** — plus one line per library naming the file TinyCC would open, so the next failure names the missing library instead of leaving sixteen references to infer it from.
+- **`compile()` attaches that command line to its own throw** — plus one line per library naming the file TinyCC would open, so a build failure names the missing library instead of leaving sixteen references to infer it from, and a throw that is not a build failure is no longer dressed up as a linker problem.
+- **`cc()` returns `{ symbols, close }`, never the bare table** — casting the result straight to `WindowsShim` type-checks through `as unknown as` and makes every call `undefined`, which the real runner reported as `shim.shim_com_init is not a function` one step after the link was fixed (2026-11-16). `shimSymbols()` is the single unwrap, and `symbols.test.ts` pins it plus map-to-interface equality in both directions.
 
 ## Preflight
 
