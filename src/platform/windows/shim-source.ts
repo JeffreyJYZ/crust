@@ -17,18 +17,25 @@ import probe from "./shim/36_probe.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import webview from "./shim/42_webview.c" with { type: "text" };
 
+/**
+ * LF, always. A Windows checkout can hand back CRLF, and the source-scanning assertions in this
+ * layer match on `\n\t` inside multi-line expectations — so without this the same assertion passes
+ * on macOS and Linux and fails only on the Windows runner (measured 2026-11-16, `callback.test.ts`).
+ */
+export const lf = (text: string): string => text.replace(/\r\n/g, "\n");
+
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
-	prelude,
-	win32,
-	guard,
-	windowClass,
-	com,
-	environment,
-	slots,
-	probe,
-	window,
-	webview,
+	lf(prelude),
+	lf(win32),
+	lf(guard),
+	lf(windowClass),
+	lf(com),
+	lf(environment),
+	lf(slots),
+	lf(probe),
+	lf(window),
+	lf(webview),
 ] as const;
 
 /**
