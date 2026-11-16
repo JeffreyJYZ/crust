@@ -16,6 +16,9 @@ crust init my-app --react
 cd my-app && bun install && crust dev
 ```
 
+Not on npm, and not going to be: `crust` on npm is an unrelated 2020 package, and `crust init` pins the dependency as `link:` to the CLI's own tree, so `bun add crust` fetches the wrong thing. Without Homebrew, work from a checkout —
+`git clone https://github.com/JeffreyJYZ/crust && cd crust && bun install && bun run start init my-app` — or run `bun run build:standalone` for one executable that scaffolds with no checkout at all.
+
 `crust dev` starts Vite on 5173 and points the window at it. `bun run build` then produces
 `dist/my-app.app`, ad-hoc signed and double-clickable.
 
@@ -60,16 +63,16 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 ## What ships
 
-| surface | what you get | details |
-| --- | --- | --- |
-| `fs` | read, write, list, stat, rename and remove real files | [files](https://crust.jyz.land/docs/guides/files) |
-| `dialog` | native open and save sheets, non-blocking, with filters | [dialogs](https://crust.jyz.land/docs/guides/dialogs) |
-| `window` | create, focus, close, set the title, and ask whether one is open | [windows](https://crust.jyz.land/docs/guides/window) |
-| `tray` | a menu-bar item with rows that fire into your page | [tray](https://crust.jyz.land/docs/guides/tray) |
-| `notification` | delivered ad-hoc; refused from the temp dir, and a denied id stays denied until you re-enable it | [notifications](https://crust.jyz.land/docs/guides/notifications) |
-| `crust build` / `dmg` / `sign` | `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY` | [packaging](https://crust.jyz.land/docs/guides/package) |
-| `crust dev` | a loopback bridge, or your own dev server with `beforeDevCommand` | [dev server](https://crust.jyz.land/docs/guides/dev) |
-| frontend | embedded asset directory, client-side routes served from `index.html` | [frontend](https://crust.jyz.land/docs/guides/frontend) |
+| surface                        | what you get                                                                                     | details                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `fs`                           | read, write, list, stat, rename and remove real files                                            | [files](https://crust.jyz.land/docs/guides/files)                 |
+| `dialog`                       | native open and save sheets, non-blocking, with filters                                          | [dialogs](https://crust.jyz.land/docs/guides/dialogs)             |
+| `window`                       | create, focus, close, set the title, and ask whether one is open                                 | [windows](https://crust.jyz.land/docs/guides/window)              |
+| `tray`                         | a menu-bar item with rows that fire into your page                                               | [tray](https://crust.jyz.land/docs/guides/tray)                   |
+| `notification`                 | delivered ad-hoc; refused from the temp dir, and a denied id stays denied until you re-enable it | [notifications](https://crust.jyz.land/docs/guides/notifications) |
+| `crust build` / `dmg` / `sign` | `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY`          | [packaging](https://crust.jyz.land/docs/guides/package)           |
+| `crust dev`                    | a loopback bridge, or your own dev server with `beforeDevCommand`                                | [dev server](https://crust.jyz.land/docs/guides/dev)              |
+| frontend                       | embedded asset directory, client-side routes served from `index.html`                            | [frontend](https://crust.jyz.land/docs/guides/frontend)           |
 
 ## What it will not do
 
@@ -77,7 +80,7 @@ comes back as a rejected promise with a `code`, never a crashed process.
   is no plan and no partial path for them.
 - **Ad-hoc by default.** `crust build` signs with `codesign --sign -`, which opens on the machine that
   built it and is refused by Gatekeeper on any other, so a recipient needs `xattr -dr
-  com.apple.quarantine "my-app.app"` or right-click → Open. `crust sign` swaps in a Developer ID from
+com.apple.quarantine "my-app.app"` or right-click → Open. `crust sign` swaps in a Developer ID from
   `CRUST_SIGNING_IDENTITY`; no certificate ships with this repository.
 - **A static bundle, not a server.** The bridge serves files from inside the app, so route handlers,
   middleware, SSR at request time and `next start` are out of scope for the Next.js mode.

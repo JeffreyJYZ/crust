@@ -1,0 +1,134 @@
+name: release
+
+# A `v*` tag ships the standalone binary: one compiled executable per OS and arch,
+# attached to the GitHub Release for that tag. No npm anywhere — crust is never published
+# to a registry, so this workflow never runs `npm publish` or `npm install`.
+#
+# Push ONE tag at a time. Pushing several tags in a single `git push` silently drops their
+# runs, and the batch then looks like a release that never started:
+#
+#     git push origin v0.1.22
+#
+# The version is never written in this file: it is `package.json`'s. Every job passes
+# `--expect-version "${{ github.ref_name }}"`, which fails unless the tag names that
+# version — and on the host's own target the binary's own `--version` is asserted too.
+
+on:
+    push:
+        tags: ["v*"]
+
+concurrency:
+    group: release-${{ github.ref_name }}
+    cancel-in-progress: false
+
+permissions:
+    contents: write
+
+jobs:
+    # One release per tag, created before any asset exists. Five build jobs uploading to a
+    # release that may not exist yet is five chances to race on `gh release create`, and a
+    # second creator fails on the duplicate.
+    create-release:
+        name: create release
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+
+            # A tag that disagrees with package.json would publish assets whose embedded
+            # version is not the tag's, so it stops here before a release exists at all.
+            - name: assert the tag names package.json's version
+              run: |
+                  version="$(bun -e 'console.log(require("./package.json").version)')"
+                  if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+                    echo "tag ${GITHUB_REF_NAME} does not name package.json's version ${version}" >&2
+                    exit 1
+                  fi
+                  echo "${GITHUB_REF_NAME} is crust ${version}"
+
+            - name: create the release once
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                    echo "release $GITHUB_REF_NAME already exists; the build jobs attach to it"
+                  else
+                    gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                      --title "crust $GITHUB_REF_NAME" --generate-notes
+                  fi
+
+    build:
+        name: build (${{ matrix.target }})
+        needs: create-release
+        strategy:
+            # Five assets on five runners: a red Linux build must neither mask nor be masked
+            # by a green macOS one, and each lane's log is its own.
+            fail-fast: false
+            matrix:
+                include:
+                    - target: bun-darwin-arm64
+                      runner: macos-latest
+                    - target: bun-darwin-x64
+                      runner: macos-latest
+                    - target: bun-linux-x64
+                      runner: ubuntu-latest
+                    - target: bun-linux-arm64
+                      runner: ubuntu-latest
+                    - target: bun-windows-x64
+                      runner: windows-latest
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+
+            # Bun is the whole toolchain, and no version is pinned here: the major tag tracks
+            # the current release, and a remembered number silently stops tracking what a
+            # contributor actually runs.
+            - uses: oven-sh/setup-bun@v2
+
+            - run: bun install --frozen-lockfile
+
+            # Compiles `dist/crust-<version>-<os>-<arch>[.exe]` with `--asset=src` and the
+            # rest of the embedded tree, then proves it on the runner's own target: `--version`
+            # against package.json, all three `init` scaffolds with their file counts, and
+            # `doctor`. A binary for another OS cannot run on this runner, so that half is
+            # skipped and printed as skipped — never silently passed.
+            - name: build ${{ matrix.target }}
+              run: bun run scripts/build-standalone.ts --target "${{ matrix.target }}" --expect-version "${{ github.ref_name }}"
+
+            # `shell: bash` on every OS, because PowerShell does not expand `dist/crust-*`
+            # for a native command and `gh` would then receive the literal pattern.
+            - name: attach to the release
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  shopt -s nullglob
+                  assets=(dist/crust-*)
+                  if [ "${#assets[@]}" -ne 1 ]; then
+                    echo "expected exactly one built asset in dist/, found ${#assets[@]}: ${assets[*]}" >&2
+                    exit 1
+                  fi
+                  echo "uploading ${assets[0]} to release ${GITHUB_REF_NAME}"
+                  gh release upload "$GITHUB_REF_NAME" "${assets[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+
+    # Reads the published release, not this checkout: every expected asset must be attached,
+    # non-trivial in size, and the right container for its OS, and the runner's own platform's
+    # asset must execute and print the tag's version. `scripts/release/verify-assets.ts` is the
+    # committed verifier; `scripts/verify-release.ts` is a different one for a macOS `.app`.
+    verify:
+        name: verify assets
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+
+            # No `bun install`: the verifier imports package.json and nothing else, and it
+            # reads the release's bytes rather than anything this clone built.
+            - name: verify every attached asset
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: bun run scripts/release/verify-assets.ts "${{ github.ref_name }}"

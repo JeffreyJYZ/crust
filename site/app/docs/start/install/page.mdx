@@ -1,27 +1,18 @@
 # Install
 
-Three ways in. Every one needs **macOS 13 (Ventura) or later on Apple silicon** and a working `bun --version`. Nothing else — no Xcode, no command line tools, no SDK, and no native artifact is built at install time.
+Four ways in: Homebrew, a checkout, the standalone executable, or a tagged `bunx`. Every one needs **macOS 13 (Ventura) or later on Apple silicon** and a working `bun --version`. Installing crust needs nothing else — no SDK, and no native artifact is built at install time. Building an app is the step that wants the Xcode command line tools, for `codesign`.
+
+**There is no npm package, and there is not going to be one.** `crust` in the root `package.json` is a workspace name, `crust init` pins the dependency as `link:<the checkout that ran init>`, and the `crust` name on npm belongs to an unrelated 2020 package — so `bun add crust`, `npm i -g crust`, and `bunx crust` outside a scaffolded app all fetch that stranger.
 
 <Tabs label="How to install">
   <TabPanel label="Homebrew">
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.1.20
+crust --version                 # 0.1.21
 ```
 
 A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
-
-  </TabPanel>
-  <TabPanel label="bunx, with nothing installed">
-
-```sh
-bunx github:JeffreyJYZ/crust#v0.1.21 init my-app
-cd my-app && bun install
-bunx crust dev
-```
-
-Needs Bun and nothing else. `bunx` resolves the specifier, caches it, and runs the binary out of the cache — no `PATH` entry, no global install.
 
   </TabPanel>
   <TabPanel label="From a checkout">
@@ -31,14 +22,39 @@ git clone https://github.com/JeffreyJYZ/crust
 cd crust
 bun install                     # two dev dependencies: @types/bun, vite
 bun run start init my-app
+cd my-app && bun install
+bun run dev                     # the template's own script: crust dev
 ```
 
-`bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag the binary does. A scaffold made from a checkout pins `crust` as `link:<checkout>`, so an edit under `src/` reaches the app without republishing.
+`bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag the binary does. No scaffold wanted? `bun run start dev --dir examples/hello` runs the hello example straight out of the checkout.
+
+A scaffold made from a checkout pins `crust` as `link:<checkout>`, so an edit under `src/` reaches the app without republishing.
+
+  </TabPanel>
+  <TabPanel label="Standalone executable">
+
+```sh
+bun run build:standalone        # writes dist/crust
+./dist/crust init my-app
+cd my-app && bun install && ./dist/crust dev
+```
+
+One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (`build` and `sign` still want the Xcode command line tools for `codesign`, exactly as they do from a checkout.) A tagged release will attach one per platform as `crust-<version>-<os>-<arch>`; the release page is the authority for what a given version carries.
 
   </TabPanel>
 </Tabs>
 
-## The one trap: the bunx cache
+## A tag, without cloning
+
+```sh
+bunx github:JeffreyJYZ/crust#v0.1.21 init my-app
+cd my-app && bun install
+bun run dev
+```
+
+`bunx` resolves the specifier, caches it, and runs the binary out of the cache — no `PATH` entry, no global install. Inside the scaffolded app, `bun run dev` runs the copy the app pinned.
+
+### The cache trap
 
 `bunx` keys its cache on the specifier string, so a bare `github:JeffreyJYZ/crust` keeps serving whatever commit it first resolved. A stale entry answers an old version — and sometimes refuses a flag you know exists:
 
@@ -59,9 +75,9 @@ rm -rf ~/.bun/install/cache/@GH@JeffreyJYZ-crust-*
 
 ## Which crust runs
 
-`crust init` writes `crust` into the app's `package.json`, and `bun install` links that copy as `node_modules/.bin/crust`. Inside the project bun prefers the local binary, so **the app runs the copy it pinned**, not the CLI you scaffolded with.
+`crust init` writes `crust` into the app's `package.json` as `link:<the CLI's own tree>`, and `bun install` links that copy as `node_modules/.bin/crust`. Inside the project bun prefers the local binary, so **the app runs the copy it pinned** — the same files the CLI ran from, not a second download. Ask it directly with `./node_modules/.bin/crust --version`.
 
-Both report the same version number and can be different commits. When an app behaves differently from the CLI, run `bunx crust --version` and `crust --version` in the same directory — the resolved commit, not the number, is the tell.
+That `link:` is the other reason there is no npm package: it makes `import "crust"` in the app and the CLI one realpath, so both share a single `app` singleton. An installed crust would give a project two copies — the CLI's and its own — each with its own singleton, and a command registered by `main.ts` would be invisible under `crust dev`, which answers `crust: unknown command "greet"`.
 
 ## When it does not work
 
