@@ -130,18 +130,25 @@ export async function build(options: CliOptions): Promise<number> {
 			id: config.app.id,
 			name: config.app.name,
 			version: config.app.version,
-			iconPath,
+			// `Resources/icon.icns` is converted through `sips` and `iconutil`, which ship
+			// only on macOS; a Linux or Windows host carries the PNG into its own artefact.
+			iconPath: process.platform === "darwin" ? iconPath : undefined,
 			minimumSystemVersion,
 			urlScheme: config.build?.urlScheme,
 		},
 	});
 
-	await signApp({ appPath: result.appPath, mode: "adhoc" });
+	// `codesign` is macOS-only, and the `.app` is not what Linux or Windows ship: those
+	// hosts assemble the same bundle around the same binary and sign nothing.
+	const signed = process.platform === "darwin";
+	if (signed) await signApp({ appPath: result.appPath, mode: "adhoc" });
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);
 	line("app", `${formatBytes(result.assembledBytes)}  ${result.appPath}`);
-	line("sign", "ad-hoc (codesign --sign -)");
-	line("gatekeeper", "refused on another machine until a Developer ID signature exists");
+	line("sign", signed ? "ad-hoc (codesign --sign -)" : "none — codesign is macOS-only");
+	if (signed) {
+		line("gatekeeper", "refused on another machine until a Developer ID signature exists");
+	}
 	console.log(`\ndone — open it locally with: open ${result.appPath}`);
 	return 0;
 }
