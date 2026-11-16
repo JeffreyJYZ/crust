@@ -83,6 +83,7 @@ int shim_win32_ready(void);
 #define SHIM_SLOT_CONTROLLER_WEBVIEW 25    // ICoreWebView2Controller::get_CoreWebView2
 #define SHIM_SLOT_WEBVIEW_GET_SOURCE 4     // ICoreWebView2::get_Source
 #define SHIM_SLOT_WEBVIEW_NAVIGATE 5       // ICoreWebView2::Navigate
+#define SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING 6 // ICoreWebView2::NavigateToString
 
 // Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.
 int shim_webview_put_bounds(shim_h hwnd, double w, double h);

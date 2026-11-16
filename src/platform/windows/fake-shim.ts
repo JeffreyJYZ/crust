@@ -104,6 +104,7 @@ export function fakeShim(
 		},
 		shim_navigate_hresult: () => 0,
 		shim_webview_source: () => 0,
+		shim_webview_navigate_string: () => 1,
 		shim_controller_visible: () => 0,
 		shim_webview_navigate: (_url) => {
 			calls.push("webview_navigate");

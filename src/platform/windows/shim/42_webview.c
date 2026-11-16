@@ -89,14 +89,29 @@ int shim_webview_attach(shim_h hwnd) {
 }
 
 // Navigate the webview `shim_webview_bind` recorded. `url` is the value the caller already resolved,
-// and it is the same value darwin hands to `loadRequest:`. The HRESULT is kept so a probe can print it
-// after the call — the last run faulted *inside* this call with a vtable that looked perfect.
+// and it is the same value darwin hands to `loadRequest:`.
+//
+// **The wide buffer is static, not a stack array, and must stay that way.** WebView2 marshals to its
+// browser process lazily, so a pointer into a returned frame is a read of recycled stack inside its own
+// code — which is what a fault two frames inside `EmbeddedBrowserWebView.dll` with a perfectly valid
+// object looks like. The same reasoning covers `g_html` below. Do not "tidy" either onto the stack.
+static shim_wchar g_url[2048];
+static shim_wchar g_html[512];
+
 int shim_webview_navigate(const char *url) {
-	shim_wchar target[2048];
 	if (!g_web) return 0;
-	if (shim_utf16(url, target, 2048) < 0) return 0;
-	g_navigate_hr = wv2_navigate(g_web, target);
+	if (shim_utf16(url, g_url, 2048) < 0) return 0;
+	g_navigate_hr = wv2_navigate(g_web, g_url);
 	return g_navigate_hr >= 0;
+}
+
+// `NavigateToString` with a fixed document, from a static buffer: the same string path with the URL
+// parse removed. S_OK here and a fault in `Navigate` makes it a precise report about `Navigate`; a fault
+// here too means every string-input method on this webview faults.
+int shim_webview_navigate_string(void) {
+	if (!g_web) return 0;
+	if (shim_utf16("<html><body>crust</body></html>", g_html, 512) < 0) return 0;
+	return wv2_navigate_to_string(g_web, g_html) >= 0;
 }
 
 int shim_navigate_hresult(void) { return g_navigate_hr; }

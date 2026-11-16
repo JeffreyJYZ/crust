@@ -132,6 +132,9 @@ async function steps(mode: 1 | 2): Promise<number> {
 	// getter on the webview, and the visibility call every sample makes and this layer never has.
 	expect(!stageHr("webview_source", () => shim.shim_webview_source()));
 	expect(!stageHr("controller_visible", () => shim.shim_controller_visible()));
+	// The same string path with the URL parse removed: S_OK here and a fault in Navigate is a precise
+	// report about Navigate; a fault here too means every string-input method on this webview faults.
+	expect(stage("webview_navigate_string", () => shim.shim_webview_navigate_string()) === 1);
 
 	// The thread has never run a message loop, so pump before the first navigation. The helper prints the
 	// count it drained: `pump_before_navigate ok <n>` — once, from its return value.

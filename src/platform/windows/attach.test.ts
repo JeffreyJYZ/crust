@@ -149,3 +149,31 @@ describe("the next run tests the controller shape, not just measures it", () => 
 		expect(stages).toContain("shim.shim_ctrl_mode(mode)");
 	});
 });
+
+describe("the URL buffer outlives the call, and NavigateToString is the control", () => {
+	/**
+	 * WebView2 marshals to its browser process lazily, so a wide buffer on the stack is a pointer into a
+	 * returned frame — which is what a fault two frames inside `EmbeddedBrowserWebView.dll` with a valid
+	 * object looks like. The buffer is static for the process lifetime and must stay that way.
+	 */
+	test("navigate uses a static wide buffer, never a stack array", () => {
+		expect(source).toContain("static shim_wchar g_url[2048];");
+		expect(source).toContain("shim_utf16(url, g_url, 2048)");
+		expect(source).toContain("wv2_navigate(g_web, g_url)");
+		const navigate = source.slice(
+			source.indexOf("int shim_webview_navigate(const char *url) {"),
+		);
+		expect(navigate.slice(0, navigate.indexOf("\n}"))).not.toContain("shim_wchar target[");
+	});
+
+	/** The control: the same string path with the URL parse removed, from a static buffer too. */
+	test("NavigateToString is probed before Navigate", () => {
+		expect(source).toContain("#define SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING 6");
+		expect(source).toContain("int shim_webview_navigate_string(void)");
+		expect(source).toContain("static shim_wchar g_html[512];");
+		expect(stages).toContain("shim_webview_navigate_string");
+		expect(stages.indexOf("webview_navigate_string")).toBeLessThan(
+			stages.indexOf('stage("webview_navigate"'),
+		);
+	});
+});

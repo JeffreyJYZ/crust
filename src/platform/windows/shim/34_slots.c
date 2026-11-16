@@ -64,6 +64,19 @@ int wv2_get_source(void *web) {
 // is the only navigation crust does on Windows: the URL the window was created with, the same value
 // darwin hands to `-[WKWebView loadRequest:]`. There is no page-serving scheme here, because darwin
 // has none either and `crust://` is the deep-link scheme.
+// ICoreWebView2 slot 6, `NavigateToString`: the same string path as `Navigate` with the URL parse taken
+// out. If this answers S_OK while `Navigate` faults, the defect is `Navigate` specifically; if both
+// fault, every string-input method on the webview does.
+int wv2_navigate_to_string(void *web, const shim_wchar *html) {
+	void **vt;
+	if (!html) return -2147467259; /* E_FAIL */
+	vt = shim_object_vtbl(web);
+	if (!vt) return -2147467259;
+	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING)) return -2147467262;
+	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING])(
+	    web, html);
+}
+
 // Returns the method's own HRESULT so a refusal is distinguishable from success.
 int wv2_navigate(void *web, const shim_wchar *url) {
 	void **vt;

@@ -107,6 +107,7 @@ export function compile(): WindowsShim {
 				shim_webview_navigate: { args: [CS], returns: I32 },
 				shim_navigate_hresult: { args: [], returns: I32 },
 				shim_webview_source: { args: [], returns: I32 },
+				shim_webview_navigate_string: { args: [], returns: I32 },
 				shim_controller_visible: { args: [], returns: I32 },
 				shim_webview_bind: { args: [P], returns: I32 },
 				shim_webview_size: { args: [P], returns: I32 },

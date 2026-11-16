@@ -61,6 +61,8 @@ export interface WindowsShim {
 	shim_navigate_hresult(): number;
 	/** `ICoreWebView2::get_Source` — S_OK proves the webview object is callable at all. */
 	shim_webview_source(): number;
+	/** `ICoreWebView2::NavigateToString` — the same string path with the URL parse removed. */
+	shim_webview_navigate_string(): number;
 	/** `ICoreWebView2Controller::put_IsVisible(TRUE)` — the call every sample makes and this layer never did. */
 	shim_controller_visible(): number;
 

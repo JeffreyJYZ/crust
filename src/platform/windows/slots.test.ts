@@ -74,11 +74,12 @@ describe("the vtable slots", () => {
 	const defined = slots();
 
 	test("the parser saw the block it is meant to check", () => {
-		expect(defined.size).toBe(8);
+		expect(defined.size).toBe(9);
 	});
 
 	test("get_Source is slot 4 and Navigate is slot 5, not the thirty-seventh slot", () => {
 		expect(defined.get("WEBVIEW_GET_SOURCE")).toBe(slotOf(WEBVIEW, "get_Source"));
+		expect(defined.get("WEBVIEW_NAVIGATE_TO_STRING")).toBe(slotOf(WEBVIEW, "NavigateToString"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(slotOf(WEBVIEW, "Navigate"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(5);
 	});

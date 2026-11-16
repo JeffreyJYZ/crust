@@ -39,9 +39,9 @@ describe("the vtable guard", () => {
 	});
 
 	test("every vtable call site checks its own slot first", () => {
-		// One per call: AddRef 1, environment 3, put_IsVisible 4, get_Source 4, put_Bounds 6,
-		// Close 24, get_CoreWebView2 25, Navigate 5.
-		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(8);
+		// One per call: AddRef 1, environment 3, put_IsVisible 4, get_Source 4, NavigateToString 6,
+		// put_Bounds 6, Close 24, get_CoreWebView2 25, Navigate 5.
+		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(9);
 		for (const slot of [
 			"SHIM_SLOT_ENV_CREATE_CONTROLLER",
 			"SHIM_SLOT_CONTROLLER_WEBVIEW",
@@ -50,6 +50,7 @@ describe("the vtable guard", () => {
 			"SHIM_SLOT_WEBVIEW_NAVIGATE",
 			"SHIM_SLOT_WEBVIEW_GET_SOURCE",
 			"SHIM_SLOT_CONTROLLER_PUT_VISIBLE",
+			"SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING",
 		]) {
 			expect(source).toContain(`if (!shim_slot_ok(vt, ${slot}))`);
 		}
@@ -116,7 +117,7 @@ describe("an unreadable object is a verdict, not a fault", () => {
 			expect(line).toContain("&g_env_handler");
 		}
 		// Nine call sites plus the definition in the guard.
-		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(13);
+		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(14);
 	});
 });
 
