@@ -37,3 +37,6 @@ Lane that proved the ten new parity surfaces. Measured facts, traps and decision
 - **`crash guard=refused last=unknown` is the honest crash-reporter line in a bundle** — never turn it into a pass by faking a guard process; the pattern accepts only `running last=none` or `refused last=unknown — <reason>`.
 - **The harness prints the matched text**, so a two-line pattern (value line + reason line) puts both lines into the report as the row's evidence.
 - **Never `open` a built bundle to make AX or LaunchServices cooperate** — the repo forbids it and it raises Gatekeeper.
+- **`updater.install` needs a receipt `updater.download` recorded in the same instance** — no receipt is `unverified-artifact`, and the path must be the one that download wrote.
+- **`install` also refuses any `appPath` that is not this process's own bundle** — `ownBundleFailure(appPath, execPath)` derives it from the third `createUpdaterPlugin` argument, so a probe passes an `execPath` inside its temp `Old.app` instead of replacing the real bundle.
+- **`proofs-updater.ts` owns the updater proof; `proofs-update.ts` is notification only** — the split keeps each file about one surface.
