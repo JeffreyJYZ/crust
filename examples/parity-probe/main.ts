@@ -56,6 +56,10 @@ async function main(): Promise<void> {
 	await attempt("crash-reporter", proveCrashReporter);
 	const passed = proofs.filter((proof) => proof.ok).length;
 	const verdict = passed === proofs.length ? "PASS" : "FAIL";
+	if (verdict === "FAIL") {
+		const unproved = proofs.filter((proof) => !proof.ok).map((proof) => proof.name);
+		console.log(`parity: unproved ${unproved.join(", ")}`);
+	}
 	console.log(`parity: ${verdict} ${passed}/${proofs.length}`);
 	process.exit(verdict === "PASS" ? 0 : 1);
 }

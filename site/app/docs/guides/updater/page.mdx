@@ -107,11 +107,34 @@ That is `unverified-artifact`. A verified artifact that changed afterwards is re
 crust: updater.install: … changed since download — sha256 <actual>, verified <expected>
 ```
 
-That is `hash-mismatch`. `adapter.sha256` digests a directory as a tree, so a `.app` artifact is verifiable the same way a zip is.
+That is `hash-mismatch`. `adapter.sha256` digests a directory as a tree, so a `.app` artifact's bytes are verifiable the same way a zip's are — but a signature over that tree is a separate problem, and the next section is about it.
 
 Both paths must already be `.app` directories — an archive is not extracted here. The new bundle is renamed over the old one, and the old one is parked at `<appPath>.old`, which is replaced on the next install. One rename on one volume is atomic; a cross-volume move fails rather than degrading into a copy that is no longer atomic.
 
 Nothing runs `codesign`: the signature belongs to whoever shipped the artifact.
+
+## One limitation: a bundle cannot carry a signature
+
+`updater.download` records **one artifact**, and a signature is verified over that artifact's bytes. That splits the two artifact shapes cleanly, and the split is a design fact rather than a bug waiting on a patch:
+
+| artifact                   | `sha256`                      | Ed25519 `signature`                |
+| -------------------------- | ----------------------------- | ---------------------------------- |
+| a file — zip, dmg, tarball | verifies over its bytes       | verifies over the same bytes       |
+| a `.app` bundle — a tree   | verifies over the tree digest | **not expressed by this contract** |
+
+A tree has no single byte sequence to sign, so there is nothing for `download` to hand the verifier. `adapter.sha256` copes with a directory; the signature path does not, and pretending otherwise would be a check that always passes.
+
+The shipped node adapter writes one file, so a bundle also needs an adapter whose `download` produces the tree — the parity probe's does exactly that, by copying the directory into the temp dir.
+
+**What an author should ship.** A signed archive. Verify the signature over the archive — your own step, or as the file artifact `download` produces — extract it, and make the extracted `.app` the artifact `download` produced. `install` still demands a receipt from this run, so a bundle that appeared by any other route is refused, which is the point: the extraction has to be inside the download the plugin verified.
+
+**What the probe proves, and what it does not.** `bun run e2e:parity` prints:
+
+```
+updater   signed=true swapped=true unverified=refused
+```
+
+A signed **file** verified with the pinned key, the verified **tree** swapped, and a bundle no download had verified refused. It does not prove a signed bundle, because a signed bundle is the limitation.
 
 ## relaunch
 
@@ -135,7 +158,7 @@ Both are `not-an-app-bundle`. The comparison is on `realpath`, so a symlink to t
 
 ## Still usable
 
-The hardening does not close the update path. A pinned `updater.pubkey`, a `download` with `sha256` over `https`, and an `install` of the path that download returned is the whole flow, and it works: the swap lands, the old bundle is parked at `.old`, and `relaunch: true` starts the new one.
+The hardening does not close the update path. A pinned `updater.pubkey`, a `download` with `sha256` over `https`, and an `install` of the path that download returned is the whole flow, and it works: the swap lands, the old bundle is parked at `.old`, and `relaunch: true` starts the new one. The signed variant is a file artifact — an archive you extract inside the download — for the reason in the section above.
 
 ## Failure codes
 
