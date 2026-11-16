@@ -60,7 +60,7 @@ export interface NsisMissing {
 export type NsisResult = NsisBuilt | NsisMissing;
 
 /**
- * The installer script. `RequestExecutionLevel user` means no elevation prompt, so the HKLM write lands only when the installer is already elevated; HKCU is the key that always does, which is why both are written.
+ * The installer script. `RequestExecutionLevel user` means no elevation prompt, so the default directory has to be one that user can write: `$PROGRAMFILES64` needs an admin token and every non-elevated install would fail at `SetOutPath` — the default is `$LOCALAPPDATA\Programs`, the per-user location VS Code and Discord use. The same level means the HKLM write lands only when the installer is already elevated; HKCU is the key that always does, which is why both are written.
  */
 export function nsisScript(options: NsisScriptOptions): string {
 	const publisher = options.publisher ?? options.name;
@@ -75,7 +75,7 @@ export function nsisScript(options: NsisScriptOptions): string {
 
 Name "\${APP_NAME}"
 OutFile "${options.out}"
-InstallDir "$PROGRAMFILES64\\${options.name}"
+InstallDir "$LOCALAPPDATA\\Programs\\${options.name}"
 RequestExecutionLevel user
 
 Page directory
@@ -109,10 +109,14 @@ SectionEnd
 `;
 }
 
+/** `which` is the POSIX lookup; Windows ships `where`, which prints one path per match — the first is the answer. */
 async function toolOnPath(exec: Exec, tool: string): Promise<string | undefined> {
-	const result = await exec(["which", tool]);
-	const found = result.stdout.trim();
-	return result.code === 0 && found !== "" ? found : undefined;
+	const result = await exec([process.platform === "win32" ? "where" : "which", tool]);
+	const found = result.stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.find((line) => line.length > 0);
+	return result.code === 0 && found !== undefined ? found : undefined;
 }
 
 /**
