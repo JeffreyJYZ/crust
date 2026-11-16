@@ -125,3 +125,29 @@ void *shim_controller_slot(int index) {
 	if (!vt || index < 0 || index >= 32) return 0;
 	return vt[index];
 }
+
+// --- how big a frame may be -------------------------------------------------
+// **A frame of 4096 bytes or more is fatal in this unit.** Bun pins TinyCC at `oven-sh/tinycc@05f0faf`,
+// and the PE branch of `x86_64-gen.c` sets `func_scratch = 32` in `gfunc_prolog`, computes `loc = (loc &
+// -16) - func_scratch` and `v = -loc` in `gfunc_epilog`, then picks the prologue by `v >= 4096`: below
+// it `push rbp; mov rbp, rsp; sub rsp, imm32`, at or above it `mov v, eax; call __chkstk`.
+//
+// Nothing in this unit's link set defines `__chkstk`: `12_win32.c` binds no such name, `cc()` passes no
+// library, and Bun builds TinyCC with `TCC_LIBTCC1: ""` (`scripts/build/deps/tinycc.ts`), so
+// `win32/lib/chkstk.S` never reaches the link. The call lands in a relocation filled with `-1`, which is
+// the `0xFFFFFFFFFFFFFFFF` every Windows run reported — the first `Navigate` fault was this prologue,
+// not the URL string.
+//
+// `shim_frame_probe_small` is the positive control: a 2048-byte local, a 2080-byte frame, the inline
+// prologue. Its 4096-byte twin was measured on `windows-latest` (2026-11-16): it printed
+// `stage frame_probe_large …` and the child ended with exit 3, so it is not kept — a probe that must
+// crash cannot live in a green suite. `frame.test.ts` fails the suite for any local array reaching 4096
+// bytes, so the rule does not depend on anyone remembering it.
+//
+// The buffer is `volatile` and read back, so no compiler can drop the frame being measured.
+int shim_frame_probe_small(void) {
+	volatile unsigned char buf[2048];
+	buf[0] = 1;
+	buf[sizeof(buf) - 1] = 2;
+	return buf[0] == 1 && buf[sizeof(buf) - 1] == 2 ? 1 : 0;
+}

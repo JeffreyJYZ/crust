@@ -91,10 +91,14 @@ int shim_webview_attach(shim_h hwnd) {
 // Navigate the webview `shim_webview_bind` recorded. `url` is the value the caller already resolved,
 // and it is the same value darwin hands to `loadRequest:`.
 //
-// **The wide buffer is static, not a stack array, and must stay that way.** WebView2 marshals to its
-// browser process lazily, so a pointer into a returned frame is a read of recycled stack inside its own
-// code — which is what a fault two frames inside `EmbeddedBrowserWebView.dll` with a perfectly valid
-// object looks like. The same reasoning covers `g_html` below. Do not "tidy" either onto the stack.
+// **The wide buffer is static, not a stack array, and must stay that way — for a reason measured, not
+// assumed.** `shim_wchar target[2048]` is 4096 bytes of local, and with TinyCC's 32-byte scratch that
+// is a 4128-byte frame. At 4096 TinyCC stops emitting the inline `push rbp; mov rbp,rsp; sub rsp,imm32`
+// prologue and emits `call __chkstk` instead; nothing in this unit's link set defines `__chkstk`, so
+// the call lands in a relocation filled with -1 — the `0xFFFFFFFFFFFFFFFF` that every failing run
+// reported. The function died at its own first instruction, and the shared `.pdata` record made the
+// crash report name `EmbeddedBrowserWebView.dll` instead. `frame.test.ts` fails the gate if any local
+// array in this unit reaches 4096 bytes, so this cannot come back by accident.
 static shim_wchar g_url[2048];
 static shim_wchar g_html[512];
 

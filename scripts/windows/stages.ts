@@ -32,6 +32,7 @@ import {
 	webReport,
 } from "./report.ts";
 import { compositeSteps } from "./composite.ts";
+import { frameSteps } from "./frame.ts";
 
 const APP = "crust-stages";
 const USER_DATA = join(tmpdir(), "crust-stages-webview2");
@@ -151,24 +152,35 @@ async function steps(mode: 1 | 2): Promise<number> {
 /**
  * Run the probe in a child and report how it ended. `stdout: "inherit"` is load-bearing: a buffered
  * pipe would lose the line that names the call when the child dies.
+ *
+ * Mode 4 is spawned after 1-3 and its exit code is returned *beside* theirs, never folded into it: a
+ * fault in a function prologue is a different defect from a fault in `Navigate`, and the smoke's
+ * red-run text describes the latter. The frame line is the answer to "may a frame reach 4096 bytes".
  */
-export async function runStages(): Promise<{ code: number }> {
+export async function runStages(): Promise<{ code: number; frame: number }> {
 	let code = 0;
 	for (const mode of ["1", "2", "3"]) {
 		const child = Bun.spawn([process.execPath, import.meta.path, mode], { stdout: "inherit" });
 		const ended = await child.exited;
 		if (ended !== 0) code = ended;
 	}
-	return { code };
+	const frameChild = Bun.spawn([process.execPath, import.meta.path, "4"], { stdout: "inherit" });
+	const frame = await frameChild.exited;
+	console.log(`frame     child ended with exit ${frame}`);
+	return { code, frame };
+}
+
+/** Which probe a child runs. 1 and 2 are the two controller shapes, 3 the product path, 4 the frames. */
+function child(): Promise<number> {
+	const mode = process.argv[2];
+	if (mode === "3") return compositeSteps();
+	if (mode === "4") return Promise.resolve(frameSteps());
+	return steps(mode === "2" ? 2 : 1);
 }
 
 if (import.meta.main) {
 	try {
-		process.exit(
-			process.argv[2] === "3"
-				? await compositeSteps()
-				: await steps(process.argv[2] === "2" ? 2 : 1),
-		);
+		process.exit(await child());
 	} catch (error) {
 		const text = error instanceof Error ? error.message : String(error);
 		console.log(`stage     build failed: ${text.split("\n")[0] ?? text}`);
