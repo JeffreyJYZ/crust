@@ -66,6 +66,18 @@ export const NAV: readonly NavGroup[] = [
 		],
 	},
 	{
+		label: "Commands",
+		items: [
+			{ label: "Window", href: "/docs/reference/api-window" },
+			{ label: "Files and processes", href: "/docs/reference/api-fs" },
+			{ label: "Panels and input", href: "/docs/reference/api-ui" },
+			{ label: "Desktop and system", href: "/docs/reference/api-desktop" },
+			{ label: "App-level", href: "/docs/reference/api-app" },
+			{ label: "Webview", href: "/docs/reference/api-web" },
+			{ label: "Updater", href: "/docs/reference/api-updater" },
+		],
+	},
+	{
 		label: "Truth",
 		items: [
 			{ label: "Limits", href: "/docs/limits" },

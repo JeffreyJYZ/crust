@@ -1,11 +1,13 @@
 /**
- * The client body: `installCrust`. Everything it needs is inside the function, because the served bootstrap is `installCrust.toString()` and a module-scope reference would arrive undefined in the page; only types live outside, as `T.`. Called with a config it uses that; called with none (`crust/vite`) it installs from the pre-set `window.__CRUST__`.
+ * The client body: `installCrust`. Everything it needs is inside the function, because the served bootstrap is `installCrust.toString()` and a module-scope reference would arrive undefined in the page; only types live outside, as `T.`, plus the invoke half which `bootstrap.ts` passes in the same way. Called with a config it uses that; called with none (`crust/vite`) it installs from the pre-set `window.__CRUST__`.
  */
 import type * as T from "./types";
+import type { installInvoke } from "./invoke.ts";
 
 export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	config?: T.CrustConfig,
 	target: T.CrustTarget = globalThis as unknown as T.CrustTarget,
+	invokeFactory?: typeof installInvoke,
 ): T.CrustApi<Schema> {
 	const scope = target as unknown as Record<string, any>;
 	// A page that already has a client keeps it: a second install would open a
@@ -14,6 +16,11 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	const resolved = config ?? scope.__CRUST__;
 	if (!resolved || typeof resolved.token !== "string") {
 		throw new Error("crust: no bridge config — window.__CRUST__ was never injected");
+	}
+	// The other half of the client is composed beside this one, because neither may reach module
+	// scope: without it there is no way to call the bridge at all, so say so at install.
+	if (typeof invokeFactory !== "function") {
+		throw new Error("crust: no invoke half — install the client from the bridge or crust/vite");
 	}
 	const base = (resolved.url ?? resolved.baseUrl ?? "").replace(/\/+$/, "");
 	const token = resolved.token;
@@ -88,65 +95,9 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 			attach(event);
 		});
 
-	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep.
-	const fromBase64 = (text: string): Uint8Array =>
-		Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
-
-	const revive = (value: any, depth: number): any => {
-		if (depth > 1 || value === null || typeof value !== "object") return value;
-		if (typeof value.__crustBytes === "string") return fromBase64(value.__crustBytes);
-		const out: any = Array.isArray(value) ? [] : {};
-		for (const key of Object.keys(value)) out[key] = revive(value[key], depth + 1);
-		return out;
-	};
-
-	class InvokeFailure extends Error implements T.CrustInvokeError {
-		readonly code: string;
-		readonly status: number;
-		readonly requires?: string;
-
-		constructor(code: string, message: string, status: number, requires?: string) {
-			super(message);
-			this.name = "CrustInvokeError";
-			this.code = code;
-			this.status = status;
-			if (requires !== undefined) this.requires = requires;
-		}
-	}
-
-	const call = async (plugin: string, command: string, args?: unknown): Promise<unknown> => {
-		const fetchImpl = scope.fetch ?? (globalThis as any).fetch;
-		if (typeof fetchImpl !== "function") {
-			throw new InvokeFailure("no-fetch", "this page has no fetch()", 0);
-		}
-		const response = await fetchImpl.call(scope, `${base}/_crust/invoke`, {
-			method: "POST",
-			headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-			body: JSON.stringify({ plugin, command, args: args === undefined ? null : args }),
-		});
-		const text = await response.text();
-		let body: any;
-		try {
-			body = JSON.parse(text);
-		} catch {
-			throw new InvokeFailure(
-				"bad-response",
-				`bridge returned non-json (${response.status}): ${String(text).slice(0, 200)}`,
-				response.status,
-			);
-		}
-		if (!body || body.ok !== true) {
-			const error = body?.error ?? {};
-			throw new InvokeFailure(
-				typeof error.code === "string" ? error.code : "handler-error",
-				typeof error.message === "string" ? error.message : "invoke failed",
-				response.status,
-				typeof error.requires === "string" ? error.requires : undefined,
-			);
-		}
-		markHandshake();
-		return revive(body.result, 0);
-	};
+	// `resolved.window` is the identity the bridge observed on the document request, or the page's
+	// own URL when a dev server served it; `invoke.ts` sends it with every call.
+	const call = invokeFactory(scope, base, token, resolved.window, markHandshake);
 
 	// Two call forms on one entry point, and the same code on every serving
 	// path: `invoke(plugin, command, args)` is the plugin form, and a second

@@ -7,7 +7,7 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 | code              | HTTP | cause                                                                              |
 | ----------------- | ---- | ---------------------------------------------------------------------------------- |
 | `unauthorized`    | 401  | missing or wrong bearer token                                                      |
-| `bad-origin`      | 403  | absent or foreign `Origin` header                                                  |
+| `bad-origin`      | 403  | present and foreign `Origin` header                                                |
 | `not-found`       | 404  | unknown asset route, or `fs.readTextFile` on a missing file                        |
 | `unknown-plugin`  | 404  | `PluginRegistry.invoke` only — the bridge flattens names into `unknown-command`    |
 | `unknown-command` | 404  | no handler under `<plugin>.<command>`, including an unknown plugin over the bridge |

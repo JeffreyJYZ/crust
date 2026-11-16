@@ -20,9 +20,17 @@ export const KDF_ITERATIONS = 600_000;
 /**
  * The fewest rounds this build will derive from. A store file is the user's own, so its header can
  * claim any count; a header below the KDF's documented parameter is refused rather than obeyed,
- * because one round is no work at all and an unbounded one hangs `open`.
+ * because one round is no work at all.
  */
 export const KDF_MIN_ITERATIONS = KDF_ITERATIONS;
+/**
+ * The most rounds this build will derive from, and the other half of the same argument: `open` runs
+ * on a page-triggered call, so an unbounded header is a denial of service the page can aim at its
+ * own app. 5 000 000 is ~8x today's 600 000 — headroom for the hardware-driven bump a future build
+ * would write (OWASP's PBKDF2-SHA256 guidance has already moved 600 000 to 1 200 000) — while the
+ * worst case stays a few seconds of CPU instead of hours.
+ */
+export const KDF_MAX_ITERATIONS = 5_000_000;
 export const SALT_BYTES = 16;
 export const IV_BYTES = 12;
 export const KEY_BITS = 256;
@@ -71,7 +79,8 @@ export function isStrongholdFile(value: unknown): value is StrongholdFile {
 	if (
 		typeof iterations !== "number" ||
 		!Number.isInteger(iterations) ||
-		iterations < KDF_MIN_ITERATIONS
+		iterations < KDF_MIN_ITERATIONS ||
+		iterations > KDF_MAX_ITERATIONS
 	) {
 		return false;
 	}
@@ -81,17 +90,28 @@ export function isStrongholdFile(value: unknown): value is StrongholdFile {
 }
 
 /**
- * The rounds a parsed object claims, when it claims fewer than this build will derive from. Only
- * used to name the refusal: a header below the floor is `corrupt` either way, and the reader says
- * which number it objected to instead of "not a store".
+ * The sentence naming the bound a round count breaks, or `undefined` when it is inside both. Only
+ * used to name the refusal: an out-of-band header is `corrupt` either way, and the reader says which
+ * number it objected to instead of "not a store". Both halves answer it, so they cannot drift.
  */
-function belowFloor(value: unknown): number | undefined {
+export function kdfRefusal(iterations: number): string | undefined {
+	if (iterations < KDF_MIN_ITERATIONS) {
+		return `is below the KDF floor of ${KDF_MIN_ITERATIONS}`;
+	}
+	if (iterations > KDF_MAX_ITERATIONS) {
+		return `is above the KDF ceiling of ${KDF_MAX_ITERATIONS}`;
+	}
+	return undefined;
+}
+
+/** The rounds a parsed object claims, when it claims a count this build will not derive from. */
+function refusedIterations(value: unknown): number | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const { kdf } = value as { kdf?: unknown };
 	if (typeof kdf !== "object" || kdf === null) return undefined;
 	const { iterations } = kdf as { iterations?: unknown };
 	if (typeof iterations !== "number" || !Number.isInteger(iterations)) return undefined;
-	return iterations < KDF_MIN_ITERATIONS ? iterations : undefined;
+	return kdfRefusal(iterations) === undefined ? undefined : iterations;
 }
 
 export type StoreRead =
@@ -114,12 +134,12 @@ export async function readStore(path: string): Promise<StoreRead> {
 		return { ok: false, code: "corrupt", message: `${path} is not JSON` };
 	}
 	if (!isStrongholdFile(parsed)) {
-		const claimed = belowFloor(parsed);
+		const claimed = refusedIterations(parsed);
 		if (claimed !== undefined) {
 			return {
 				ok: false,
 				code: "corrupt",
-				message: `${path} asks for ${claimed} PBKDF2 rounds, below the KDF floor of ${KDF_MIN_ITERATIONS}`,
+				message: `${path} asks for ${claimed} PBKDF2 rounds, which ${kdfRefusal(claimed)}`,
 			};
 		}
 		return { ok: false, code: "corrupt", message: `${path} is not a stronghold store` };

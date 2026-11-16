@@ -6,7 +6,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, runCommand, Verdict } from "./e2e-harness.ts";
+import { clearSurvivors, restoreFocus, runCommand, Verdict } from "./e2e-harness.ts";
 import { spawnLive } from "./lib/live-run.ts";
 import { survivorsOfPids } from "./lib/pids.ts";
 import { lastLine } from "./lib/text.ts";
@@ -46,6 +46,8 @@ async function main(): Promise<number> {
 		// be cleared by path; a dev process is stopped by pid inside its phase.
 		await clearSurvivors(scratch).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		// Last, so a red run does not leave the human looking at the window it opened.
+		await restoreFocus();
 	}
 }
 

@@ -53,12 +53,18 @@ export interface InstallArgs extends BundleArgs {
 
 export interface DownloadResult {
 	readonly ok: true;
+	/** What `install` takes: the downloaded file, or the `.app` this run extracted from a zip. */
 	readonly path: string;
 	readonly bytes: number;
-	/** The digest that was verified, lowercase hex; `download` never answers without one. */
+	/**
+	 * The digest that was verified, lowercase hex. For an archive this is the extracted tree's
+	 * digest, which is the artifact `install` renames; the archive's own digest is in `archive`.
+	 */
 	readonly sha256: string;
 	/** The configured key that verified the signature, when the manifest carried one. */
 	readonly signer?: string;
+	/** Set when the artifact was a zip: the archive it came from, and the digest verified over it. */
+	readonly archive?: { readonly path: string; readonly sha256: string };
 }
 
 export interface InstallResult {
@@ -87,6 +93,12 @@ export interface UpdaterAdapter {
 	readBytes(path: string): Promise<Uint8Array>;
 	/** A fresh directory the plugin may write into; the OS owns its lifetime. */
 	makeTempDir(): Promise<string>;
+	/**
+	 * Extract a zip into a directory this adapter owns, answering the one `.app` it held, or
+	 * `undefined` when the artifact is not a zip and is installed as a file. A hostile entry — an
+	 * absolute path, a `..` segment, a symlink pointing outside — throws `invalid-archive`.
+	 */
+	extractZip(archive: string): Promise<{ path: string; entries: number } | undefined>;
 	/** True only for an existing directory whose name ends in `.app`. */
 	isAppBundle(path: string): Promise<boolean>;
 	/** Move `source` onto `target`, parking whatever is at `target` at `backup`. */

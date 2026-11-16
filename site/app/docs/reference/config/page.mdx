@@ -15,12 +15,23 @@ Types are what the validator accepts. The default is what the consuming code doe
 
 ## `app`
 
-| key       | type   | default  | what it does                                                                                                       |
-| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`      | string | required | reverse-DNS bundle identifier written to `Info.plist`; also seeds the bridge port and is the notification identity |
-| `name`    | string | required | app name, and the name platform failures print                                                                     |
-| `version` | string | required | `CFBundleShortVersionString`                                                                                       |
-| `icon`    | string | unset    | PNG resolved against `--dir` by `crust build`; a missing file fails the build                                      |
+| key        | type   | default    | what it does                                                                                                       |
+| ---------- | ------ | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `id`       | string | required   | reverse-DNS bundle identifier written to `Info.plist`; also seeds the bridge port and is the notification identity |
+| `name`     | string | required   | app name, and the name platform failures print                                                                     |
+| `version`  | string | required   | `CFBundleShortVersionString`                                                                                       |
+| `icon`     | string | unset      | PNG resolved against `--dir` by `crust build`; a missing file fails the build                                      |
+| `activate` | string | `"always"` | when creating a window brings the app to the front: `"always"`, `"first"` or `"never"`                             |
+
+### `app.activate`
+
+Whether a window create raises the app, which is what puts the window on the active Space and therefore into AppKit's `AXWindows`. Only macOS reads it; the validator accepts it everywhere so one config serves every platform.
+
+- `"always"` — every window create raises the app, guarded on it not already being active. The default, and the behaviour that keeps a window in the accessibility tree.
+- `"first"` — only the first window create of the process. `-[NSApplication isActive]` is false whenever the human is in another app, so a per-window `isActive` test cannot tell "no window yet" from "the human is elsewhere": it activates on every window created from behind another app and steals their focus. One process-wide flag is what tells them apart. Cost: a later window created while the app is inactive stays off the active Space and out of `AXWindows` until the user clicks the app — the symptom the activation fix removed, now only for later windows.
+- `"never"` — no activation selector is sent at all. Every window created while the app is inactive has that same symptom: on screen, on every Space (`setCollectionBehavior: 257`), and absent from `AXWindows`, so VoiceOver cannot see it until the user activates the app.
+
+A second window of an already-active app is never re-raised, whatever the mode: the selector is guarded on `-[NSApplication isActive]`, and the once-per-process `-activate` is shared with `window.focus`.
 
 ## `windows`
 
@@ -89,7 +100,7 @@ An unknown key is reported the same way, with the accepted set:
 
 ```text
 invalid crust config in crust.config.ts:
-  app.color — expected one of "id", "name", "version", "icon", got "red"
+  app.color — expected one of "id", "name", "version", "icon", "activate", got "red"
 ```
 
 `loadConfig` throws plain `Error` naming the path for: no config file, an explicit path that does not exist, unreadable or unparsable JSON, a module with no default export, and an unsupported extension. Expected filenames are in `CONFIG_FILES`; `findConfig(dir)` answers the same question without loading.

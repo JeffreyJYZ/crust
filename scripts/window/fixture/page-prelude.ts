@@ -60,9 +60,13 @@ async function child() {
 	var parts = location.pathname.split("/");
 	var label = parts[parts.length - 1];
 	var open = await ask("window", "isOpen", { label: label });
+	// The identity the page itself carries. window.label answers the label its
+	// own document URL named, which is what makes a created window's label an
+	// observation rather than the opener's claim.
+	var identity = await ask("window", "label", {});
 	await report("child." + label, {
 		how: "resolved",
-		value: { href: location.href, open: open },
+		value: { href: location.href, open: open, label: identity },
 	});
 }
 

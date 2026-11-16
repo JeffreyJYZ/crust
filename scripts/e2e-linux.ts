@@ -19,6 +19,7 @@ import {
 	runInSlice,
 	sync,
 } from "./linux/sandbox.ts";
+import { checkSmokeSteps } from "./linux/smoke-report.ts";
 
 /** The real-GTK proof the CI gate also runs; it owns the library, window and pump steps. */
 const SMOKE = "scripts/linux-smoke.ts";
@@ -162,6 +163,10 @@ async function main(): Promise<number> {
 						? lastLine(smoke.stdout) || lastLine(smoke.stderr) || "no output"
 						: ""),
 	);
+
+	// ---- 4b. the steps that need a loaded page ----------------------------
+	// Each verdict quotes the smoke's own PASS or FAIL line, so the answer travels with it.
+	checkSmokeSteps(verdict, both);
 
 	// ---- 5. quit() ends the process ---------------------------------------
 	const quit = await runInSlice("xvfb-run -a", QUIT_TIMEOUT_S, `bun run ${QUIT}`);

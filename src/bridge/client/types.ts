@@ -19,6 +19,12 @@ export interface CrustConfig {
 	token: string;
 	/** The port the bridge bound, for diagnostics. */
 	port?: number;
+	/**
+	 * Which window this page is, sent with every invoke so `window.label` can answer it. The
+	 * bridge writes the label it read from the document request; a dev-server page falls back to
+	 * its own `location.search`. A routing hint, never authority — see `bridge/window-identity.ts`.
+	 */
+	window?: string;
 }
 
 export interface CrustInvokeError extends Error {
@@ -59,4 +65,6 @@ export interface CrustTarget {
 	EventSource?: unknown;
 	crust?: unknown;
 	__CRUST__?: CrustConfig;
+	/** The page's own URL, which a dev-server page reads its window label from. */
+	location?: { search?: string };
 }

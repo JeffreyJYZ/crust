@@ -1,0 +1,65 @@
+# Window commands
+
+Three namespaces: `window` for a window's life and its chrome, `window-state` for a frame that survives a relaunch, `positioner` for one of nine placements on the main screen. All three are registered by the macOS runtime with the platform's own adapter, so `window.crust.invoke("window", "list")` works in an app that names no plugin.
+
+Every command answers a value, never a rejected invoke: `{ ok: true, … }` or `{ ok: false, code, message }`. Without an adapter the answer is `not-implemented` with `requires: "NSWindow"`, never an empty list that reads like a real one.
+
+## `window`
+
+| command            | arguments                                  | answer                                  |
+| ------------------ | ------------------------------------------ | --------------------------------------- |
+| `create`           | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }`    |
+| `close`            | `{ label }`                                | `{ ok: true, label, closed: true }`     |
+| `focus`            | `{ label }`                                | `{ ok: true, label, focused: true }`    |
+| `setTitle`         | `{ label, title }`                         | `{ ok: true, label, title }`            |
+| `list`             | none                                       | `{ ok: true, labels }`                  |
+| `isOpen`           | `{ label }`                                | `{ ok: true, label, open }`             |
+| `label`            | none                                       | `{ ok: true, label }`                   |
+| `setSize`          | `{ label, width, height }`                 | `{ ok: true, label, width, height }`    |
+| `getSize`          | `{ label }`                                | `{ ok: true, label, width, height }`    |
+| `setPosition`      | `{ label, x, y }`                          | `{ ok: true, label, x, y }`             |
+| `getPosition`      | `{ label }`                                | `{ ok: true, label, x, y }`             |
+| `setAlwaysOnTop`   | `{ label, value }`                         | `{ ok: true, label, alwaysOnTop }`      |
+| `isAlwaysOnTop`    | `{ label }`                                | `{ ok: true, label, alwaysOnTop }`      |
+| `setFullscreen`    | `{ label, value }`                         | `{ ok: true, label, fullscreen }`       |
+| `isFullscreen`     | `{ label }`                                | `{ ok: true, label, fullscreen }`       |
+| `minimize`         | `{ label }`                                | `{ ok: true, label, minimized: true }`  |
+| `unminimize`       | `{ label }`                                | `{ ok: true, label, minimized: false }` |
+| `isMinimized`      | `{ label }`                                | `{ ok: true, label, minimized }`        |
+| `maximize`         | `{ label }`                                | `{ ok: true, label, maximized: true }`  |
+| `isMaximized`      | `{ label }`                                | `{ ok: true, label, maximized }`        |
+| `setDecorations`   | `{ label, value }`                         | `{ ok: true, label, decorations }`      |
+| `isDecorated`      | `{ label }`                                | `{ ok: true, label, decorations }`      |
+| `setOpacity`       | `{ label, value }`                         | `{ ok: true, label, opacity }`          |
+| `opacity`          | `{ label }`                                | `{ ok: true, label, opacity }`          |
+| `setCursor`        | `{ cursor }`                               | `{ ok: true, cursor }`                  |
+| `setCursorVisible` | `{ value }`                                | `{ ok: true, visible }`                 |
+
+`label` is the one command with no adapter behind it: the bridge reads the window identity off the calling request (`?window=<label>` in the URL crust opened the page with, sent by the page client on every invoke) and hands it over as `ctx.window`. It answers the label that request carried — never the first open window, the focused one, or the only one. A page the bridge did not open that way carries no identity, and the answer is `not-implemented` with `requires: "the calling page's window identity on the invoke request"`. A client-supplied label is a routing hint, not a credential: the bearer token is the only one, so a page that claims another label can mislabel itself and nothing else.
+
+`create` refuses a label that is already open rather than replacing it, and refuses `width`/`height` that are not positive integers instead of clamping them. `setSize` measures the window frame, so the title bar is inside its height. `setCursor` and `setCursorVisible` take no label: macOS has one cursor for the app, not one per window. `setCursor` accepts `default`, `pointer`, `crosshair`, `text` and `grab`.
+
+Failure codes: `invalid-label` (a missing or empty `label`, or a `create` title that is not a string), `unknown-window` (no open window carries that label), `duplicate-label` (`create` on a label already in the platform's map), `invalid-size` (a size that is not a positive integer), `invalid-position` (an `x` or `y` that is not an integer; negative is legitimate), `invalid-value` (a `value` that is not a boolean, or an opacity outside 0–1, or a cursor outside the list), `invalid-url` (`create` with an empty or non-string `url`), `unknown-adapter` (the adapter has no such member, checked before the arguments), `handler-error` (the adapter threw, or a getter answered nothing).
+
+## `window-state`
+
+| command      | arguments   | answer                                  |
+| ------------ | ----------- | --------------------------------------- |
+| `save`       | `{ label }` | `{ ok: true, label, frame }`            |
+| `restore`    | `{ label }` | `{ ok: true, label, restored, frame? }` |
+| `forget`     | `{ label }` | `{ ok: true, label, removed }`          |
+| `saveAll`    | none        | `{ ok: true, saved, skipped }`          |
+| `restoreAll` | none        | `{ ok: true, restored, missing }`       |
+| `forgetAll`  | none        | `{ ok: true, removed }`                 |
+
+`frame` is `{ x, y, width, height }`. A missing or corrupt state file is not an error: `restore` answers `restored: false` and the window opens at its configured size. `saveAll` names every window whose frame the platform could not read in `skipped` instead of aborting the rest; `restoreAll` names every label with no stored entry in `missing`; `forgetAll` answers the labels it dropped.
+
+Failure codes: `invalid-label`, `unknown-window`, `unknown-adapter` (a partial frame adapter), `handler-error`; `not-implemented` with `requires: "NSWindow"` when the plugin was built without a frame adapter.
+
+## `positioner`
+
+Nine commands, one per placement: `center`, `topLeft`, `topRight`, `bottomLeft`, `bottomRight`, `topCenter`, `bottomCenter`, `leftCenter`, `rightCenter`.
+
+Each takes `{ label }` and answers `{ ok: true, label, x, y, placed: true }`. The screen frame is the main screen's visible frame, so `top` is the largest `y` and a `topLeft` window sits under the menu bar. A window larger than the screen keeps its negative offset: clamping would report a success the user cannot see.
+
+Failure codes: `invalid-label`, `unknown-window`, `unknown-adapter` (no `getSize`/`setPosition`, or no usable screen frame), `handler-error`; `not-implemented` with `requires: "NSWindow"` without an adapter.

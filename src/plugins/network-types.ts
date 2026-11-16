@@ -12,10 +12,14 @@ export const NETWORK_SCHEME = "crust-net";
 export const NETWORK_LOG_LIMIT = 100;
 
 /**
- * The longest URL a rule is matched against. The native handler copies the URL into a 2048-byte
- * buffer (`src/platform/darwin/shim/110_network.c`, `NET_TEXT`) and truncates at 2047 bytes, so a
- * longer URL reaches the matcher as a prefix — and a prefix match lets a tail-anchored `block` rule
- * be dodged with a long query string. Such a URL is answered `block` instead of matched.
+ * The most bytes the native handler can hold for a URL, and the bound a rule is matched under.
+ * `net_copy` (`src/platform/darwin/shim/110_network.c`, `NET_TEXT` 2048) keeps at most 2047 bytes
+ * and the NUL, so a longer URL reaches the matcher as a prefix — and a prefix match lets a
+ * tail-anchored `block` rule be dodged with a long query string.
+ * A URL at or beyond this bound is answered `block` instead of matched. That is fail-closed by one
+ * byte: a URL of exactly 2047 bytes does fit, and is still refused, because the handler cannot tell
+ * a full URL that size from the prefix of a longer one. The darwin adapter reads all 2047 bytes
+ * (`URL_CHUNK` in `platform/darwin/network.ts`), so the check sees every byte the handler has.
  */
 export const NETWORK_URL_LIMIT = 2047;
 
@@ -23,20 +27,46 @@ export const NETWORK_URL_LIMIT = 2047;
 export const NETWORK_PATTERN_LIMIT = 2048;
 export const NETWORK_WILDCARD_LIMIT = 32;
 
+/**
+ * The most bytes an `allow` rule may serve. The native side holds one `net_body[NET_BODY]` buffer
+ * (`shim/113_network_serve.c`), and a body over it is refused rather than truncated, so a page
+ * never reads a silently cut response.
+ */
+export const NETWORK_BODY_LIMIT = 262144;
+
+/** The content type an `allow` rule serves when it names none. */
+export const NETWORK_DEFAULT_TYPE = "text/plain; charset=utf-8";
+
+/** A content type longer than this is refused: the native buffer is 128 bytes including its NUL. */
+export const NETWORK_TYPE_LIMIT = 127;
+
 export type NetworkAction = "allow" | "block";
-/** `served` means the handler fetched and delivered the body; `blocked` means a real error. */
+/** `served` means the handler answered with bytes; `blocked` means a real `NSURLError`. */
 export type NetworkStatus = "served" | "blocked";
 
 export interface NetworkRule {
 	/** A URL, or a URL with `*` standing for any run of characters. */
 	pattern: string;
 	action: NetworkAction;
+	/** The bytes an `allow` rule answers with; absent means an empty body, never a fetch. */
+	body?: string;
+	/** The `Content-Type` an `allow` rule answers with; absent means `NETWORK_DEFAULT_TYPE`. */
+	type?: string;
+}
+
+/** What the native handler must do with one task: fail it, or answer it with these bytes. */
+export interface NetworkDecision {
+	action: NetworkAction;
+	body?: string;
+	type?: string;
 }
 
 export interface NetworkLogEntry {
 	url: string;
 	action: NetworkAction;
 	status: NetworkStatus;
+	/** How many bytes the handler delivered; present only on a served request. */
+	bytes?: number;
 	/** Why a request was answered without matching the rules; absent when a rule decided. */
 	reason?: string;
 }
@@ -51,9 +81,9 @@ export interface NetworkInstall {
 export interface NetworkAdapter {
 	/**
 	 * Register the handler on a configuration no webview has used yet, so every request the page
-	 * makes under `scheme` reaches `decide`.
+	 * makes under `scheme` reaches `decide` and is answered from its decision.
 	 */
-	install(scheme: string, decide: (url: string) => NetworkAction): NetworkInstall;
+	install(scheme: string, decide: (url: string) => NetworkDecision): NetworkInstall;
 }
 
 /** What a command answers when the scheme handler landed, or did not. */

@@ -5,6 +5,7 @@
  */
 
 import { CrustError } from "../errors";
+import { windowLabelFromSearch } from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
 import type { Events } from "./events.ts";
@@ -45,7 +46,13 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		) {
 			try {
 				if (url.pathname === "/" || url.pathname === "/index.html") {
-					return await documentResponse({ options, csp, token, port: state.port() });
+					return await documentResponse({
+						options,
+						csp,
+						token,
+						port: state.port(),
+						windowLabel: windowLabelFromSearch(url.search),
+					});
 				}
 				const body = await assetBody(url.pathname, options);
 				if (body !== null) {
@@ -60,16 +67,23 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 				// A path with no extension that matches no file is a client-side
 				// route: serve the document and let the page's router handle it.
 				if (!hasExtension(url.pathname) && (await hasDocument(options))) {
-					return await documentResponse({ options, csp, token, port: state.port() });
+					return await documentResponse({
+						options,
+						csp,
+						token,
+						port: state.port(),
+						windowLabel: windowLabelFromSearch(url.search),
+					});
 				}
 			} catch (error) {
 				return errorResponse(error, cors);
 			}
 		}
 
-		// A request with no Origin is a non-browser local client. Refusing it
-		// explicitly is what stops a local process driving the bridge, so the
-		// check cannot be skipped by omitting the header.
+		// A request with no Origin is not a cross-origin request, so it is not the
+		// origin gate's business: WebKitGTK's EventSource sends none on a
+		// same-origin GET, and the token below is the credential either way. A
+		// *present* and foreign Origin is a hostile page, and stays refused.
 		if (!allowedOrigin(origin, devOrigins, state.port())) {
 			return errorResponse(
 				new CrustError("bad-origin", `origin not allowed: ${origin ?? "<absent>"}`),

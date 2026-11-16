@@ -1,0 +1,81 @@
+# Desktop and system commands
+
+Six namespaces that read or change the machine the app runs on: `theme` for appearance, `dock` for the tile, `power` for battery and sleep, `accessibility` for the AX trust state, `opener` for handing a path or URL to the OS, `os` for what the machine reports.
+
+Every command answers a plain object, and nothing throws: a bad argument is a typed failure, an adapter that threw becomes `handler-error`, and a missing framework is `not-implemented` naming the framework.
+
+## `theme`
+
+| command   | arguments        | answer                             |
+| --------- | ---------------- | ---------------------------------- |
+| `current` | none             | `{ ok: true, appearance, source }` |
+| `set`     | `{ appearance }` | `{ ok: true, appearance, source }` |
+| `reset`   | none             | `{ ok: true, appearance, source }` |
+
+`appearance` is `"light"` or `"dark"`; `set` also takes `"system"` to hand the choice back to macOS, which is exactly what `reset` does. `source` is `"system"` or `"override"`, so a page can tell a page-chosen appearance from the OS's. The state is read back from the app after every change, so the answer is what the app draws rather than an echo of the argument.
+
+Every change pushes the `theme:changed` event with `{ appearance, source }`, so a page that already rendered follows without polling.
+
+Failure codes: `bad-request` (an `appearance` outside the three values); `not-implemented` with `requires: "NSAppearance"`.
+
+## `dock`
+
+| command      | arguments       | answer                            |
+| ------------ | --------------- | --------------------------------- |
+| `badge`      | `{ label }`     | `{ ok: true, label, cleared }`    |
+| `badgeLabel` | none            | `{ ok: true, label }`             |
+| `bounce`     | `{ critical? }` | `{ ok: true, critical, request }` |
+| `progress`   | `{ value }`     | `{ ok: true, value }`             |
+
+`badge` sets the tile's text; the empty string clears it, and `cleared` says which happened. `bounce` answers the request id AppKit minted; `critical: true` bounces until the app is frontmost rather than once. `progress` draws a determinate bar, `value` from 0 to 1.
+
+Failure codes: `bad-request` (a non-string `label`, a `value` outside 0–1), `handler-error` (the OS or adapter refused); `not-implemented` with `requires: "NSDockTile"`, and for `progress` with `requires: "-[NSDockTile setContentView:]"` when the bar could not be installed.
+
+## `power`
+
+| command        | arguments    | answer                                             |
+| -------------- | ------------ | -------------------------------------------------- |
+| `state`        | none         | `{ ok: true, onAc, batteryPercent, lowPowerMode }` |
+| `idleSeconds`  | none         | `{ ok: true, seconds }`                            |
+| `sleepPrevent` | `{ reason }` | `{ ok: true, id }`                                 |
+| `sleepAllow`   | none         | `{ ok: true, released }`                           |
+
+`batteryPercent` is `null` on a machine with no battery. `idleSeconds` is fractional, from the combined session state. `sleepPrevent` holds off idle sleep and answers the assertion id, so a caller can prove which one it holds; the reason shows in `pmset -g assertions`. `sleepAllow` answers `released: false` when nothing was held — not an error — and the darwin adapter also releases on process exit, so a crash does not leave the machine awake.
+
+Failure codes: `bad-request` (a missing or empty `reason`), `handler-error` (IOKit refused the assertion); `not-implemented` with `requires: "IOPSCopyPowerSourcesInfo"`.
+
+## `accessibility`
+
+| command        | arguments | answer                                  |
+| -------------- | --------- | --------------------------------------- |
+| `trusted`      | none      | `{ ok: true, trusted }`                 |
+| `prompt`       | none      | `{ ok: true, trusted, prompted: true }` |
+| `elementCount` | none      | `{ ok: true, count }`                   |
+
+`trusted` is a read and never raises the dialog. `prompt` raises the one system prompt that grants trust and reports the state after it, so `trusted: false` is a common answer — a human has to answer. `elementCount` walks the app's own first window and counts its AX children; zero is a real answer for a window with no children.
+
+`elementCount` answers `not-implemented` rather than a misleading zero when the AX window list came back empty (`requires: "AXUIElementCopyAttributeValue (AXWindows)"`) or the API refused the walk (`requires: "AXUIElementCopyAttributeValue"`). Without an adapter, all three answer `not-implemented` with `requires: "AXIsProcessTrusted"`.
+
+## `opener`
+
+| command      | arguments  | answer                               |
+| ------------ | ---------- | ------------------------------------ |
+| `openPath`   | `{ path }` | `{ ok: true, path }`                 |
+| `openUrl`    | `{ url }`  | `{ ok: true, url }`                  |
+| `revealItem` | `{ path }` | `{ ok: true, path, revealed: true }` |
+
+`openPath` opens a file or folder in whatever app owns its type, the way a double-click would. `openUrl` needs a scheme — `https` in the browser, `mailto` in Mail. `revealItem` selects the item in a Finder window, creating one if the folder is not already open. A relative path is resolved against the process working directory, and the answer carries the absolute path that was handed to the OS.
+
+Failure codes: `bad-request` (an empty argument, or a `url` with no scheme), `not-found` (nothing at that path), `handler-error` (the OS refused the send); `not-implemented` with `requires: "NSWorkspace"`.
+
+## `os`
+
+| command  | arguments | answer                                                                                |
+| -------- | --------- | ------------------------------------------------------------------------------------- |
+| `info`   | none      | `{ ok, platform, arch, family, exeExtension, hostname, version, appVersion, uptime }` |
+| `paths`  | none      | `{ ok, home, appData, appLog, temp }`                                                 |
+| `locale` | none      | `{ ok, locale }`                                                                      |
+
+Nothing here is a constant: `platform` is `process.platform` (`"darwin"`), `arch` is `process.arch` (`"arm64"`), `family` is the name Tauri uses (`"macOS"`), `version` is the OS product version, `appVersion` is the bundle's short version or `null` when the process carries no bundle, and `uptime` is seconds since boot. `locale` is a BCP-47 identifier such as `"en-GB"`. `paths` answers the four directories a page needs, computed by the same function the log sink uses, so `appLog` is where the sink really writes.
+
+`paths` needs no native half and answers on every platform. `info` and `locale` answer `handler-error` when the adapter threw, and `not-implemented` with `requires: "NSProcessInfo"` without one.

@@ -1,0 +1,86 @@
+# Webview commands
+
+Five namespaces that drive the page's own `WKWebView`: `navigation` for loads and history, `findinpage` for WebKit's find, `downloads` for files the page asks WebKit to save, `network` for the rules a request is matched against, `crash-reporter` for what the app knows about its own last crash.
+
+All five are registered by the macOS runtime with the framework's own adapter. Without one, each answers `not-implemented` naming the delegate it needs, never an empty result that reads like a real one.
+
+## `navigation`
+
+| command     | arguments    | answer                                                 |
+| ----------- | ------------ | ------------------------------------------------------ |
+| `start`     | `{ label? }` | `{ ok: true, status, reason }`                         |
+| `stop`      | `{ label? }` | `{ ok: true, stopped }`                                |
+| `state`     | `{ label? }` | `{ ok, url, title, loading, canGoBack, canGoForward }` |
+| `reload`    | `{ label? }` | `{ ok: true, reloaded }`                               |
+| `goBack`    | `{ label? }` | `{ ok: true, moved }`                                  |
+| `goForward` | `{ label? }` | `{ ok: true, moved }`                                  |
+
+**Every command takes an optional `label`**, read before the adapter runs and passed to it last, so one command can aim one window. Omitting it means the app's first open window, which is what a single-window caller has always meant; a label naming no open window is `bad-request` naming it, never a silent fall back to that window.
+
+`start` installs the delegate and reports the native half's own `status` number — never an optimism — and every later callback arrives as an event. `stop` removes the delegate; the webview keeps loading, it just stops reporting, and a second `stop` answers `stopped: false`. `state` answers `handler-error` when there is no webview to ask yet. `reload` answers `reloaded: false` when nothing was sent, and `goBack`/`goForward` answer `moved: false` on an empty history — a fact about the history, not a failure.
+
+Events: `navigation:did-start`, `navigation:did-commit`, `navigation:did-finish`, `navigation:did-fail`, each with `{ url, title }` and, on `did-fail`, a `message` when WebKit named a reason.
+
+Failure codes: `bad-request` (a `label` that is present but not a non-empty string, or one naming no open window), `handler-error` (the adapter threw, or the install was refused); `not-implemented` with `requires: "WKNavigationDelegate"`.
+
+## `findinpage`
+
+| command    | arguments                                | answer                         |
+| ---------- | ---------------------------------------- | ------------------------------ |
+| `search`   | `{ text, forward?, matchCase?, label? }` | `{ ok: true, matches, found }` |
+| `next`     | `{ label? }`                             | `{ ok: true, matches, found }` |
+| `previous` | `{ label? }`                             | `{ ok: true, matches, found }` |
+| `clear`    | `{ label? }`                             | `{ ok: true, cleared: true }`  |
+
+WebKit's own find, so a page's search bar gets the same highlight and scroll as `⌘F`. `forward` defaults to `true` and `matchCase` to `false`. **`matches` is `1` or `0`, never a total**: `WKFindResult` carries only `-matchFound`, and a real count needs a private selector this does not send.
+
+**`clear` always refuses on macOS.** WebKit has no public way to drop the find indicator, so the answer is `not-implemented` with `requires: "WKWebView -_clearFindIndicator"` — sending that selector from a public command would be a private API call made silently. An adapter with a public `clear()` answers instead.
+
+Every command takes the same optional `label`, with the same rule as `navigation`: omitted means the app's first open window, and a label naming no open window keeps `bad-request`. Failure codes: `bad-request` (an empty `text`, a non-boolean flag, an unusable label), `handler-error` (the native half could not start the search or never answered).
+
+## `downloads`
+
+| command        | arguments  | answer                         |
+| -------------- | ---------- | ------------------------------ |
+| `list`         | none       | `{ ok, directory, downloads }` |
+| `start`        | `{ url }`  | `{ ok, download }`             |
+| `cancel`       | `{ id }`   | `{ ok, id, cancelled: true }`  |
+| `directory`    | none       | `{ ok, directory }`            |
+| `setDirectory` | `{ path }` | `{ ok, directory }`            |
+
+A download entry is `{ id, url, path, status, progress, error? }`, with `status` one of `downloading`, `finished`, `failed`, `cancelled` and `progress` from 0 to 1. `list` reads progress at that moment and pushes `download:progress` when it moved, so a page can draw a bar without polling. `start` asks the page's webview to fetch `url`; the id is the plugin's. `cancel` refuses a download that already finished or failed, because a settled entry is not a no-op. `setDirectory` moves the destination, and a path outside the app's data root is refused — including one that reaches out through a symlink.
+
+Events: `download:started`, `download:progress`, `download:finished` (with the file's `path`), `download:failed` (with `error`).
+
+Failure codes: `bad-request` (an empty `url`, a `url` with no scheme, an unknown or settled `id`, a destination that is relative or outside the data root), `handler-error` (WebKit refused the start or the cancel); `not-implemented` with `requires: "WKDownloadDelegate"`.
+
+## `network`
+
+| command    | arguments   | answer                                      |
+| ---------- | ----------- | ------------------------------------------- |
+| `rules`    | none        | `{ ok, scheme, rules, registered, reason }` |
+| `setRules` | `{ rules }` | `{ ok, scheme, rules, registered, reason }` |
+| `log`      | none        | `{ ok: true, entries }`                     |
+| `clearLog` | none        | `{ ok: true, cleared }`                     |
+
+A rule is `{ pattern, action, body?, type? }`: `pattern` is a URL, or a URL with `*` standing for any run of characters; `action` is `"allow"` or `"block"`. The first matching rule wins and no match allows an empty body. An `allow` rule serves the bytes it carries — it is never a pass-through and never a fetch — with `type` defaulting to `text/plain; charset=utf-8`. A `block` rule that carries `body` or `type` is refused, because nothing would ever serve it.
+
+`scheme` is `crust-net`, and `registered` says whether the handler landed at all. Only requests under that scheme are intercepted. `setRules` validates the whole set before storing any of it, so a refused rule leaves the rules in force untouched. A pattern over 2048 characters, more than 32 wildcards, a body over 262144 bytes or a content type over 127 bytes is refused by name. A URL at the native buffer's 2047-byte bound is answered `block` rather than matched, because a truncated prefix would let a tail-anchored rule be dodged.
+
+`log` answers at most the last 100 entries, oldest first, each `{ url, action, status, bytes?, reason? }`. `clearLog` answers how many it dropped. Each decision also pushes `network:request` with the entry.
+
+Failure codes: `bad-request` (a rule set that is not an array, a rule with no `pattern`, an `action` that is neither `allow` nor `block`, or any of the bounds above); `not-implemented` with `requires: "WKURLSchemeHandler"`.
+
+## `crash-reporter`
+
+| command     | arguments    | answer                                                    |
+| ----------- | ------------ | --------------------------------------------------------- |
+| `last`      | none         | `{ crash, root }`                                         |
+| `list`      | `{ limit? }` | `{ crashes, root }`                                       |
+| `clear`     | none         | `{ ok: false, code: "page-cannot-clear", message, root }` |
+| `install`   | none         | `{ armed, reason, record, root }`                         |
+| `uninstall` | none         | `{ armed: false, reason }`                                |
+
+A crash record is `{ signal, code, address, at, handler, exitCode }`: `signal` is e.g. `SIGSEGV`, `code` is `si_code`, `address` is hex, `at` is when the guard observed it, and `exitCode` is 70 for a recorded fault. `last` answers `crash: null` when the guard is running and nothing has crashed. `list` answers oldest first, `limit` keeping the newest. `install` arms the handlers so the next fault writes a record, and `uninstall` restores the default disposition.
+
+**`clear` always refuses from a page.** The page is the process whose bug produced the crash, so it is the last caller that may delete the record of it: the answer is `{ ok: false, code: "page-cannot-clear" }`, and the runtime is the only caller allowed to clear. Every command answers `not-implemented` with `requires: "startCrashGuard()"` when the guard process is not running — an empty list would read as "no crashes" — and `install`/`uninstall` also need the darwin signal unit, answering `requires: "armCrashHandlers()"` without it.

@@ -12,6 +12,7 @@ import {
 	KDF_ITERATIONS,
 	KDF_MIN_ITERATIONS,
 	KDF_NAME,
+	kdfRefusal,
 	KEY_BITS,
 	SALT_BYTES,
 	STORE_VERSION,
@@ -103,11 +104,13 @@ export async function createStore(
 	password: string,
 	iterations: number = KDF_ITERATIONS,
 ): Promise<OpenedStore> {
-	if (!Number.isInteger(iterations) || iterations < KDF_MIN_ITERATIONS) {
+	if (!Number.isInteger(iterations)) {
+		throw new Error(`stronghold: ${iterations} is not a whole number of PBKDF2 rounds`);
+	}
+	const refusal = kdfRefusal(iterations);
+	if (refusal !== undefined) {
 		// A header this build would refuse to read is not a store worth writing.
-		throw new Error(
-			`stronghold: ${iterations} PBKDF2 rounds is below the KDF floor of ${KDF_MIN_ITERATIONS}`,
-		);
+		throw new Error(`stronghold: ${iterations} PBKDF2 rounds ${refusal}`);
 	}
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
 	const keys = await deriveKeys(password, salt, iterations);

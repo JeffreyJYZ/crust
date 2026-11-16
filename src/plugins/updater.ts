@@ -1,6 +1,7 @@
 /**
  * `crust:updater` — check, download, install, relaunch: Tauri's updater minus the installer binary. The three halves it cannot own, the network, the bundle on disk and the launch, sit behind an {@link UpdaterAdapter}, so the default runs on `fetch`, `node:fs` and `open`, and a test swaps in a fake. `install` renames the new bundle over the old, parks the old at `<appPath>.old`, and never runs `codesign`: a replaced process cannot survive its own swap, and the signature belongs to whoever shipped the artifact.
  * Nothing is installed that this run did not verify: `download` requires a sha256, fetches `https` only, verifies a signature with the config's pinned key alone, and records a receipt that `install` refuses to work without.
+ * A signature is over file bytes, so a `.app` bundle has nothing to sign: an author ships a **zip**, `download` verifies the archive, extracts it, and records both the archive's digest and the extracted tree's, so `install` re-checks the half that was signed and the half that gets renamed.
  */
 
 import { definePlugin } from "./define";
@@ -9,25 +10,22 @@ import {
 	type CheckResult,
 	checkFailure,
 	errorOf,
-	hashMismatch,
 	invalidArguments,
 	isNewer,
 	notAppBundle,
-	readSha256,
 	readString,
 	type UpdaterFailure,
 } from "./updater-args";
 import { parseManifest } from "./updater-manifest";
 import { nodeUpdaterAdapter } from "./updater-node";
-import { createLauncher, linkedPath, ownBundleFailure } from "./updater-bundle";
-import { changedSinceDownload, createReceipts, unverifiedArtifact } from "./updater-receipt";
+import { createLauncher, ownBundleFailure } from "./updater-bundle";
+import { runDownload } from "./updater-download";
 import {
-	readSignatureArgs,
-	requiresPubkey,
-	signatureMismatch,
-	verifyEd25519,
-} from "./updater-signature";
-import { downloadUrlFailure } from "./updater-url";
+	archiveChangedSinceDownload,
+	changedSinceDownload,
+	createReceipts,
+	unverifiedArtifact,
+} from "./updater-receipt";
 import type {
 	BundleArgs,
 	CheckArgs,
@@ -40,6 +38,7 @@ import type {
 	UpdaterOptions,
 } from "./updater-types";
 
+export * from "./updater-archive";
 export * from "./updater-args";
 export * from "./updater-manifest";
 export * from "./updater-node";
@@ -94,51 +93,8 @@ export function createUpdaterPlugin(
 				if (!isNewer(version, currentVersion)) return { available: false, version };
 				return { available: true, version, url, notes, sha256, signature, pubkey };
 			},
-			download: async (args: DownloadArgs): Promise<DownloadResult | UpdaterFailure> => {
-				const url = readString(args, "url");
-				if (url === undefined) return invalidArguments("download", "needs { url }", args);
-				const refused = downloadUrlFailure(url, {
-					allowFile: options.allowFileUrl === true,
-				});
-				if (refused !== undefined) return refused;
-				const expected = readSha256(args);
-				if (expected === undefined || expected === null) {
-					const detail =
-						"requires sha256, because an artifact nothing verified is no artifact";
-					return { ...invalidArguments("download", detail, args), requires: "sha256" };
-				}
-				const signature = readString(args, "signature");
-				if (signature !== undefined && options.pubkey === undefined)
-					return requiresPubkey(args);
-				const signed = readSignatureArgs(args, options.pubkey);
-				if (signed === null) {
-					return invalidArguments(
-						"download",
-						"refuses a pubkey that is not this app's",
-						args,
-					);
-				}
-				try {
-					const file = await adapter.download(url, await adapter.makeTempDir());
-					const actual = (await adapter.sha256(file.path)).toLowerCase();
-					if (actual !== expected) return hashMismatch(file.path, actual, expected);
-					let signer: string | undefined;
-					if (signed !== undefined) {
-						const bytes = await adapter.readBytes(file.path);
-						const verified = await verifyEd25519(
-							signed.pubkey,
-							signed.signature,
-							bytes,
-						);
-						if (!verified) return signatureMismatch(file.path);
-						signer = signed.pubkey;
-					}
-					receipts.record({ path: file.path, sha256: actual, signer });
-					return { ok: true, path: file.path, bytes: file.bytes, sha256: actual, signer };
-				} catch (error) {
-					return { ok: false, ...errorOf(error, "download-failed") };
-				}
-			},
+			download: (args: DownloadArgs): Promise<DownloadResult | UpdaterFailure> =>
+				runDownload(adapter, options, receipts, args),
 			install: async (args: InstallArgs): Promise<InstallResult | UpdaterFailure> => {
 				const source = readString(args, "path");
 				const appPath = readString(args, "appPath");
@@ -155,10 +111,22 @@ export function createUpdaterPlugin(
 					// only replace the bundle this process is running from.
 					const elsewhere = await ownBundleFailure(appPath, execPath, "install");
 					if (elsewhere !== undefined) return elsewhere;
-					const linked = await linkedPath(appPath);
-					if (linked !== undefined) return linked;
 					if (!(await adapter.isAppBundle(source))) {
 						return notAppBundle(source, "is not an .app directory; extract it first");
+					}
+					// An extracted archive's receipt covers two digests: the zip that was signed and
+					// the tree that gets renamed. The tree is the one compared here, because a
+					// directory's digest can never equal the archive's, and both are re-checked so
+					// neither half can change behind the other.
+					if (receipt.archive !== undefined) {
+						const archived = (await adapter.sha256(receipt.archive.path)).toLowerCase();
+						if (archived !== receipt.archive.sha256) {
+							return archiveChangedSinceDownload(
+								receipt.archive.path,
+								archived,
+								receipt.archive.sha256,
+							);
+						}
 					}
 					const actual = (await adapter.sha256(source)).toLowerCase();
 					if (actual !== receipt.sha256) {

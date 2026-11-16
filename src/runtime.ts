@@ -17,6 +17,7 @@ import {
 	resolveEntry,
 	originOf,
 } from "./runtime-host.ts";
+import { runCrashGuardIfMarked } from "./runtime-crash-guard.ts";
 import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
 import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
 import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
@@ -33,6 +34,10 @@ export type { StartAppOptions } from "./runtime-options.ts";
  * The returned handle is the bridge that was started, so a test can stop it.
  */
 export async function startApp(options: StartAppOptions = {}): Promise<BridgeHandle> {
+	// The guard is this executable launched a second time, so its launch reaches this entry too.
+	// Read the marker before the single-instance lock and before any config: a guard is not a
+	// second copy of the app, and it must open no window and bind no port.
+	if (await runCrashGuardIfMarked()) process.exit(0);
 	registerShutdownSignals();
 	const config =
 		options.config !== undefined

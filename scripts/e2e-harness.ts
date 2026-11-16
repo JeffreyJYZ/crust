@@ -4,4 +4,5 @@
  */
 export { type Assertion, runCommand, type RunResult, Verdict } from "./harness/verdict.ts";
 export { clearSurvivors, survivorsOf } from "./harness/process.ts";
+export { restoreFocus } from "./harness/focus.ts";
 export { type Probe, type ProbeOptions, probe } from "./harness/probe.ts";

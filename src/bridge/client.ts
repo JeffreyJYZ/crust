@@ -5,6 +5,7 @@
 
 export { bootstrapSource, pageClientSource } from "./client/bootstrap.ts";
 export { installCrust } from "./client/install.ts";
+export { installInvoke } from "./client/invoke.ts";
 export type {
 	CrustApi,
 	CrustConfig,

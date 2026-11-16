@@ -36,11 +36,23 @@ static shim_i64 handler_invoke(void *self, shim_i64 code, void *created) {
 	return 0;
 }
 
-void *handler_vtbl[4] = {(void *)handler_qi, (void *)handler_addref, (void *)handler_release,
-                         (void *)handler_invoke};
+// The vtable is filled in at run time, never as a static initialiser. A static initialiser holding
+// code addresses is a *relocated* pointer inside the image, and that one table was the only such
+// pointer in the unit — which is what the crash looked like: the window class took a function
+// pointer handed over as an argument and worked, while the first COM callback through this table
+// jumped to 0xFFFFFFFFFFFFFFFF (2026-11-16). An assignment is not a relocation.
+static void *g_handler_vtbl[4];
+static int g_handler_vtbl_bound;
 
-void handler_init(shim_handler *h, void **vtbl) {
-	h->vtbl = vtbl;
+void handler_init(shim_handler *h) {
+	if (!g_handler_vtbl_bound) {
+		g_handler_vtbl[0] = (void *)handler_qi;
+		g_handler_vtbl[1] = (void *)handler_addref;
+		g_handler_vtbl[2] = (void *)handler_release;
+		g_handler_vtbl[3] = (void *)handler_invoke;
+		g_handler_vtbl_bound = 1;
+	}
+	h->vtbl = g_handler_vtbl;
 	h->refs = 1;
 	h->result = 0;
 	h->failed = 0;

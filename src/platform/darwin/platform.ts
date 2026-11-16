@@ -3,6 +3,7 @@
  * construction and tracking in their own modules.
  */
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+import { type Activation, activateAppOnce } from "./activation.ts";
 import { startAppKit } from "./appkit.ts";
 import { shim } from "./index.ts";
 import { ptrValue, S } from "./objc.ts";
@@ -16,9 +17,8 @@ import { WindowRegistry } from "./windows.ts";
 export class DarwinPlatform implements Platform {
 	readonly #appName: string;
 	#app = 0;
-	/** Activation happens at most once per process: repeating it makes the app
-	 * keep jumping into the foreground every time a window is re-created. */
-	#activated = false;
+	/** `app.activate`: when a window create may bring the app forward. */
+	#activateMode: Activation["mode"];
 	#mode = 0;
 	#started = false;
 	#pumping = false;
@@ -26,8 +26,9 @@ export class DarwinPlatform implements Platform {
 	#ticks = 0;
 	readonly #registry: WindowRegistry;
 
-	constructor(options: { appName?: string } = {}) {
+	constructor(options: { appName?: string; activate?: Activation["mode"] } = {}) {
 		this.#appName = options.appName ?? "crust";
+		this.#activateMode = options.activate ?? "always";
 		this.#registry = new WindowRegistry(() => this.#app);
 	}
 
@@ -101,9 +102,18 @@ export class DarwinPlatform implements Platform {
 			throw new Error(`createWindow: window "${label}" already exists`);
 
 		const handle: WindowHandle = { label };
-		const pointers = createNativeWindow(label, options, () => this.activateOnce());
+		const activation: Activation = {
+			mode: this.#activateMode,
+			once: () => this.activateOnce(),
+		};
+		const pointers = createNativeWindow(label, options, activation);
 		this.#registry.track(handle, pointers);
 		return handle;
+	}
+
+	/** The `app.activate` policy this platform runs under; `always` when the config omits it. */
+	get activateMode(): Activation["mode"] {
+		return this.#activateMode;
 	}
 
 	/** The absolute URL a tracked window was asked to load. */
@@ -140,30 +150,9 @@ export class DarwinPlatform implements Platform {
 		return this.#registry.number(label);
 	}
 
-	/**
-	 * Activate the app at most once per process. Every activation re-orders the app above
-	 * whatever the user was doing, so repeating it per window creation or `window.focus`
-	 * makes the Dock icon jump; `#activated` is the one flag both paths share, and a
-	 * failure is cosmetic and never loses a window.
-	 */
+	/** Activate the app at most once per process; a failure is cosmetic and never loses a window. */
 	activateOnce(): void {
-		if (this.#activated) return;
-		this.#activated = true;
-		if (!this.#app) return;
-		// `-activate` is the modern NSApplication call (macOS 14 replaced
-		// `activateIgnoringOtherApps:` with it). macOS still refuses activation for a process
-		// LaunchServices did not start — an unbundled `crust dev` runtime logs `active no` — but
-		// a click on the window activates it, so the refusal is not a dead end.
-		try {
-			S.v0(this.#app, "activate");
-		} catch {
-			// Older systems: fall back to the deprecated call, still better than nothing.
-			try {
-				S.vb1(this.#app, "activateIgnoringOtherApps:", 1);
-			} catch {
-				// Activation is cosmetic; nothing depends on it.
-			}
-		}
+		activateAppOnce(this.#app);
 	}
 
 	/** Stop the pump, ask AppKit to terminate, then leave. */
@@ -189,7 +178,16 @@ export class DarwinPlatform implements Platform {
 	}
 }
 
-/** Build the macOS platform. `appName` names failures, nothing in AppKit reads it. */
-export function createPlatform(options: { appName?: string } = {}): DarwinPlatform {
+/**
+ * Build the macOS platform. `appName` names failures, nothing in AppKit reads it; `activate` is
+ * `app.activate`, and omitting it means `always`, the behaviour that puts a window in the
+ * accessibility tree.
+ */
+export function createPlatform(
+	options: {
+		appName?: string;
+		activate?: Activation["mode"];
+	} = {},
+): DarwinPlatform {
 	return new DarwinPlatform(options);
 }

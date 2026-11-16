@@ -52,6 +52,13 @@ The page and the backend talk over a loopback HTTP bridge, not a promise inside 
 named in the content security policy. This is also what makes `crust dev` work: the window loads
 `dev.url` exactly once, so the dev server must already be up.
 
+The gate on `/_crust/*` is the **bearer token**; the origin check only rejects a _present_ and
+foreign `Origin`. An absent header is not a cross-origin request — a browser always sends `Origin`
+on one, and WebKitGTK's `EventSource` sends none at all on a same-origin GET, so refusing a null
+`Origin` killed every plugin event on Linux (`ctx.emit` to theme, menu, tray, downloads, navigation,
+shell and network) while POST invoke kept working. A page from another origin still carries its own
+`Origin` and is still refused `403 bad-origin`; a missing token is still `401`.
+
 ## How a page loads
 
 A page loads from the **bridge URL** (`http://127.0.0.1:<port>/`), navigated by the platform's own call — darwin sends `-loadRequest:`. No platform registers a custom scheme to serve a page: a scheme that cannot serve bytes earns nothing, and `crust://` is already taken. `urlScheme` is optional app config with no default, so `crust://` belongs to an app's deep links, never to the framework.

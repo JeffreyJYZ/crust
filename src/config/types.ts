@@ -8,12 +8,26 @@ export interface WindowConfig {
 	title?: string;
 }
 
+/**
+ * Whether creating a window brings the app to the front.
+ *
+ * `always` (default) raises the app on every window create, which is what puts the window on the
+ * active Space and therefore into AppKit's `AXWindows`. `first` raises only for the first window
+ * this process creates: a closed-and-reopened window does not count as first again, and a later
+ * window created while another app is frontmost stays off the active Space and out of `AXWindows`
+ * until the user activates the app. `never` sends no activation selector at all, so every window
+ * created while the app is inactive has that symptom — on screen, and invisible to VoiceOver.
+ */
+export type ActivateMode = "always" | "first" | "never";
+
 export interface AppConfig {
 	/** Reverse-DNS bundle identifier written to Info.plist. */
 	id: string;
 	name: string;
 	version: string;
 	icon?: string;
+	/** When a window create brings the app forward. Defaults to `always`. */
+	activate?: ActivateMode;
 }
 
 export interface DevConfig {

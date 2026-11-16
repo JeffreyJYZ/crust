@@ -44,8 +44,15 @@ describe("shell.spawn", () => {
 		});
 	});
 
-	test("refuses a path that resolves outside cwdRoot", async () => {
-		expect(await h.spawn({ program: "/bin/echo" })).toMatchObject({
+	test("refuses an absolute path the allow list does not name", async () => {
+		expect(await h.spawn({ program: "/bin/ls" })).toMatchObject({
+			ok: false,
+			code: "program-not-allowed",
+		});
+	});
+
+	test("refuses a relative program that resolves outside cwdRoot", async () => {
+		expect(await h.spawn({ program: "../echo" })).toMatchObject({
 			ok: false,
 			code: "program-outside-root",
 		});

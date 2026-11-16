@@ -4,14 +4,16 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 
 ## Status
 
-- **The whole layer is unproven on Win32** — no Windows machine was available, so no `user32`, `ole32` or WebView2 call in this tree has ever executed; treat the first Windows run as the real test.
-- **Gates that did run and pass**: `bun test src/platform/windows` (33 pass across 4 files), `bun run check:lines` (PASS), `bun run scripts/windows-smoke.ts` (refuses with `unavailable: … needs Windows; running darwin/arm64`, exit 1, which is correct), and `clang -fsyntax-only -std=c99 -Wall` over the assembled C unit with zero diagnostics.
+- **The whole layer is unproven on Win32** — no Windows machine was available, so no `user32`, `ole32` or WebView2 call in this tree has ever executed on the machine it was written on; treat every Windows run as the real test.
+- **Gates that did run and pass**: `bun test src/platform/windows` (52 pass across 7 files), `bun run check:lines` (PASS), `bun run scripts/windows-smoke.ts` (refuses with `unavailable: … needs Windows; running darwin/arm64`, exit 1, which is correct), and `clang -fsyntax-only -std=c99 -Wall` over the assembled C unit with zero diagnostics.
+- **The first real Win32 runs happened in CI** (2026-11-16, `gate (windows)` on `windows-latest`, WebView2 156.0.4314.58 on Windows 10.0.26100): `runtime`, `loader` and `preflight` PASS; then a link failure (every `-l` flag dropped), then a `0xFFFFFFFFFFFFFFFF` crash at the first call (a symbol-table unwrap, not the link), and now `com + class` PASSES — `CoInitializeEx` and `RegisterClassExW("crust-smoke")` both executed — before a crash in the window path. Two COM defects found in that run are fixed below; the window, controller and pump are still unproven.
 - **`clang` on macOS is only a parse check** — it proves balanced braces, declared identifiers and arity against the hand-written prototypes, and proves nothing about the Windows ABI, link flags or runtime behaviour.
 - **`src/app-loop.ts:63` dispatches win32 to `@/platform/windows`** — the arm passes `{ ...config, appName: config.app.name }`, so the window class carries the app name; `userDataDir` has no config key, so WebView2 always picks its own default folder.
 
 ## File layout, and why it is this many files
 
-- **7 C units, numbered, joined by `shim-source.ts` in the only order that compiles** — `10_prelude`, `20_class`, `30_com`, `32_env`, `34_slots`, `40_window`, `42_webview`; the numbers are load order, not decoration.
+- **8 C units, numbered, joined by `shim-source.ts` in the only order that compiles** — `10_prelude`, `12_win32`, `20_class`, `30_com`, `32_env`, `34_slots`, `40_window`, `42_webview`; the numbers are load order, not decoration.
+- **`12_win32.c` binds every Win32 pointer the prelude declares** — it comes second because the prelude's `shim_utf16` and `shim_pump` call through those pointers, and `SHIM_BIND` needs both the declarations and the resolver imports in scope.
 - **`10_prelude.c` forward-declares `shim_webview_put_bounds`** — the window procedure in `20_class.c` resizes the controller that `42_webview.c` holds, so one side must see the other before either is defined.
 - **`30_com.c` must precede `32_env.c`, which must precede `34_slots.c`** — the handler type and `handler_wait` come from `30`, `shim_environment`/`shim_controller` from `32`, and the slot helpers from `34`; reversing any pair gives an implicit-declaration error that TinyCC may accept and then call wrong.
 - **`42_webview.c` owns the hwnd→controller table** — TypeScript passes an `HWND` number and never a COM pointer, which is what keeps `platform.ts` free of pointer arithmetic.
@@ -22,7 +24,7 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 - **A COM method is unreachable through a bare function pointer** — it lives in `*(void ***)obj`, indexed by declaration order, so TypeScript can never call one and every slot crust needs gets a named C helper: `wv2_put_bounds` (6), `wv2_controller_close` (24), `wv2_navigate` (37), `wv2_env_create_controller` (environment 3), `wv2_controller_webview` (controller 25).
 - **The handler is a C-built object with a static vtable** — `shim_handler` + `handler_vtbl`; one vtable serves both the environment and the controller because every `Invoke` is `(self, code, created)`.
 - **`QueryInterface` answers every IID with itself** — WebView2 asks only for the handler interface it was handed; inventing handler IIDs from memory would fail harder than a stable wrong-but-harmless answer, so no GUID table exists anywhere in this layer.
-- **`CreateCoreWebView2EnvironmentWithOptions` is the only export needed from `WebView2Loader.dll`** — it is also why the preflight probes that DLL and why `ffi.ts` links `-lWebView2Loader`; the DLL must sit beside the binary or on `PATH`.
+- **`CreateCoreWebView2EnvironmentWithOptions` is the only export needed from `WebView2Loader.dll`** — and it is resolved at runtime like everything else: `32_env.c` calls `LoadLibraryW("WebView2Loader.dll")` + `GetProcAddress` once and keeps the handle for the process lifetime, so a machine without the loader loses one symbol instead of the whole shim.
 - **`options` is passed `NULL`** — crust needs no additional browser arguments, and nothing in this layer wants an interface newer than the base environment.
 - **Completion is a `PeekMessageW` drain with a 5 s bound, never a block** — WebView2 posts its completion to the creating thread's message queue, so a blocked thread waits out the whole timeout; `handler_wait` calls `shim_pump()` plus `Sleep(1)`.
 - **`shim_pump()` is defined in the prelude and used by `30_com.c`** — same translation unit, so the call is visible without a prototype; splitting the unit would break it.
@@ -61,11 +63,39 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 - **`createPlatform(config, backend?)` takes the backend as its second argument** — injection is the only reason the five methods are testable at all, and `platform.test.ts` never constructs the default backend.
 - **A missing runtime resolves `start()` and sets `unavailable`** — the same text then throws from `createWindow`, so an app can print the install remedy instead of dying in a stack trace; `platform.test.ts` pins that shape.
 - **A shim that will not compile deliberately propagates out of `start()`** — a broken C unit is a defect in crust, not a missing runtime, so it must stay loud.
+- **A controller that fails now reports `GetLastError`** — 126 (`ERROR_MOD_NOT_FOUND`) is `WebView2Loader.dll` not loading, and `window-open.ts` names that remedy instead of the generic "did not answer" text (2026-11-16).
 - **`createWindow` on an existing label returns the existing handle** — a configured window is opened once and the app's own window loop then asks for the same labels, which must not become a second native window; darwin throws instead, and that divergence is intentional.
 - **`quit()` is idempotent and calls `backend.exit(0)`** — the fake backend records the code, which is how the test watches a quit without exiting the runner.
 - **`quit()` skips a window `IsWindow` already reports closed** — Win32 reuses a freed handle, so a second `Close` on a stale one faults.
 - **`pump()` before `start()` still ticks** — the counter moves and nothing is drained, so the timer shape is identical with or without a window.
 - **`bun fmt` reformats only the TypeScript** — the `.c` units are untouched by it, and the line cap counts them.
+
+## Linking: `cc()` links nothing at all (measured 2026-11-16)
+
+- **The import-thunk theory is REFUTED** — the bisect ran on the runner and all three routes answered: `import-kernel32` `4680`, `import-user32` `1024`, `dynamic-kernel32` `6732`. TinyCC's PE import thunks work, so no crash in this layer was ever the thunk, and nothing should be attributed to it again.
+- **`cc()` still links nothing, for three reasons that survive the refutation** — a resolved pointer needs no library path or `-L` on the runner; a missing export is a named message from `shim_win32_ready` instead of a whole-shim link failure; and the design is now *proven on Windows*, because `CoInitializeEx` and `RegisterClassExW` both executed through resolved pointers.
+- **`-l` in `flags` links nothing** — TinyCC's option parser sends `-l` to `args_parser_add_file`, which only appends the name to `state->files`; that queue is walked by the tcc CLI's `main` and never by an embedded libtcc, so the flag is parsed and dropped with no error at all. That was the real cause of the sixteen unresolved references.
+- **`library` is the option that reaches the linker** — `cc({ library: ["user32"] })` calls `tcc_add_library`, and a name it cannot find fails loudly as `tcc: error: library 'x' not found`; `-L` in `flags` does reach the search path, while `-l` does not (both measured on bun 1.4.4).
+- **The unit imports exactly two symbols** — `LoadLibraryA` and `GetProcAddress`, both kernel32, which TinyCC's PE runtime links for its own CRT whatever `cc()` asks for. Verified by compiling the unit here: TinyCC reaches relocation and reports only `unresolved reference to '_LoadLibraryA'` and `'_GetProcAddress'`, so nothing else in the unit is an import.
+- **`12_win32.c` is the whole surface** — one `LoadLibraryA` per module, one `GetProcAddress` per function, cached in statics the prelude declares; `SHIM_BIND` uses `__typeof__` so each pointer keeps its exact prototype and no call site is retyped.
+- **A function pointer is called exactly like a function** — every call site in `20_class.c`, `40_window.c` and `42_webview.c` still reads `CreateWindowExW(…)`, so the change is one part file rather than a rewrite.
+- **`shim_win32_ready` is asked before anything else** — a machine missing an export is a message from `start()` instead of a null call; `shim_utf16`, `shim_pump` and `shim_post_quit` also check, and `shim_last_error` null-tests its own pointer because it answers during failures.
+- **`imports.test.ts` pins the seam** — exactly two `extern`s, no `library:`/`flags:`/`-l`/`-L` in the `cc()` call, every declared pointer bound exactly once (a forgotten bind is a null call), and every preflighted module loaded by name.
+- **`compile()` attaches the tcc command line to its own throw** — so a build failure names what TinyCC was handed, and a throw that is not a build failure stays undecorated.
+- **`cc()` returns `{ symbols, close }`, never the bare table** — casting the result straight to `WindowsShim` type-checks through `as unknown as` and makes every call `undefined`, which the real runner reported as `shim.shim_com_init is not a function`. `shimSymbols()` is the single unwrap, and `symbols.test.ts` pins it plus map-to-interface equality in both directions.
+- **`scripts/windows/stages.ts` prints every call before making it** — `stage <name> …` then `stage <name> ok <value>`, one child with `stdout: "inherit"` so the line naming the call survives the crash. Two runs died in the middle of `createWindow` with only "after `com + class`" to go on, which is why it exists.
+
+## The `0xFFFFFFFFFFFFFFFF` crash: a COM vtable, not a thunk
+
+- **`handler_vtbl` was the only static initialiser holding code addresses in the whole unit** — `void *handler_vtbl[4] = {(void *)handler_qi, …}` is a *relocated* pointer in the image, and the first COM callback through it jumped to `-1`; the window class took its function pointer as a call argument and worked, which is the difference the evidence shows.
+- **The table is now filled at run time** in `handler_init`, once, before the first COM call — an assignment is not a relocation, so the failure cannot recur however TinyCC relocates `.data`.
+- **`Navigate` was called at slot 37, which is `GetBrowserProcessId(UINT *)`** — `Navigate` is the fifth method of `ICoreWebView2`; slot 37 wrote a process id over the URL and returned `S_OK`, so navigation silently did nothing. Verified against the published order (docs.rs/webview2-sys `ICoreWebView2VTable`).
+- **Every slot is now a named `SHIM_SLOT_*` in the prelude with the order it was checked against**, and `slots.test.ts` re-derives each index from a transcribed method list — the numbers are checked against the header's order, not against themselves.
+- **`put_Bounds(RECT)` is called through a pointer parameter** — a 16-byte struct is passed by reference on x64, so declaring the parameter as `shim_rect *` is the call the ABI already makes, and it stops relying on TinyCC's struct-by-value codegen that no Mac can test.
+- **A `__stdcall`/`cdecl` mismatch is not a candidate on either target** — x64 and arm64 each have exactly one calling convention, and `__stdcall` is a no-op there; it would only matter on x86, which this layer does not build for.
+
+- **`scripts/windows/bisect.ts` measures which route survives** — three one-line units, one child process each (`import-kernel32`, `import-user32`, `dynamic-kernel32`), because a bad call takes the process down and the next experiment has to survive it. The smoke prints the three verdicts and does not gate on them: a FAIL there is the measurement, not a regression.
+- **The PE target only exists in Bun's TinyCC on Windows** — on macOS `library: ["user32"]` fails at link, so the bisect measures nothing here and the run must happen on the runner.
 
 ## Preflight
 
@@ -78,7 +108,7 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 ## What the next lane must do first
 
 - **Run it on a Windows machine before trusting any index** — every vtable index (`3`, `6`, `24`, `25`, `37`) is from `WebView2.h`'s declaration order and none has been checked against a live object.
-- **Check `WebView2Loader.dll` links through TinyCC first** — `-lWebView2Loader` in `ffi.ts` assumes an import library TinyCC can consume; if it cannot, the fallback is `LoadLibraryW` + `GetProcAddress` inside the shim, which would move `shim_environment` off the plain extern.
+- **The stage probe is the first thing to read in the next run** — its last line names the call that died; if it stops at `webview_new …` the fault is in the environment or controller completion, and if it stops at `window_new …` the fault is `CreateWindowExW` or the window procedure.
 - **Check the `WNDCLASSEXW` (80 bytes) and `MSG` (48 bytes) sizes** — both are hand-written structs with no header to agree with, and a wrong size is a silent overwrite rather than an error.
 - **Check `wchar_t` really is 2 bytes under the TinyCC target** — the whole string path assumes it, and `shim_wchar` is `unsigned short` to match.
 - **Check the show-before-controller ordering** — a white or blank window on the first run most likely means the controller was created before the window had a client area.

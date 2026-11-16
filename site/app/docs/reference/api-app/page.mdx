@@ -1,0 +1,70 @@
+# App-level commands
+
+Six namespaces that belong to the app rather than to a window: `app` for commands the backend registered, `autostart` for launch at login, `logging` for the file sink, `i18n` for the language catalogue, `single-instance` for the lock, `deep-link` for the URL the app was opened with.
+
+## `app`
+
+| command  | arguments         | answer                             |
+| -------- | ----------------- | ---------------------------------- |
+| `invoke` | `{ name, args? }` | whatever the named command answers |
+
+The namespace behind a two-argument call: `window.crust.invoke("greet", { name: "Ada" })` is routed by the injected shim to `app.invoke` with `{ name: "greet", args: { name: "Ada" } }`. It reaches the same `app` singleton the backend registered on, so a command added by `main.ts` after the bridge started stays reachable — the handler closes over the app rather than snapshotting its table. A payload without a non-empty string `name` throws, which reaches the page as `handler-error`. Anything the named command answers, including its typed failures and `not-implemented`, is passed through unchanged.
+
+## `autostart`
+
+| command     | arguments                | answer                                    |
+| ----------- | ------------------------ | ----------------------------------------- |
+| `enable`    | `{ appPath, bundleId? }` | `{ ok: true, enabled: true, plistPath }`  |
+| `disable`   | `{ bundleId? }`          | `{ ok: true, enabled: false, plistPath }` |
+| `isEnabled` | `{ bundleId? }`          | `{ ok: true, enabled, plistPath }`        |
+
+Launch at login, through a LaunchAgent at `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`. The plist is written to a sibling temp file and renamed, so launchd never reads a half-written one. `enable` falls back to the bundle id inside the app's `Info.plist`, and remembers it, so `disable` and `isEnabled` need no argument after one `enable`. `isEnabled` asks whether the plist exists.
+
+Failure codes: `bad-request` (no `appPath`, no bundle id known, or a bundle with no `CFBundleIdentifier`), `not-found` (nothing at `appPath`), `handler-error` (the write or delete failed).
+
+## `logging`
+
+| command    | arguments            | answer                                                 |
+| ---------- | -------------------- | ------------------------------------------------------ |
+| `setLevel` | `{ level }`          | `{ level, changed }`                                   |
+| `level`    | none                 | the level in force, as a string                        |
+| `write`    | `{ level, message }` | `{ written, line?, path?, rotated?, reason?, error? }` |
+| `tail`     | `{ limit? }`         | `{ lines }`                                            |
+
+Levels are `trace`, `error`, `warn`, `info`, `debug`; `info` is the default. A line below the level in force is dropped before it reaches the file, and `write` reports which happened through `reason`: `below-level`, `bad-level`, or `sink-error` with `error` carrying the reason. `rotated` is set when that write moved `app.log` aside to `app.log.1` at the 1 MiB threshold. `tail` reads the in-memory ring of the last 200 lines and touches no disk; `limit` is clamped to that size.
+
+`setLevel` answers `changed: false` for a name that is not a level, so a caller can tell "ignored" from "applied". Nothing here throws: a bad payload answers `written: false` with `reason: "bad-level"`.
+
+## `i18n`
+
+| command     | arguments        | answer                            |
+| ----------- | ---------------- | --------------------------------- |
+| `locale`    | none             | `{ ok: true, locale }`            |
+| `setLocale` | `{ locale }`     | `{ ok: true, locale }`            |
+| `messages`  | `{ locale? }`    | `{ ok: true, locale, messages }`  |
+| `translate` | `{ key, vars? }` | `{ ok: true, locale, key, text }` |
+
+The catalogue is plain data the app supplies: `locale → key → text`, with `{name}` placeholders. `translate` resolves `key`, then `key_one`/`key_other` from `vars.count`, then interpolates every `{name}` from `vars`. `messages` answers the whole table for one locale. `setLocale` is in-memory on purpose — macOS keeps the language list in System Settings, so an app cannot change it, and pretending otherwise would report a language the system does not use. The answer's `locale` is the one the lookup actually landed on.
+
+Failure codes: `bad-request` (an empty `locale` or `key`); `not-implemented` with `requires: "NSLocale"` for `locale`, or `requires: "createI18nPlugin({ messages })"` for `messages` and `translate` when no catalogue is loaded.
+
+## `single-instance`
+
+| command    | arguments | answer                          |
+| ---------- | --------- | ------------------------------- |
+| `acquire`  | `{ id }`  | `{ acquired, pid, path }`       |
+| `release`  | `{ id }`  | `{ released, path, pid? }`      |
+| `activate` | `{ pid }` | `{ activated, status, reason }` |
+
+The lock is a file named after the id holding the owner's pid, created with `O_EXCL`, so the winner is whoever the filesystem says won. `acquired: false` is an answer, not a throw: `pid` is the live holder to activate. A lock naming a dead pid is stale and is taken over, so a crash never locks the user out. `release` refuses to drop a lock a live foreign process holds and names that `pid`. `activate` is honest about the OS: `activated` is true only for status 0.
+
+The runtime already holds the app's own lock at launch, so a page rarely needs `acquire`. A malformed `id` (empty, or containing a separator) or a `pid` outside 1–2147483647 throws, which reaches the page as `handler-error`. Without an adapter, `activate` answers `not-implemented` with `requires: "NSRunningApplication"`.
+
+## `deep-link`
+
+| command  | arguments | answer                          |
+| -------- | --------- | ------------------------------- |
+| `scheme` | none      | the registered scheme, a string |
+| `url`    | none      | the URL held now, or `null`     |
+
+`url` is the launch URL until a later open replaces it, so a page that reads it at startup does not show a stale one. Every open also pushes the `deep-link` event with `{ url }`. `scheme` answers `not-implemented` with `requires: "CFBundleURLTypes"` when the build registered no scheme — `build.urlScheme` is what writes it into `Info.plist`, and without it macOS never routes a URL to the app.

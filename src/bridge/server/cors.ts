@@ -1,7 +1,12 @@
 /**
  * The origin gate: own origin, plus any explicitly configured dev origin
- * (`crust dev` / Vite). Absent Origin is refused, never treated as
- * same-origin — that is what stops a local process driving the bridge.
+ * (`crust dev` / Vite).
+ *
+ * An absent `Origin` is allowed, because it is not a cross-origin request. A
+ * browser always sends `Origin` on one, and WebKitGTK's `EventSource` sends none
+ * at all on a same-origin GET (measured 2026-11-16) — refusing it killed every
+ * plugin event on Linux while POST kept working. The bearer token is the
+ * credential; this gate rejects only a *present* and foreign origin.
  */
 
 import { CrustError } from "../errors";
@@ -37,7 +42,9 @@ export function allowedOrigin(
 	devOrigins: readonly string[],
 	port: number,
 ): boolean {
-	if (origin === null) return false;
+	// No Origin means no cross-origin request; the token gate below is the
+	// credential. A hostile page always sends its own Origin, and is refused.
+	if (origin === null) return true;
 	if (ownOrigins(port).includes(origin)) return true;
 	return devOrigins.includes(origin);
 }

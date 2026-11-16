@@ -72,10 +72,20 @@ export async function documentResponse(handle: {
 	csp: string;
 	token: string;
 	port: number;
+	/** The window this document is for, read from the request URL by `handler.ts`. */
+	windowLabel?: string;
 }): Promise<Response> {
-	const { options, csp, token, port } = handle;
+	const { options, csp, token, port, windowLabel } = handle;
 	const html = options.indexHtml ?? (await assetText("/index.html", options)) ?? EMPTY_DOCUMENT;
-	const config: CrustConfig = { baseUrl: "", token, port };
+	// The label the bridge itself saw on the document request, not one the page claims: it is
+	// written into the page's config so `window.label` can answer the window that asked for this
+	// document. A request that named none injects none, and the command refuses by name.
+	const config: CrustConfig = {
+		baseUrl: "",
+		token,
+		port,
+		...(windowLabel ? { window: windowLabel } : {}),
+	};
 	const injected = injectBootstrap(html, `<script>${bootstrapSource(config)}</script>`);
 	return new Response(injected, { headers: headersFor(csp) });
 }

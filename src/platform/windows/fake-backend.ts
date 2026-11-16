@@ -17,6 +17,8 @@ export interface FakeOptions {
 	comInit?: number;
 	/** What `shim_register_class` returns; 0 is a class that never registered. */
 	classAtom?: number;
+	/** What `shim_win32_ready` returns; 0 is a machine whose entry points did not resolve. */
+	win32Ready?: number;
 	/** Make `load()` throw, as a C unit that will not build does. */
 	loadThrows?: boolean;
 }
@@ -58,6 +60,10 @@ export function fakeBackend(options: FakeOptions = {}): FakeBackend {
 	let next = 100;
 
 	const shim: WindowsShim = {
+		shim_win32_ready: () => {
+			calls.push("win32_ready");
+			return options.win32Ready ?? 1;
+		},
 		shim_com_init: () => {
 			calls.push("com_init");
 			return options.comInit ?? 0;

@@ -11,16 +11,18 @@
  * WebView2Loader.dll ships with the WebView2 SDK, not with the Evergreen runtime, so a runner can
  * have the runtime and still fail the probe. When that happens this script copies the loader out
  * of an Edge install into a temp dir and puts that dir on `PATH` — printing exactly what it did —
- * because the loader must be resolvable both by `cc()`'s `-lWebView2Loader` and at load time.
+ * because the loader has to be loadable at runtime, which is where the shim resolves it.
  *
  * What it does not claim: that a document loaded, that page JS ran, or that invoke crossed the
  * bridge. The window navigates to `about:blank` and nothing reads its content.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { createPlatform, defaultBackend, preflightError } from "../src/platform/windows/index.ts";
 import { Verdict } from "./e2e-harness.ts";
+import { formatBisect, runBisect } from "./windows/bisect.ts";
+import { findLoader, stageLoader } from "./windows/loader.ts";
+import { runStages } from "./windows/stages.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
 const USER_DATA = join(tmpdir(), "crust-smoke-webview2");
@@ -29,42 +31,11 @@ function message(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Every Edge install that might carry the loader, bounded to a fixed list of directories. */
-function loaderRoots(): string[] {
-	const bases = [
-		process.env["ProgramFiles(x86)"],
-		process.env.ProgramFiles,
-		process.env.LOCALAPPDATA,
-	]
-		.filter((base): base is string => Boolean(base))
-		.filter((base) => existsSync(base));
-	return bases.flatMap((base) => [
-		join(base, "Microsoft", "Edge", "Application"),
-		join(base, "Microsoft", "EdgeWebView", "Application"),
-	]);
-}
-
-/** The first `WebView2Loader.dll` in one of those installs, version subdirectories included. */
-function findLoader(): string | undefined {
-	for (const root of loaderRoots()) {
-		if (!existsSync(root)) continue;
-		const direct = join(root, "WebView2Loader.dll");
-		if (existsSync(direct)) return direct;
-		for (const entry of readdirSync(root)) {
-			const candidate = join(root, entry, "WebView2Loader.dll");
-			if (existsSync(candidate)) return candidate;
-		}
-	}
-	return undefined;
-}
-
-/** Copy the loader somewhere stable and make it resolvable by both tcc and LoadLibrary. */
-function stageLoader(found: string): string {
-	const dir = join(tmpdir(), "crust-webview2");
-	mkdirSync(dir, { recursive: true });
-	copyFileSync(found, join(dir, "WebView2Loader.dll"));
-	process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ""}`;
-	return dir;
+/** A multi-line message: the first line after the prefix, the rest aligned under it. */
+function print(prefix: string, text: string): void {
+	const [first, ...rest] = text.split("\n");
+	console.log(`${prefix}${first ?? ""}`);
+	for (const line of rest) console.log(`${" ".repeat(prefix.length)}${line}`);
 }
 
 async function main(): Promise<number> {
@@ -100,25 +71,43 @@ async function main(): Promise<number> {
 		report.loader,
 		report.loader
 			? "WebView2Loader.dll is beside the executable or on PATH"
-			: "WebView2Loader.dll is absent — the shim's -lWebView2Loader cannot link without it",
+			: "WebView2Loader.dll is absent — the shim's LoadLibraryW cannot resolve without it",
 	);
 
 	// The probe names the runtime and the loader only; the shim's own compile is what proves each
 	// Win32 and COM export, so a missing entry point surfaces as a compile failure below.
 	const missing = preflightError(report);
 	if (missing) {
-		console.log(`unavailable: ${missing}`);
+		print("unavailable: ", missing);
 		verdict.check("preflight", false, missing.split("\n")[0] ?? missing);
 		return verdict.report("windows:smoke");
 	}
 	verdict.check("preflight", true, "the runtime and loader the shim needs are both present");
 
-	// 2. COM, the window class, then a real window and controller. A machine that refuses any of
-	//    these reports the refusal verbatim instead of a stack trace.
+	// 2. Which route into Win32 survives on this machine, measured rather than assumed: the shim
+	//    links nothing because two of these three routes were expected to crash. Diagnostic lines,
+	//    not assertions — an experiment doing what it was built to catch must not fail the smoke.
+	for (const line of formatBisect(await runBisect())) console.log(`bisect    ${line}`);
+
+	// 3. The window path one call at a time, so a crash names the call that died instead of leaving
+	//    "after com + class" as the only evidence. Same reason: diagnostic, never a verdict.
+	const stages = await runStages();
+	console.log(`stages    child ended with exit ${stages.code}`);
+
+	// 4. COM, the window class, then a real window and controller. A machine that refuses any of
+	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
+	//    the exception: `compile()` attaches the exact tcc command line, so the failure names what
+	//    TinyCC was handed instead of being inferred from the throw.
 	const platform = createPlatform({ appName: "crust-smoke", userDataDir: USER_DATA });
-	await platform.start();
+	try {
+		await platform.start();
+	} catch (error) {
+		print("unavailable: ", message(error));
+		verdict.check("shim", false, message(error).split("\n")[0] ?? "the shim did not build");
+		return verdict.report("windows:smoke");
+	}
 	if (platform.unavailable) {
-		console.log(`unavailable: ${platform.unavailable}`);
+		print("unavailable: ", platform.unavailable);
 		verdict.check(
 			"com + class",
 			false,

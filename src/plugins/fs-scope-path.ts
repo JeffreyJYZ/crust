@@ -32,6 +32,18 @@ export function contains(prefix: string, target: string): boolean {
 	return target.startsWith(prefix.endsWith(sep) ? prefix : `${prefix}${sep}`);
 }
 
+/**
+ * Whether two canonical paths name the same file. Folded where the filesystem folds: APFS and NTFS resolve
+ * `SCOPE.json` and `scope.json` to one file, so a byte-wise compare there is a bypass — the same reason the
+ * network matcher folds its URLs. The fold is duplicated from `network-match.ts` on purpose: `fs` must not
+ * import a network module to know how its own filesystem compares names.
+ */
+export function samePath(left: string, right: string): boolean {
+	if (left === right) return true;
+	if (process.platform !== "darwin" && process.platform !== "win32") return false;
+	return left.toLowerCase() === right.toLowerCase();
+}
+
 /** The `path` argument a scope command takes: absolute, non-empty, and nothing else. */
 export function readPath(args: unknown): string {
 	const value = (args as { path?: unknown } | undefined)?.path;

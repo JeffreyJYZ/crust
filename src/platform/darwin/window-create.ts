@@ -1,16 +1,18 @@
 /**
  * Build the window with `initWithContentRect:` on the C stack (a bare `[[NSWindow alloc] init]` aborts from AppKit's event thread), add the webview, pin it with Auto Layout, order front, then load the URL inside C.
- * Kept away from `DarwinPlatform` so construction and tracking read separately; activation is passed in because it is the one platform fact this needs.
+ * Kept away from `DarwinPlatform` so construction and tracking read separately; activation is passed in because it is the one platform fact this needs, and it is already decided by `app.activate`.
  */
 import type { WindowOptions } from "@/app.ts";
+import { type Activation, activateForWindow } from "./activation.ts";
 import { shim } from "./index.ts";
-import { allocInit, cstr, ptrValue, S } from "./objc.ts";
+import { cls, cstr, ptrValue, S } from "./objc.ts";
+import { webviewConfiguration } from "./webview-configuration.ts";
 import type { NativeWindowPointers } from "./windows.ts";
 
 export function createNativeWindow(
 	label: string,
 	options: WindowOptions,
-	activate: () => void,
+	activation: Activation,
 ): NativeWindowPointers {
 	const width = options.width ?? 1100;
 	const height = options.height ?? 760;
@@ -28,8 +30,15 @@ export function createNativeWindow(
 	// pointer would dangle and the next guarded send would fault.
 	S.vb1(win, "setReleasedWhenClosed:", 0);
 
-	const web = allocInit("WKWebView");
-	if (!web) throw new Error("[[WKWebView alloc] init] returned null");
+	// The webview is built from the app's one `WKWebViewConfiguration`, not from
+	// `[[WKWebView alloc] init]`: that object is the only place a `WKURLSchemeHandler` can be
+	// registered, and WebKit copies it here, so a handler added after this call never reaches
+	// this webview. The frame is zero and Auto Layout owns the size, exactly as `-init` left it.
+	const web = ptrValue(
+		shim().symbols.shim_webview_new(webviewConfiguration(), 0, 0),
+		"-[WKWebView initWithFrame:configuration:]",
+	);
+	if (!web) throw new Error("-[WKWebView initWithFrame:configuration:] returned null");
 
 	const content = S.p0(win, "contentView");
 	if (!content) throw new Error("-[NSWindow contentView] returned null");
@@ -69,9 +78,10 @@ export function createNativeWindow(
 	S.v1(win, "makeKeyAndOrderFront:", 0);
 	// `makeKeyAndOrderFront:` raises the window but still depends on the app being able to
 	// activate, and macOS 14+ refuses that for an unbundled process — which is exactly how
-	// `crust dev` runs. The window then exists, the page loads, and nothing appears on
-	// screen, silently. This raises it above its siblings without needing activation, so a
-	// dev session and a bundle behave the same.
+	// `crust dev` runs. Measured 2026-11-16: such a window is built, its page loads, and it is
+	// still off screen and out of the accessibility tree (AppKit `visible 1` while the
+	// WindowServer reported it not on screen). This raises it above its siblings without needing
+	// activation.
 	S.v0(win, "orderFrontRegardless");
 	// `canJoinAllSpaces | fullScreenAuxiliary` = 257. A launched app's window otherwise
 	// lands on the desktop Space while the user is in a fullscreen one: it is created,
@@ -82,7 +92,23 @@ export function createNativeWindow(
 	} catch {
 		// Older systems: the default behaviour is the fallback.
 	}
-	activate();
+	// `-activate` is the macOS 14 cooperative call, and it is silently refused for a process
+	// LaunchServices did not launch, so it alone never lands. Measured from a separate trusted
+	// process: a directly-exec'd bundle answered `active no`, and its app element carried
+	// `AXWindows` 0 with `AXChildren` = the menu bar alone — the window was mapped and
+	// `screencapture -l` captured it, yet VoiceOver was blind to it. AppKit lists only windows on
+	// the active Space (its own `accessibilityWindows` tracked `isOnActiveSpace` 1:1), and a
+	// window joins that Space only when its app is the active one. `-activateIgnoringOtherApps:`
+	// does land: `active yes`, then `AXWindows` 1 with 4 children from the same external read,
+	// which is what makes the window key, on the active Space and in the tree.
+	// Gated on `app.activate`: `always` tests `isActive` per window, `first` uses one process-wide
+	// flag because `isActive` is false whenever the human is in another app, and `never` sends
+	// nothing.
+	activateForWindow(activation.mode, activation.once, {
+		sharedApp: () => S.p0(cls("NSApplication"), "sharedApplication", true),
+		isActive: (app) => S.b0(app, "isActive"),
+		activateIgnoringOtherApps: (app) => S.vb1(app, "activateIgnoringOtherApps:", 1),
+	});
 
 	// A relative URL needs the bridge server, which the platform does not own;
 	// only an absolute URL can be handed to NSURL as-is.

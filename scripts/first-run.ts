@@ -6,6 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { restoreFocus } from "./e2e-harness.ts";
 
 const argv = Bun.argv.slice(2);
 const template = argv.includes("--next") ? "next" : argv.includes("--plain") ? "plain" : "react";
@@ -126,6 +127,8 @@ try {
 	fail("chain", error instanceof Error ? error.message : String(error));
 } finally {
 	await rm(workspace, { recursive: true, force: true });
+	// Last, so a red run does not leave the human looking at the window it opened.
+	await restoreFocus();
 }
 
 console.log(failures === 0 ? "\nfirst-run: PASS" : `\nfirst-run: FAIL  ${failures} step(s)`);

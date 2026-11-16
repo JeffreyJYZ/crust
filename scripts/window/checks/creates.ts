@@ -13,6 +13,7 @@ import {
 	resolved,
 	sameLabels,
 	show,
+	urlOf,
 } from "../answers.ts";
 
 export function checkCreates(verdict: Verdict, byTag: Map<string, PageAnswer>): void {
@@ -32,23 +33,35 @@ export function checkCreates(verdict: Verdict, byTag: Map<string, PageAnswer>): 
 
 	const relativeChild = childReport(byTag.get("child.relative"));
 	const relativeOrigin = relativeChild === undefined ? undefined : originOf(relativeChild.href);
+	const relativeUrl = relativeChild === undefined ? undefined : urlOf(relativeChild.href);
 	const relativeOpen = resolved(relativeChild?.open);
+	const relativeLabel = resolved(relativeChild?.label);
 	// The resolved URL, not the request: the base is the document `main` recorded
 	// (`/spare/idle.html`), so `/spare/` is in the answer and `/` would mean the
-	// request had been resolved against this page instead.
-	const relativePath = relativeChild?.href === `${relativeOrigin}/spare/child/relative`;
+	// request had been resolved against this page instead. The query is crust's own
+	// — the window's identity rides in its URL — so the path must be exact and the
+	// label the one the window was created under, answered by its own page.
+	const relativePath = relativeUrl?.pathname === "/spare/child/relative";
+	const relativeIdentity = relativeUrl?.searchParams.get("window") === "relative";
 	const relativeAsk =
 		relativeOpen?.ok === true &&
 		relativeOpen?.label === "relative" &&
 		relativeOpen?.open === true;
-	const relativeOk = relativeOrigin !== undefined && relativePath && relativeAsk;
+	const relativeOwn = relativeLabel?.ok === true && relativeLabel?.label === "relative";
+	const relativeOk =
+		relativeOrigin !== undefined &&
+		relativePath &&
+		relativeIdentity &&
+		relativeAsk &&
+		relativeOwn;
 	verdict.check(
 		"child relative",
 		relativeOk,
 		relativeOk
-			? `a second window loaded ${JSON.stringify(relativeChild?.href)} and its own invoke ` +
-					`answered ${show(relativeOpen)}`
-			: `href ${show(relativeChild?.href)} (resolved path ${relativePath}) from ` +
+			? `a second window loaded ${JSON.stringify(relativeChild?.href)}, its own invoke ` +
+					`answered ${show(relativeOpen)}, and window.label answered ${show(relativeLabel)}`
+			: `href ${show(relativeChild?.href)} (path ${relativePath}, identity ` +
+					`${relativeIdentity}, window.label ${show(relativeChild?.label)}) from ` +
 					`${show(byTag.get("child.relative"))}, invoke ${show(relativeOpen)}`,
 	);
 
@@ -65,22 +78,32 @@ export function checkCreates(verdict: Verdict, byTag: Map<string, PageAnswer>): 
 	// same origin as the resolved one. (A page cannot distinguish "passed through"
 	// from "resolved to the same absolute string", so what is asserted here is the
 	// load itself; `window.test.ts` pins the pass-through ordering against a
-	// platform double, where both candidates are visible.)
+	// platform double, where both candidates are visible.) Crust adds no identity to
+	// a URL the app supplied in full, so `window.label` refuses by name there rather
+	// than inventing a label from a URL crust did not compose.
 	const absoluteChild = childReport(byTag.get("child.absolute"));
+	const absoluteUrl = absoluteChild === undefined ? undefined : urlOf(absoluteChild.href);
 	const absoluteOpen = resolved(absoluteChild?.open);
+	const absoluteLabel = absoluteChild?.label;
 	const absoluteOk =
 		relativeOrigin !== undefined &&
-		absoluteChild?.href === `${relativeOrigin}/spare/child/absolute` &&
+		absoluteUrl?.pathname === "/spare/child/absolute" &&
+		absoluteUrl?.searchParams.get("window") === null &&
 		absoluteOpen?.ok === true &&
 		absoluteOpen?.label === "absolute" &&
-		absoluteOpen?.open === true;
+		absoluteOpen?.open === true &&
+		absoluteLabel?.how === "rejected" &&
+		absoluteLabel?.code === "not-implemented";
 	verdict.check(
 		"child absolute",
 		absoluteOk,
 		absoluteOk
-			? `loaded ${JSON.stringify(absoluteChild?.href)} and its own invoke answered ` +
-					`${show(absoluteOpen)}`
-			: `page saw ${show(byTag.get("child.absolute"))}`,
+			? `loaded ${JSON.stringify(absoluteChild?.href)} with no identity of its own, its own ` +
+					`invoke answered ${show(absoluteOpen)}, and window.label answered ` +
+					`${show(absoluteChild?.label)}`
+			: `page saw ${show(byTag.get("child.absolute"))} (path ` +
+					`${absoluteUrl?.pathname}, window ${show(absoluteUrl?.searchParams.get("window"))}, ` +
+					`window.label ${show(absoluteLabel)})`,
 	);
 
 	const sawRelative = byTag.get("sawrelative");

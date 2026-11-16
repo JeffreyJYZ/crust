@@ -6,7 +6,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { clearSurvivors, runCommand, survivorsOf, Verdict } from "./e2e-harness";
+import { clearSurvivors, restoreFocus, runCommand, survivorsOf, Verdict } from "./e2e-harness";
 
 const argv = Bun.argv.slice(2);
 const crustIndex = argv.indexOf("--crust");
@@ -172,6 +172,8 @@ export default {
 	} finally {
 		await clearSurvivors(builtBinary);
 		await rm(root, { recursive: true, force: true });
+		// Last, so a red run does not leave the human looking at the window it opened.
+		await restoreFocus();
 	}
 }
 

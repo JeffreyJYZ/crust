@@ -36,8 +36,14 @@ export function openWindow(
 	const url = absoluteUrl(options.url ?? "/");
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
 		shim.shim_window_destroy(hwnd);
+		// 126 is ERROR_MOD_NOT_FOUND: the shim's LoadLibraryW("WebView2Loader.dll") did not find the
+		// loader, which is the one failure of this call the caller can act on.
+		const error = Number(shim.shim_last_error());
 		throw new Error(
-			`WebView2 controller failed for "${label}" — the runtime is installed but did not answer`,
+			`WebView2 controller failed for "${label}" (GetLastError ${error}) — ` +
+				(error === 126
+					? "WebView2Loader.dll did not load; it must sit beside the executable or on PATH"
+					: "the runtime is installed but did not answer"),
 		);
 	}
 	return { hwnd, url };

@@ -6,7 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, Verdict } from "./e2e-harness.ts";
+import { clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { buildPhase } from "./dogear/phases/build.ts";
 import { finishPhase } from "./dogear/phases/finish.ts";
 import { runPhase } from "./dogear/phases/steps.ts";
@@ -32,6 +32,8 @@ async function main(): Promise<number> {
 		// and the tree goes either way — a throw is not a reason to leave both.
 		if (binary !== undefined) await clearSurvivors(binary).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		// Last, so a red run does not leave the human looking at the window it opened.
+		await restoreFocus();
 	}
 
 	const gone = await stat(scratch)

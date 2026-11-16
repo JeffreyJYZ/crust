@@ -31,8 +31,31 @@ export interface LinuxShim {
 	shim_webview_load(web: bigint, url: Uint8Array): number;
 }
 
+/**
+ * The proof's own entry points: what a loaded document, its scripts and a failed
+ * load answer with. They are declared apart from `LinuxShim` because the platform
+ * never calls them — the smoke does — so a fake backend keeps implementing five
+ * methods' worth of symbols rather than eleven. Each one is resolved optionally
+ * in C, so an older WebKitGTK fails the proof's step by name instead of refusing
+ * to launch every app.
+ */
+export interface LinuxProofShim {
+	/** The loaded document's title, read from the view; null before a document commits. */
+	shim_webview_title(web: bigint): string | null;
+	/** 0 started, 1 redirected, 2 committed, 3 finished, 4 failed. */
+	shim_webview_load_state(): number;
+	/** The failing URI, then GLib's message, for a failed load; empty otherwise. */
+	shim_webview_load_text(): string | null;
+	/** Start one script; 0 when the library carries no evaluate_javascript. */
+	shim_webview_eval(web: bigint, script: Uint8Array): number;
+	/** 0 pending, 1 answered, 2 threw. */
+	shim_webview_eval_state(): number;
+	/** The answer, or the message a throw carried. */
+	shim_webview_eval_text(): string | null;
+}
+
 /** Compile the embedded shim and declare every entry point it exports. */
-function compile(): { symbols: LinuxShim } {
+function compile(): { symbols: LinuxShim & LinuxProofShim } {
 	/** Content-hashed, so a second launch reuses the same file and TinyCC's per-path cache. */
 	const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
 	const path = join(tmpdir(), `crust-linux-shim-${hash}.c`);
@@ -55,13 +78,20 @@ function compile(): { symbols: LinuxShim } {
 
 			shim_webview_new: { args: [], returns: P },
 			shim_webview_load: { args: [P, CS], returns: I32 },
+
+			shim_webview_title: { args: [P], returns: CS },
+			shim_webview_load_state: { args: [], returns: I32 },
+			shim_webview_load_text: { args: [], returns: CS },
+			shim_webview_eval: { args: [P, CS], returns: I32 },
+			shim_webview_eval_state: { args: [], returns: I32 },
+			shim_webview_eval_text: { args: [], returns: CS },
 		},
-	}) as unknown as { symbols: LinuxShim };
+	}) as unknown as { symbols: LinuxShim & LinuxProofShim };
 }
 
-let shimOnce: { symbols: LinuxShim } | undefined;
+let shimOnce: { symbols: LinuxShim & LinuxProofShim } | undefined;
 
 /** Compile the shim at most once per process; `cc()` takes 3–20 ms. */
-export function shim(): { symbols: LinuxShim } {
+export function shim(): { symbols: LinuxShim & LinuxProofShim } {
 	return (shimOnce ??= compile());
 }

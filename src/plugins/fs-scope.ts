@@ -11,13 +11,21 @@
  * default is unchanged and `fs.scopeList` reports `scoped: false` instead: an app author can see the
  * boundary is absent rather than assume one exists.
  *
+ * **The store is the plugin's state, not app data.** `scope.json` sits in the app's data directory, which
+ * is exactly where a page may write, so a page could grant itself any prefix by writing the file the next
+ * launch reads. No page command may therefore address it — `check` refuses the store's own canonical path
+ * whatever the scope says, including when no scope is configured. An HMAC over the entries cannot replace
+ * that: an unscoped app's page reads every file the user can read, so any key on disk is readable, a
+ * per-process key would break the restart persistence a host grant needs, and a Keychain key lives in
+ * `src/platform/**`.
+ *
  * A `..` walk or a symlink is resolved before the comparison, so neither can land outside a prefix.
  */
 
 import { join } from "node:path";
 
 import { CrustError } from "../bridge/errors";
-import { canonical, contains, outsideScope, readPath } from "./fs-scope-path.ts";
+import { canonical, contains, outsideScope, readPath, samePath } from "./fs-scope-path.ts";
 import { readStore, SCOPE_FILE, writeStore } from "./fs-scope-store.ts";
 import { defaultStateRoot } from "./window-persist-store.ts";
 
@@ -63,6 +71,14 @@ export interface FsScope {
 const UNSCOPED =
 	"fs.scope is not configured, so fs reads and writes every file this user can; add fs.scope to the app config to set a boundary";
 
+/** A page addressed the store: named so a page author reads the fix rather than a bare 403. */
+export function storeRefused(path: string): CrustError {
+	return new CrustError(
+		"outside-scope",
+		`fs: ${path} is the fs scope store (${SCOPE_FILE}), which no page command may touch — grants come from the host, through fs.scope in the app config or createFsPlugin({ allow })`,
+	);
+}
+
 export function createFsScope(options: FsScopeOptions = {}): FsScope {
 	const file = join(options.root ?? defaultStateRoot(options.app ?? "crust"), SCOPE_FILE);
 	const enabled = options.allow !== undefined;
@@ -91,6 +107,11 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 		return paths;
 	};
 
+	// Resolved once: the store's own canonical path, which no page command may address even before the file
+	// exists, so the guard cannot be dodged by writing it first.
+	let storePath: Promise<string> | undefined;
+	const store = (): Promise<string> => (storePath ??= canonical(file));
+
 	return {
 		enabled,
 		grants,
@@ -105,8 +126,10 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 		},
 
 		check: async (path: string) => {
-			if (!enabled) return;
 			const target = await canonical(path);
+			// Before the scope test and before the unscoped shortcut: the store is not app data at any setting.
+			if (samePath(target, await store())) throw storeRefused(path);
+			if (!enabled) return;
 			const prefixes = await current();
 			if (prefixes.some((prefix) => contains(prefix, target))) return;
 			throw outsideScope(path);

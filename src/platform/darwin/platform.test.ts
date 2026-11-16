@@ -24,6 +24,17 @@ describe("window liveness", () => {
 	});
 });
 
+describe("app.activate policy", () => {
+	test("defaults to always when the config omits the key", () => {
+		expect(new DarwinPlatform().activateMode).toBe("always");
+	});
+
+	test("carries the configured mode, and an unknown one never reaches here", () => {
+		expect(new DarwinPlatform({ activate: "first" }).activateMode).toBe("first");
+		expect(new DarwinPlatform({ activate: "never" }).activateMode).toBe("never");
+	});
+});
+
 describe("pump timer", () => {
 	test("starts, ticks, and stops without leaving a timer", async () => {
 		const platform = new DarwinPlatform();

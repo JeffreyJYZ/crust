@@ -10,17 +10,17 @@ import {
 	foldsCase,
 	NETWORK_SCHEME,
 	NETWORK_URL_LIMIT,
-	type NetworkAction,
 	type NetworkAdapter,
+	type NetworkDecision,
 	type NetworkInstall,
 	patternMatches,
 } from "@/plugins/network.ts";
 
 /** An adapter that keeps the handler, so a test can ask it what WebKit would. */
-function fakeNetwork(): { adapter: NetworkAdapter; decide: (url: string) => NetworkAction } {
-	let decide: ((url: string) => NetworkAction) | undefined;
+function fakeNetwork(): { adapter: NetworkAdapter; decide: (url: string) => NetworkDecision } {
+	let decide: ((url: string) => NetworkDecision) | undefined;
 	const adapter: NetworkAdapter = {
-		install(scheme: string, handler: (url: string) => NetworkAction): NetworkInstall {
+		install(scheme: string, handler: (url: string) => NetworkDecision): NetworkInstall {
 			expect(scheme).toBe(NETWORK_SCHEME);
 			decide = handler;
 			return { ok: true, reason: "registered" };
@@ -57,9 +57,9 @@ describe("network case folding", () => {
 			{ rules: [{ pattern: "crust-net://app/etc/hosts", action: "block" }] },
 			ctx,
 		);
-		expect(decide("crust-net://app/ETC/HOSTS")).toBe("block");
-		expect(decide("crust-net://APP/Etc/Hosts")).toBe("block");
-		expect(decide("crust-net://app/other")).toBe("allow");
+		expect(decide("crust-net://app/ETC/HOSTS").action).toBe("block");
+		expect(decide("crust-net://APP/Etc/Hosts").action).toBe("block");
+		expect(decide("crust-net://app/other").action).toBe("allow");
 
 		const strict = fakeNetwork();
 		const exact = createNetworkPlugin(strict.adapter, { caseInsensitive: false });
@@ -67,8 +67,8 @@ describe("network case folding", () => {
 			{ rules: [{ pattern: "crust-net://app/etc/hosts", action: "block" }] },
 			ctx,
 		);
-		expect(strict.decide("crust-net://app/etc/hosts")).toBe("block");
-		expect(strict.decide("crust-net://app/ETC/HOSTS")).toBe("allow");
+		expect(strict.decide("crust-net://app/etc/hosts").action).toBe("block");
+		expect(strict.decide("crust-net://app/ETC/HOSTS").action).toBe("allow");
 	});
 });
 
@@ -77,12 +77,12 @@ describe("network long URLs", () => {
 		const { adapter, decide } = fakeNetwork();
 		const plugin = createNetworkPlugin(adapter);
 		await plugin.commands.setRules({ rules: [{ pattern: "*.png", action: "block" }] }, ctx);
-		expect(decide("crust-net://app/short.png")).toBe("block");
-		expect(decide("crust-net://app/short.txt")).toBe("allow");
+		expect(decide("crust-net://app/short.png").action).toBe("block");
+		expect(decide("crust-net://app/short.txt").action).toBe("allow");
 
 		const padded = `crust-net://app/${"a".repeat(4096)}.png`;
 		expect(padded.length).toBeGreaterThan(NETWORK_URL_LIMIT);
-		expect(decide(padded)).toBe("block");
+		expect(decide(padded).action).toBe("block");
 		const logged = await plugin.commands.log({}, ctx);
 		if (!("entries" in logged)) throw new Error("no adapter");
 		expect(logged.entries.at(-1)?.reason).toContain("url-too-long");
@@ -95,8 +95,8 @@ describe("network long URLs", () => {
 		const prefix = "crust-net://app/";
 		const exact = `${prefix}${"a".repeat(NETWORK_URL_LIMIT - prefix.length)}`;
 		expect(Buffer.byteLength(exact, "utf8")).toBe(NETWORK_URL_LIMIT);
-		expect(decide(exact)).toBe("block");
-		expect(decide(`${prefix}${"a".repeat(10)}`)).toBe("allow");
+		expect(decide(exact).action).toBe("block");
+		expect(decide(`${prefix}${"a".repeat(10)}`).action).toBe("allow");
 	});
 
 	test("a pattern too long or with too many stars is bad-request, not a slow match", async () => {

@@ -20,7 +20,9 @@ describe("window.create", () => {
 				height: 280,
 			}),
 		).toEqual({ ok: true, label: "prefs", created: true });
-		expect(adapter.calls).toEqual(["create:prefs:420x280:Preferences:-"]);
+		// The URL carries the new window's identity: absent means the app's own document,
+		// `/`, resolved by the adapter against the window's document, with the label on it.
+		expect(adapter.calls).toEqual(["create:prefs:420x280:Preferences:/?window=prefs"]);
 
 		expect(plugin.commands.list()).toEqual({ ok: true, labels: ["main", "prefs"] });
 		expect(plugin.commands.isOpen({ label: "prefs" })).toEqual({
@@ -58,7 +60,23 @@ describe("window.create", () => {
 		});
 		// No width, height or title was invented: the platform's defaults are its
 		// own, and a plugin that filled them in would silently override them.
+		// An absolute URL is the app's to define in full, so it is handed through
+		// untouched — no label is appended to a URL crust did not compose.
 		expect(adapter.calls).toEqual(["create:docs:-x-:-:https://example.com/docs"]);
+	});
+
+	test("a relative url carries the new window's label", () => {
+		const adapter = fakeAdapter([]);
+		const plugin = createWindowPlugin(adapter);
+
+		expect(plugin.commands.create({ label: "prefs", url: "/settings?tab=1" })).toEqual({
+			ok: true,
+			label: "prefs",
+			created: true,
+		});
+		// The app's own document, so the label rides along and the new page can say
+		// which window it is.
+		expect(adapter.calls).toEqual(["create:prefs:-x-:-:/settings?tab=1&window=prefs"]);
 	});
 
 	test("a duplicate label is refused, names it, and never reaches the platform", () => {

@@ -29,9 +29,9 @@ A crash the handler recorded always leaves exit status `70`. A clean exit leaves
 const guard = startCrashGuard({ appDataDir });
 ```
 
-The guard is a second Bun process running `src/runtime-crash-guard.ts --guard --pid <n> --root <dir>` and polling liveness every 100 ms. It polls rather than calling `waitpid`, because it did not spawn the process it watches, so it cannot reap it and cannot read a wait status; the record is therefore the only trustworthy signal that an exit was a fault.
+The guard is a second process polling liveness every 100 ms. It polls rather than calling `waitpid`, because it did not spawn the process it watches, so it cannot reap it and cannot read a wait status; the record is therefore the only trustworthy signal that an exit was a fault.
 
-A compiled binary carries no readable copy of that file, so `startCrashGuard()` refuses with `not-implemented` there instead of spawning something that cannot work.
+What that second process _is_ depends on how the app runs. In a source checkout it is `bun src/runtime-crash-guard.ts --guard --pid <n> --root <dir>`. A compiled binary carries no readable copy of that file — `import.meta.path` is `/$bunfs/root/crust-app` there — so the guard is the app's own executable launched again with `CRUST_CRASH_GUARD=<pid>` and `CRUST_CRASH_GUARD_ROOT=<dir>` in its environment. `startApp` reads that marker before the single-instance lock, so that launch is the guard rather than a rejected duplicate: it opens no window, binds no port and starts no second copy. The pid and root travel in argv as well, so `ps` names what a guard is watching.
 
 ## Commands
 
