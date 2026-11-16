@@ -97,13 +97,14 @@ async function main(): Promise<number> {
 		// A red job has to explain itself: the last `stage` line names the call that died, and this names
 		// what is known about it so nobody re-runs the investigation from scratch.
 		console.log(
-			"stages    a child died — the last `stage` line above names the call. When this last " +
-				"happened it was the first Navigate faulting two frames inside " +
-				"EmbeddedBrowserWebView.dll while get_Source, put_IsVisible, put_Bounds and " +
-				"get_CoreWebView2 all answered S_OK on the same object, the message queue drained 0, " +
-				"and the controller callback arrived from a pump in both controller shapes — the URL " +
-				"lived in a stack buffer, and a static one fixed it. See " +
-				'docs/agents/windows-platform.md, "The first Navigate faults".',
+			"stages    a child died — the last `stage` line above names the call. Check a frame before " +
+				"anything else: TinyCC emits `call __chkstk` for any frame of 4096 bytes or more, and " +
+				"nothing in this unit's link set defines it, so the call lands in a relocation filled " +
+				"with -1 — which is what the 4096-byte probe measured on 2026-11-16. The module Bun " +
+				"names in the crash report can be wrong: the PE `.pdata` descriptor is one shared " +
+				"record (prolog size 4, UWOP_ALLOC_LARGE commented out), so every frame below the " +
+				"first is untrustworthy. src/platform/windows/frame.test.ts guards the frame size; see " +
+				'docs/agents/windows-platform.md, "May a frame reach 4096 bytes?".',
 		);
 	}
 
