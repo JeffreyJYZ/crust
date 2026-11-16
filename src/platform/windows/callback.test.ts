@@ -4,14 +4,11 @@
  * an apartment read can give. Split from `handler.test.ts` when the file outgrew the line cap.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { readShimPart, readShimSource } from "./shim-source.ts";
 
-const SHIM = join(import.meta.dir, "shim");
-const source = SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8")).join("\n");
-const env = readFileSync(join(SHIM, "32_env.c"), "utf8");
-const com = readFileSync(join(SHIM, "30_com.c"), "utf8");
+const source = readShimSource();
+const env = readShimPart("32_env.c");
+const com = readShimPart("30_com.c");
 
 describe("the callback's HRESULT is 32 bits, all the way in", () => {
 	/**

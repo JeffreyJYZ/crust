@@ -7,14 +7,11 @@
  * environment completion (WebView2 answered `UI_E_WRONG_THREAD`, 0x802A000C).
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { readShimPart, readShimSource } from "./shim-source.ts";
 
-const SHIM = join(import.meta.dir, "shim");
-const source = SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8")).join("\n");
-const env = readFileSync(join(SHIM, "32_env.c"), "utf8");
-const com = readFileSync(join(SHIM, "30_com.c"), "utf8");
+const source = readShimSource();
+const env = readShimPart("32_env.c");
+const com = readShimPart("30_com.c");
 
 describe("the handler vtable", () => {
 	test("is not a static initialiser, because that pointer is relocated by the image", () => {

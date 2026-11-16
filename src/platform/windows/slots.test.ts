@@ -9,12 +9,9 @@
  * the header's order, not against itself.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { readShimSource } from "./shim-source.ts";
 
-const SHIM = join(import.meta.dir, "shim");
-const source = SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8")).join("\n");
+const source = readShimSource();
 
 /** `#define SHIM_SLOT_NAME n` from the prelude, as a map. */
 function slots(): Map<string, number> {

@@ -5,7 +5,14 @@
  * assertion passes on macOS and Linux and fails only on the runner (measured 2026-11-16).
  */
 import { describe, expect, test } from "bun:test";
-import { SHIM_PARTS, lf, shimSource } from "./shim-source.ts";
+import {
+	SHIM_PART_NAMES,
+	SHIM_PARTS,
+	lf,
+	readShimPart,
+	readShimSource,
+	shimSource,
+} from "./shim-source.ts";
 
 describe("the shim source is line-ending independent", () => {
 	test("lf turns a CRLF source into LF", () => {
@@ -30,5 +37,19 @@ describe("the shim source is line-ending independent", () => {
 		expect(shimSource).toContain(
 			"int shim_webview_attach(shim_h hwnd) {\n\tif (!shim_webview_bind(hwnd))",
 		);
+	});
+
+	/**
+	 * The assertion that would have caught the first attempt: `shimSource` was normalised, but six test
+	 * files read the parts from disk themselves and never went through it, so the runner stayed red.
+	 */
+	test("a part read from disk is LF too", () => {
+		for (const name of SHIM_PART_NAMES) {
+			const part = readShimPart(name);
+			expect(part.includes("\r")).toBe(false);
+			expect(part.length).toBeGreaterThan(0);
+		}
+		expect(readShimSource().includes("\r")).toBe(false);
+		expect(readShimSource()).toBe(shimSource);
 	});
 });

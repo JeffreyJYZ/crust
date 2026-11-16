@@ -6,6 +6,8 @@
  * one of them is resolved at runtime by `12_win32.c`, which is what lets TinyCC compile and link
  * this with no SDK and no import library.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import prelude from "./shim/10_prelude.c" with { type: "text" };
 import win32 from "./shim/12_win32.c" with { type: "text" };
 import guard from "./shim/14_guard.c" with { type: "text" };
@@ -23,6 +25,21 @@ import webview from "./shim/42_webview.c" with { type: "text" };
  * on macOS and Linux and fails only on the Windows runner (measured 2026-11-16, `callback.test.ts`).
  */
 export const lf = (text: string): string => text.replace(/\r\n/g, "\n");
+
+/**
+ * One shim part from disk, normalised to LF — the **test-facing half of the same rule** `SHIM_PARTS`
+ * applies. `shimSource` is what `ffi.ts` compiles, so normalising it was right for the product, but a
+ * test that scans the C reads the file itself and never goes through it; fixing one half and not the
+ * other is exactly how the Windows runner stayed red after the first attempt.
+ */
+export function readShimPart(name: string): string {
+	return lf(readFileSync(join(import.meta.dir, "shim", name), "utf8"));
+}
+
+/** The whole unit as a test reads it: the same parts, the same order, the same LF. */
+export function readShimSource(): string {
+	return SHIM_PART_NAMES.map(readShimPart).join("\n");
+}
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [

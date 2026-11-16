@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { WindowsShim } from "./backend.ts";
 import { shimSymbols } from "./ffi.ts";
+import { lf } from "./shim-source.ts";
 
 const DIR = import.meta.dir;
 
@@ -21,7 +22,7 @@ const DIR = import.meta.dir;
  * outside it cannot be called and a member without a declaration cannot be reached.
  */
 function interfaceMembers(): string[] {
-	const source = readFileSync(join(DIR, "backend.ts"), "utf8");
+	const source = lf(readFileSync(join(DIR, "backend.ts"), "utf8"));
 	const start = source.indexOf("export interface WindowsShim {");
 	expect(start).toBeGreaterThan(-1);
 	const end = source.indexOf("\n}", start);
@@ -32,7 +33,7 @@ function interfaceMembers(): string[] {
 
 /** Keys of the `symbols: { … }` map handed to `cc()`, matched by their `args:` entry. */
 function declaredSymbols(): string[] {
-	const source = readFileSync(join(DIR, "ffi.ts"), "utf8");
+	const source = lf(readFileSync(join(DIR, "ffi.ts"), "utf8"));
 	const start = source.indexOf("symbols: {");
 	expect(start).toBeGreaterThan(-1);
 	return [...source.slice(start).matchAll(/([a-z_][\w]*):\s*\{\s*args:/g)].map(
@@ -76,7 +77,7 @@ describe("the table cc() returns", () => {
 	});
 
 	test("compile() returns the unwrapped table, not the library", () => {
-		const source = readFileSync(join(DIR, "ffi.ts"), "utf8");
+		const source = lf(readFileSync(join(DIR, "ffi.ts"), "utf8"));
 		const start = source.indexOf("export function compile(");
 		expect(start).toBeGreaterThan(-1);
 		// `return shimSymbols(cc({ … }))` — a bare `return cc({ … })` is the regression.

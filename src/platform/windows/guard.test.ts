@@ -10,15 +10,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { lf, readShimPart, readShimSource, SHIM_PART_NAMES } from "./shim-source.ts";
 
-const SHIM = join(import.meta.dir, "shim");
-const source = SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8")).join("\n");
-const guard = readFileSync(join(SHIM, "14_guard.c"), "utf8");
-const com = readFileSync(join(SHIM, "30_com.c"), "utf8");
-const stages = readFileSync(
-	join(import.meta.dir, "..", "..", "..", "scripts", "windows", "stages.ts"),
-	"utf8",
+const source = readShimSource();
+const guard = readShimPart("14_guard.c");
+const com = readShimPart("30_com.c");
+const stages = lf(
+	readFileSync(
+		join(import.meta.dir, "..", "..", "..", "scripts", "windows", "stages.ts"),
+		"utf8",
+	),
 );
 
 describe("the vtable guard", () => {

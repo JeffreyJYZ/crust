@@ -12,18 +12,18 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SHIM_CC_OPTIONS, tccCommand } from "./ffi.ts";
 import { PREFLIGHT } from "./preflight.ts";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { lf, readShimPart, SHIM_PART_NAMES } from "./shim-source.ts";
 
 const DIR = import.meta.dir;
 const SHIM = join(DIR, "shim");
 
 /** Every `.c` part, in the order the unit compiles. */
 function parts(): string[] {
-	return SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8"));
+	return SHIM_PART_NAMES.map(readShimPart);
 }
 
 const source = parts().join("\n");
-const binding = readFileSync(join(DIR, "ffi.ts"), "utf8");
+const binding = lf(readFileSync(join(DIR, "ffi.ts"), "utf8"));
 
 /** Win32 names the unit calls, as opposed to the two imports that do the resolving. */
 const RESOLVERS = ["LoadLibraryA", "GetProcAddress"];
