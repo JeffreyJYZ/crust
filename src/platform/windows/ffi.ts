@@ -116,33 +116,64 @@ export function shimPath(): string {
 }
 
 /**
+ * What `cc()` hands back: the symbol table one level down under `symbols`, plus a `close` this
+ * process never calls because the shim lives as long as the app. Named so the cast below says what
+ * it is casting to — casting the result straight to `WindowsShim` compiles and then makes every
+ * call `undefined` (measured on the real runner: `shim.shim_com_init is not a function`).
+ */
+interface ShimLibrary {
+	symbols: WindowsShim;
+}
+
+/** The symbol table out of a `cc()` result. Split out so the unwrap is testable on any OS. */
+export function shimSymbols(library: { symbols: WindowsShim }): WindowsShim {
+	return library.symbols;
+}
+
+/** A thrown value as one line, the way tcc reports it. */
+function reason(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * Compile the shim. The libraries go through `library`, never through `-l` flags — see
  * `SHIM_LIBRARIES`. `WebView2Loader.dll` is deliberately not among them: the shim resolves its one
  * export at runtime, so a machine without the loader still compiles the shim and gets the preflight
  * message instead of a linker failure.
+ *
+ * A failure here is a defect in crust, not a missing runtime, so it carries the command line and the
+ * file each library resolved to. That is what turns `16 unresolved references` into the one library
+ * that was missing, and it is attached here rather than in a caller so every caller gets it.
  */
 export function compile(): WindowsShim {
+	const source = shimPath();
 	const link = shimLink();
-	return cc({
-		source: shimPath(),
-		flags: link.flags,
-		library: link.library,
-		symbols: {
-			shim_com_init: { args: [], returns: I64 },
-			shim_last_error: { args: [], returns: I64 },
-			shim_register_class: { args: [CS], returns: I64 },
-			shim_pump: { args: [], returns: I32 },
-			shim_post_quit: { args: [], returns: V },
+	try {
+		const library = cc({
+			source,
+			flags: link.flags,
+			library: link.library,
+			symbols: {
+				shim_com_init: { args: [], returns: I64 },
+				shim_last_error: { args: [], returns: I64 },
+				shim_register_class: { args: [CS], returns: I64 },
+				shim_pump: { args: [], returns: I32 },
+				shim_post_quit: { args: [], returns: V },
 
-			shim_window_new: { args: [CS, I32, I32, CS], returns: P },
-			shim_window_is_open: { args: [P], returns: I32 },
-			shim_window_set_title: { args: [P, CS], returns: I32 },
-			shim_window_destroy: { args: [P], returns: I32 },
-			shim_window_client_num: { args: [P, I32], returns: I32 },
+				shim_window_new: { args: [CS, I32, I32, CS], returns: P },
+				shim_window_is_open: { args: [P], returns: I32 },
+				shim_window_set_title: { args: [P, CS], returns: I32 },
+				shim_window_destroy: { args: [P], returns: I32 },
+				shim_window_client_num: { args: [P, I32], returns: I32 },
 
-			shim_webview_new: { args: [P, CS, CS], returns: I32 },
-			shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
-			shim_webview_close: { args: [P], returns: V },
-		},
-	}) as unknown as WindowsShim;
+				shim_webview_new: { args: [P, CS, CS], returns: I32 },
+				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
+				shim_webview_close: { args: [P], returns: V },
+			},
+		}) as unknown as ShimLibrary;
+		return shimSymbols(library);
+	} catch (error) {
+		const lines = [reason(error), tccCommand(source), ...linkReport()];
+		throw new Error(lines.join("\n"), { cause: error });
+	}
 }
