@@ -21,6 +21,18 @@ const stages = lf(
 		"utf8",
 	),
 );
+const report = lf(
+	readFileSync(
+		join(import.meta.dir, "..", "..", "..", "scripts", "windows", "report.ts"),
+		"utf8",
+	),
+);
+const composite = lf(
+	readFileSync(
+		join(import.meta.dir, "..", "..", "..", "scripts", "windows", "composite.ts"),
+		"utf8",
+	),
+);
 
 describe("the vtable guard", () => {
 	test("is its own part, before anything that calls a slot", () => {
@@ -69,16 +81,17 @@ describe("the wait is bounded by a deadline", () => {
 describe("the probe reports every defect in one run", () => {
 	/** `0x802A000C` arrives zero-extended as `2150236172`, which a plain `< 0` scores as a pass. */
 	test("scores an HRESULT by its low 32 bits, and prints both forms", () => {
-		expect(stages).toContain("(value | 0) < 0");
-		expect(stages).toContain("ok ${value} (${hex(value)})");
+		expect(report).toContain("(value | 0) < 0");
+		expect(report).toContain("ok ${value} (${hex(value)})");
 	});
 
 	/** An absence has to be visible: a skipped stage prints why, rather than vanishing. */
 	test("prints why the rest of the run is missing", () => {
-		expect(stages).toContain("function skipped(");
+		expect(report).toContain("export function skipped(");
 		expect(stages).toMatch(/skipped\("no window/);
 		expect(stages).toMatch(/skipped\("no controller/);
 		expect(stages).toMatch(/skipped\("no ICoreWebView2/);
+		expect(composite).toMatch(/skipped\("no window/);
 	});
 });
 

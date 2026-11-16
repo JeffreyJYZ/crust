@@ -162,3 +162,28 @@ export function webReport(shim: WindowsShim): void {
 		`stage     webview entries ${slots.join(" ")} bad_slot ${shim.shim_bad_slot()} bad_object ${shim.shim_bad_object()}`,
 	);
 }
+
+/** Print the call about to be made, then its answer. A crash leaves the first half as the last line. */
+export function stage(name: string, call: () => number): number {
+	console.log(`stage     ${name} …`);
+	const value = Number(call());
+	console.log(`stage     ${name} ok ${value}`);
+	return value;
+}
+
+/**
+ * An HRESULT stage. Printed raw *and* as hex, because a reader has to be able to decode it, and scored
+ * by the sign of its low 32 bits: `0x802A000C` arrives zero-extended as `2150236172`, which a plain
+ * `< 0` reads as a pass — that is how a failing `controller_begin` was once counted as a success.
+ */
+export function stageHr(name: string, call: () => number): boolean {
+	console.log(`stage     ${name} …`);
+	const value = Number(call());
+	console.log(`stage     ${name} ok ${value} (${hex(value)})`);
+	return (value | 0) < 0;
+}
+
+/** One line that says why the rest of the run is missing, so an absence is never silent. */
+export function skipped(reason: string): void {
+	console.log(`stage     skipped: ${reason}`);
+}

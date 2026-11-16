@@ -145,7 +145,7 @@ describe("the next run tests the controller shape, not just measures it", () => 
 		expect(source).toContain("if (mode == 1 || mode == 2) g_ctrl_mode = mode;");
 		expect(source).toContain("if (g_ctrl_mode == 2) return;");
 		expect(source).toContain("int shim_ctrl_mode(int mode) {");
-		expect(stages).toContain('for (const mode of ["1", "2"])');
+		expect(stages).toContain('for (const mode of ["1", "2", "3"])');
 		expect(stages).toContain("shim.shim_ctrl_mode(mode)");
 	});
 });

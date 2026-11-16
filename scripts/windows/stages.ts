@@ -24,38 +24,17 @@ import {
 	lateReport,
 	hex,
 	objectReport,
+	skipped,
 	slotReport,
+	stage,
+	stageHr,
 	threadReport,
 	webReport,
 } from "./report.ts";
+import { compositeSteps } from "./composite.ts";
 
 const APP = "crust-stages";
 const USER_DATA = join(tmpdir(), "crust-stages-webview2");
-
-/** Print the call about to be made, then its answer. A crash leaves the first half as the last line. */
-function stage(name: string, call: () => number): number {
-	console.log(`stage     ${name} …`);
-	const value = Number(call());
-	console.log(`stage     ${name} ok ${value}`);
-	return value;
-}
-
-/**
- * An HRESULT stage. Printed raw *and* as hex, because a reader has to be able to decode it, and scored
- * by the sign of its low 32 bits: `0x802A000C` arrives zero-extended as `2150236172`, which a plain
- * `< 0` reads as a pass — that is how a failing `controller_begin` was once counted as a success.
- */
-function stageHr(name: string, call: () => number): boolean {
-	console.log(`stage     ${name} …`);
-	const value = Number(call());
-	console.log(`stage     ${name} ok ${value} (${hex(value)})`);
-	return (value | 0) < 0;
-}
-
-/** One line that says why the rest of the run is missing, so an absence is never silent. */
-function skipped(reason: string): void {
-	console.log(`stage     skipped: ${reason}`);
-}
 
 /** Every call from a cold start to a navigated window, in the order the platform makes them. */
 async function steps(mode: 1 | 2): Promise<number> {
@@ -175,7 +154,7 @@ async function steps(mode: 1 | 2): Promise<number> {
  */
 export async function runStages(): Promise<{ code: number }> {
 	let code = 0;
-	for (const mode of ["1", "2"]) {
+	for (const mode of ["1", "2", "3"]) {
 		const child = Bun.spawn([process.execPath, import.meta.path, mode], { stdout: "inherit" });
 		const ended = await child.exited;
 		if (ended !== 0) code = ended;
@@ -185,7 +164,11 @@ export async function runStages(): Promise<{ code: number }> {
 
 if (import.meta.main) {
 	try {
-		process.exit(await steps(process.argv[2] === "2" ? 2 : 1));
+		process.exit(
+			process.argv[2] === "3"
+				? await compositeSteps()
+				: await steps(process.argv[2] === "2" ? 2 : 1),
+		);
 	} catch (error) {
 		const text = error instanceof Error ? error.message : String(error);
 		console.log(`stage     build failed: ${text.split("\n")[0] ?? text}`);
