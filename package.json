@@ -45,6 +45,8 @@
 		"build:native": "bun run scripts/native-extensions.ts",
 		"e2e:dev:binary": "bun run scripts/e2e-dev-binary.ts",
 		"e2e:package": "bun run scripts/e2e-package.ts",
+		"e2e:package:nsis": "bun run scripts/e2e-package-nsis.ts",
+		"e2e:appimage": "bun run scripts/e2e-appimage.ts",
 		"e2e:parity": "bun run scripts/e2e-parity.ts",
 		"e2e:linux": "bun run scripts/e2e-linux.ts",
 		"verify:package": "bun run scripts/verify-package.ts",

@@ -75,7 +75,7 @@ The `.nsi` is written **before** `makensis` is looked for, so a machine without 
 }
 ```
 
-The script installs to `$PROGRAMFILES64\<name>`, copies the app directory with `File /r`, writes a Start-menu shortcut and an uninstaller, and writes the uninstall keys under **both** `HKLM` and `HKCU`. `RequestExecutionLevel user` means no elevation prompt, so the `HKLM` write only lands when the installer is already elevated; `HKCU` is the key that always does.
+The script installs to `$LOCALAPPDATA\Programs\<name>`, copies the app directory with `File /r`, writes a Start-menu shortcut and an uninstaller, and writes the uninstall keys under **both** `HKLM` and `HKCU`. `RequestExecutionLevel user` means no elevation prompt, so the default directory has to be one that user can write — `$PROGRAMFILES64` needs an admin token and every non-elevated install would fail at `SetOutPath`, which is why the default is the per-user location. The same level means the `HKLM` write only lands when the installer is already elevated; `HKCU` is the key that always does. NSIS writes no icon here, so the installer carries the stock one.
 
 A failed `makensis` run deletes the previous `.exe` first, because a stale one reads as a successful build.
 

@@ -7,9 +7,9 @@ name: ci
 # `gate (ubuntu)` and `gate (windows)` prove the two non-macOS platform layers, which the
 # unit suite only ever exercises against an injected fake backend. Each installs (Linux)
 # or finds (Windows) the real libraries and runs a smoke that opens a real window and
-# pumps twice — `scripts/linux-smoke.ts` and `scripts/windows-smoke.ts`. Neither builds
-# an app bundle nor runs an e2e suite: that claim belongs to the macOS job alone, and
-# both smokes print what they do not prove.
+# pumps twice — `scripts/linux-smoke.ts` and `scripts/windows-smoke.ts`; both print what
+# they do not prove. The ubuntu job carries one e2e suite, `e2e:appimage`, because an
+# AppImage is a Linux artefact and `appimagetool` runs nowhere else.
 #
 # The e2e suites need a window server session; a runner that has none skips them and
 # says so in the log rather than failing (see the "window session" step). `bun check`,
@@ -260,6 +260,32 @@ jobs:
                   WEBKIT_DISABLE_COMPOSITING_MODE: "1"
                   LIBGL_ALWAYS_SOFTWARE: "1"
 
+            # `crust package --format appimage` needs `appimagetool`, which no Ubuntu image
+            # ships: it is one AppImage from the AppImage project's continuous release, and its
+            # own runtime is what packs the AppDir into squashfs. The suffix follows the runner
+            # (`ubuntu-latest` is x86_64), and `APPIMAGE_EXTRACT_AND_RUN` is the runtime's own
+            # mode for a machine without FUSE — a container runner has none.
+            - name: install appimagetool
+              run: |
+                  case "$(uname -m)" in
+                    x86_64) suffix=x86_64 ;;
+                    aarch64) suffix=aarch64 ;;
+                    *) echo "no appimagetool build for $(uname -m)"; exit 1 ;;
+                  esac
+                  curl -fsSL -o /tmp/appimagetool \
+                    "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${suffix}.AppImage"
+                  sudo install -m 0755 /tmp/appimagetool /usr/local/bin/appimagetool
+                  APPIMAGE_EXTRACT_AND_RUN=1 appimagetool --version
+
+            # The AppImage proof: `crust package --format appimage` on `examples/hello`, checked
+            # against the artefact — the type-2 ELF magic, the executable bit, a size floor, and
+            # the AppDir `--appimage-extract` gives back (`AppRun`, the binary it names, the
+            # `.desktop` entry, the icon). It is the only step that proves the format builds;
+            # the unit suite only checks the options it is handed. Cost: a 105 MiB
+            # `bun build --compile` plus the squashfs, measured 4.8 s on an arm64 Ubuntu 25.10.
+            - name: e2e appimage
+              run: bun run e2e:appimage
+
     # The Windows platform layer on the image that ships the WebView2 runtime. The runtime
     # is preinstalled; `WebView2Loader.dll` is not part of it, so the smoke reports the
     # loader separately and stages one from an Edge install when it can. A refusal prints
@@ -281,3 +307,35 @@ jobs:
             # A real HWND, a real WebView2 controller, two real PeekMessageW slices.
             - name: real WebView2 smoke
               run: bun run scripts/windows-smoke.ts
+
+    # The Windows installer, built and installed on the one OS that can run it. Until this
+    # job, `crust package --format nsis` was tested through its option builder and nothing
+    # else: the dmg path has an artefact proof and this one had none. It is a separate job
+    # on purpose — a red WebView2 smoke in `gate (windows)` must neither mask this nor be
+    # masked by it, and the two lanes fixing them do not share a log.
+    package-windows:
+        name: package (windows)
+        runs-on: windows-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+
+            - run: bun install --frozen-lockfile
+
+            # No runner image ships NSIS. Chocolatey is on `windows-latest`, and its shim
+            # puts `makensis` on PATH — which is what `buildNsis` looks for, through `where`
+            # on this platform rather than `which`.
+            - name: install NSIS
+              run: choco install nsis -y --no-progress
+
+            # Printed so the log names the compiler that built the installer.
+            - name: makensis version
+              run: makensis /VERSION
+
+            # `crust build` on `examples/hello`, `crust package --format nsis`, then the
+            # installer run with `/S` into a temp directory: the installed `crust-app.exe`,
+            # its MZ header, its size floor and the uninstaller are the proof, plus the
+            # size the CLI printed against the file on disk.
+            - name: e2e package nsis
+              run: bun run e2e:package:nsis
