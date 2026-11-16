@@ -42,7 +42,9 @@ describe("renderExtensionImports", () => {
 		expect(renderExtensionImports(["a.ts", "b.ts"])).toBe(
 			"registry.register(...(await extensionPlugins()));",
 		);
-		expect(renderExtensionImports(["a.ts"])).toBe("registry.register(...(await extensionPlugins()));");
+		expect(renderExtensionImports(["a.ts"])).toBe(
+			"registry.register(...(await extensionPlugins()));",
+		);
 	});
 
 	test("is empty when there is nothing to register", () => {
