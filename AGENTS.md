@@ -49,6 +49,16 @@ A green gate is the only proof a landing is safe.
 - `-windowNumber` never clears after `-close`; liveness is `visible || miniaturized || appHidden`.
 - Every `bun:ffi` declaration's arity must match its C prototype — `src/platform/darwin/arity.test.ts`
   fails the suite otherwise.
+- AX visibility is gated on app activation, not on the window — AppKit lists only windows on the active
+  Space, and `-[NSApplication activate]` is silently refused for a directly-exec'd process, so its window
+  is off screen and absent from `AXWindows` while `AXChildren` holds the menu bar alone;
+  `-activateIgnoringOtherApps:` is the call that lands (measured 2026-11-16).
+- Never `free()` GLib memory in the Linux shim — Bun links mimalloc and exports its own `malloc`/`free`,
+  so the shim's `free` resolves to Bun's allocator and handing it a GLib string faults (measured at
+  `0xA6D0`); resolve `g_free` and use that (2026-11-16).
+- WebKitGTK follows `load-failed` with `FINISHED`, so the shim keeps a failure sticky until the next
+  `STARTED`; a refused connection never emits `load-failed` at all — it commits WebKit's own error page
+  and finishes, so only a real load error proves that path (2026-11-16).
 - **Crash reports are in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones
   under `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with
   `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence.

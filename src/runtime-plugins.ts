@@ -136,9 +136,10 @@ export async function nativePlugins(
 	const webviewFor = webviewResolver(platform);
 	const appRoot = defaultStateRoot(appId ?? "crust");
 	/**
-	 * The guard is a second Bun process reading its own script, which a compiled binary does not
-	 * carry. That refusal is caught here so the plugin answers its own named `not-implemented`
-	 * instead of the launch dying before a window exists.
+	 * A guard that cannot be spawned is caught here so the plugin answers its own named
+	 * `not-implemented` instead of the launch dying before a window exists. It is a compiled app
+	 * that used to land here; the guard is now the app's own executable in guard mode, so what
+	 * still throws is a bad argument.
 	 */
 	let guard: { running(): boolean } | undefined;
 	try {

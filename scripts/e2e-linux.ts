@@ -163,6 +163,14 @@ async function main(): Promise<number> {
 						: ""),
 	);
 
+	// ---- 4b. the steps that need a loaded page ----------------------------
+	// Each verdict quotes the smoke's own PASS or FAIL line, so the answer travels with it.
+	const lines = both.split("\n");
+	for (const step of ["document", "js", "invoke", "failure"]) {
+		const line = lines.find((entry) => entry.match(`^(?:PASS|FAIL)\\s+${step}\\s`));
+		verdict.check(step, line?.startsWith("PASS") === true, line ?? `no line for ${step}`);
+	}
+
 	// ---- 5. quit() ends the process ---------------------------------------
 	const quit = await runInSlice("xvfb-run -a", QUIT_TIMEOUT_S, `bun run ${QUIT}`);
 	transcript(`quit transcript (xvfb-run -a bun run ${QUIT})`, quit);

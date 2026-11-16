@@ -3,6 +3,7 @@
  */
 
 import { CrustError } from "@/bridge/errors";
+import { withWindowLabel } from "@/bridge/window-identity.ts";
 import { type CrustConfig, type WindowConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
 import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
@@ -25,6 +26,11 @@ export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
  * An absolute URL is mandatory: the platform hands it to `NSURL` as-is, and a
  * relative one becomes `about:blank` there. `dev.url` wins verbatim (it is the
  * Vite origin), otherwise the window is served by the bridge.
+ *
+ * The document carries the window's identity: `?window=<label>` is appended
+ * when the configured URL names no window, so the page reads its own label back
+ * from `location.search` and the bridge can inject it into the client. A URL
+ * that already names its own `window` is left byte-exact.
  */
 export function windowUrl(
 	window: WindowConfig,
@@ -32,14 +38,15 @@ export function windowUrl(
 	bridgeUrl: string | undefined,
 ): string {
 	const path = window.url ?? "/";
-	if (devUrl) return devUrl;
+	if (devUrl) return withWindowLabel(devUrl, window.label);
 	if (!bridgeUrl) {
 		throw new Error(
 			"crust: no page URL — set dev.url, or start through `crust dev` / a built app " +
 				"so the bridge can serve the page",
 		);
 	}
-	return `${bridgeUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+	const url = `${bridgeUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+	return withWindowLabel(url, window.label);
 }
 
 /**

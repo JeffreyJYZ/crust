@@ -70,6 +70,7 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `downloads` and `fs.scope` resolve a destination before the containment check, so a sibling whose name merely starts with the data root is refused instead of accepted.
 - `crash-reporter` catches the guard's refusal at registration, so a compiled app answers its own named refusal instead of dying before a window exists.
 - `dock.setBadge("")` no longer throws `bun:ffi cannot convert argument to 'ptr'`: `bytesOf` answers `{ address: 0, length: 0 }` for an empty label instead of handing `ptr()` a zero-length buffer, and the probe now prints `dock badge="…" read="…" cleared=true`.
+- A crust window now appears in AppKit's accessibility tree for other processes. AppKit lists only windows on the active Space, and a window joins that Space only when its app is active — while `-[NSApplication activate]` is silently refused for a process LaunchServices did not launch, which is how `crust dev` and the parity harness run. `window-create.ts` sends `-activateIgnoringOtherApps:` when the app is not already active, guarded on `isActive` so a second window does not pull the app forward; a directly-executed app cannot become active through `activate`, which is why the pre-14 call is the one used. Measured on the same window from a separate trusted process: `external=windows:0,children:-1` before, `external=windows:1,children:4` after.
 - The generated extension entry registered `undefined` — it emitted a default import and then passed `extension0.default` to `registry.register`; it now passes `extension0`, and a test executes the generated entry against the real registry so the shape cannot regress.
 
 ### Security
@@ -96,7 +97,6 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `findinpage.matches` is 0 or 1, never a total, because `WKFindResult` carries only `-matchFound`; `clear()` refuses naming the private `-_clearFindIndicator`.
 - `crash-reporter` refuses inside a compiled binary — the guard is a second Bun process needing a readable copy of its own file, so `startCrashGuard` answers `not-implemented` naming "a source checkout".
 - A physical key press reaching a Carbon hot key is unproven: the probe fires the adapter's `dispatch` seam, which proves the grab was accepted and the process-side chain, not the window server's table.
-- `accessibility.elementCount()` answers `noWindow` even with a visible window in a directly-executed bundle, because AX's `AXWindows` on the app element stays empty while `AXIsProcessTrusted` is true.
 - `downloads`, `findinpage` and `navigation` resolve their webview from `windowLabels()[0]`, so they act on the first window only; a second window is not covered.
 - `i18n.setLocale` is in-memory because macOS owns the language list; a single-file build carries no extensions, and now says so instead of dropping them.
 - `minWidth`/`minHeight` do nothing on Windows (`WM_GETMINMAXINFO` is unhandled), and no DPI-awareness declaration exists in that layer, so bounds come from `GetClientRect` in physical pixels.

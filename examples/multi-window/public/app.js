@@ -1,7 +1,9 @@
 /**
  * One page, three windows: `main` and `inspector` from config, `scout` created at
- * runtime. Each window knows its own label because its config entry opened the page
- * with `?window=<label>` — `crust:window` offers no "which window am I" command.
+ * runtime. Each window knows its own label because its URL carries
+ * `?window=<label>` — crust appends it for a configured window and for one
+ * created at runtime — and `window.label` answers the same label if a page would
+ * rather ask than parse its own URL.
  *
  * Every reported line is composed from a `window.*` answer read back *after* the
  * write: the frame line is `getPosition` + `getSize`, never the numbers the page

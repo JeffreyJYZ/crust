@@ -11,6 +11,15 @@ export type MaybePromise<T> = T | Promise<T>;
 export interface PluginContext {
 	/** Push a server-sent event to every connected page. */
 	emit(event: string, data: unknown): void;
+	/**
+	 * Which window the calling page said it is, from the `?window=<label>` its URL carried. The
+	 * bridge hands over the label the request carried; `window.label` is the one command that
+	 * answers it.
+	 *
+	 * A hint, never authority: the page states it and the bridge cannot verify it, so it may only
+	 * route a command to a window and must never grant anything. The bearer token is the credential.
+	 */
+	window?: string;
 }
 
 export type CommandHandler<Args = any, Result = any> = (

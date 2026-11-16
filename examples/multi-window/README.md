@@ -70,15 +70,18 @@ public/index.html    the document every window loads
 public/app.js        identity, the resize button, and the driver in `main`
 ```
 
-The page reads its own label from `?window=`, which each config entry puts in its
-URL, and the resize button names that label explicitly, so clicking it in
-`inspector` resizes `inspector`.
+The page reads its own label from `?window=`, which crust appends for every
+window (a config entry may name its own instead), and the resize button names
+that label explicitly, so clicking it in `inspector` resizes `inspector`.
+
+`window.label` answers the same label: the bridge reads it off the document
+request, injects it into the page client, and the page sends it back with every
+call — so a page can ask which window it is rather than parsing its own URL. It
+is a routing hint, not a credential: the token is what authorises a call, and a
+page that claims another label can only mislabel itself.
 
 ## Gaps this example could not close
 
-- **No `window.label` command.** A page cannot ask which window it is. The
-  identity here comes from the URL the config opened, not from the platform, so a
-  window created with no `url` has no way to learn its own label.
 - **The backend cannot issue a window command.** `crust:window` is page-facing,
   and the running `Platform` is private to `startApp` — `app` has no accessor for
   it, so `main.ts` cannot list, move or close a window itself. The steps are
