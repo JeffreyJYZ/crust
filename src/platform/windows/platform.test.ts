@@ -43,6 +43,19 @@ describe("start", () => {
 		expect(platform.unavailable ?? "").toContain("CoInitializeEx");
 	});
 
+	/**
+	 * Every Win32 entry point is resolved at runtime now, so the machine that is missing one has to
+	 * be reported here — the alternative is a null call at the first window, which is a segfault.
+	 */
+	test("entry points that did not resolve are reported before any call", async () => {
+		const backend = fakeBackend({ win32Ready: 0 });
+		const platform = createPlatform(CONFIG, backend);
+		await platform.start();
+		expect(platform.unavailable ?? "").toContain("did not resolve");
+		expect(backend.calls).toContain("win32_ready");
+		expect(backend.calls).not.toContain("com_init");
+	});
+
 	test("a class that never registered reports the OS error", async () => {
 		const platform = createPlatform(CONFIG, fakeBackend({ classAtom: 0 }));
 		await platform.start();

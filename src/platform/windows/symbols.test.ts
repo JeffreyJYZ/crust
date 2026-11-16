@@ -56,8 +56,9 @@ describe("the cc() symbol map", () => {
 	// A parser that silently found nothing would make both tests above pass for the wrong reason.
 	test("the parsers saw both sides", () => {
 		expect(interfaceMembers()).toContain("shim_com_init");
+		expect(interfaceMembers()).toContain("shim_win32_ready");
 		expect(declaredSymbols()).toContain("shim_com_init");
-		expect(interfaceMembers().length).toBeGreaterThanOrEqual(13);
+		expect(interfaceMembers().length).toBeGreaterThanOrEqual(14);
 		expect(declaredSymbols().length).toBe(interfaceMembers().length);
 	});
 });

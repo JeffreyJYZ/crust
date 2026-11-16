@@ -68,6 +68,14 @@ export class WindowsPlatform implements Platform {
 			return;
 		}
 		const shim = this.#backend.load();
+		// Every Win32 entry point is a pointer `12_win32.c` resolves at runtime, so a machine that
+		// is missing one is a message here rather than a null call at the first window.
+		if (!Number(shim.shim_win32_ready())) {
+			this.#unavailable =
+				"crust: the Win32 entry points did not resolve — user32, ole32 or kernel32 is missing an export this shim calls";
+			console.log(this.#unavailable);
+			return;
+		}
 		const hr = Number(shim.shim_com_init());
 		// S_OK (0) and S_FALSE (1) both mean the apartment is usable; anything else is a machine
 		// that cannot host COM, where a window would fail later with no cause attached.

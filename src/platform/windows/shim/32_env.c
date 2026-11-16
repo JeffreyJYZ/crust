@@ -1,13 +1,12 @@
 // --- environment and controller, one helper per vtable slot ---------------
 // The one export crust needs from WebView2Loader.dll, which ships beside the binary or on PATH.
-// It is resolved here rather than linked: TinyCC can only import a DLL whose directory is on its own
-// library path, and that directory is wherever Edge happens to be installed, so a machine without the
-// loader would lose the whole shim to a linker error instead of one symbol. The preflight is what
-// names a missing loader; a failed LoadLibraryW leaves GetLastError 126 (ERROR_MOD_NOT_FOUND) for the
-// caller's message, and the handle is kept for the process lifetime because WebView2 lives as long.
-// `options` is null: crust needs no additional browser arguments, and the only member worth setting
-// (SetCustomSchemeRegistration) lives on ICoreWebView2EnvironmentOptions4, a later runtime than the
-// filter path already needs.
+// It is resolved here the same way `12_win32.c` resolves everything else: the loader is a runtime
+// prerequisite, so a machine without it must lose one symbol rather than the whole shim. The preflight
+// is what names a missing loader; a failed LoadLibraryW leaves GetLastError 126 (ERROR_MOD_NOT_FOUND)
+// for the caller's message, and the handle is kept for the process lifetime because WebView2 lives as
+// long. `options` is null: crust needs no additional browser arguments, and the only member worth
+// setting (SetCustomSchemeRegistration) lives on ICoreWebView2EnvironmentOptions4, a later runtime
+// than the filter path already needs.
 typedef shim_i64 (*shim_create_env_fn)(const shim_wchar *browserDir, const shim_wchar *userDataDir,
                                        void *options, void *handler);
 
@@ -19,6 +18,7 @@ static shim_create_env_fn shim_load_create_env(void) {
 	shim_h loader;
 	if (g_create_env_done) return g_create_env;
 	g_create_env_done = 1;
+	if (!shim_win32_load()) return 0;
 	if (shim_utf16("WebView2Loader.dll", name, 64) < 0) return 0;
 	loader = LoadLibraryW(name);
 	if (!loader) return 0;

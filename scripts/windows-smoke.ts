@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPlatform, defaultBackend, preflightError } from "../src/platform/windows/index.ts";
 import { Verdict } from "./e2e-harness.ts";
+import { formatBisect, runBisect } from "./windows/bisect.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
@@ -82,10 +83,15 @@ async function main(): Promise<number> {
 	}
 	verdict.check("preflight", true, "the runtime and loader the shim needs are both present");
 
-	// 2. COM, the window class, then a real window and controller. A machine that refuses any of
+	// 2. Which route into Win32 survives on this machine, measured rather than assumed: the shim
+	//    links nothing because two of these three routes were expected to crash. Diagnostic lines,
+	//    not assertions — an experiment doing what it was built to catch must not fail the smoke.
+	for (const line of formatBisect(await runBisect())) console.log(`bisect    ${line}`);
+
+	// 3. COM, the window class, then a real window and controller. A machine that refuses any of
 	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
-	//    the exception: `compile()` attaches the exact tcc command line and the file each library
-	//    resolved to, so the failure names the cause instead of being inferred from the throw.
+	//    the exception: `compile()` attaches the exact tcc command line, so the failure names what
+	//    TinyCC was handed instead of being inferred from the throw.
 	const platform = createPlatform({ appName: "crust-smoke", userDataDir: USER_DATA });
 	try {
 		await platform.start();

@@ -17,6 +17,12 @@ import type { WindowsRuntimeReport } from "./preflight.ts";
  * `bun:ffi` throws on a string at that argument before C runs.
  */
 export interface WindowsShim {
+	/**
+	 * 1 when every Win32 entry point resolved, 0 when a module or an export was missing. Asked
+	 * before any other call, because the pointers behind them are null until `12_win32.c` binds
+	 * them — a call before this answers 1 is a null call, not a bad return.
+	 */
+	shim_win32_ready(): number;
 	shim_com_init(): number;
 	shim_last_error(): number;
 	shim_register_class(name: Uint8Array): number;
