@@ -37,7 +37,7 @@ One sheet at a time: a second `openPanel` or `savePanel` while a sheet is up ans
 | `hide`     | none                     | `{ ok: true, active: false }`   |
 | `destroy`  | none                     | `{ ok: true, destroyed: true }` |
 
-One live status item per adapter; `destroy` releases the adapter's claim, and a second `createStatusBar()` throws until it lands. An empty `items` list detaches the menu. A click reaches the page as the `tray:click` event with `{ index, label }`, because a function cannot cross the bridge.
+One live status item per adapter; `destroy` releases the adapter's claim, and a second `createStatusBar()` throws until the first is destroyed. An empty `items` list detaches the menu. A click reaches the page as the `tray:click` event with `{ index, label }`, because a function cannot cross the bridge.
 
 Failure codes: `invalid-text`, `invalid-menu`, `unknown-adapter` (the adapter lacks that member), `destroyed` (the item was already torn down), `handler-error`; `not-implemented` with `requires: "NSStatusBar"` without an adapter.
 

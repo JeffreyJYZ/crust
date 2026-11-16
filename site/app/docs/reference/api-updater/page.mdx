@@ -1,0 +1,23 @@
+# Updater commands
+
+`updater` checks a JSON manifest, downloads an artifact, replaces the bundle and starts the new copy. It is registered only when the config has an `updater` section: an app with no update story carries no download-and-replace surface at all, and naming `updater` in `plugins` without that section is the unknown-plugin error it should be.
+
+Nothing is installed that this run did not verify. `download` requires a `sha256`, fetches `https` only, verifies a signature with the config's pinned key alone, and records a receipt that `install` refuses to work without.
+
+## Commands
+
+| command    | arguments                              | answer                                                                        |
+| ---------- | -------------------------------------- | ----------------------------------------------------------------------------- |
+| `config`   | none                                   | `{ endpoint, pubkey, autoCheck, allowFileUrl }`                               |
+| `check`    | `{ endpoint, currentVersion }`         | `{ available, version?, url?, notes?, sha256?, signature?, pubkey?, error? }` |
+| `download` | `{ url, sha256, signature?, pubkey? }` | `{ ok, path, bytes, sha256, signer? }`                                        |
+| `install`  | `{ path, appPath, relaunch? }`         | `{ ok, appPath, backup, relaunchError? }`                                     |
+| `relaunch` | `{ appPath }`                          | `{ ok, started: true }`                                                       |
+
+`config` reports what the `updater` section set, so a page can render an update pane without guessing. `check` reads the manifest, compares versions numerically (`0.10.0` beats `0.9.0`, and `1.0.0` beats `1.0.0-beta.1`), and answers `available: false` with `version` when there is nothing newer — a failure arrives in `error`, never as a throw. A manifest whose `pubkey` is not the configured one is refused as `bad-manifest`. `endpoint` falls back to the config's own.
+
+**`download` requires `sha256`** — a 64-hex digest, either case — because an artifact nothing verified is no artifact: without it the answer is `invalid-arguments` with `requires: "sha256"`. **The URL must be `https`.** A `file:` URL is fetched only when the config sets `updater.allowFileUrl`, and that refusal carries `requires: "updater.allowFileUrl"`; any other scheme is refused outright. `signature` is base64 Ed25519 over the artifact bytes and needs `updater.pubkey` in the config; a `pubkey` argument may only name the configured key, never replace it. The verified digest comes back in `sha256`, and `signer` names the key that verified it.
+
+`install` renames the new bundle over the old and parks the old at `<appPath>.old`. It refuses a `path` this run did not download (`unverified-artifact`), re-checks the digest so a file changed since download is `hash-mismatch`, refuses a target that is not an existing `.app` directory, and refuses a target that is not the bundle this process is running from. `relaunch: true` starts the new copy after the swap; a launch failure is reported in `relaunchError` beside a landed install, not rolled back.
+
+Failure codes: `invalid-arguments`, `check-failed`, `bad-manifest`, `download-failed`, `hash-mismatch`, `signature-mismatch`, `install-failed`, `relaunch-failed`, `not-an-app-bundle`, `unverified-artifact`, `handler-error`. Every failure that needs something also carries `requires`, and one that is about a file carries its `path`.
