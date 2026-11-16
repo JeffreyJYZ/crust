@@ -23,11 +23,7 @@ async function scratch(): Promise<string> {
 	return await mkdtemp(join(tmpdir(), "crust-logging-"));
 }
 
-function call<T>(
-	plugin: ReturnType<typeof createLoggingPlugin>,
-	name: string,
-	args?: unknown,
-): T {
+function call<T>(plugin: ReturnType<typeof createLoggingPlugin>, name: string, args?: unknown): T {
 	const table = plugin.commands as unknown as Record<string, (input?: unknown) => T>;
 	const handler = table[name];
 	if (handler === undefined) throw new Error(`no command ${name}`);
@@ -72,9 +68,9 @@ describe("logging level", () => {
 			}) as Promise<WriteResult>);
 			expect(result).toEqual({ written: false, reason: "below-level" });
 			// Nothing was formatted, so nothing was appended either.
-			expect(await readFile(join(root, "logs", "app.log"), "utf8").catch(() => undefined)).toBe(
-				undefined,
-			);
+			expect(
+				await readFile(join(root, "logs", "app.log"), "utf8").catch(() => undefined),
+			).toBe(undefined);
 
 			call(plugin, "setLevel", { level: "debug" });
 			const kept = await (call(plugin, "write", {
@@ -128,8 +124,14 @@ describe("logging sink", () => {
 		const root = await scratch();
 		try {
 			const plugin = pluginAt(root);
-			await (call(plugin, "write", { level: "info", message: "first" }) as Promise<WriteResult>);
-			await (call(plugin, "write", { level: "error", message: "second" }) as Promise<WriteResult>);
+			await (call(plugin, "write", {
+				level: "info",
+				message: "first",
+			}) as Promise<WriteResult>);
+			await (call(plugin, "write", {
+				level: "error",
+				message: "second",
+			}) as Promise<WriteResult>);
 			const text = await readFile(join(root, "logs", "app.log"), "utf8");
 			expect(text.split("\n").filter(Boolean)).toEqual([
 				"2026-11-15T00:00:00.000Z INFO first",

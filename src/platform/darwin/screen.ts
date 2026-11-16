@@ -70,5 +70,7 @@ export function screenUnitStatus(): { available: boolean; reason: string } {
 		return { available: false, reason: error instanceof Error ? error.message : String(error) };
 	}
 	const frame = mainScreenFrame();
-	return frame ? { available: true, reason: "compiled" } : { available: false, reason: "no screen" };
+	return frame
+		? { available: true, reason: "compiled" }
+		: { available: false, reason: "no screen" };
 }

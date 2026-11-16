@@ -31,6 +31,15 @@ A green gate is the only proof a landing is safe.
 - **Every file stays at or under 200 lines, tests and examples included** — `bun run check:lines` is
   the measurement, so an oversized file fails the gate instead of relying on memory. Split by
   responsibility; never trim a comment that records a measured reason to reach the number.
+- **`check:parity` reads every `| … |` table in the parity page as feature rows** — a status-count
+  table made it report 48 rows and list `status, same, via Bun` as unlisted features; keep counts as
+  bullets (2026-11-16).
+- **Never run `bun fmt` without a path list here** — it rewrites every file it can reach, including
+  lanes' in-flight work, and a tree-wide sweep has already reformatted ~135 files at once; format the
+  files you changed, or wait for the lanes to land (2026-11-16).
+- **When a formatting sweep lands, keep the formatting edits — never revert** — reverting wiped two
+  lanes' first passes at 15:39 on 2026-11-16, while a formatting-only diff costs nothing; a revert
+  destroys real work, so keep it and carry on (user, 2026-11-16).
 
 ## Traps
 
@@ -68,3 +77,12 @@ A green gate is the only proof a landing is safe.
   own tokens in `site/app/globals.css`.
 - **Every page carries the `jyz.land` backlink** from the root layout footer; a new subdomain without
   it is unfinished.
+
+## Platform contract
+
+- **A page loads from the bridge URL** — `http://127.0.0.1:<port>/`, navigated by the platform's own
+  call (darwin `-loadRequest:`); no platform registers a custom scheme to serve a page.
+- **`crust://` is never the framework's** — `urlScheme` is optional app config with no default, so a
+  page-serving scheme would collide with an app's own deep links.
+- **A new platform implements `Platform` and nothing more** — five methods; inventing a page-serving
+  scheme is the defect that put `crust://` in two layers at once (2026-11-16).

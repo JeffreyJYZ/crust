@@ -85,6 +85,23 @@ export class WindowRegistry {
 	}
 
 	/**
+	 * The `WKWebView *` behind a tracked label while the window is open. `createNativeWindow`
+	 * built it and the registry kept it, so this is the authoritative pointer: a caller that
+	 * knows the label reaches its own window's view without walking `-contentView`'s subviews,
+	 * which is the only route from a bare window pointer. A closed window is pruned here for
+	 * the same reason `handle()` prunes it — its view is no longer anything to act on.
+	 */
+	webview(label: string): number | undefined {
+		const entry = this.#windows.get(label);
+		if (!entry) return undefined;
+		if (!this.#isOpen(entry.win)) {
+			this.#windows.delete(label);
+			return undefined;
+		}
+		return entry.web === 0 ? undefined : entry.web;
+	}
+
+	/**
 	 * The window's AppKit window device number while it is open, or 0 once it
 	 * has closed — the liveness number crust's own contract promises, not the
 	 * raw `-windowNumber` (which keeps its value after a close; see

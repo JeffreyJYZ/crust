@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Multi-window</title>
+		<style>
+			:root {
+				color-scheme: dark light;
+				--canvas: #14161a;
+				--ink: #e8eaed;
+				--muted: #9aa0a6;
+				--line: #2a2e35;
+				--accent: #7aa2f7;
+			}
+			@media (prefers-color-scheme: light) {
+				:root {
+					--canvas: #fbfbfc;
+					--ink: #1b1d21;
+					--muted: #5f6368;
+					--line: #e3e5e8;
+					--accent: #1a56db;
+				}
+			}
+			body {
+				margin: 0;
+				padding: 24px;
+				background: var(--canvas);
+				color: var(--ink);
+				font:
+					14px/1.5 ui-sans-serif,
+					system-ui,
+					sans-serif;
+			}
+			h1 {
+				margin: 0 0 16px;
+				font-size: 15px;
+				font-weight: 600;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+			dl {
+				display: grid;
+				grid-template-columns: max-content 1fr;
+				gap: 6px 16px;
+				margin: 0 0 20px;
+			}
+			dt {
+				color: var(--muted);
+			}
+			dd {
+				margin: 0;
+				font-family: ui-monospace, SFMono-Regular, monospace;
+			}
+			button {
+				padding: 7px 12px;
+				border: 1px solid var(--line);
+				border-radius: 6px;
+				background: transparent;
+				color: var(--accent);
+				font: inherit;
+				cursor: pointer;
+			}
+			button:hover {
+				border-color: var(--accent);
+			}
+			p {
+				margin: 16px 0 0;
+				color: var(--muted);
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Multi-window</h1>
+		<dl>
+			<dt>this window</dt>
+			<dd id="own">…</dd>
+			<dt>open windows</dt>
+			<dd id="open">…</dd>
+			<dt>this frame</dt>
+			<dd id="frame">…</dd>
+		</dl>
+		<!-- Each window names itself in its own command, so the answer proves the
+		command reached this window and not the first one open. -->
+		<button id="resize" type="button">Resize this window to 520×380</button>
+		<p>The backend's stdout carries one line per step the main window drives.</p>
+		<script src="/app.js"></script>
+	</body>
+</html>

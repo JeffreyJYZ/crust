@@ -10,6 +10,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./plugin": "./src/plugins/index.ts",
+		"./extension": "./src/extensions/define.ts",
+		"./extensions": "./src/extensions/load.ts",
 		"./vite": "./src/vite.ts"
 	},
 	"files": [
@@ -42,6 +44,7 @@
 		"e2e:dev:binary": "bun run scripts/e2e-dev-binary.ts",
 		"e2e:package": "bun run scripts/e2e-package.ts",
 		"e2e:parity": "bun run scripts/e2e-parity.ts",
+		"e2e:linux": "bun run scripts/e2e-linux.ts",
 		"verify:package": "bun run scripts/verify-package.ts",
 		"build:standalone": "bun run scripts/build-standalone.ts",
 		"verify:first-run": "bun run scripts/first-run.ts",

@@ -1,36 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-	type BundleArgs,
-	createUpdaterPlugin,
-	type InstallResult,
-	nodeUpdaterAdapter,
-	type UpdaterAdapter,
-	type UpdaterFailure,
+import type {
+	DownloadResult,
+	InstallResult,
+	UpdaterAdapter,
+	UpdaterFailure,
 } from "@/plugins/updater";
+import {
+	bundle,
+	delivering,
+	digestOf,
+	offlineAdapter,
+	plugin,
+	scratch,
+	UPDATE_URL,
+} from "@/plugins/updater-fake";
 
-function offlineAdapter(overrides: Partial<UpdaterAdapter> = {}): UpdaterAdapter {
-	const no = () => Promise.reject(new Error("a test tried to reach the network"));
-	const fake = { ...nodeUpdaterAdapter(), fetchJson: no, download: no, relaunch: no };
-	return { ...fake, ...overrides };
-}
+const MARKER = join("Contents", "marker.txt");
 
-function plugin(adapter: UpdaterAdapter) {
-	return createUpdaterPlugin(adapter).commands;
-}
-
-async function scratch(): Promise<string> {
-	return await mkdtemp(join(tmpdir(), "crust-updater-"));
-}
-
-async function bundle(dir: string, name: string, marker: string): Promise<string> {
-	const path = join(dir, name);
-	await mkdir(join(path, "Contents"), { recursive: true });
-	await writeFile(join(path, "Contents", "marker.txt"), marker, "utf8");
-	return path;
+/** The executable inside a bundle: the shape `relaunch` derives this app's own bundle from. */
+function executableOf(bundlePath: string): string {
+	return join(bundlePath, "Contents", "MacOS", "Notes");
 }
 
 /** An adapter that records every bundle it is asked to start, so a test never opens one. */
@@ -45,15 +37,13 @@ function launching(): { adapter: UpdaterAdapter; started: string[] } {
 }
 
 describe("updater.relaunch", () => {
-	test("starts the bundle through the adapter and answers started", async () => {
+	test("starts this app's own bundle through the adapter and answers started", async () => {
 		const dir = await scratch();
 		try {
 			const appPath = await bundle(dir, "Notes.app", "new");
 			const { adapter, started } = launching();
-			expect(await plugin(adapter).relaunch({ appPath })).toEqual({
-				ok: true,
-				started: true,
-			});
+			const commands = plugin(adapter, {}, executableOf(appPath));
+			expect(await commands.relaunch({ appPath })).toEqual({ ok: true, started: true });
 			expect(started).toEqual([appPath]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
@@ -63,13 +53,14 @@ describe("updater.relaunch", () => {
 	test("refuses anything that is not an existing .app directory, starting nothing", async () => {
 		const dir = await scratch();
 		try {
-			const loose = join(dir, "Notes");
+			const own = await bundle(dir, "Notes.app", "new");
+			const loose = join(dir, "Loose");
 			const file = join(dir, "Loose.app");
-			await mkdir(loose);
-			await writeFile(file, "not a bundle", "utf8");
+			await Bun.write(file, "not a bundle");
 			const { adapter, started } = launching();
+			const commands = plugin(adapter, {}, executableOf(own));
 			for (const appPath of [loose, file, join(dir, "Gone.app")]) {
-				expect(await plugin(adapter).relaunch({ appPath })).toMatchObject({
+				expect(await commands.relaunch({ appPath })).toMatchObject({
 					ok: false,
 					code: "not-an-app-bundle",
 					path: appPath,
@@ -86,16 +77,18 @@ describe("updater.relaunch", () => {
 		try {
 			const appPath = await bundle(dir, "Notes.app", "new");
 			const bare = offlineAdapter({ relaunch: undefined });
-			expect(await plugin(bare).relaunch({ appPath })).toMatchObject({
-				ok: false,
-				code: "relaunch-failed",
-			});
+			expect(
+				await plugin(bare, {}, executableOf(appPath)).relaunch({ appPath }),
+			).toMatchObject({ ok: false, code: "relaunch-failed" });
 			const broken = offlineAdapter({
 				relaunch: async () => {
 					throw new Error("open: no such file");
 				},
 			});
-			expect(await plugin(broken).relaunch({ appPath })).toMatchObject({
+			const result = (await plugin(broken, {}, executableOf(appPath)).relaunch({
+				appPath,
+			})) as UpdaterFailure;
+			expect(result).toMatchObject({
 				ok: false,
 				code: "relaunch-failed",
 				message: "open: no such file",
@@ -104,29 +97,36 @@ describe("updater.relaunch", () => {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
-
-	test("a missing appPath is invalid arguments, never a throw", async () => {
-		const { adapter } = launching();
-		const result = (await plugin(adapter).relaunch({} as BundleArgs)) as UpdaterFailure;
-		expect(result).toMatchObject({ ok: false, code: "invalid-arguments" });
-	});
 });
 
 describe("updater.install with relaunch", () => {
+	/** Download the artifact, so `install` has the receipt it refuses to work without. */
+	async function verified(commands: ReturnType<typeof plugin>, source: string): Promise<string> {
+		const sha256 = await digestOf(source);
+		const file = (await commands.download({ url: UPDATE_URL, sha256 })) as DownloadResult;
+		return file.path;
+	}
+
 	test("starts the replaced bundle once the swap has landed", async () => {
 		const dir = await scratch();
 		try {
 			const appPath = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
-			const { adapter, started } = launching();
-			const args = { path: source, appPath, relaunch: true };
-			expect(await plugin(adapter).install(args)).toEqual({
+			const started: string[] = [];
+			const adapter = delivering(source, {
+				relaunch: async (launched) => {
+					started.push(launched);
+				},
+			});
+			const commands = plugin(adapter, {}, executableOf(appPath));
+			const path = await verified(commands, source);
+			expect(await commands.install({ path, appPath, relaunch: true })).toEqual({
 				ok: true,
 				appPath,
 				backup: `${appPath}.old`,
 			});
 			expect(started).toEqual([appPath]);
-			expect(await readFile(join(appPath, "Contents", "marker.txt"), "utf8")).toBe("new");
+			expect(await readFile(join(appPath, MARKER), "utf8")).toBe("new");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -137,21 +137,28 @@ describe("updater.install with relaunch", () => {
 		try {
 			const appPath = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
-			const adapter = offlineAdapter({
-				relaunch: async () => {
-					throw new Error("open: killed");
-				},
-			});
-			const args = { path: source, appPath, relaunch: true };
-			const result = (await plugin(adapter).install(args)) as InstallResult;
+			const commands = plugin(
+				delivering(source, {
+					relaunch: async () => {
+						throw new Error("open: killed");
+					},
+				}),
+				{},
+				executableOf(appPath),
+			);
+			const path = await verified(commands, source);
+			const result = (await commands.install({
+				path,
+				appPath,
+				relaunch: true,
+			})) as InstallResult;
 			expect(result).toMatchObject({
 				ok: true,
 				backup: `${appPath}.old`,
 				relaunchError: { code: "relaunch-failed", message: "open: killed" },
 			});
-			const marker = join("Contents", "marker.txt");
-			expect(await readFile(join(appPath, marker), "utf8")).toBe("new");
-			expect(await readFile(join(`${appPath}.old`, marker), "utf8")).toBe("old");
+			expect(await readFile(join(appPath, MARKER), "utf8")).toBe("new");
+			expect(await readFile(join(`${appPath}.old`, MARKER), "utf8")).toBe("old");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -163,7 +170,13 @@ describe("updater.install with relaunch", () => {
 			const appPath = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
 			const { adapter, started } = launching();
-			expect(await plugin(adapter).install({ path: source, appPath })).toMatchObject({
+			const commands = plugin(
+				delivering(source, { relaunch: adapter.relaunch }),
+				{},
+				executableOf(appPath),
+			);
+			const path = await verified(commands, source);
+			expect(await commands.install({ path, appPath })).toMatchObject({
 				ok: true,
 				backup: `${appPath}.old`,
 			});

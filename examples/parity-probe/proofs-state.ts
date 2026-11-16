@@ -56,7 +56,8 @@ export async function proveAutostart(): Promise<boolean> {
 	} catch (error) {
 		return failed("autostart", reason(error));
 	} finally {
-		if (home !== undefined) await rm(home, { recursive: true, force: true }).catch(() => undefined);
+		if (home !== undefined)
+			await rm(home, { recursive: true, force: true }).catch(() => undefined);
 	}
 }
 
@@ -76,7 +77,10 @@ export async function proveLogging(): Promise<boolean> {
 			const message = `${tag} ${"x".repeat(LINE_CHARS - tag.length - 1)}`;
 			const answer = await logging.commands.write({ level: "info", message });
 			if (answer.written !== true) {
-				return failed("logging", `write refused: ${answer.reason ?? answer.error ?? "unknown"}`);
+				return failed(
+					"logging",
+					`write refused: ${answer.reason ?? answer.error ?? "unknown"}`,
+				);
 			}
 			if (answer.line !== undefined) lines.push(answer.line);
 			if (answer.rotated !== undefined) rotated = true;
@@ -94,7 +98,8 @@ export async function proveLogging(): Promise<boolean> {
 	} catch (error) {
 		return failed("logging", reason(error));
 	} finally {
-		if (root !== undefined) await rm(root, { recursive: true, force: true }).catch(() => undefined);
+		if (root !== undefined)
+			await rm(root, { recursive: true, force: true }).catch(() => undefined);
 	}
 }
 
@@ -110,7 +115,10 @@ export async function proveWindowState(): Promise<boolean> {
 		const frame = native.windows.get(LABEL);
 		if (frame === undefined) return failed("window-state", `no frame for ${LABEL}`);
 		Object.assign(frame, { x: 0, y: 0, width: 10, height: 10 });
-		const restored = (await state.commands.restoreAll()) as { ok?: boolean; restored?: string[] };
+		const restored = (await state.commands.restoreAll()) as {
+			ok?: boolean;
+			restored?: string[];
+		};
 		const back = native.windows.get(LABEL) ?? { x: -1, y: -1, width: -1, height: -1 };
 		const same =
 			back.x === FRAME.x &&
@@ -123,7 +131,8 @@ export async function proveWindowState(): Promise<boolean> {
 	} catch (error) {
 		return failed("window-state", reason(error));
 	} finally {
-		if (root !== undefined) await rm(root, { recursive: true, force: true }).catch(() => undefined);
+		if (root !== undefined)
+			await rm(root, { recursive: true, force: true }).catch(() => undefined);
 	}
 }
 

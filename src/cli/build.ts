@@ -3,8 +3,9 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import { buildApp, formatBytes } from "@/packaging/build";
 import { signApp } from "@/packaging/sign";
 import { detectSingle } from "../single.ts";
@@ -87,6 +88,25 @@ export async function build(options: CliOptions): Promise<number> {
 			: `none — ${assetsLabel}/ is empty or missing`,
 	);
 
+	// An extension is an import inside the binary, so a file the config names must be there now:
+	// a build that skipped it would ship an app whose commands answer `unknown-plugin`.
+	const extensionFiles = await resolveExtensionFiles({
+		dir: join(options.dir, DEFAULT_EXTENSIONS_DIR),
+		names: config.extensions,
+	});
+	for (const file of extensionFiles) {
+		if (!(await exists(file))) {
+			return fail("build", `extensions entry ${file} does not exist`);
+		}
+	}
+	if (extensionFiles.length > 0) {
+		line(
+			"extensions",
+			`${extensionFiles.length} file${extensionFiles.length === 1 ? "" : "s"} embedded`,
+		);
+	}
+
+	const crustRoot = await projectCrustRoot(options.dir);
 	const wrapperPath = resolve(outDir, "crust-entry.ts");
 	await writeFile(
 		wrapperPath,
@@ -94,7 +114,10 @@ export async function build(options: CliOptions): Promise<number> {
 			configPath: resolve(options.dir, loaded.path),
 			entryPath: entry,
 			assetsPath,
-			runtimePath: resolve(await projectCrustRoot(options.dir), "src/runtime.ts"),
+			runtimePath: resolve(crustRoot, "src/runtime.ts"),
+			extensionsPath: resolve(crustRoot, "src/extensions/registry.ts"),
+			projectDir: options.dir,
+			extensionFiles,
 		}),
 		"utf8",
 	);

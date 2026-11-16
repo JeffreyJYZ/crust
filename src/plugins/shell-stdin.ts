@@ -3,7 +3,7 @@
  * It sits apart from the allowlist rules because a page can only write to a process `spawn` already started.
  */
 
-import { type ShellFailure, shellFailure } from "./shell-args";
+import { type ShellFailure, shellFailure } from "./shell-failure";
 
 /** `write`'s payload: which process, and the text to send down its pipe. */
 export interface WriteArgs {

@@ -1,0 +1,84 @@
+# Package formats
+
+Two more artefacts beside the disk image: an AppImage for Linux and an NSIS installer for Windows. Both are builders in `src/packaging/`, and both are honest about the one thing a person can install.
+
+**Run it:** `crust package --format appimage` or `--format nsis`, after `crust build`. `--format` is repeatable, defaults to `dmg`, and a machine without the packer prints the `requires` line and exits 1 rather than throwing, so the remaining formats still build. The macOS artefact is also [`crust dmg`](/docs/guides/package).
+
+An AppImage cannot be built without the icon, so its absence is a line rather than a crash:
+
+```
+appimage  unavailable  app.icon is not set — it needs a 512×512 PNG
+```
+
+That is exit 1, and the other formats asked for in the same call still build.
+
+## AppImage
+
+```ts
+const result = await buildAppImage({
+	appPath: "dist",
+	binaryName: "crust-app",
+	id: "land.jyz.my-app",
+	name: "My App",
+	version: "0.1.0",
+	iconPath: "build/icon-512.png",
+});
+```
+
+The useful half is the AppDir, which is assembled here before `appimagetool` is looked for:
+
+| path                                            | holds                                                      |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| `usr/bin/<binaryName>`                          | the built binary, mode 0755                                |
+| `usr/share/applications/<id>.desktop`           | the freedesktop entry                                      |
+| `usr/share/icons/hicolor/512x512/apps/<id>.png` | the icon, copied as-is                                     |
+| `AppRun`                                        | a shell script that execs `usr/bin/<binaryName> "$@"`      |
+| `<id>.desktop`                                  | a symlink to the entry, which is what `appimagetool` reads |
+
+The `Exec=` line is the bare binary name and `Categories=Utility;`, `Terminal=false`. A stale AppDir is removed first, because one left behind by a rename would be packed into an image that looks correct.
+
+With `appimagetool` absent the answer is a value, not a throw:
+
+```json
+{
+	"ok": false,
+	"reason": "appimagetool is not on PATH",
+	"requires": "appimagetool",
+	"appDir": "dist/land.jyz.my-app.AppDir"
+}
+```
+
+The AppDir is kept, so a machine without the tool still has a tree that runs. Nothing is downloaded: a fetched packer is not something a build step should do behind you.
+
+The pack runs `appimagetool --no-appstream <appDir> <out>`, because a minimal AppDir has no appstream file and the validator would fail rather than warn. A non-zero exit throws with the tool's own text joined into one line.
+
+## NSIS
+
+```ts
+const result = await buildNsis({
+	appPath: "dist/My App",
+	binaryName: "my-app.exe",
+	id: "land.jyz.my-app",
+	name: "My App",
+	version: "0.1.0",
+});
+```
+
+The `.nsi` is written **before** `makensis` is looked for, so a machine without NSIS still yields a script a person can inspect or run elsewhere:
+
+```json
+{
+	"ok": false,
+	"reason": "makensis is not on PATH",
+	"requires": "makensis",
+	"scriptPath": "dist/land.jyz.my-app.nsi"
+}
+```
+
+The script installs to `$PROGRAMFILES64\<name>`, copies the app directory with `File /r`, writes a Start-menu shortcut and an uninstaller, and writes the uninstall keys under **both** `HKLM` and `HKCU`. `RequestExecutionLevel user` means no elevation prompt, so the `HKLM` write only lands when the installer is already elevated; `HKCU` is the key that always does.
+
+A failed `makensis` run deletes the previous `.exe` first, because a stale one reads as a successful build.
+
+## Sizes
+
+`describeAppImage` and `describeNsis` print one line each, in the same byte format the rest of packaging uses, so a build log has one shape rather than three.

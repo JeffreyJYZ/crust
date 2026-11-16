@@ -1,0 +1,66 @@
+# Notarization
+
+Submitting a signed bundle to Apple and stapling the ticket, in the one order that works. The argv is a pure value in `notarize-plan.ts`, so what a test asserts is what runs.
+
+**Run it:** `crust notarize`, after `crust sign`. Credentials come from the environment — `CRUST_SIGNING_IDENTITY`, then either `CRUST_NOTARY_PROFILE` or `CRUST_NOTARY_APPLE_ID` with `CRUST_NOTARY_PASSWORD` and `CRUST_NOTARY_TEAM_ID` — and on a machine with no Developer ID certificate the preflight refusal is printed verbatim with exit 1. Signing first is [`crust sign`](/docs/guides/package).
+
+On a machine with no Developer ID certificate the refusal is the whole output — exit 1, and no command ran:
+
+```
+notarize refused   ad-hoc identity cannot be notarized — requires a Developer ID Application certificate
+```
+
+The same shape names the missing credential when the identity is real but no route is set. Signing first is [`crust sign`](/docs/guides/package).
+
+## The plan
+
+| step       | command                                                       |
+| ---------- | ------------------------------------------------------------- |
+| `zip`      | `ditto -c -k --keepParent <app> <zip>`                        |
+| `submit`   | `xcrun notarytool submit <zip> … --wait --output-format json` |
+| `staple`   | `xcrun stapler staple <app>`                                  |
+| `validate` | `xcrun stapler validate <app>`                                |
+| `spctl`    | `spctl -a -vvv -t install <app>`                              |
+
+`--keepParent` keeps the `.app` at the zip root, which is the shape notarytool expects. `--wait` is what makes the answer a verdict rather than a ticket id. Stapling before a rejection would fail with a message about a ticket instead of about the submission, which is why the order is fixed rather than configurable.
+
+The zip is written into a temporary directory and removed in a `finally`: it is a second copy of the whole bundle, and leaving it behind doubles the disk cost of every notarization.
+
+## Two refusals before any command runs
+
+Both states are decided up front, so a missing certificate never turns into a failed submit:
+
+| state                          | answer                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| ad-hoc identity (`-` or empty) | `ad-hoc identity cannot be notarized`, `requires: "a Developer ID Application certificate"`            |
+| no credential                  | `no notarytool credential`, `requires: "notarytool store-credentials <profile> or appleId + password"` |
+
+An ad-hoc signature has no certificate chain to notarise against, which is why Apple never accepts one.
+
+## Credentials
+
+Two routes, and the profile wins when both are set:
+
+| route            | flags                                              |
+| ---------------- | -------------------------------------------------- |
+| keychain profile | `--keychain-profile <profile>`                     |
+| one-shot         | `--apple-id <id> --password <pw> --team-id <team>` |
+
+The same flags are used for `submit` and for the `log` call that fetches the issues, so one credential reaches both.
+
+## Reading the verdict
+
+```ts
+const result = await notarize({ appPath, identity, profile });
+if (!result.ok) console.error(describeNotarize(result));
+```
+
+`status` is `accepted`, `invalid` or `rejected`; `submissionId` is Apple's id; `issues` are notarytool's own messages, verbatim, never summarised.
+
+The submit JSON carries the verdict and the id but **not** the issues — those live behind `notarytool log <id>` — so a non-accepted submission costs one extra call. Without it the user gets "invalid" and nothing to fix. A non-JSON exit keeps the tool's own text as `log`.
+
+A failed `zip`, `staple`, `validate` or `spctl` step answers `status: "rejected"` with `reason` naming the step and its exit code, because the ticket is not the only thing that can go wrong.
+
+## One line for a log
+
+`describeNotarize` prints `notarize <status>  <id>  <path>` and one indented line per issue, or `notarize refused   <reason> — requires <requirement>`. Two shapes, so a CLI does not invent a third.

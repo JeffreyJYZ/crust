@@ -34,11 +34,13 @@ export interface NativePluginOptions {
 	updater?: UpdaterConfig;
 	/** Filesystem scope: when set, every `fs` command must resolve inside it. */
 	fs?: FsConfig;
+	/** The app's id, which names its data directory: crash records and downloads live there. */
+	app?: string;
 }
 
 /** A bare `ShellConfig` is the third argument this function took before `updater` existed. */
 function optionsOf(options: NativePluginOptions | ShellConfig): NativePluginOptions {
-	const named = "shell" in options || "updater" in options;
+	const named = "shell" in options || "updater" in options || "app" in options;
 	return named ? (options as NativePluginOptions) : { shell: options as ShellConfig };
 }
 
@@ -53,7 +55,7 @@ export async function nativePlugins(
 	platform: import("@/platform/darwin").DarwinPlatform | undefined,
 	options: NativePluginOptions | ShellConfig = {},
 ): Promise<PluginDefinition[]> {
-	const { shell, updater, fs } = optionsOf(options);
+	const { shell, updater, fs, app: appId } = optionsOf(options);
 	// `fs` carries the config's scope when one exists; with no scope the plugin
 	// behaves exactly as before, which is what keeps existing apps working.
 	const scoped = (plugin: PluginDefinition): PluginDefinition =>
@@ -89,6 +91,20 @@ export async function nativePlugins(
 	const osInfo = await import("@/platform/darwin/os-info");
 	const shortcuts = await import("@/platform/darwin/shortcuts");
 	const screen = await import("@/platform/darwin/screen");
+	const theme = await import("@/platform/darwin/theme");
+	const dock = await import("@/platform/darwin/dock");
+	const power = await import("@/platform/darwin/power");
+	const accessibility = await import("@/platform/darwin/accessibility");
+	const navigation = await import("@/platform/darwin/navigation");
+	const find = await import("@/platform/darwin/find");
+	const downloads = await import("@/platform/darwin/downloads");
+	const network = await import("@/platform/darwin/network");
+	const crash = await import("@/platform/darwin/crash");
+	const locale = await import("@/platform/darwin/locale");
+	const { startCrashGuard } = await import("@/runtime-crash-guard");
+	const { defaultStateRoot } = await import("@/plugins/window-persist-store");
+	const { createNavigationPlugin } = await import("@/plugins/navigation");
+	const { createFindInPagePlugin } = await import("@/plugins/findinpage");
 	const {
 		createFsPlugin,
 		createClipboardPlugin,
@@ -98,10 +114,42 @@ export async function nativePlugins(
 		createWindowStatePlugin,
 		createPositionerPlugin,
 		createMenuPlugin,
+		createThemePlugin,
+		createDockPlugin,
+		createPowerPlugin,
+		createAccessibilityPlugin,
+		createDownloadsPlugin,
+		createNetworkPlugin,
+		createCrashReporterPlugin,
+		createI18nPlugin,
 		deepLink,
 	} = await import("@/plugins");
 	const deepLinkPlugin = deepLink.plugin;
+	const { webviewResolver } = await import("@/platform/darwin/webview-target");
 	const windowAdapter = darwin.darwinWindowAdapter(platform);
+	/**
+	 * The `WKWebView` of one window, chosen by label and resolved per call so a window created
+	 * after registration is still reachable. With no label it is the app's first open window,
+	 * which is what a single-window caller means; a label that names no open window answers
+	 * `bad-request` rather than silently acting on that first window.
+	 */
+	const webviewFor = webviewResolver(platform);
+	const appRoot = defaultStateRoot(appId ?? "crust");
+	/**
+	 * The guard is a second Bun process reading its own script, which a compiled binary does not
+	 * carry. That refusal is caught here so the plugin answers its own named `not-implemented`
+	 * instead of the launch dying before a window exists.
+	 */
+	let guard: { running(): boolean } | undefined;
+	try {
+		guard = startCrashGuard({ appDataDir: appRoot });
+	} catch {
+		guard = undefined;
+	}
+	const crashNative = {
+		arm: (recordPath: string) => crash.armCrashHandlers(recordPath),
+		disarm: () => crash.disarmCrashHandlers(),
+	};
 	return [
 		...core.map(scoped).map((plugin) => {
 			switch (plugin.name) {
@@ -123,6 +171,18 @@ export async function nativePlugins(
 		createWindowStatePlugin({ native: windowAdapter }),
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
 		createMenuPlugin(darwin.darwinMenuAdapter()),
+		createThemePlugin(theme.darwinThemeAdapter()),
+		createDockPlugin(dock.darwinDockAdapter()),
+		createPowerPlugin(power.darwinPowerAdapter()),
+		createAccessibilityPlugin(accessibility.darwinAccessibilityAdapter()),
+		createNavigationPlugin(navigation.darwinNavigationAdapter(webviewFor)),
+		createFindInPagePlugin(find.darwinFindAdapter(webviewFor)),
+		createDownloadsPlugin(downloads.darwinDownloadsAdapter({ webview: webviewFor }), {
+			app: appId,
+		}),
+		createNetworkPlugin(network.darwinNetworkAdapter()),
+		createCrashReporterPlugin({ root: appRoot, guard, native: crashNative }),
+		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
 		deepLinkPlugin,
 		storePlugin,
 		shellPlugin,

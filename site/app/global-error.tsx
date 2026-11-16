@@ -6,13 +6,7 @@
  * inline rules below, reading the same token names), and cannot export
  * `metadata` — the title is a `<title>` element for that reason.
  */
-export default function GlobalError({
-	error,
-	retry,
-}: {
-	error: unknown;
-	retry: () => void;
-}) {
+export default function GlobalError({ error, retry }: { error: unknown; retry: () => void }) {
 	const message = error instanceof Error ? error.message : undefined;
 	const digest =
 		typeof error === "object" && error !== null && "digest" in error

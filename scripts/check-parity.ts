@@ -53,7 +53,9 @@ const PAGE = "site/app/docs/reference/parity/page.mdx";
 const text = await Bun.file(PAGE).text();
 const rows = text
 	.split("\n")
-	.filter((line) => line.startsWith("| ") && !line.startsWith("| Tauri") && !line.startsWith("| ---"))
+	.filter(
+		(line) => line.startsWith("| ") && !line.startsWith("| Tauri") && !line.startsWith("| ---"),
+	)
 	.map((line) => line.split("|")[1]?.trim() ?? "")
 	.filter((cell) => cell.length > 0);
 

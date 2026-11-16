@@ -9,10 +9,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-	type AutostartResult,
-	createAutostartPlugin,
-} from "@/plugins/autostart";
+import { type AutostartResult, createAutostartPlugin } from "@/plugins/autostart";
 
 const ID = "land.jyz.example";
 

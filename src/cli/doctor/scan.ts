@@ -1,45 +1,32 @@
 /**
- * Scan the project's own source for the traps `site/app/docs/design/page.mdx` records as fatal.
+ * The traps `site/app/docs/design/page.mdx` records as fatal, found in the app's own source.
  * Each is named when it is hit, with the line that hit it: a user who copied a
  * snippet that passed a JS string into C needs to see why the process died with
  * no JavaScript error, not a generic "window did not open".
+ *
+ * Only an app directory is scanned. Without a `crust.config.ts` there is no app,
+ * so the working directory is reported as unscanned rather than walked: doing
+ * that from the framework repo counted the framework's own shim as 39 failures.
  */
 
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import type { Check } from "./check.ts";
+import { projectSources, stripComments } from "./sources.ts";
 
-const SOURCE_EXTENSIONS = new Set([
-	".ts",
-	".tsx",
-	".mts",
-	".cts",
-	".js",
-	".jsx",
-	".mjs",
-	".cjs",
-	".c",
-	".m",
-]);
-const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist", ".git", ".crust", ".cache", ".turbo"]);
 const MAX_SCANNED_BYTES = 512 * 1024;
+const C_EXTENSIONS = new Set([".c", ".m"]);
 
-export async function projectSources(dir: string, prefix = ""): Promise<string[]> {
-	const entries = await readdir(join(dir, prefix), { withFileTypes: true }).catch(() => []);
-	const files: string[] = [];
-	for (const entry of entries) {
-		const relative = prefix.length > 0 ? `${prefix}/${entry.name}` : entry.name;
-		if (entry.isDirectory()) {
-			if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-			files.push(...(await projectSources(dir, relative)));
-			continue;
-		}
-		if (!entry.isFile()) continue;
-		const dot = entry.name.lastIndexOf(".");
-		if (dot === -1) continue;
-		if (SOURCE_EXTENSIONS.has(entry.name.slice(dot).toLowerCase())) files.push(relative);
-	}
-	return files;
+export function notScanned(): Check {
+	return {
+		name: "source",
+		status: "note",
+		detail: "not scanned — no crust.config.ts here, so this is not an app directory",
+	};
+}
+
+/** The source section: the traps, or the one line saying there is nothing to scan. */
+export async function sourceSection(dir: string, appDirectory: boolean): Promise<Check[]> {
+	return appDirectory ? await scanTraps(dir) : [notScanned()];
 }
 
 export async function scanTraps(dir: string): Promise<Check[]> {
@@ -52,18 +39,18 @@ export async function scanTraps(dir: string): Promise<Check[]> {
 			.stat()
 			.catch(() => undefined);
 		if (!info?.isFile() || info.size > MAX_SCANNED_BYTES) continue;
-		const text = await Bun.file(path)
+		const raw = await Bun.file(path)
 			.text()
 			.catch(() => "");
-		if (text.includes("\u0000")) continue;
+		if (raw.includes("\u0000")) continue;
+		const text = stripComments(raw);
 		const lines = text.split("\n");
+		const inC = C_EXTENSIONS.has(extname(relative).toLowerCase());
 
-		const allocInit = lines.findIndex(
-			(source) =>
-				/\[\s*[A-Za-z_]\w*\s+alloc\s*\]\s*init\b/.test(source) ||
-				(/\balloc\b/.test(source) &&
-					/\binit\b/.test(source) &&
-					/sel_registerName|objc_msgSend/.test(source)),
+		// [[NSWindow alloc] init] is not a valid initializer: AppKit aborts the
+		// process from its own thread, so this one is precise enough to fail.
+		const allocInit = lines.findIndex((source) =>
+			/\[\s*[A-Za-z_]\w*\s+alloc\s*\]\s*init\b/.test(source),
 		);
 		if (allocInit !== -1) {
 			checks.push({
@@ -76,6 +63,29 @@ export async function scanTraps(dir: string): Promise<Check[]> {
 			});
 		}
 
+		// The same pair written as two message sends is a hint, not a failure: a
+		// fixed-prototype send helper registers both selectors and is correct, and
+		// a static scan cannot tell the two apart.
+		const looseAlloc = lines.findIndex(
+			(source) =>
+				/\balloc\b/.test(source) &&
+				/\binit\b/.test(source) &&
+				/sel_registerName|objc_msgSend/.test(source),
+		);
+		if (looseAlloc !== -1) {
+			checks.push({
+				name: "trap",
+				status: "note",
+				detail:
+					`${relative}:${looseAlloc + 1} registers or sends both alloc and init — ` +
+					"correct only when the send uses a fixed prototype and the object stays in C; " +
+					"a static scan cannot see that, so check it by hand",
+			});
+		}
+
+		// Building an NSString in C is what the shim must do — the trap is one
+		// leaving C, which a static scan cannot see. In JavaScript there is no
+		// boundary to cross, so a JS string reaching it is the fatal case.
 		const stringSend = lines.findIndex(
 			(source) =>
 				/\bstringWithUTF8String\s*:/.test(source) ||
@@ -84,11 +94,14 @@ export async function scanTraps(dir: string): Promise<Check[]> {
 		if (stringSend !== -1) {
 			checks.push({
 				name: "trap",
-				status: "fail",
-				detail:
-					`${relative}:${stringSend + 1} builds or passes a short ASCII NSString — ` +
-					"it is a tagged pointer and cannot cross bun:ffi; keep the string in C " +
-					"behind a handle",
+				status: inC ? "note" : "fail",
+				detail: inC
+					? `${relative}:${stringSend + 1} builds an NSString in C — a short ASCII one is a ` +
+						"tagged pointer that cannot cross bun:ffi, so it must never leave C; a static " +
+						"scan cannot see that boundary, so this is a hint, not a failure"
+					: `${relative}:${stringSend + 1} builds or passes a short ASCII NSString from ` +
+						"JavaScript — it is a tagged pointer and cannot cross bun:ffi; keep the " +
+						"string in C behind a handle",
 			});
 		}
 
@@ -111,5 +124,13 @@ export async function scanTraps(dir: string): Promise<Check[]> {
 		}
 	}
 
+	if (checks.length === 0) {
+		const plural = files.length === 1 ? "" : "s";
+		checks.push({
+			name: "source",
+			status: "ok",
+			detail: `scanned ${files.length} file${plural}, no traps`,
+		});
+	}
 	return checks;
 }

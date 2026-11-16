@@ -6,7 +6,7 @@
 import { extname, resolve } from "node:path";
 import { isIgnoredWatchPath } from "../ignore.ts";
 import type { Check } from "./check.ts";
-import { projectSources } from "./scan.ts";
+import { projectSources } from "./sources.ts";
 
 /** A config, test or declaration file is not page code, whatever its extension. */
 const NOT_PAGE_CODE = /\.(?:config|test|spec|d)\.ts$/i;

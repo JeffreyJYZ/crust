@@ -1,0 +1,57 @@
+# Downloads
+
+Files the page asks WebKit to save, the directory they land in, and what happened to each one. The plugin owns the ids, the entries and the events; `WKDownloadDelegate` does the writing.
+
+Registered by the macOS runtime with `darwinDownloadsAdapter({ webview })` and the app's own `app.id` as the data root, so `window.crust.invoke("downloads", …)` works in an app that names no plugin.
+
+## Commands
+
+| command        | arguments  | answer                               |
+| -------------- | ---------- | ------------------------------------ |
+| `list`         | none       | `{ ok: true, directory, downloads }` |
+| `start`        | `{ url }`  | `{ ok: true, download }`             |
+| `cancel`       | `{ id }`   | `{ ok: true, id, cancelled: true }`  |
+| `directory`    | none       | `{ ok: true, directory }`            |
+| `setDirectory` | `{ path }` | `{ ok: true, directory }`            |
+
+An entry is `{ id, url, path, status, progress }`, plus `error` when the status is `"failed"`.
+
+| status        | meaning                          |
+| ------------- | -------------------------------- |
+| `downloading` | WebKit is writing it             |
+| `finished`    | `path` is the file               |
+| `failed`      | `error` is WebKit's text         |
+| `cancelled`   | set by `cancel`, never by WebKit |
+
+## Starting one
+
+```ts
+const { download } = await window.crust.invoke("downloads", "start", {
+	url: "https://example.com/report.pdf",
+});
+```
+
+The URL must carry a scheme; a bare path is a rejected invoke, because a scheme-less string is not a URL. Ids are `dl-1`, `dl-2`, … in the order the process started them.
+
+`list` is also the progress read: for every live entry it asks the delegate for the current fraction and pushes `download:progress` when it moved. That keeps a bar working without a second command and without a timer inside the plugin.
+
+## Where files land
+
+The default is `<app data root>/downloads`, and the root defaults to `~/Library/Application Support/<app>`. `createDownloadsPlugin(adapter, { root, app })` sets both.
+
+`setDirectory` accepts an **absolute** path inside that root. A relative path, or one that resolves outside it — including a sibling whose name merely starts with the root's — is a rejected invoke carrying `bad-request`. `resolve` collapses `..` first, so a walk out of the root is refused rather than normalised away.
+
+## Events
+
+| event               | payload                    |
+| ------------------- | -------------------------- |
+| `download:started`  | the entry                  |
+| `download:progress` | the entry, with `progress` |
+| `download:finished` | the entry, with `path`     |
+| `download:failed`   | the entry, with `error`    |
+
+A late native event for a settled entry is dropped: a cancelled download that WebKit later reports as an error must not come back to life.
+
+## Failure shape
+
+Without an adapter, each command answers `not-implemented` with `requires: "WKDownloadDelegate"`. A webview that refused the send, or a `cancel` WebKit did not perform, is a rejected invoke carrying `handler-error`. Cancelling an unknown id, or one already finished, is `bad-request` — not a silent no-op.

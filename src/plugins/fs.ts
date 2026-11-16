@@ -10,7 +10,7 @@ import { CrustError } from "../bridge/errors";
 import { definePlugin } from "./define";
 import { createFsScope, type FsScopeOptions, scopeCommands } from "./fs-scope.ts";
 
-export type { FsScopeOptions } from "./fs-scope.ts";
+export type { FsGrant, FsScopeOptions, FsScopeStatus } from "./fs-scope.ts";
 
 export interface ReadTextFileArgs {
 	/** Absolute or cwd-relative path. */

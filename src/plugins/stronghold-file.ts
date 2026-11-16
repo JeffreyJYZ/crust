@@ -17,6 +17,12 @@ import {
 
 export const KDF_NAME = "PBKDF2-SHA256";
 export const KDF_ITERATIONS = 600_000;
+/**
+ * The fewest rounds this build will derive from. A store file is the user's own, so its header can
+ * claim any count; a header below the KDF's documented parameter is refused rather than obeyed,
+ * because one round is no work at all and an unbounded one hangs `open`.
+ */
+export const KDF_MIN_ITERATIONS = KDF_ITERATIONS;
 export const SALT_BYTES = 16;
 export const IV_BYTES = 12;
 export const KEY_BITS = 256;
@@ -62,12 +68,30 @@ export function isStrongholdFile(value: unknown): value is StrongholdFile {
 	if (typeof kdf !== "object" || kdf === null) return false;
 	const { algorithm, iterations, salt } = kdf as Record<string, unknown>;
 	if (algorithm !== KDF_NAME) return false;
-	if (typeof iterations !== "number" || !Number.isInteger(iterations) || iterations < 1) {
+	if (
+		typeof iterations !== "number" ||
+		!Number.isInteger(iterations) ||
+		iterations < KDF_MIN_ITERATIONS
+	) {
 		return false;
 	}
 	if (typeof salt !== "string" || fromBase64(salt).length !== SALT_BYTES) return false;
 	if (typeof entries !== "object" || entries === null) return false;
 	return Object.values(entries).every(isEntry);
+}
+
+/**
+ * The rounds a parsed object claims, when it claims fewer than this build will derive from. Only
+ * used to name the refusal: a header below the floor is `corrupt` either way, and the reader says
+ * which number it objected to instead of "not a store".
+ */
+function belowFloor(value: unknown): number | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const { kdf } = value as { kdf?: unknown };
+	if (typeof kdf !== "object" || kdf === null) return undefined;
+	const { iterations } = kdf as { iterations?: unknown };
+	if (typeof iterations !== "number" || !Number.isInteger(iterations)) return undefined;
+	return iterations < KDF_MIN_ITERATIONS ? iterations : undefined;
 }
 
 export type StoreRead =
@@ -90,6 +114,14 @@ export async function readStore(path: string): Promise<StoreRead> {
 		return { ok: false, code: "corrupt", message: `${path} is not JSON` };
 	}
 	if (!isStrongholdFile(parsed)) {
+		const claimed = belowFloor(parsed);
+		if (claimed !== undefined) {
+			return {
+				ok: false,
+				code: "corrupt",
+				message: `${path} asks for ${claimed} PBKDF2 rounds, below the KDF floor of ${KDF_MIN_ITERATIONS}`,
+			};
+		}
 		return { ok: false, code: "corrupt", message: `${path} is not a stronghold store` };
 	}
 	return { ok: true, file: parsed };

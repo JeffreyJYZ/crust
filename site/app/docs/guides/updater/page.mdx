@@ -1,17 +1,17 @@
 # Updater
 
-Check, download, install — the updater minus the installer binary. **Module only: no runtime registers
-it**, because the endpoint and the bundle path are the app's. Mount it in your entry file:
+Check, download, install — the updater minus the installer binary. The runtime registers it when the config has an `updater` section; an app with no update story carries no download-and-replace surface at all.
 
 ```ts
-// main.ts
-import { updaterPlugin } from "crust/plugin";
-
-app.use(updaterPlugin);
+// crust.config.ts
+updater: {
+	endpoint: "https://updates.jyz.land/notes.json",
+	pubkey: "…",          // Ed25519 public key, base64; needed for any signature
+	allowFileUrl: false,  // true permits a file: artifact — for a test, not for a shipped app
+},
 ```
 
-The default instance runs on `fetch` and `node:fs`, so it needs no platform. A test or a private
-transport passes its own adapter: `createUpdaterPlugin(adapter)`.
+A test or a private transport passes its own adapter: `createUpdaterPlugin(adapter, options)`.
 
 ## check
 
@@ -29,11 +29,11 @@ The endpoint answers one JSON object:
 { "version": "1.5.0", "url": "https://…/Notes.app.zip", "notes": "…", "sha256": "…" }
 ```
 
-`version` and `url` are required; `notes` stays unparsed Markdown, and `sha256` is 64 hex characters.
-Versions compare numerically, so `0.10.0` beats `0.9.0` and `1.0.0` beats `1.0.0-beta.1`.
+`version` and `url` are required; `notes` stays unparsed Markdown, and `sha256` is 64 hex characters. Versions compare numerically, so `0.10.0` beats `0.9.0` and `1.0.0` beats `1.0.0-beta.1`.
 
-`check` never rejects: no update is `{ available: false, version }`, and a failure is
-`{ available: false, error: { code, message } }`.
+A manifest that names a `pubkey` other than the pinned one is `bad-manifest` — `the manifest's pubkey is not this app's` — so a hostile endpoint cannot substitute its own key.
+
+`check` never rejects: no update is `{ available: false, version }`, and a failure is `{ available: false, error: { code, message } }`.
 
 ## download
 
@@ -42,12 +42,48 @@ const file = await window.crust.invoke("updater", "download", {
 	url: "https://…/Notes.app.zip",
 	sha256: "…",
 });
-// { ok: true, path: "/var/folders/…/crust-update-…/Notes.app.zip", bytes: 8_412_331, sha256: "…" }
+// { ok: true, path: "…/crust-update-…/Notes.app.zip", bytes: 8_412_331, sha256: "…" }
 ```
 
-`path` is inside a fresh temp directory the plugin made; the file name is the URL's last segment,
-reduced to `[A-Za-z0-9._-]`. With `sha256` present the digest is verified before anything is
-installed, and a mismatch is `hash-mismatch` carrying the digest that was actually computed.
+`path` is inside a fresh temp directory the plugin made; the file name is the URL's last segment, reduced to `[A-Za-z0-9._-]`. The answer always carries the digest that was computed, and `signer` when a signature verified.
+
+### sha256 is required
+
+An artifact nothing verified is not an artifact, so a `download` without a digest is refused:
+
+```
+crust: updater.download requires sha256, because an artifact nothing verified is no artifact
+```
+
+The failure carries `requires: "sha256"`. A mismatch is `hash-mismatch`, naming the digest that was actually computed.
+
+### Only https, and file: by opt-in
+
+```
+refuses a http: url: only https is fetched
+refuses a file url: only https is fetched unless updater.allowFileUrl is true
+```
+
+The second carries `requires: "updater.allowFileUrl"`. `file:` exists for a test that serves a local artifact; a shipped app leaves it off, so a page cannot point the updater at a path on disk.
+
+### A signature needs a pinned key
+
+```js
+const signed = await window.crust.invoke("updater", "download", {
+	url: "https://…/Notes.app.zip",
+	sha256: "…",
+	signature: "…", // base64 Ed25519 over the artifact bytes
+});
+// { ok: true, sha256: "…", signer: "…" }
+```
+
+The key comes from `updater.pubkey` in the config and nowhere else — a `pubkey` a page ships is never used, so a page cannot verify its own artifact with its own key:
+
+```
+crust: updater.download requires updater.pubkey in crust.config.ts to verify a signature, and this app pins none, got …
+```
+
+A page-supplied `pubkey` that differs from the pinned one is `refuses a pubkey that is not this app's`, and bytes that do not match the signature are `signature-mismatch`.
 
 ## install
 
@@ -59,27 +95,62 @@ const done = await window.crust.invoke("updater", "install", {
 // { ok: true, appPath: "/Applications/Notes.app", backup: "/Applications/Notes.app.old" }
 ```
 
-Both paths must already be `.app` directories — an archive is not extracted here. The new bundle is
-renamed over the old one, and the old one is parked at `<appPath>.old`, which is replaced on the next
-install. One rename on one volume is atomic; a cross-volume move fails rather than degrading into a
-copy that is no longer atomic.
+Install takes **only an artifact this same run downloaded and verified**. The plugin keeps a receipt per path, and a path it never verified is refused rather than trusted:
 
-Nothing relaunches and nothing runs `codesign`: a replaced process cannot survive its own swap, and
-the signature belongs to whoever shipped the artifact. The page calls `app.quit()` when it wants the
-new bundle to start.
+```
+crust: updater.install refuses …: no updater.download verified it in this run, so nothing proves these bytes are the update the app fetched
+```
+
+That is `unverified-artifact`. A verified artifact that changed afterwards is re-hashed before the swap and refused if the digest moved:
+
+```
+crust: updater.install: … changed since download — sha256 <actual>, verified <expected>
+```
+
+That is `hash-mismatch`. `adapter.sha256` digests a directory as a tree, so a `.app` artifact is verifiable the same way a zip is.
+
+Both paths must already be `.app` directories — an archive is not extracted here. The new bundle is renamed over the old one, and the old one is parked at `<appPath>.old`, which is replaced on the next install. One rename on one volume is atomic; a cross-volume move fails rather than degrading into a copy that is no longer atomic.
+
+Nothing runs `codesign`: the signature belongs to whoever shipped the artifact.
+
+## relaunch
+
+```js
+await window.crust.invoke("updater", "relaunch", { appPath: "/Applications/Notes.app" });
+```
+
+`relaunch` — and an `install` with `relaunch: true` — only touches **this app's own bundle**, resolved from `process.execPath`. Anything else is refused:
+
+```
+crust: updater.relaunch: … is not this app's bundle; relaunch only starts /Applications/Notes.app
+```
+
+A dev run has no bundle to be its own, so it refuses instead of guessing:
+
+```
+crust: updater.relaunch: refuses …: cannot tell which bundle is its own, because …/bun is not inside an .app
+```
+
+Both are `not-an-app-bundle`. The comparison is on `realpath`, so a symlink to the own bundle is accepted and a symlink pointing elsewhere is refused.
+
+## Still usable
+
+The hardening does not close the update path. A pinned `updater.pubkey`, a `download` with `sha256` over `https`, and an `install` of the path that download returned is the whole flow, and it works: the swap lands, the old bundle is parked at `.old`, and `relaunch: true` starts the new one.
 
 ## Failure codes
 
-| code | when |
-| --- | --- |
-| `invalid-arguments` | a required string is missing, or `sha256` is not 64 hex characters |
-| `check-failed` | the manifest request answered non-2xx, or the fetch threw |
-| `bad-manifest` | the JSON is not an object, or `version`/`url`/`notes`/`sha256` has the wrong shape |
-| `download-failed` | the artifact request answered non-2xx, or the write threw |
-| `hash-mismatch` | the computed digest differs from the one asked for |
-| `install-failed` | the rename failed, including a cross-volume move |
-| `not-an-app-bundle` | either path is not an existing `.app` directory |
-| `handler-error` | an adapter threw something it could not name |
+| code                  | when                                                                  |
+| --------------------- | --------------------------------------------------------------------- |
+| `invalid-arguments`   | a required string is missing, `sha256` is not 64 hex, or `url` is not `https` |
+| `check-failed`        | the manifest request answered non-2xx, or the fetch threw              |
+| `bad-manifest`        | the JSON is not an object, a field has the wrong shape, or its `pubkey` is not the pinned one |
+| `download-failed`     | the artifact request answered non-2xx, or the write threw               |
+| `hash-mismatch`       | the computed digest differs — at download, or after the artifact changed |
+| `signature-mismatch`  | the bytes do not match the manifest signature                          |
+| `unverified-artifact` | `install` was handed a path this run never verified                    |
+| `install-failed`      | the rename failed, including a cross-volume move                       |
+| `not-an-app-bundle`   | a path is not an existing `.app`, or is not this app's own bundle       |
+| `relaunch-failed`     | the own bundle is right and the launcher still refused                  |
+| `handler-error`       | an adapter threw something it could not name                           |
 
-`check` reports the first three inside `error`; `download` and `install` answer
-`{ ok: false, code, message, path? }`.
+`check` reports the first three inside `error`; `download` and `install` answer `{ ok: false, code, message, path?, requires? }`. `requires` names the argument or config key that would have let the call through — `sha256`, `updater.pubkey`, `updater.allowFileUrl` — so a UI can point at the fix rather than the symptom.

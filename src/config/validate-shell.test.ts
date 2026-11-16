@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { ConfigError, validateConfig } from "@/config";
 
@@ -46,5 +46,38 @@ describe("shell config", () => {
 		expect(() => validateConfig(withShell({ allow: ["echo"], nope: true }))).toThrow(
 			ConfigError,
 		);
+	});
+});
+
+describe("shell config interpreters", () => {
+	/** Capture what the validator says, and keep it off the test's own output. */
+	function quiet(run: () => void): string[] {
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			run();
+			return warn.mock.calls.map((call) => String(call[0]));
+		} finally {
+			warn.mockRestore();
+		}
+	}
+
+	test("warns about an interpreter by entry, and still accepts the config", () => {
+		let config: ReturnType<typeof validateConfig> | undefined;
+		const said = quiet(() => {
+			config = validateConfig(withShell({ allow: ["echo", "sh", "/bin/bash"] }));
+		});
+		expect(config?.shell).toEqual({ allow: ["echo", "sh", "/bin/bash"] });
+		expect(said.length).toBe(2);
+		expect(said[0]).toContain("shell.allow[1]");
+		expect(said[0]).toContain("interpreter");
+		expect(said[0]).toContain("no longer bounds what runs");
+		expect(said[1]).toContain("shell.allow[2]");
+	});
+
+	test("says nothing when every entry is a tool", () => {
+		const said = quiet(() => {
+			validateConfig(withShell({ allow: ["echo", "/usr/bin/echo"] }));
+		});
+		expect(said).toEqual([]);
 	});
 });

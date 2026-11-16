@@ -140,7 +140,11 @@ export function createOsPlugin(adapter?: OsAdapter): PluginDefinition<
 			 * needed, so this answers on every platform rather than `not-implemented`.
 			 */
 			paths: (): OsPathsResult => {
-				const dirs = logDirs({ appId: native?.appId, home: native?.home, root: native?.root });
+				const dirs = logDirs({
+					appId: native?.appId,
+					home: native?.home,
+					root: native?.root,
+				});
 				return {
 					ok: true,
 					home: dirs.home,

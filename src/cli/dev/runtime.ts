@@ -6,10 +6,12 @@
  */
 
 import { watch } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isFrontendSource, isIgnoredWatchPath } from "../ignore.ts";
 import { projectCrustRoot } from "../framework.ts";
 import { line } from "../util.ts";
+import { devEntrySource } from "./entry.ts";
 import { interpreter } from "./interpreter.ts";
 
 export interface RuntimeOptions {
@@ -19,19 +21,26 @@ export interface RuntimeOptions {
 	devUrl?: string;
 	/** The bridge pair to publish, when a `dev.url` page needs it. */
 	env?: Record<string, string>;
+	/** Extension files that loaded from disk; empty spawns the plain runtime. */
+	extensionFiles?: readonly string[];
 }
 
 export async function spawnRuntime(options: RuntimeOptions) {
 	const run = interpreter();
+	const crust = await projectCrustRoot(options.projectDir);
+	const generated = await devEntryPath(options, crust);
 	return Bun.spawn({
-		cmd: [
-			...run.command,
-			join(await projectCrustRoot(options.projectDir), "src/runtime.ts"),
-			"--config",
-			options.configPath,
-			"--entry",
-			options.entry,
-		],
+		cmd:
+			generated === undefined
+				? [
+						...run.command,
+						join(crust, "src/runtime.ts"),
+						"--config",
+						options.configPath,
+						"--entry",
+						options.entry,
+					]
+				: [...run.command, generated],
 		cwd: options.projectDir,
 		stdio: ["inherit", "inherit", "inherit"],
 		env: {
@@ -41,6 +50,36 @@ export async function spawnRuntime(options: RuntimeOptions) {
 			CRUST_DEV_URL: options.devUrl ?? "",
 		},
 	});
+}
+
+/**
+ * The generated entry, written into `.crust/dev` — crust's own scratch, which the watcher ignores,
+ * so writing it never restarts the runtime it feeds. `undefined` for a project with no extensions,
+ * which keeps the plain `src/runtime.ts --config … --entry …` argv every project used before.
+ */
+async function devEntryPath(options: RuntimeOptions, crust: string): Promise<string | undefined> {
+	const files = options.extensionFiles ?? [];
+	if (files.length === 0) return undefined;
+	const path = join(options.projectDir, ".crust", "dev", "entry.ts");
+	await mkdir(dirname(path), { recursive: true });
+	await writeFile(
+		path,
+		devEntrySource({
+			configPath: options.configPath,
+			entryPath: options.entry,
+			runtimePath: join(crust, "src/runtime.ts"),
+			extensionsPath: join(crust, "src/extensions/registry.ts"),
+			projectDir: options.projectDir,
+			extensionFiles: files,
+		}),
+		"utf8",
+	);
+	return path;
+}
+
+/** The directories holding extensions, so an edit there restarts the runtime that imported them. */
+function extensionDirs(files: readonly string[] | undefined): string[] {
+	return [...new Set((files ?? []).map((file) => dirname(file)))];
 }
 
 /**
@@ -54,6 +93,21 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 	let restarting = false;
 	let wake: (() => void) | undefined;
 	let restartTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const restart = (): void => {
+		clearTimeout(restartTimer);
+		restartTimer = setTimeout(() => {
+			if (wake) {
+				const resume = wake;
+				wake = undefined;
+				resume();
+				return;
+			}
+			console.log("  restart   backend changed");
+			restarting = true;
+			child.kill();
+		}, 150);
+	};
 
 	const watcher = watch(dirname(options.entry), { recursive: true }, (_event, filename) => {
 		if (stopping || restarting) return;
@@ -69,24 +123,25 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		// bridge token and rebuilding the window — while the dev server's own reload was
 		// already handling that file. Frontend extensions are its business, not ours.
 		if (options.devUrl !== undefined && isFrontendSource(filename)) return;
-		clearTimeout(restartTimer);
-		restartTimer = setTimeout(() => {
-			if (wake) {
-				const resume = wake;
-				wake = undefined;
-				resume();
-				return;
-			}
-			console.log("  restart   backend changed");
-			restarting = true;
-			child.kill();
-		}, 150);
+		restart();
 	});
+
+	// An extension is backend code the generated entry imports, and it usually sits outside the
+	// entry's directory, so it needs its own watch: a fix that silently never reaches the runtime
+	// is the dev/prod divergence this whole path exists to close.
+	const extensionWatchers = extensionDirs(options.extensionFiles).map((dir) =>
+		watch(dir, { recursive: false }, (_event, filename) => {
+			if (stopping || restarting) return;
+			if (!String(filename ?? "").endsWith(".ts")) return;
+			restart();
+		}),
+	);
 
 	const stop = (): void => {
 		stopping = true;
 		clearTimeout(restartTimer);
 		watcher.close();
+		for (const extensionWatcher of extensionWatchers) extensionWatcher.close();
 		wake?.();
 		child.kill();
 	};
@@ -104,6 +159,7 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		if (code === 0) {
 			line("backend", "exited cleanly; crust dev stopped");
 			watcher.close();
+			for (const extensionWatcher of extensionWatchers) extensionWatcher.close();
 			return 0;
 		}
 		line("backend", `exited with ${code}; waiting for a change`);

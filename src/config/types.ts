@@ -69,6 +69,8 @@ export interface UpdaterConfig {
 	pubkey?: string;
 	/** Whether the app wants a startup check; `updater.config` reports it. */
 	autoCheck?: boolean;
+	/** Allow a `file:` url in `updater.download`; https is the only scheme otherwise. */
+	allowFileUrl?: boolean;
 }
 
 export interface CrustConfig {
@@ -77,6 +79,8 @@ export interface CrustConfig {
 	dev?: DevConfig;
 	build?: BuildConfig;
 	plugins?: string[];
+	/** Extension files, relative to the project; absent means `extensions/*.ts`. */
+	extensions?: string[];
 	security?: SecurityConfig;
 	fs?: FsConfig;
 	shell?: ShellConfig;

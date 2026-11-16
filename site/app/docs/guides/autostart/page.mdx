@@ -12,9 +12,9 @@ const result = await window.crust.invoke("autostart", "enable", {
 // { ok: true, enabled: true, plistPath: "/Users/you/Library/LaunchAgents/land.jyz.notes.plist" }
 ```
 
-| argument | notes |
-| --- | --- |
-| `appPath` | required; the absolute path of the `.app` bundle |
+| argument   | notes                                                    |
+| ---------- | -------------------------------------------------------- |
+| `appPath`  | required; the absolute path of the `.app` bundle         |
 | `bundleId` | optional; defaults to the app's own `CFBundleIdentifier` |
 
 The id is read from the bundle's `Contents/Info.plist` when it is not passed, so a built app needs no
@@ -39,10 +39,10 @@ that plist, which is exactly what launchd reads.
 
 ## Failure codes
 
-| code | when |
-| --- | --- |
-| `bad-request` | `appPath` empty or not a string, no bundle id known yet, or the bundle declares none |
-| `not-found` | nothing exists at `appPath` |
-| `handler-error` | the write or the delete failed; the message is the filesystem's |
+| code            | when                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------ |
+| `bad-request`   | `appPath` empty or not a string, no bundle id known yet, or the bundle declares none |
+| `not-found`     | nothing exists at `appPath`                                                          |
+| `handler-error` | the write or the delete failed; the message is the filesystem's                      |
 
 Every command answers a typed object rather than throwing, and a refusal names the path it refused.

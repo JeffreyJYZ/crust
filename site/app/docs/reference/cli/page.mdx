@@ -1,42 +1,45 @@
 # CLI
 
-One binary, six commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
+One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
 
 ## Commands
 
-| command | does |
-| --- | --- |
-| `crust init <dir>` | scaffold into an empty directory: plain HTML and CSS, no bundler |
-| `crust init <dir> --react` | the React + Vite scaffold |
-| `crust init <dir> --next` | the Next.js scaffold, static export only |
-| `crust dev [file]` | watch the backend, restart it on change, keep the frontend with its own dev server |
-| `crust build [file]` | compile the binary, assemble `X.app` in `dist/`, ad-hoc sign it |
-| `crust sign` | Developer ID signing with hardened runtime and the two entitlements; needs `CRUST_SIGNING_IDENTITY` |
-| `crust dmg` | drag-to-Applications image at `dist/<name>-<version>.dmg` |
-| `crust doctor` | one line per launch check; exit 1 if any check failed |
+| command                          | does                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `crust init <dir>`               | scaffold into an empty directory: plain HTML and CSS, no bundler                                                             |
+| `crust init <dir> --react`       | the React + Vite scaffold                                                                                                    |
+| `crust init <dir> --next`        | the Next.js scaffold, static export only                                                                                     |
+| `crust dev [file]`               | watch the backend, restart it on change, keep the frontend with its own dev server                                           |
+| `crust build [file]`             | compile the binary, assemble `X.app` in `dist/`, ad-hoc sign it                                                              |
+| `crust sign`                     | Developer ID signing with hardened runtime and the two entitlements; needs `CRUST_SIGNING_IDENTITY`                          |
+| `crust dmg`                      | drag-to-Applications image at `dist/<name>-<version>.dmg`                                                                    |
+| `crust package [--format <fmt>]` | release artefacts for `dmg`, `appimage` or `nsis`; `--format` is repeatable and defaults to `dmg`                            |
+| `crust notarize`                 | submit the signed bundle to notarytool, then staple and validate the ticket; needs a Developer ID signature and a credential |
+| `crust doctor`                   | one line per launch check; exit 1 if any check failed                                                                        |
 
 `init` refuses a non-empty directory, naming the entries it found, rather than merging into it.
 
 ## Flags
 
-| flag | applies to | does |
-| --- | --- | --- |
-| `--dir <path>` | all | project directory, default the current directory |
-| `--config <path>` | all | config file, relative to `--dir` |
-| `--entry <path>` | all | backend entry, relative to `--dir`, default `src/main.ts` |
-| `--react` | init | copy the React + Vite template |
-| `--next` | init | copy the Next.js template |
-| `--help`, `-h` | all | print the usage text, exit 0 |
-| `--version`, `-v` | all | print the version, exit 0 |
+| flag              | applies to | does                                                      |
+| ----------------- | ---------- | --------------------------------------------------------- |
+| `--dir <path>`    | all        | project directory, default the current directory          |
+| `--config <path>` | all        | config file, relative to `--dir`                          |
+| `--entry <path>`  | all        | backend entry, relative to `--dir`, default `src/main.ts` |
+| `--format <fmt>`  | package    | `dmg`, `appimage` or `nsis`; repeat the flag for several  |
+| `--react`         | init       | copy the React + Vite template                            |
+| `--next`          | init       | copy the Next.js template                                 |
+| `--help`, `-h`    | all        | print the usage text, exit 0                              |
+| `--version`, `-v` | all        | print the version, exit 0                                 |
 
 `--react` and `--next` are different scaffolds and passing both is refused before anything is written. Either flag outside `init` fails with `crust: --react only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1.
 
 ## Single-file mode
 
-| command | does |
-| --- | --- |
-| `crust dev app.tsx` | run that one file as the whole app, with no config |
-| `crust build app.tsx` | build `dist/<basename>.app` from the same file |
+| command               | does                                               |
+| --------------------- | -------------------------------------------------- |
+| `crust dev app.tsx`   | run that one file as the whole app, with no config |
+| `crust build app.tsx` | build `dist/<basename>.app` from the same file     |
 
 The config is built in memory: id `crust.single.<slug>`, name and window title from the basename, version `0.0.0`, one window at 900×700. The page is bundled to `<dir>/.crust/single` in dev and `<dir>/dist/single` in a build. The backend is the framework itself — `info` and `echo` are registered, so `invoke("info")` proves the round trip — and every plugin is still reachable in the three-argument form. A file whose source contains `export default` is mounted as a React component, so `react` and `react-dom` must be installed beside it; any other file is loaded for its own side effects. A `crust.config.ts` beside the file is refused rather than guessed at.
 
@@ -49,15 +52,21 @@ The config is built in memory: id `crust.single.<slug>`, name and window title f
 
 ## `crust doctor`
 
-Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `assets`, `templates`, `bundle`. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
+Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `assets`, `templates`, `bundle`, then the `extensions` block. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
+
+The `extensions` block reports `zig`, `rustc` and `clang` as found with their version or missing, then one verdict per `.zig`, `.rs` or `.c` file under `native/`. A source file whose compiler is missing counts as a failure; a project with no `native/` directory prints one line and adds nothing to the count.
 
 `dev port` classifies the port `dev.url` names before `dev url` probes it: free, held by a process that answers the URL (a note), held by one that answers nothing (the `strictPort` failure and the only `fail` in that pair), or answering while nothing listens locally (a proxy, a note).
 
 ## Environment
 
-| variable | read by | does |
-| --- | --- | --- |
-| `CRUST_SIGNING_IDENTITY` | `crust sign`, `crust doctor` | the Developer ID identity to sign with; absent, `crust sign` fails naming the variable and prints the expected form |
-| `CRUST_DEV_FILE` | `crust/vite` | the bridge handshake path, default `<cwd>/.crust/dev.json` |
+| variable                 | read by                                        | does                                                                                                                |
+| ------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `CRUST_SIGNING_IDENTITY` | `crust sign`, `crust notarize`, `crust doctor` | the Developer ID identity to sign with; absent, `crust sign` fails naming the variable and prints the expected form |
+| `CRUST_NOTARY_PROFILE`   | `crust notarize`                               | a notarytool `store-credentials` profile; wins over the one-shot route                                              |
+| `CRUST_NOTARY_APPLE_ID`  | `crust notarize`                               | the Apple ID for the one-shot credential route                                                                      |
+| `CRUST_NOTARY_PASSWORD`  | `crust notarize`                               | the app-specific password for that Apple ID                                                                         |
+| `CRUST_NOTARY_TEAM_ID`   | `crust notarize`                               | the team the Apple ID belongs to                                                                                    |
+| `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `<cwd>/.crust/dev.json`                                                          |
 
 An uncaught command failure prints `crust <command>: <message>` and exits 1. Nothing prints a stack trace and nothing exits 0 on a refusal.

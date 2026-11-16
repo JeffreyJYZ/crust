@@ -11,8 +11,9 @@ import { checkBundle } from "./doctor/bundle.ts";
 import { type Check, type Status } from "./doctor/check.ts";
 import { checkDevServer } from "./doctor/dev-port.ts";
 import { checkEnvironment } from "./doctor/environment.ts";
+import { extensionsSection } from "./doctor/extensions.ts";
 import { checkShim, checkWindow } from "./doctor/platform.ts";
-import { scanTraps } from "./doctor/scan.ts";
+import { sourceSection } from "./doctor/scan.ts";
 import { checkWatcher } from "./doctor/watch.ts";
 import { line, type CliOptions } from "./util.ts";
 
@@ -68,8 +69,11 @@ export async function doctor(options: CliOptions): Promise<number> {
 	const window = await checkWindow();
 	push(window.name, window.status, window.detail);
 
-	// The three known-fatal traps, named only when the project hits one.
-	for (const trap of await scanTraps(resolve(options.dir))) {
+	// The known-fatal traps, named only when the project hits one — and only in an
+	// app directory. With no config there is no app to scan, and walking the
+	// working directory instead is what reported the framework's own shim as
+	// broken when doctor ran from the framework repo.
+	for (const trap of await sourceSection(resolve(options.dir), config !== undefined)) {
 		push(trap.name, trap.status, trap.detail);
 	}
 
@@ -96,12 +100,17 @@ export async function doctor(options: CliOptions): Promise<number> {
 		push(bundle.name, bundle.status, bundle.detail);
 	}
 
+	// Native extensions: the three compilers, then a verdict per source file.
+	const extensions = await extensionsSection(options.dir);
+
 	console.log(`crust doctor — ${options.dir}`);
 	for (const check of checks) {
 		line(check.name, `[${check.status}] ${check.detail}`);
 	}
+	console.log("");
+	for (const text of extensions.text.split("\n")) console.log(`  ${text}`);
 
-	const failures = checks.filter((check) => check.status === "fail").length;
+	const failures = checks.filter((check) => check.status === "fail").length + extensions.failures;
 	if (failures > 0) {
 		console.error(`\n${failures} check${failures === 1 ? "" : "s"} failed`);
 		return 1;

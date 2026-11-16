@@ -4,13 +4,13 @@ A menu-bar status item, driven from the page. One item per process, and every cl
 
 ## Commands
 
-| command | arguments | answer |
-| --- | --- | --- |
-| `setTitle` | `{ text }` | `{ ok: true, text }` |
-| `setMenu` | `{ items: [{ label }] }` | `{ ok: true, labels }` |
-| `show` | none | `{ ok: true, active: true }` |
-| `hide` | none | `{ ok: true, active: false }` |
-| `destroy` | none | `{ ok: true, destroyed: true }` |
+| command    | arguments                | answer                          |
+| ---------- | ------------------------ | ------------------------------- |
+| `setTitle` | `{ text }`               | `{ ok: true, text }`            |
+| `setMenu`  | `{ items: [{ label }] }` | `{ ok: true, labels }`          |
+| `show`     | none                     | `{ ok: true, active: true }`    |
+| `hide`     | none                     | `{ ok: true, active: false }`   |
+| `destroy`  | none                     | `{ ok: true, destroyed: true }` |
 
 Three-argument calls, because these are plugin commands:
 
@@ -51,16 +51,20 @@ Each menu is wired through that one trampoline, which is why a destroyed item fr
 A tray failure is a value inside an ordinary `200`, not a rejected invoke:
 
 ```json
-{ "ok": false, "code": "invalid-menu", "message": "crust: tray.setMenu needs { items } with an array, got {}" }
+{
+	"ok": false,
+	"code": "invalid-menu",
+	"message": "crust: tray.setMenu needs { items } with an array, got {}"
+}
 ```
 
-| code | when |
-| --- | --- |
-| `invalid-text` | `setTitle` without a string `text` |
-| `invalid-menu` | `items` not an array, or a row without a non-empty `label` |
-| `unknown-adapter` | the platform adapter does not implement that command |
-| `destroyed` | the adapter reported the item gone |
-| `handler-error` | the adapter threw |
+| code              | when                                                       |
+| ----------------- | ---------------------------------------------------------- |
+| `invalid-text`    | `setTitle` without a string `text`                         |
+| `invalid-menu`    | `items` not an array, or a row without a non-empty `label` |
+| `unknown-adapter` | the platform adapter does not implement that command       |
+| `destroyed`       | the adapter reported the item gone                         |
+| `handler-error`   | the adapter threw                                          |
 
 Branch on `result.ok`, not on a thrown error.
 

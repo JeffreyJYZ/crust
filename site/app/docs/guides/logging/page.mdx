@@ -13,19 +13,19 @@ const result = await window.crust.invoke("logging", "write", {
 // { written: true, line: "2026-11-15T…Z WARN save took 4.2 s", path: "…/logs/app.log" }
 ```
 
-| argument | notes |
-| --- | --- |
-| `level` | `error`, `warn`, `info` or `debug` |
+| argument  | notes                                     |
+| --------- | ----------------------------------------- |
+| `level`   | `error`, `warn`, `info` or `debug`        |
 | `message` | anything; it is stringified into the line |
 
 A line below the configured level is dropped before it reaches the file, and the answer says which of
 the two happened:
 
-| answer | meaning |
-| --- | --- |
-| `{ written: true, line, path }` | the line was formatted and appended |
-| `{ written: false, reason: "below-level" }` | the level is quieter than the current one |
-| `{ written: false, reason: "bad-level" }` | `level` is not one of the four |
+| answer                                                  | meaning                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------ |
+| `{ written: true, line, path }`                         | the line was formatted and appended                          |
+| `{ written: false, reason: "below-level" }`             | the level is quieter than the current one                    |
+| `{ written: false, reason: "bad-level" }`               | `level` is not one of the four                               |
 | `{ written: false, reason: "sink-error", line, error }` | the file could not be written; the line is still in the ring |
 
 A write has no failure code: it answers a result every time, so a log call never breaks a caller.

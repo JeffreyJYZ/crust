@@ -11,12 +11,12 @@ const result = await window.crust.invoke("notification", "notify", {
 });
 ```
 
-| key | required | notes |
-| --- | --- | --- |
-| `title` | yes | non-empty string; anything else rejects `handler-error` with `notification.notify: "title" must be a non-empty string` |
-| `body` | no | the second line |
-| `id` | no | caller-chosen dedupe key |
-| `waitMs` | no | how long the permission prompt may stay up; default `1500` |
+| key      | required | notes                                                                                                                  |
+| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `title`  | yes      | non-empty string; anything else rejects `handler-error` with `notification.notify: "title" must be a non-empty string` |
+| `body`   | no       | the second line                                                                                                        |
+| `id`     | no       | caller-chosen dedupe key                                                                                               |
+| `waitMs` | no       | how long the permission prompt may stay up; default `1500`                                                             |
 
 ## The result
 

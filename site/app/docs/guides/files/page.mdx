@@ -4,14 +4,14 @@ The `fs` plugin reads and writes real files on disk. Every command is async, bec
 
 ## Commands
 
-| command | arguments | result |
-| --- | --- | --- |
-| `readTextFile` | `{ path }` | the file's text |
-| `writeTextFile` | `{ path, contents }` | `{ bytes }` |
-| `list` | `{ path }` | `{ entries: [{ name, path, directory, size }] }` |
-| `stat` | `{ path }` | `{ path, directory, size, modified }` |
-| `remove` | `{ path, recursive? }` | `{ removed, path }` |
-| `rename` | `{ from, to }` | `{ path }` |
+| command         | arguments              | result                                           |
+| --------------- | ---------------------- | ------------------------------------------------ |
+| `readTextFile`  | `{ path }`             | the file's text                                  |
+| `writeTextFile` | `{ path, contents }`   | `{ bytes }`                                      |
+| `list`          | `{ path }`             | `{ entries: [{ name, path, directory, size }] }` |
+| `stat`          | `{ path }`             | `{ path, directory, size, modified }`            |
+| `remove`        | `{ path, recursive? }` | `{ removed, path }`                              |
+| `rename`        | `{ from, to }`         | `{ path }`                                       |
 
 Three-argument calls, because `fs` is a plugin:
 
@@ -57,12 +57,40 @@ await window.crust.invoke("fs", "rename", { from: "a.md", to: "b.md" });
 
 The returned path is absolute and describes the destination.
 
+## Scope
+
+`fs` touches every file this user can reach unless the config sets a boundary:
+
+```ts
+// crust.config.ts
+fs: { scope: ["/Users/you/Documents/my-app"] },
+```
+
+With no `fs.scope`, there is **no boundary at all** — that default is deliberate, and `fs.scopeList` says so out loud instead of implying one:
+
+```json
+{
+	"ok": true,
+	"paths": [],
+	"scoped": false,
+	"reason": "fs.scope is not configured, so fs reads and writes every file this user can; add fs.scope to the app config to set a boundary"
+}
+```
+
+A page may not widen that boundary. `fs.scopeAllow` is refused by default, because leaving it reachable made the boundary writable by the thing it bounds:
+
+```
+fs.scopeAllow: refused — a page may not widen its own scope (grants is "runtime"); the host grants a path through fs.scope in the app config, or by building the plugin with grants: "page"
+```
+
+The grant belongs to the host: `fs.scope` in the config, or `createFsScope().allow`. `createFsPlugin({ grants: "page" })` is an explicit opt-in for an app that wants a page to add a prefix. `fs.scopeRevoke` stays reachable either way — it can only take a grant away.
+
 ## Errors
 
-| code | HTTP | when |
-| --- | --- | --- |
-| `not-found` | 404 | the path does not exist |
-| `bad-request` | 400 | `path`, `from` or `to` missing or not a string, or `contents` not a string |
+| code          | HTTP | when                                                                       |
+| ------------- | ---- | -------------------------------------------------------------------------- |
+| `not-found`   | 404  | the path does not exist                                                    |
+| `bad-request` | 400  | `path`, `from` or `to` missing or not a string, or `contents` not a string |
 
 A missing path carries the command and the path: `fs.readTextFile: no file at /Users/jyz/none.md`. A bad argument carries the rule: `fs: "path" must be a non-empty string`.
 

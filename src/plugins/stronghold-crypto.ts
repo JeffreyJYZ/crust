@@ -10,6 +10,7 @@ import {
 	fromBase64,
 	IV_BYTES,
 	KDF_ITERATIONS,
+	KDF_MIN_ITERATIONS,
 	KDF_NAME,
 	KEY_BITS,
 	SALT_BYTES,
@@ -102,6 +103,12 @@ export async function createStore(
 	password: string,
 	iterations: number = KDF_ITERATIONS,
 ): Promise<OpenedStore> {
+	if (!Number.isInteger(iterations) || iterations < KDF_MIN_ITERATIONS) {
+		// A header this build would refuse to read is not a store worth writing.
+		throw new Error(
+			`stronghold: ${iterations} PBKDF2 rounds is below the KDF floor of ${KDF_MIN_ITERATIONS}`,
+		);
+	}
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
 	const keys = await deriveKeys(password, salt, iterations);
 	const file: StrongholdFile = {

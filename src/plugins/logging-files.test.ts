@@ -29,11 +29,7 @@ function pluginAt(root: string): ReturnType<typeof createLoggingPlugin> {
 	return createLoggingPlugin({ root, now: () => AT, level: "debug" });
 }
 
-function call<T>(
-	plugin: ReturnType<typeof createLoggingPlugin>,
-	name: string,
-	args?: unknown,
-): T {
+function call<T>(plugin: ReturnType<typeof createLoggingPlugin>, name: string, args?: unknown): T {
 	const table = plugin.commands as unknown as Record<string, (input?: unknown) => T>;
 	const handler = table[name];
 	if (handler === undefined) throw new Error(`no command ${name}`);

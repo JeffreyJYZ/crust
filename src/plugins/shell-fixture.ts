@@ -14,10 +14,11 @@ import {
 	type SpawnOutcome,
 	createShellPlugin,
 } from "./shell";
+import type { ShellRuleOptions } from "./shell-resolve";
 import type { ShellLine } from "./shell-stream";
 
 /** Programs every suite may run; `cat` is the one that reads a pipe and writes both streams. */
-export const ALLOW = ["cat", "echo", "sleep", "tool", "crust-no-such-program"];
+export const ALLOW = ["cat", "echo", "printenv", "sleep", "tool", "crust-no-such-program"];
 
 export type Seen = Array<{ event: string; data: ShellLine }>;
 
@@ -39,9 +40,9 @@ export interface ShellHarness {
 	stop(): Promise<void>;
 }
 
-export async function shellHarness(): Promise<ShellHarness> {
+export async function shellHarness(options: ShellRuleOptions = {}): Promise<ShellHarness> {
 	const root = await mkdtemp(join(tmpdir(), "crust-shell-"));
-	const plugin = createShellPlugin({ allow: ALLOW, cwdRoot: root });
+	const plugin = createShellPlugin({ allow: ALLOW, cwdRoot: root, ...options });
 	const started: string[] = [];
 	const table = plugin.commands as unknown as Record<
 		string,

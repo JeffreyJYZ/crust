@@ -4,7 +4,8 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { app, type App, type CommandHandler } from "@/app.ts";
+import { app, type App, type CommandHandler, type Platform } from "@/app.ts";
+import { loadDarwinPlatform, loadPlatform } from "./app-loop.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig, validateConfig } from "@/config";
 import { type DarwinPlatform } from "@/platform/darwin";
@@ -21,30 +22,9 @@ import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts"
 import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
+import type { StartAppOptions } from "./runtime-options.ts";
 
-export interface StartAppOptions {
-	/** Config file, relative to the working directory. */
-	configPath?: string;
-	/** Backend entry, relative to the working directory. Defaults to `src/main.ts`. */
-	entry?: string;
-	/**
-	 * A pre-bundled entry import. A built app's wrapper supplies this, because
-	 * `import(<variable>)` cannot be resolved at build time; the wrapper's own
-	 * literal `import("<entry>")` is what gets bundled into the binary.
-	 */
-	entryModule?: () => Promise<unknown>;
-	/**
-	 * An already-loaded config. A built app must take this path: its config was
-	 * embedded at build time and no `crust.config.ts` exists on the user's disk.
-	 */
-	config?: CrustConfig;
-	/** Frontend on disk. Defaults to `<project>/public` when that directory exists. */
-	root?: string;
-	/** Frontend embedded in the binary, ahead of `root`. */
-	assets?: AssetTable;
-	/** Skip the platform, for tests and for a headless bridge. */
-	attachPlatform?: boolean;
-}
+export type { StartAppOptions } from "./runtime-options.ts";
 
 /**
  * Start a crust app. Resolves once the user's entry has run and `app.run()`
@@ -76,12 +56,21 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	// The platform is built before the plugins because the window adapter reads
 	// labels and native pointers from the same instance `app.attach` receives.
 	// Constructing it starts nothing; `app.run()` calls `start()`.
-	const darwinPlatform = attachPlatform ? await import("@/platform/darwin") : undefined;
-	const platform: DarwinPlatform | undefined = darwinPlatform?.createPlatform({
-		appName: config.app.name,
-	});
+	// Darwin is selected first because `nativePlugins` reads Darwin-only members;
+	// every other OS takes the `loadPlatform` arm, which is what `app.run()` uses.
+	const darwinPlatform: DarwinPlatform | undefined =
+		attachPlatform && process.platform === "darwin"
+			? await loadDarwinPlatform(config)
+			: undefined;
+	const platform: Platform | undefined =
+		darwinPlatform ?? (attachPlatform ? await loadPlatform(config) : undefined);
 	const plugins = [
-		...(await nativePlugins(core, platform, { shell: config.shell, updater: config.updater, fs: config.fs })),
+		...(await nativePlugins(core, darwinPlatform, {
+			shell: config.shell,
+			updater: config.updater,
+			fs: config.fs,
+			app: config.app.id,
+		})),
 		single.plugin,
 	];
 
@@ -96,7 +85,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	let bridge: BridgeHandle | undefined;
 	const startBridgeFor = (runConfig: CrustConfig): BridgeHandle => {
 		if (bridge !== undefined) return bridge;
-		const registry = new PluginRegistry().register(
+		const registry = (options.registry ?? new PluginRegistry()).register(
 			...selectedPlugins(runConfig, plugins),
 			...app.plugins(),
 			appPlugin,

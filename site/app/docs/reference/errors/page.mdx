@@ -4,32 +4,32 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 
 ## Codes
 
-| code | HTTP | cause |
-| --- | --- | --- |
-| `unauthorized` | 401 | missing or wrong bearer token |
-| `bad-origin` | 403 | absent or foreign `Origin` header |
-| `not-found` | 404 | unknown asset route, or `fs.readTextFile` on a missing file |
-| `unknown-plugin` | 404 | `PluginRegistry.invoke` only — the bridge flattens names into `unknown-command` |
-| `unknown-command` | 404 | no handler under `<plugin>.<command>`, including an unknown plugin over the bridge |
-| `bad-json` | 400 | the invoke body is not JSON |
-| `bad-request` | 400 | malformed payload, bad argument, or a `definePlugin` violation |
-| `handler-error` | 500 | a handler threw something that was not a `CrustError` |
-| `too-large` | 413 | body over 2 MiB |
-| `not-implemented` | 501 | a command returned `notImplemented(...)` |
+| code              | HTTP | cause                                                                              |
+| ----------------- | ---- | ---------------------------------------------------------------------------------- |
+| `unauthorized`    | 401  | missing or wrong bearer token                                                      |
+| `bad-origin`      | 403  | absent or foreign `Origin` header                                                  |
+| `not-found`       | 404  | unknown asset route, or `fs.readTextFile` on a missing file                        |
+| `unknown-plugin`  | 404  | `PluginRegistry.invoke` only — the bridge flattens names into `unknown-command`    |
+| `unknown-command` | 404  | no handler under `<plugin>.<command>`, including an unknown plugin over the bridge |
+| `bad-json`        | 400  | the invoke body is not JSON                                                        |
+| `bad-request`     | 400  | malformed payload, bad argument, or a `definePlugin` violation                     |
+| `handler-error`   | 500  | a handler threw something that was not a `CrustError`                              |
+| `too-large`       | 413  | body over 2 MiB                                                                    |
+| `not-implemented` | 501  | a command returned `notImplemented(...)`                                           |
 
 ## Messages
 
-| code | message | when |
-| --- | --- | --- |
-| `unauthorized` | `missing or bad bearer token` | the header is absent or wrong |
-| `bad-json` | `body is not json` | `JSON.parse` failed on the body |
-| `too-large` | `payload too large` | the declared or actual body exceeded 2 MiB |
-| `bad-request` | `body needs { plugin, command, args }` | the JSON body has no string `plugin` and `command` |
-| `bad-request` | `binary invoke needs ?plugin= and ?command=` | a non-JSON body with the command missing from the query string |
-| `unknown-command` | the bare key, e.g. `fs.nope` | no handler is registered at that key |
-| `unknown-plugin` | `no plugin named "fs"` | registry lookup only, never over the bridge |
-| `not-implemented` | the first argument of `notImplemented(...)`, with `requires` set to the second | a command declined instead of pretending |
-| `handler-error` | the thrown message, unchanged | a handler threw a plain `Error` or any other value |
+| code              | message                                                                        | when                                                           |
+| ----------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `unauthorized`    | `missing or bad bearer token`                                                  | the header is absent or wrong                                  |
+| `bad-json`        | `body is not json`                                                             | `JSON.parse` failed on the body                                |
+| `too-large`       | `payload too large`                                                            | the declared or actual body exceeded 2 MiB                     |
+| `bad-request`     | `body needs { plugin, command, args }`                                         | the JSON body has no string `plugin` and `command`             |
+| `bad-request`     | `binary invoke needs ?plugin= and ?command=`                                   | a non-JSON body with the command missing from the query string |
+| `unknown-command` | the bare key, e.g. `fs.nope`                                                   | no handler is registered at that key                           |
+| `unknown-plugin`  | `no plugin named "fs"`                                                         | registry lookup only, never over the bridge                    |
+| `not-implemented` | the first argument of `notImplemented(...)`, with `requires` set to the second | a command declined instead of pretending                       |
+| `handler-error`   | the thrown message, unchanged                                                  | a handler threw a plain `Error` or any other value             |
 
 `not-implemented` reaches the page as `{ "code": "not-implemented", "message": "…", "requires": "NSPasteboard" }`, so a caller can tell "this platform cannot do it" from "the call was wrong".
 
@@ -49,22 +49,22 @@ crust: savePanel refused (busy); an NSOpenPanel sheet is already up, and only on
 
 These two answer a typed failure inside a `200`, never a rejected invoke: `{ ok: false, code, message }`, with `label` on every window failure that knows one.
 
-| code | raised when |
-| --- | --- |
-| `invalid-label` | the command needs `{ label }` with a non-empty string |
-| `unknown-window` | no open window carries that label |
-| `duplicate-label` | `create` names a label that is already open |
-| `invalid-size` | `create` width or height is not a positive integer — refused, never clamped |
-| `invalid-url` | `create` url is present but empty or not a string |
-| `unknown-adapter` | the adapter has no `create`, checked before the arguments |
-| `handler-error` | the adapter threw, or answered without tracking the new label |
+| code              | raised when                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `invalid-label`   | the command needs `{ label }` with a non-empty string                       |
+| `unknown-window`  | no open window carries that label                                           |
+| `duplicate-label` | `create` names a label that is already open                                 |
+| `invalid-size`    | `create` width or height is not a positive integer — refused, never clamped |
+| `invalid-url`     | `create` url is present but empty or not a string                           |
+| `unknown-adapter` | the adapter has no `create`, checked before the arguments                   |
+| `handler-error`   | the adapter threw, or answered without tracking the new label               |
 
-| code | message |
-| --- | --- |
-| `invalid-label` | `crust: window command needs { label } with a non-empty string, got …` |
-| `unknown-window` | `crust: no window labelled "main"` |
+| code              | message                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-label`   | `crust: window command needs { label } with a non-empty string, got …`                                                                 |
+| `unknown-window`  | `crust: no window labelled "main"`                                                                                                     |
 | `duplicate-label` | `crust: a window labelled "main" already exists; a second one would replace it in the platform's map. Close it or pick another label.` |
-| `invalid-size` | `crust: window.create width must be a positive integer, got 1.5 in …` |
-| `invalid-url` | `crust: window.create url must be a non-empty string when given, got "" in …` |
+| `invalid-size`    | `crust: window.create width must be a positive integer, got 1.5 in …`                                                                  |
+| `invalid-url`     | `crust: window.create url must be a non-empty string when given, got "" in …`                                                          |
 
 Tray codes are `invalid-text`, `invalid-menu`, `unknown-adapter`, `destroyed` and `handler-error`. `destroyed` means the status item was already torn down; a second `createStatusBar()` throws until the first is destroyed.

@@ -1,0 +1,21 @@
+# crash-reporter lane memory
+
+- **Slice**: `crust:crash-reporter` plugin, the separate guard process, the C fault handler and the record format.
+- **Files**: `src/platform/darwin/shim/111_crash.c` (148), `src/platform/darwin/shim/112_crash_install.c` (96), `src/platform/darwin/crash.ts` (172), `src/platform/darwin/crash-record.ts` (101), `src/runtime-crash-store.ts` (102), `src/runtime-crash-guard.ts` (118), `src/runtime-crash-guard.test.ts` (172), `src/plugins/crash-reporter.ts` (138), `src/plugins/crash-reporter.test.ts` (148).
+- **Measured (Bun 1.4.4, macOS 27 arm64)**: `process.kill(process.pid, "SIGSEGV")` never reaches a handler installed through `sigaction` from `bun:ffi` — the child dies by the default disposition (exit 139, no record), while the identical signal sent from outside the process runs the handler and exits 70.
+- **Consequence**: the guard test raises a real fault instead — a `cc()`-compiled `boom()` that dereferences NULL — which does reach the handler and writes the record.
+- **Measured**: that real fault exits 70 and the record decodes as `{ signal: 11, code: 2, address: "0x0", handler: "SIGSEGV" }` (`code` 2 is `SEGV_ACCERR`).
+- **Trap**: TinyCC drops `open`'s mode argument when the extern is declared with a fixed three-argument prototype — the record file lands mode `0000` and the guard reads it as `EACCES`. Declare it `extern int open(const char *, int, ...);`.
+- **Trap**: `startCrashGuard` deletes the record at start so an earlier run's crash cannot be reported as this one's, so arming must happen _after_ the guard starts. The runtime order is `startCrashGuard()` then `crash-reporter.install()`.
+- **Decision**: a guard did not spawn the process it watches, so it cannot `waitpid` it and cannot read a wait status; it polls `process.kill(pid, 0)` every 100 ms and treats the record's existence as the crash signal.
+- **Decision**: a clean exit truncates the record to zero bytes (arming does that), so "no record" is how the guard reads "no fault" — a plain non-zero exit records nothing, deliberately.
+- **Decision**: `exitCode: 70` in `last-crash.json` is a property of the writer (`_exit(70)` immediately after the 84-byte write), never a reaped status.
+- **Decision**: the record is a fixed 84-byte little-endian layout (`CRSH`, i32 signal, i32 `si_code`, u64 address, 64-byte NUL-padded handler name) read with a `DataView`, so no C struct crosses `bun:ffi` and no formatting happens in the handler.
+- **Decision**: the handler is async-signal-safe by construction — no allocation, no stdio, no lock, no clock; `at` is the guard's observation time, not the fault time.
+- **Decision**: the C is two files joined into one translation unit because the 200-line cap is the constraint; the join order is load-bearing (112 uses 111's statics and typedefs).
+- **Decision**: a re-entered handler `_exit(71)`; `SA_NODEFER` makes the re-entry possible and the `cr_inside` flag is what stops it, rather than `SA_RESETHAND` resetting to the default action.
+- **Open item**: the guard needs a readable copy of its own file, and a compiled binary has none, so `startCrashGuard` throws `not-implemented` naming "a source checkout". The runtime/packaging lane has to bundle the guard as its own entry for a shipped app.
+- **Wiring**: `startCrashGuard({ appDataDir })` then `createCrashReporterPlugin({ root: appDataDir, guard, native: darwinCrashAdapter() })`; the guard object satisfies the plugin's `{ running() }` structurally.
+- **Not exported**: this lane did not touch `src/plugins/index.ts`, `src/plugins/core.ts`, `src/runtime-plugins.ts`, `src/runtime.ts` or `src/platform/darwin/index.ts`, so nothing in the barrels names the plugin yet.
+- **Trap**: `src/platform/darwin/arity.test.ts` walks the darwin directory but only picks files defining `shim_*`; keeping the `crust_crash_*` prefix is what keeps the new C out of its arity comparison.
+- **Gate result at hand-off**: `bun check` green over the tree at that moment, `bun run test …` 763 pass / 0 fail, `bun run check:lines` pass.

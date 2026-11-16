@@ -4,6 +4,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
+import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import type { SingleApp } from "./single-detect.ts";
 import {
 	documentSource,
@@ -38,9 +39,30 @@ function bundleFailure(logs: readonly BuildLog[], reason: string): Error {
 }
 
 /**
+ * Single-file mode cannot carry an extension, so it says so instead of dropping one. There is no
+ * `crust.config.ts` beside the file to name any (single detection refuses that shape), which leaves
+ * discovery as the only source — and the generated single-file wrapper (`src/cli/build/wrapper.ts`,
+ * shared with `crust build app.tsx`) has no slot to register them.
+ * Refusing is the cheaper honest option: embedding would need a second generator for `crust dev
+ * app.tsx` alone, which is exactly the dev/prod divergence this refusal exists to prevent. Both
+ * halves call this, so they agree on the reason too.
+ */
+async function refuseExtensions(app: SingleApp): Promise<void> {
+	const files = await resolveExtensionFiles({ dir: join(app.dir, DEFAULT_EXTENSIONS_DIR) });
+	if (files.length === 0) return;
+	throw new Error(
+		`single-file mode carries no extensions, but ${files[0]} was found. A single file embeds one ` +
+			"page and no extension registry — move the extension into a project with a " +
+			"crust.config.ts (extensions: [...]) and run `crust dev --dir <project>` instead",
+	);
+}
+
+/**
  * Bundle the page and write the document beside it. A failed build throws before touching `index.html` or the reload marker, so the previously written page stays where it was and a running window keeps it.
  */
 export async function buildPage(app: SingleApp, options: { dev: boolean }): Promise<PageBuild> {
+	await refuseExtensions(app);
+
 	const outDir = options.dev
 		? join(app.dir, ".crust", "single")
 		: join(app.dir, "dist", "single");

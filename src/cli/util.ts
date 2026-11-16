@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import packageJson from "../../package.json";
+import type { PackageFormat } from "./package/format.ts";
 
 /**
  * The crust package root, whatever directory the CLI is invoked from. Six ancestors, because the root is the directory holding `templates/` and that is not always two steps up: in a checkout this is `src/cli/util.ts`, in a compiled executable `import.meta.dir` is `/$bunfs/root/src/cli` when the bundler keeps the tree and `/$bunfs/root` when it flattens — where `..` twice would be `/`. Marker discovery answers all three, falling back to the checkout assumption.
@@ -30,6 +31,8 @@ export interface CliOptions {
 	entry?: string;
 	/** The positional a `dev`/`build` invocation got; a single-file entry. */
 	single?: string;
+	/** `crust package` formats, already validated; the command defaults to `["dmg"]`. */
+	formats?: PackageFormat[];
 }
 
 const LABEL_WIDTH = 9;

@@ -3,7 +3,7 @@
  * Nothing here touches the network or a filesystem, so the parse is testable on its own.
  */
 
-import { isEd25519Pubkey, isSignature, readSignatureArgs } from "./updater-signature";
+import { isEd25519Pubkey, isSignature } from "./updater-signature";
 import { isSha256Hex, readString, seen, type UpdateManifest } from "./updater-args";
 
 export function parseManifest(
@@ -30,10 +30,10 @@ export function parseManifest(
 	if (source.signature !== undefined || source.pubkey !== undefined) {
 		if (!isSignature(source.signature)) return fail('"signature" must be base64 Ed25519');
 		if (!isEd25519Pubkey(source.pubkey)) return fail('"pubkey" must be base64 of 32 bytes');
-		const signed = readSignatureArgs(source);
-		if (signed === null || signed === undefined) return fail('"signature" needs a "pubkey"');
-		manifest.signature = signed.signature;
-		manifest.pubkey = signed.pubkey;
+		// The pair is carried through for `check` to report; whether the key is this app's is
+		// decided where a signature is verified, against the config's pinned key only.
+		manifest.signature = source.signature as string;
+		manifest.pubkey = source.pubkey as string;
 	}
 	return { ok: true, manifest };
 }

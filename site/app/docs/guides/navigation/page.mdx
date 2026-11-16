@@ -1,0 +1,53 @@
+# Navigation
+
+What a page can ask about its own webview, and what that webview reports back. A command answers the state at the moment it ran; every `WKNavigationDelegate` callback arrives as an event, because a load that began is not a load that finished.
+
+Registered by the macOS runtime with `darwinNavigationAdapter(webview)`, so `window.crust.invoke("navigation", …)` works in an app that names no plugin.
+
+## Commands
+
+| command     | arguments | answer                                                       |
+| ----------- | --------- | ------------------------------------------------------------ |
+| `start`     | none      | `{ ok: true, status, reason }`                               |
+| `stop`      | none      | `{ ok: true, stopped }`                                      |
+| `state`     | none      | `{ ok: true, url, title, loading, canGoBack, canGoForward }` |
+| `reload`    | none      | `{ ok: true, reloaded }`                                     |
+| `goBack`    | none      | `{ ok: true, moved }`                                        |
+| `goForward` | none      | `{ ok: true, moved }`                                        |
+
+`start` installs the delegate and reports the native half's own `status` number — never an optimism. Until `start` has run, nothing is reported.
+
+## Events
+
+| event                   | payload                    |
+| ----------------------- | -------------------------- |
+| `navigation:did-start`  | `{ url, title }`           |
+| `navigation:did-commit` | `{ url, title }`           |
+| `navigation:did-finish` | `{ url, title }`           |
+| `navigation:did-fail`   | `{ url, title, message? }` |
+
+```js
+window.crust.listen("navigation:did-fail", ({ url, message }) => {
+	console.warn("load failed", url, message);
+});
+```
+
+`message` is present on `did-fail` when WebKit named a reason. A handler that throws is swallowed: it must not unwind into AppKit's delegate call.
+
+## Reading state
+
+```ts
+const now = await window.crust.invoke("navigation", "state");
+```
+
+`loading` is whether a load is in flight; `canGoBack` and `canGoForward` are the history flags. An empty `url` means the webview has not committed a load yet. With no webview to ask, the answer is `{ ok: false, code: "handler-error" }` naming that, rather than a state full of empty values.
+
+## Moving
+
+`reload` reloads in place and answers `reloaded: false` when nothing was sent. `goBack` and `goForward` answer `moved: false` on an empty history — a fact about the history, not a failure.
+
+`stop` removes the delegate; the webview keeps loading, it just stops reporting. Calling it twice answers `stopped: false` the second time, because the delegate is gone either way.
+
+## Failure shape
+
+Without an adapter, each command answers `not-implemented` with `requires: "WKNavigationDelegate"`. An adapter that threw becomes `{ ok: false, code: "handler-error", message }`; nothing here throws across the bridge.

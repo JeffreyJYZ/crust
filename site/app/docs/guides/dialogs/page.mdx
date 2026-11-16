@@ -37,13 +37,13 @@ const { cancelled, paths } = await window.crust.invoke("dialog", "cancel", {});
 
 ## Options
 
-| key | on | meaning |
-| --- | --- | --- |
-| `title` | both | the panel's title |
-| `filters` | both | `[{ name, extensions }]`; empty means any file type |
-| `multiple` | `openPanel` | allow more than one path; default `false` |
-| `directory` | `openPanel` | pick directories instead of files; default `false` |
-| `suggestedName` | `savePanel` | the name the panel offers |
+| key             | on          | meaning                                             |
+| --------------- | ----------- | --------------------------------------------------- |
+| `title`         | both        | the panel's title                                   |
+| `filters`       | both        | `[{ name, extensions }]`; empty means any file type |
+| `multiple`      | `openPanel` | allow more than one path; default `false`           |
+| `directory`     | `openPanel` | pick directories instead of files; default `false`  |
+| `suggestedName` | `savePanel` | the name the panel offers                           |
 
 `filters` is flattened to one comma-separated extension list and applied through the deprecated `-setAllowedFileTypes:`, because macOS 27's `allowedContentTypes` needs objects that cannot cross `bun:ffi`.
 
