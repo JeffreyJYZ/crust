@@ -30,13 +30,14 @@ static shim_create_env_fn shim_load_create_env(void) {
 // ICoreWebView2Environment slot 3.
 shim_i64 wv2_env_create_controller(void *env, shim_h hwnd, void *handler) {
 	void **vt = *(void ***)env;
-	return ((shim_i64 (*)(void *, shim_h, void *))vt[3])(env, hwnd, handler);
+	return ((shim_i64 (*)(void *, shim_h, void *))vt[SHIM_SLOT_ENV_CREATE_CONTROLLER])(
+	    env, hwnd, handler);
 }
 
 // ICoreWebView2Controller slot 25: the ICoreWebView2 the page-facing calls go to.
 shim_i64 wv2_controller_webview(void *ctrl, void **out) {
 	void **vt = *(void ***)ctrl;
-	return ((shim_i64 (*)(void *, void **))vt[25])(ctrl, out);
+	return ((shim_i64 (*)(void *, void **))vt[SHIM_SLOT_CONTROLLER_WEBVIEW])(ctrl, out);
 }
 
 // Build the environment and wait for it. 0 on any failure, including a 5 s timeout.
@@ -48,7 +49,7 @@ void *shim_environment(const char *userData) {
 	if (hasDir && shim_utf16(userData, dir, 1024) < 0) return 0;
 	create_env = shim_load_create_env();
 	if (!create_env) return 0;
-	handler_init(&env, handler_vtbl);
+	handler_init(&env);
 	if (create_env(0, hasDir ? dir : 0, 0, &env) < 0) return 0;
 	handler_wait(&env, 5000);
 	return env.result;
@@ -58,7 +59,7 @@ void *shim_environment(const char *userData) {
 void *shim_controller(void *env, shim_h hwnd) {
 	shim_handler ctrl;
 	if (!env) return 0;
-	handler_init(&ctrl, handler_vtbl);
+	handler_init(&ctrl);
 	if (wv2_env_create_controller(env, hwnd, &ctrl) < 0) return 0;
 	handler_wait(&ctrl, 5000);
 	return ctrl.result;

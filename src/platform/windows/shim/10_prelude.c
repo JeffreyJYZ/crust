@@ -61,6 +61,18 @@ int shim_win32_ready(void);
 #define SHIM_COINIT_APARTMENTTHREADED 2
 #define SHIM_IDC_ARROW ((const shim_wchar *)32512)
 
+// --- COM vtable slots ------------------------------------------------------
+// Zero-based, counted after IUnknown's QueryInterface/AddRef/Release. Checked against the
+// declaration order in WebView2.h as published (docs.rs/webview2-sys ICoreWebView2VTable and
+// ICoreWebView2ControllerVTable, read 2026-11-16) — `Navigate` is the fifth method of
+// ICoreWebView2, and this layer called slot 37 for a year of one run, which is
+// GetBrowserProcessId(UINT*) and silently did nothing.
+#define SHIM_SLOT_ENV_CREATE_CONTROLLER 3  // ICoreWebView2Environment::CreateCoreWebView2Controller
+#define SHIM_SLOT_CONTROLLER_PUT_BOUNDS 6  // ICoreWebView2Controller::put_Bounds
+#define SHIM_SLOT_CONTROLLER_CLOSE 24      // ICoreWebView2Controller::Close
+#define SHIM_SLOT_CONTROLLER_WEBVIEW 25    // ICoreWebView2Controller::get_CoreWebView2
+#define SHIM_SLOT_WEBVIEW_NAVIGATE 5       // ICoreWebView2::Navigate
+
 // Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.
 int shim_webview_put_bounds(shim_h hwnd, double w, double h);
 

@@ -22,6 +22,7 @@ import { createPlatform, defaultBackend, preflightError } from "../src/platform/
 import { Verdict } from "./e2e-harness.ts";
 import { formatBisect, runBisect } from "./windows/bisect.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
+import { runStages } from "./windows/stages.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
 const USER_DATA = join(tmpdir(), "crust-smoke-webview2");
@@ -88,7 +89,12 @@ async function main(): Promise<number> {
 	//    not assertions — an experiment doing what it was built to catch must not fail the smoke.
 	for (const line of formatBisect(await runBisect())) console.log(`bisect    ${line}`);
 
-	// 3. COM, the window class, then a real window and controller. A machine that refuses any of
+	// 3. The window path one call at a time, so a crash names the call that died instead of leaving
+	//    "after com + class" as the only evidence. Same reason: diagnostic, never a verdict.
+	const stages = await runStages();
+	console.log(`stages    child ended with exit ${stages.code}`);
+
+	// 4. COM, the window class, then a real window and controller. A machine that refuses any of
 	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
 	//    the exception: `compile()` attaches the exact tcc command line, so the failure names what
 	//    TinyCC was handed instead of being inferred from the throw.
