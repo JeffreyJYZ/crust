@@ -142,6 +142,12 @@ export function fakeShim(
 			calls.push("webview_navigate");
 			return options.failWebView ? 0 : 1;
 		},
+		shim_env_hresult: () => 0,
+		shim_controller_hresult: () => (options.failWebView ? -2147467259 : 0),
+		shim_thread_at: () => 4242,
+		shim_thread_id: () => 4242,
+		shim_window_thread: () => 4242,
+		shim_apartment_type: () => 0,
 
 		// The handler readback: a table at 0x1000, an object whose first field is that table.
 		shim_handler_prepare: () => 1,

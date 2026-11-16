@@ -63,7 +63,7 @@ int shim_webview_new(shim_h hwnd, const char *url, const char *userData) {
 	if (!hwnd) return 0;
 	if (g_windows >= SHIM_MAX_WINDOWS) return 0;
 	if (!shim_environment_handle()) {
-		if (shim_env_begin(userData) < 0) return 0;
+		if (shim_env_begin(hwnd, userData) < 0) return 0;
 		if (!shim_env_wait()) return 0;
 		if (shim_env_callback() < 0 || !shim_environment_handle()) return 0;
 	}

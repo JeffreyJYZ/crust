@@ -13,6 +13,8 @@ typedef struct {
 	void *result;
 	shim_i64 failed;
 	int done;
+	/** Which thread step this handler's callback belongs to, for `shim_thread_at`. */
+	int step;
 } shim_handler;
 
 static shim_i64 handler_qi(void *self, const void *iid, void **out) {
@@ -34,9 +36,18 @@ static shim_u64 handler_release(void *self) {
 
 static shim_i64 handler_invoke(void *self, shim_i64 code, void *created) {
 	shim_handler *h = (shim_handler *)self;
+	shim_note_thread(h->step);
 	h->failed = code;
 	h->result = created;
 	h->done = 1;
+	// The environment's own completion is the frame WebView2 created the environment in, and the only
+	// frame allowed to build a controller from it: the same call one frame later answers
+	// UI_E_WRONG_THREAD (0x802A000C), which is what this layer kept getting.
+	// `done` is set before the nested call, so a slow WebView2 call cannot keep `handler_wait` spinning.
+	// The controller's own callback may arrive later in this same drain or in the next one, so
+	// `shim_controller_wait` pumps rather than assuming it has already fired.
+	if (h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && created)
+		shim_controller_from_callback(created);
 	return 0;
 }
 
@@ -59,7 +70,7 @@ static shim_i64 handler_unsupported(void *self) {
 static void *g_handler_vtbl[SHIM_HANDLER_SLOTS];
 static int g_handler_vtbl_bound;
 
-void handler_init(shim_handler *h) {
+void handler_init(shim_handler *h, int step) {
 	int slot;
 	if (!g_handler_vtbl_bound) {
 		g_handler_vtbl[0] = (void *)handler_qi;
@@ -75,6 +86,7 @@ void handler_init(shim_handler *h) {
 	h->result = 0;
 	h->failed = 0;
 	h->done = 0;
+	h->step = step;
 }
 
 // --- readback ---------------------------------------------------------------

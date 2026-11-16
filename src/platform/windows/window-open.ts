@@ -37,10 +37,18 @@ export function openWindow(
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
 		shim.shim_window_destroy(hwnd);
 		// 126 is ERROR_MOD_NOT_FOUND: the shim's LoadLibraryW("WebView2Loader.dll") did not find the
-		// loader, which is the one failure of this call the caller can act on.
+		// loader. Otherwise the reason is in the two HRESULTs: the controller call's own, and the one
+		// its completion handler carried — a refused call and a callback that never came differ only
+		// there, and the composite that failed answers 0/1.
 		const error = Number(shim.shim_last_error());
+		const begin = Number(shim.shim_controller_hresult());
+		const callback = Number(shim.shim_controller_callback());
+		const environment = Number(shim.shim_env_callback());
 		throw new Error(
-			`WebView2 controller failed for "${label}" (GetLastError ${error}) — ` +
+			`WebView2 controller failed for "${label}" (GetLastError ${error}, ` +
+				`CreateCoreWebView2Controller 0x${(begin >>> 0).toString(16)}, ` +
+				`controller callback 0x${(callback >>> 0).toString(16)}, ` +
+				`environment callback 0x${(environment >>> 0).toString(16)}) — ` +
 				(error === 126
 					? "WebView2Loader.dll did not load; it must sit beside the executable or on PATH"
 					: "the runtime is installed but did not answer"),

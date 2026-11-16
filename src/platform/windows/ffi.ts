@@ -97,7 +97,7 @@ export function compile(): WindowsShim {
 				shim_webview_close: { args: [P], returns: V },
 
 				// The WebView2 path, one step at a time, so a probe can print between them.
-				shim_env_begin: { args: [CS], returns: I64 },
+				shim_env_begin: { args: [P, CS], returns: I64 },
 				shim_env_wait: { args: [], returns: I32 },
 				shim_env_callback: { args: [], returns: I64 },
 				shim_controller_begin: { args: [P], returns: I64 },
@@ -105,6 +105,14 @@ export function compile(): WindowsShim {
 				shim_controller_callback: { args: [], returns: I64 },
 				shim_webview_attach: { args: [P], returns: I32 },
 				shim_webview_navigate: { args: [CS], returns: I32 },
+				shim_window_thread: { args: [P], returns: I32 },
+				shim_apartment_type: { args: [], returns: I32 },
+
+				// The reason behind a 0/1, and the threads each step ran on.
+				shim_env_hresult: { args: [], returns: I64 },
+				shim_controller_hresult: { args: [], returns: I64 },
+				shim_thread_at: { args: [I32], returns: FFIType.u32 },
+				shim_thread_id: { args: [], returns: FFIType.u32 },
 
 				// The handler object's ABI, as the numbers Windows would read.
 				shim_handler_prepare: { args: [], returns: I32 },

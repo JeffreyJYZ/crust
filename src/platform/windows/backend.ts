@@ -49,7 +49,7 @@ export interface WindowsShim {
 	 * inside a hand-built COM object is a jump, not an error code, so each step is separately callable
 	 * and each reports the HRESULT of its own call and of the callback that answered it.
 	 */
-	shim_env_begin(userData: Uint8Array): number;
+	shim_env_begin(hwnd: number, userData: Uint8Array): number;
 	shim_env_wait(): number;
 	shim_env_callback(): number;
 	shim_controller_begin(hwnd: number): number;
@@ -57,6 +57,28 @@ export interface WindowsShim {
 	shim_controller_callback(): number;
 	shim_webview_attach(hwnd: number): number;
 	shim_webview_navigate(url: Uint8Array): number;
+
+	/**
+	 * The thread that owns a window, and the apartment this thread is in — 0 STA, 1 MTA, 2 neutral,
+	 * 3 main STA, -1 not initialised. `com_init` answering S_OK is the claim; these are the check.
+	 */
+	shim_window_thread(hwnd: number): number;
+	shim_apartment_type(): number;
+
+	/**
+	 * The HRESULT of the last begin call. `shim_webview_new` answers 0/1, so a caller that needs the
+	 * reason reads it here: a refused call and a callback that never arrived are different defects.
+	 */
+	shim_env_hresult(): number;
+	shim_controller_hresult(): number;
+
+	/**
+	 * Which thread each step ran on — `0` COM init, `1` environment call, `2` environment callback,
+	 * `3` controller call, `4` controller callback — plus the calling thread now. `UI_E_WRONG_THREAD`
+	 * (0x802A000C) is what a mismatch looks like, so these are the numbers that settle it.
+	 */
+	shim_thread_at(step: number): number;
+	shim_thread_id(): number;
 
 	/**
 	 * The handler object's ABI, read back the way Windows reads it: 1 when the object's first field

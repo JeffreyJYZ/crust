@@ -62,9 +62,10 @@ describe("what the unit imports", () => {
 
 	test("every Win32 entry point is a pointer, never a call to an unresolved symbol", () => {
 		const pointers = declaredPointers();
-		// 20 in all: 5 kernel32, 14 user32 and ole32's CoInitializeEx, plus the loader's
-		// LoadLibraryW. Each one is bound in `12_win32.c`; none is an `extern`.
-		expect(pointers.length).toBe(20);
+		// 23 in all: 6 kernel32 (MultiByteToWideChar, GetLastError, GetCurrentThreadId, Sleep,
+		// LoadLibraryW, GetModuleHandleW), 15 user32 and ole32's CoInitializeEx +
+		// CoGetApartmentType. Each one is bound in `12_win32.c`; none is an `extern`.
+		expect(pointers.length).toBe(23);
 		expect(pointers).toContain("CreateWindowExW");
 		expect(pointers).toContain("PeekMessageW");
 		expect(pointers).toContain("CoInitializeEx");

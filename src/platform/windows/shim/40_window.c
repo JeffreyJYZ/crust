@@ -43,3 +43,12 @@ int shim_window_client_num(shim_h hwnd, int component) {
 	if (component == 3) return rect[3] - rect[1];
 	return 0;
 }
+
+// The thread that owns a window. WebView2 objects are affine to a thread, so the controller call has to
+// happen on the window's own; comparing this with `shim_thread_id()` at the call is the affinity
+// question as a number rather than an argument.
+int shim_window_thread(shim_h hwnd) {
+	if (!hwnd || !GetWindowThreadProcessId) return 0;
+	return (int)GetWindowThreadProcessId(hwnd, 0);
+}
+

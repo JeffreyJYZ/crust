@@ -2,6 +2,9 @@
 // TypeScript calls these and never computes a slot index. The indices are named in `10_prelude.c`
 // beside the WebView2.h declaration order they were checked against, because a bare number here is
 // what made `Navigate` call `GetBrowserProcessId` (2026-11-16).
+//
+// Every vtable call returns `int`: HRESULT is 32 bits, and a function that returns 32 bits leaves the
+// top half of RAX undefined, so declaring `shim_i64` and sign-testing it reads garbage.
 
 typedef struct {
 	long left, top, right, bottom;
@@ -20,7 +23,7 @@ int wv2_put_bounds(void *ctrl, double w, double h) {
 	r.right = (long)w;
 	r.bottom = (long)h;
 	vt = *(void ***)ctrl;
-	((shim_i64 (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
+	((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
 	return 1;
 }
 
@@ -29,7 +32,7 @@ void wv2_controller_close(void *ctrl) {
 	void **vt;
 	if (!ctrl) return;
 	vt = *(void ***)ctrl;
-	((shim_i64 (*)(void *))vt[SHIM_SLOT_CONTROLLER_CLOSE])(ctrl);
+	((int (*)(void *))vt[SHIM_SLOT_CONTROLLER_CLOSE])(ctrl);
 }
 
 // ICoreWebView2 slot 5, `Navigate`. It was slot 37 — `GetBrowserProcessId`, whose second parameter
@@ -41,6 +44,5 @@ int wv2_navigate(void *web, const shim_wchar *url) {
 	void **vt;
 	if (!web || !url) return 0;
 	vt = *(void ***)web;
-	return (int)(((shim_i64 (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(
-	                 web, url) >= 0);
+	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(web, url) >= 0;
 }
