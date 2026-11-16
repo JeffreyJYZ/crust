@@ -4,10 +4,22 @@
  */
 
 import { createHash, type Hash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
+import { isZip, readArchive, type Archive } from "./updater-archive";
 import { fileNameFor, UpdaterAdapterError } from "./updater-args";
 import type { UpdaterAdapter } from "./updater-types";
 
@@ -66,6 +78,41 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 		async makeTempDir() {
 			return await mkdtemp(join(tmpdir(), "crust-update-"));
 		},
+		// Bun reads tar and no zip, and its tar extraction drops the unix mode, so a zip is read
+		// here. `readArchive` has already refused every escaping name, and the mode is applied so
+		// the bundle's executable stays executable.
+		async extractZip(archive) {
+			const bytes = new Uint8Array(await readFile(archive));
+			if (!isZip(bytes)) return undefined;
+			let parsed: Archive;
+			try {
+				parsed = readArchive(bytes);
+			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				throw new UpdaterAdapterError(
+					"invalid-archive",
+					`updater: the archive ${archive} ${reason}`,
+				);
+			}
+			const directory = await mkdtemp(join(tmpdir(), "crust-extract-"));
+			for (const entry of parsed.entries) {
+				const path = join(directory, entry.name);
+				if (entry.kind === "directory") {
+					// A directory the owner cannot traverse is not extractable, so the execute bits
+					// are forced on while the archive's group and other bits are kept.
+					await mkdir(path, { recursive: true, mode: (entry.mode || 0o755) | 0o700 });
+					continue;
+				}
+				await mkdir(dirname(path), { recursive: true });
+				if (entry.kind === "symlink") {
+					await symlink(entry.target ?? "", path);
+					continue;
+				}
+				const mode = entry.mode || 0o644;
+				await writeFile(path, entry.bytes ?? new Uint8Array(), { mode });
+			}
+			return { path: join(directory, parsed.root), entries: parsed.entries.length };
+		},
 		async isAppBundle(path) {
 			if (!path.endsWith(".app")) return false;
 			const info = await stat(path).catch(() => undefined);
@@ -74,13 +121,17 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 		// One rename on one volume is atomic, and the temp dir shares the boot volume with
 		// `/Applications`. A cross-volume EXDEV is a real install error, not a case to paper
 		// over with a copy that is no longer atomic.
+		// A symlink to this app's bundle is that bundle, so the swap lands on what the link
+		// resolves to: renaming the link itself leaves the real bundle stale and the update
+		// installed nowhere.
 		async replaceBundle(source, target, backup) {
 			await rm(backup, { recursive: true, force: true });
-			await rename(target, backup);
+			const real = await realpath(target).catch(() => target);
+			await rename(real, backup);
 			try {
-				await rename(source, target);
+				await rename(source, real);
 			} catch (error) {
-				await rename(backup, target).catch(() => undefined);
+				await rename(backup, real).catch(() => undefined);
 				throw error;
 			}
 		},

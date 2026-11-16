@@ -46,12 +46,38 @@ describe("events", () => {
 		await reader.close();
 	});
 
-	test("the stream needs a token too", async () => {
+	test("a GET with no Origin opens the stream, as WebKitGTK's EventSource sends none", async () => {
 		const bridge = start();
-		const response = await fetch(`${bridge.url}/_crust/events`, {
-			headers: { origin: ownOrigin(bridge) },
-		});
+		const response = await fetch(
+			`${bridge.url}/_crust/events?token=${encodeURIComponent(bridge.token)}`,
+		);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toContain("text/event-stream");
+
+		const reader = new SseReader(response.body as ReadableStream<Uint8Array>);
+		const ready = await reader.next();
+		expect(ready?.event).toBe("crust:ready");
+		expect(JSON.parse(ready?.data ?? "null")).toEqual({ port: bridge.port, protocol: 1 });
+		await reader.close();
+	});
+
+	test("a foreign Origin is still refused 403", async () => {
+		const bridge = start();
+		const response = await fetch(
+			`${bridge.url}/_crust/events?token=${encodeURIComponent(bridge.token)}`,
+			{ headers: { origin: "http://evil.example" } },
+		);
+		expect(response.status).toBe(403);
+		const body = await readJson(response);
+		expect(body.error.code).toBe("bad-origin");
+	});
+
+	test("the stream needs a token too, even with no Origin", async () => {
+		const bridge = start();
+		const response = await fetch(`${bridge.url}/_crust/events`);
 		expect(response.status).toBe(401);
+		const body = await readJson(response);
+		expect(body.error.code).toBe("unauthorized");
 	});
 });
 

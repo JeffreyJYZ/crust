@@ -12,11 +12,17 @@ shell: {
 
 `allow` names the programs a page may run: a bare name, or an absolute path. A relative path is refused, because it would resolve against a `cwd` the page supplies and so name different programs.
 
-The list is **canonicalised to absolute real paths** when the plugin is built, and a spawn resolves to a real path and is compared against that set. So a symlink borrowing an allowed name is refused, and the refusal names both forms: `"./echo" is not in the allow list ("./echo" resolves to /private/…/payload)`.
+The allow list decides **what** may run, as an absolute real path: it is canonicalised when the plugin is built, and a spawn resolves to a real path and is compared against that set. An allow-listed program runs wherever it lives, so `/opt/homebrew/bin/ffmpeg` needs no `cwdRoot` containing it. A basename no longer satisfies the list — a `/tmp/echo` a page planted is not `echo` — and a symlink borrowing an allowed name is refused, with the refusal naming both forms: `"./echo" is not in the allow list ("./echo" resolves to /private/…/payload)`.
 
-An absent `shell` section means an empty allowlist and every `spawn` is refused by name — the default is deny, never allow.
+`cwdRoot` decides **where** a `cwd` and a _relative_ program path may point, because a relative path means something only against a `cwd` the page supplies. Absent, it is the process working directory; a built app runs from `/`, so name it. Both the root and the `cwd` are realpath'd, so a symlinked `cwd` answers `cwd-not-allowed`.
 
-`cwdRoot` is the only directory a `cwd` or a path-form program may resolve inside. Absent, it is the process working directory; a built app runs from `/`, so name it. Both the root and the `cwd` are realpath'd, so a symlinked `cwd` answers `cwd-not-allowed` and a program that resolves through a symlink outside the root answers `program-outside-root`.
+| program form  | resolved by | then checked against                              |
+| ------------- | ----------- | ------------------------------------------------- |
+| bare name     | `Bun.which` | realpath, then the allow list                     |
+| absolute path | realpath    | the allow list — no containment check             |
+| relative path | the `cwd`   | containment on the real path, then the allow list |
+
+An absent `shell` section means an empty allowlist and every `spawn` is refused by name — the default is deny, never allow. A bare name the app's PATH cannot resolve is dropped at construction: the app still starts, the name is absent from the `(allowed: …)` part of a refusal, and spawning it answers `spawn-failed: "<name>" is not on PATH`.
 
 Config validation **warns** when an entry is an interpreter — `sh`, `bash`, `zsh`, `node`, `bun`, `deno`, `python*`, `perl*`, `ruby*`, `osascript`, `pwsh`, `Rscript` and the rest. Allowing one lets a page run any program and read any file this app can reach, so the allow list stops bounding what runs. It warns rather than refuses, because an app may genuinely need one.
 
@@ -81,14 +87,14 @@ Nothing here makes `spawn` unusable. An allowed program with no `env` runs exact
 
 ## Failure codes
 
-| code                   | when                                                                                                            |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `invalid-args`         | `program` empty or not a string, `args` not an array of strings, `env` not an object of strings, or no `{ id }` |
-| `program-not-allowed`  | the spawn's resolved real path is not in `allow`; the message names both the argument and what it resolved to   |
-| `program-outside-root` | a path-form program resolves outside `cwdRoot`                                                                  |
-| `cwd-not-allowed`      | `cwd` resolves outside `cwdRoot`, through a symlink, or to a path that does not exist                           |
-| `env-not-allowed`      | `env` supplied without the host's `{ env: true }`, or a refused name inside it                                  |
-| `spawn-failed`         | the program was allowed and still would not start                                                               |
-| `unknown-process`      | no live or kept record with that id                                                                             |
+| code                   | when                                                                                                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-args`         | `program` empty or not a string, `args` not an array of strings, `env` not an object of strings, or no `{ id }`                                                        |
+| `program-not-allowed`  | the resolved real path is not in `allow` — bare names go through `Bun.which`, path forms through realpath; the message names both the argument and what it resolved to |
+| `program-outside-root` | a **relative** program path resolved outside `cwdRoot`; an absolute path is never containment-checked                                                                  |
+| `cwd-not-allowed`      | `cwd` resolves outside `cwdRoot`, through a symlink, or to a path that does not exist                                                                                  |
+| `env-not-allowed`      | `env` supplied without the host's `{ env: true }`, or a refused name inside it                                                                                         |
+| `spawn-failed`         | a bare name the app's PATH cannot resolve (`"<name>" is not on PATH`), an absolute path that does not exist, or a program that was allowed and still would not start   |
+| `unknown-process`      | no live or kept record with that id                                                                                                                                    |
 
 Every one is a 200 with `{ ok: false, code, message }`, and the refusal happens before any process exists: `program-not-allowed` means nothing was started.

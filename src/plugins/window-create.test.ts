@@ -20,9 +20,9 @@ describe("window.create", () => {
 				height: 280,
 			}),
 		).toEqual({ ok: true, label: "prefs", created: true });
-		// The URL carries the new window's identity: a query-only reference, which the adapter
-		// resolves against the document the app is already on.
-		expect(adapter.calls).toEqual(["create:prefs:420x280:Preferences:?window=prefs"]);
+		// The URL carries the new window's identity: absent means the app's own document,
+		// `/`, resolved by the adapter against the window's document, with the label on it.
+		expect(adapter.calls).toEqual(["create:prefs:420x280:Preferences:/?window=prefs"]);
 
 		expect(plugin.commands.list()).toEqual({ ok: true, labels: ["main", "prefs"] });
 		expect(plugin.commands.isOpen({ label: "prefs" })).toEqual({

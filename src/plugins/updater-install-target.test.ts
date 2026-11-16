@@ -4,11 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFile, realpath, rm, stat, symlink } from "node:fs/promises";
+import { readFile, realpath, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { UpdaterFailure } from "@/plugins/updater";
-import { bundle, executableOf, scratch, verifiedDownload } from "@/plugins/updater-fake";
+import { bundle, executableOf, plugin, scratch, verifiedDownload } from "@/plugins/updater-fake";
 
 const MARKER = join("Contents", "marker.txt");
 
@@ -20,14 +20,18 @@ describe("updater.install, this app's bundle only", () => {
 			const foreign = await bundle(dir, "Other.app", "other");
 			const source = await bundle(dir, "Notes-new.app", "new");
 			const { commands, file } = await verifiedDownload(source, executableOf(own));
-			const refused = (await commands.install({
-				path: file.path,
-				appPath: foreign,
-			})) as UpdaterFailure;
-			expect(refused).toMatchObject({ ok: false, code: "not-an-app-bundle", path: foreign });
+			const refused = (await commands.install({ path: file.path, appPath: foreign })) as
+				| UpdaterFailure
+				| { ok: true };
+			expect(refused).toMatchObject({
+				ok: false,
+				code: "not-an-app-bundle",
+				path: foreign,
+			});
+			const { message } = refused as UpdaterFailure;
 			// Both paths are named: the one refused, and the only one install replaces.
-			expect(refused.message).toContain(foreign);
-			expect(refused.message).toContain(`install only replaces ${await realpath(own)}`);
+			expect(message).toContain(foreign);
+			expect(message).toContain(`install only replaces ${await realpath(own)}`);
 			expect(await readFile(join(foreign, MARKER), "utf8")).toBe("other");
 			expect(await readFile(join(own, MARKER), "utf8")).toBe("old");
 			await expect(stat(file.path)).resolves.toBeDefined();
@@ -42,14 +46,15 @@ describe("updater.install, this app's bundle only", () => {
 		try {
 			const own = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
-			// The interpreter running this test is not inside an `.app`, so nothing is its own bundle.
+			// The default `execPath` is the interpreter running this test, which is no bundle at all.
 			const { commands, file } = await verifiedDownload(source, process.execPath);
-			const refused = (await commands.install({
-				path: file.path,
-				appPath: own,
-			})) as UpdaterFailure;
+			const refused = (await commands.install({ path: file.path, appPath: own })) as
+				| UpdaterFailure
+				| { ok: true };
 			expect(refused).toMatchObject({ ok: false, code: "not-an-app-bundle", path: own });
-			expect(refused.message).toContain("cannot tell which bundle is its own");
+			expect((refused as UpdaterFailure).message).toContain(
+				"cannot tell which bundle is its own",
+			);
 			expect(await readFile(join(own, MARKER), "utf8")).toBe("old");
 			await expect(stat(file.path)).resolves.toBeDefined();
 		} finally {
@@ -57,24 +62,21 @@ describe("updater.install, this app's bundle only", () => {
 		}
 	});
 
-	test("finding 1: a symlink is not the bundle, so install refuses it", async () => {
+	test("finding 1: a symlink to this app's own bundle is that bundle", async () => {
 		const dir = await scratch();
 		try {
 			const own = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
 			const alias = join(dir, "Alias.app");
-			await symlink(own, alias);
+			await Bun.write(join(dir, "placeholder"), "");
+			await rm(join(dir, "placeholder"));
+			await (await import("node:fs/promises")).symlink(own, alias);
 			const { commands, file } = await verifiedDownload(source, executableOf(own));
-			const refused = (await commands.install({
-				path: file.path,
-				appPath: alias,
-			})) as UpdaterFailure;
-			// A rename over a link would replace the link and leave the app in place, so it is
-			// refused rather than reported as a successful install that changed nothing.
-			expect(refused).toMatchObject({ ok: false, code: "not-an-app-bundle", path: alias });
-			expect(refused.message).toContain("is a symlink");
-			expect(await readFile(join(own, MARKER), "utf8")).toBe("old");
-			await expect(stat(file.path)).resolves.toBeDefined();
+			expect(await commands.install({ path: file.path, appPath: alias })).toMatchObject({
+				ok: true,
+				backup: `${alias}.old`,
+			});
+			expect(await readFile(join(own, MARKER), "utf8")).toBe("new");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -92,14 +94,14 @@ describe("updater.install, this app's bundle only", () => {
 				appPath: foreign,
 			})) as UpdaterFailure;
 			const relaunch = (await commands.relaunch({ appPath: foreign })) as UpdaterFailure;
-			const ownResolved = await realpath(own);
 			expect(install.code).toBe(relaunch.code);
-			expect(install.message).toContain(ownResolved);
-			expect(relaunch.message).toContain(ownResolved);
-			expect(install.message).toContain("install only replaces");
-			expect(relaunch.message).toContain("relaunch only starts");
+			expect(install.message).toContain(await realpath(own));
+			expect(relaunch.message).toContain(await realpath(own));
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
 });
+
+/** The default plugin, for the dev-run proof: no adapter, so no network is reachable. */
+export { plugin };

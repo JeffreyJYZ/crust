@@ -25,3 +25,6 @@ cat /tmp/vite3.out
 kill -TERM $pid 2>/dev/null
 wait $pid
 pkill -f examples/vite 2>/dev/null
+
+# Every crust launch activates its app, so hand focus back to the terminal.
+open -a Ghostty 2>/dev/null || true

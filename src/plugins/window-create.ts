@@ -46,10 +46,10 @@ export function createWindowCommand(
 	// untouched; a page that wants an identity on one appends `?window=` itself.
 	const url = parsed.options.url;
 	const own = url === undefined || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
-	// An empty base answers a query-only reference (`?window=prefs`), which the adapter resolves
-	// against the document the app is already on — the path it was opened at, query kept.
+	// Absent still means the app's own document, `/`: a relative reference the adapter resolves
+	// against the window's document. A query on it changes neither the origin nor the path.
 	const options: WindowCreateOptions = own
-		? { ...parsed.options, url: withWindowLabel(url ?? "", parsed.options.label) }
+		? { ...parsed.options, url: withWindowLabel(url ?? "/", parsed.options.label) }
 		: parsed.options;
 	// Only the adapter can tell a closed-but-tracked label from a free
 	// one; this check covers what `list` reports, and the adapter throws

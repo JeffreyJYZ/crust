@@ -59,11 +59,14 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 	switch (process.platform) {
 		case "darwin": {
 			const darwin = await import("@/platform/darwin");
-			return darwin.createPlatform({ appName: config.app.name });
+			return darwin.createPlatform({
+				appName: config.app.name,
+				activate: config.app.activate,
+			});
 		}
 		case "linux": {
 			// The whole config, because the Linux platform reads the window list;
-			// darwin takes only the name.
+			// darwin takes the name and the `app.activate` policy.
 			const linux = await import("@/platform/linux");
 			return linux.createPlatform(config);
 		}
@@ -88,7 +91,7 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
  */
 export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPlatform> {
 	const darwin = await import("@/platform/darwin");
-	return darwin.createPlatform({ appName: config.app.name });
+	return darwin.createPlatform({ appName: config.app.name, activate: config.app.activate });
 }
 
 /** Wake every listener of one event, in order, awaiting each. */

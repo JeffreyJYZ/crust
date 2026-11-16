@@ -33,9 +33,9 @@ export function windowLabelFromSearch(search: string): string | undefined {
  * byte-exact — an app that opened its window with its own `window=` parameter said what it wants.
  *
  * The existing query is kept verbatim rather than re-encoded, because a URL the app configured is
- * the app's to define. An empty `url` means "this document, with a label": it answers a
- * query-only relative reference (`?window=prefs`), which resolves against the document the window
- * is already on, so a runtime-created window keeps the path it was opened at.
+ * the app's to define. The reference stays a *path* reference, never a query-only one: a query on
+ * `child/relative` resolves to the same path a browser would have loaded without it, so the label
+ * rides along without moving the document.
  */
 export function withWindowLabel(url: string, label: string): string {
 	const hashAt = url.indexOf("#");

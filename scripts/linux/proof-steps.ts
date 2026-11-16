@@ -78,7 +78,10 @@ export async function jsStep(shim: LinuxProofShim, web: bigint): Promise<Step> {
 	pageError: string,
 ): Promise<Step> {
 	if (page === undefined)
-		return { ok: false, detail: `NOT PROVEN — the bridge could not start: ${pageError}` };
+		return {
+			ok: false,
+			detail: `NOT PROVEN — the bridge could not start: ${pageError}`,
+		};
 	await evaluate(shim, web, invokeScript(), EVAL_MS);
 	let held = "";
 	for (let poll = 0; poll < INVOKE_POLLS; poll++) {
@@ -111,7 +114,13 @@ export async function failureStep(shim: LinuxProofShim): Promise<Step> {
 	const settled = await waitFor(() => shim.shim_webview_load_state() === LOAD_FAILED, LOAD_MS);
 	const state = shim.shim_webview_load_state();
 	if (!settled)
-		return { ok: false, detail: `no load-failed within ${LOAD_MS} ms (state ${state})` };
+		return {
+			ok: false,
+			detail: `no load-failed within ${LOAD_MS} ms (state ${state})`,
+		};
 	const text = shim.shim_webview_load_text() ?? "";
-	return { ok: text.length > 0, detail: `load-failed reported: ${text || "(no message)"}` };
+	return {
+		ok: text.length > 0,
+		detail: `load-failed reported: ${text || "(no message)"}`,
+	};
 }

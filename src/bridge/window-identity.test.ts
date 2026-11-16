@@ -36,8 +36,16 @@ describe("withWindowLabel", () => {
 		);
 	});
 
-	test("an empty base is a query-only reference: this document, with a label", () => {
-		expect(withWindowLabel("", "prefs")).toBe("?window=prefs");
+	test("a relative path keeps its own path: the query never moves the document", () => {
+		// The e2e case: `child/relative` resolves against `/spare/idle.html`, so it must
+		// land on `/spare/child/relative` with the label, not on the base document.
+		expect(withWindowLabel("child/relative", "relative")).toBe(
+			"child/relative?window=relative",
+		);
+		expect(
+			new URL(withWindowLabel("child/relative", "relative"), "http://h/spare/idle.html")
+				.pathname,
+		).toBe("/spare/child/relative");
 	});
 
 	test("a label is encoded, and reads back unchanged", () => {

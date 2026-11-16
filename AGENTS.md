@@ -59,6 +59,14 @@ A green gate is the only proof a landing is safe.
 - WebKitGTK follows `load-failed` with `FINISHED`, so the shim keeps a failure sticky until the next
   `STARTED`; a refused connection never emits `load-failed` at all — it commits WebKit's own error page
   and finishes, so only a real load error proves that path (2026-11-16).
+- A `WKURLSchemeHandler` cannot fetch its own scheme with `+[NSData dataWithContentsOfURL:]` — that
+  answers nil for a scheme it does not know, so the bytes must come from the rule; a `fetch` from the
+  bridge origin also needs `Access-Control-Allow-Origin`, and `<img>` is refused on a custom scheme
+  while `<script src>` and `fetch` work (measured 2026-11-16).
+- WebKitGTK's `EventSource` sends **no `Origin` header** on a same-origin GET, so an origin gate that
+  refuses a null `Origin` kills the whole event stream on Linux while the POST invoke path keeps
+  working — the token is the credential, and a cross-origin page always sends `Origin` (measured
+  2026-11-16).
 - **Crash reports are in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones
   under `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with
   `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence.
@@ -76,6 +84,12 @@ A green gate is the only proof a landing is safe.
 - **After a probe that launches or activates a GUI app, hand focus back to Ghostty**
   (`open -a Ghostty`) — otherwise the human is left looking at a test window. Capture before touching
   the shell: a screenshot taken after a command shows the terminal, not the app.
+- **Every crust launch now activates**, because the accessibility fix sends `-activateIgnoringOtherApps:`
+  when the app is not already active — so a probe steals focus where it used to steal nothing, and any
+  harness that launches a built app must hand focus back when the run ends (2026-11-16).
+- **`process.exit()` does not run a `finally`** — a harness tail shaped `try { process.exit(await main()) }`
+  never reaches its cleanup, so the restore has to be `let code … finally { await restoreFocus() }`
+  then `process.exit(code)` (measured 2026-11-16).
 - **Say so before anything that takes focus, moves a window or asks for a physical click** — their
   screen is theirs. A performed click they reported outranks a missing log line, because
   instrumentation may predate the log file.

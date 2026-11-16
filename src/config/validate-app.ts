@@ -1,6 +1,7 @@
+import { validateActivate } from "./validate-activate.ts";
 import type { Validator } from "./validator.ts";
 
-export const APP_KEYS = ["id", "name", "version", "icon"] as const;
+export const APP_KEYS = ["id", "name", "version", "icon", "activate"] as const;
 
 export function validateApp(v: Validator, value: unknown): void {
 	const app = v.object("app", value);
@@ -10,4 +11,5 @@ export function validateApp(v: Validator, value: unknown): void {
 	v.string(app, "name", "app", true);
 	v.string(app, "version", "app", true);
 	v.string(app, "icon", "app", false);
+	validateActivate(v, app);
 }

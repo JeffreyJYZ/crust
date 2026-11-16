@@ -7,7 +7,14 @@
 
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { clearSurvivors, probe, runCommand, survivorsOf, Verdict } from "./e2e-harness.ts";
+import {
+	clearSurvivors,
+	probe,
+	restoreFocus,
+	runCommand,
+	survivorsOf,
+	Verdict,
+} from "./e2e-harness.ts";
 import { PATTERNS, RESTORED, SUMMARY } from "./e2e-parity-patterns.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -140,10 +147,15 @@ async function main(): Promise<number> {
 	return verdict.report("e2e:parity");
 }
 
+let code: number;
 try {
-	process.exit(await main());
+	code = await main();
 } catch (error) {
 	await clearSurvivors(BINARY).catch(() => undefined);
 	console.log(`e2e:parity: FAIL  ${error instanceof Error ? error.message : String(error)}`);
-	process.exit(1);
+	code = 1;
+} finally {
+	// Before the exit, because `process.exit` does not run a `finally`.
+	await restoreFocus();
 }
+process.exit(code);

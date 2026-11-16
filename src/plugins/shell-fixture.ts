@@ -22,6 +22,15 @@ export const ALLOW = ["cat", "echo", "printenv", "sleep", "tool", "crust-no-such
 
 export type Seen = Array<{ event: string; data: ShellLine }>;
 
+/**
+ * The code and message of a refusal; fails the test if the payload was accepted.
+ * Shared by the suites so neither re-implements the narrowing of `SpawnOutcome`.
+ */
+export function refusal(outcome: SpawnOutcome): { code: string; message: string } {
+	if (outcome.ok) throw new Error(`expected a refusal, got process ${outcome.id}`);
+	return { code: outcome.code, message: outcome.message };
+}
+
 export interface ShellHarness {
 	plugin: PluginDefinition<"shell", ShellCommands>;
 	root: string;

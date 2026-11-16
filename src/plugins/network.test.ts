@@ -1,59 +1,19 @@
 /**
- * `crust:network` proofs that need no WebKit. Every test injects a fake adapter, so nothing here
- * registers a scheme handler or fetches a URL.
- * What is proven is the contract: a rule set is validated before it is stored, the first match wins,
- * every intercepted request is logged and emitted, and the log stays bounded.
+ * `crust:network` proofs that need no WebKit: the registration, the rule table and the log. Every
+ * test injects the fake adapter, so nothing here registers a scheme handler.
+ * The bytes a rule carries are `network-body.test.ts`; this file is the contract around them.
  */
 
 import { describe, expect, test } from "bun:test";
 
-import { isNotImplemented, type NotImplemented } from "@/plugins/define.ts";
+import { fakeNetwork, ok, recorder } from "@/plugins/network-fake.ts";
+import { isNotImplemented } from "@/plugins/define.ts";
 import {
 	createNetworkPlugin,
 	NETWORK_LOG_LIMIT,
 	NETWORK_SCHEME,
-	type NetworkAction,
-	type NetworkAdapter,
-	type NetworkInstall,
 	networkPlugin,
 } from "@/plugins/network.ts";
-
-/** A result the test knows landed: a `NotImplemented` becomes a failure with its own message. */
-function ok<T>(value: T | NotImplemented): T {
-	if (isNotImplemented(value)) throw new Error(`not-implemented: ${value.message}`);
-	return value;
-}
-
-interface FakeNetwork {
-	adapter: NetworkAdapter;
-	/** The scheme each install was asked for. */
-	schemes: string[];
-	/** Ask the rule set the way WebKit's handler does. */
-	decide: (url: string) => NetworkAction | undefined;
-}
-
-function fakeNetwork(install: NetworkInstall = { ok: true, reason: "registered" }): FakeNetwork {
-	const schemes: string[] = [];
-	let decide: ((url: string) => NetworkAction) | undefined;
-	const adapter: NetworkAdapter = {
-		install(scheme, handler) {
-			schemes.push(scheme);
-			decide = handler;
-			return install;
-		},
-	};
-	return { adapter, schemes, decide: (url) => decide?.(url) };
-}
-
-interface Recorder {
-	events: { event: string; data: unknown }[];
-	ctx: { emit: (event: string, data: unknown) => void };
-}
-
-function recorder(): Recorder {
-	const events: { event: string; data: unknown }[] = [];
-	return { events, ctx: { emit: (event, data) => events.push({ event, data }) } };
-}
 
 describe("network plugin", () => {
 	test("not-implemented without an adapter, naming WKURLSchemeHandler", async () => {
@@ -104,7 +64,7 @@ describe("network plugin", () => {
 		const plugin = createNetworkPlugin(adapter);
 		const rules = [
 			{ pattern: "https://ads.example/*", action: "block" as const },
-			{ pattern: "*", action: "allow" as const },
+			{ pattern: "*", action: "allow" as const, body: "hello" },
 		];
 		expect(ok(await plugin.commands.setRules({ rules }, ctx)).rules).toEqual(rules);
 		expect(ok(await plugin.commands.rules({}, ctx)).rules).toEqual(rules);
@@ -122,7 +82,17 @@ describe("network plugin", () => {
 		expect(ok(await plugin.commands.rules({}, ctx)).rules).toEqual(rules);
 	});
 
-	test("the first match wins and no match allows", async () => {
+	test("a pattern too long or with too many stars is bad-request, not a slow match", async () => {
+		const { adapter } = fakeNetwork();
+		const plugin = createNetworkPlugin(adapter);
+		for (const pattern of ["a".repeat(2049), `${"*a".repeat(40)}*`]) {
+			await expect(
+				plugin.commands.setRules({ rules: [{ pattern, action: "block" }] }, recorder().ctx),
+			).rejects.toMatchObject({ code: "bad-request" });
+		}
+	});
+
+	test("the first match wins, and no match allows", async () => {
 		const { adapter, decide } = fakeNetwork();
 		const plugin = createNetworkPlugin(adapter);
 		ok(
@@ -136,37 +106,22 @@ describe("network plugin", () => {
 				recorder().ctx,
 			),
 		);
-		expect(decide("crust-net://allowed/a")).toBe("allow");
-		expect(decide("crust-net://other/b")).toBe("block");
+		expect(decide("crust-net://allowed/a")?.action).toBe("allow");
+		expect(decide("crust-net://other/b")?.action).toBe("block");
 	});
 
-	test("each intercepted request is logged and emitted with its status", async () => {
+	test("case folding follows the platform, so a block rule cannot be dodged by case", async () => {
 		const { adapter, decide } = fakeNetwork();
-		const { events, ctx } = recorder();
-		const plugin = createNetworkPlugin(adapter);
+		const plugin = createNetworkPlugin(adapter, { caseInsensitive: true });
 		ok(
 			await plugin.commands.setRules(
-				{ rules: [{ pattern: "https://ads.example/*", action: "block" }] },
-				ctx,
+				{ rules: [{ pattern: "crust-net://app/etc/hosts", action: "block" }] },
+				recorder().ctx,
 			),
 		);
-
-		expect(decide("https://ads.example/x")).toBe("block");
-		expect(decide("https://crust.dev/y")).toBe("allow");
-		expect(events).toEqual([
-			{
-				event: "network:request",
-				data: { url: "https://ads.example/x", action: "block", status: "blocked" },
-			},
-			{
-				event: "network:request",
-				data: { url: "https://crust.dev/y", action: "allow", status: "served" },
-			},
-		]);
-		expect(ok(await plugin.commands.log({}, ctx)).entries).toEqual([
-			{ url: "https://ads.example/x", action: "block", status: "blocked" },
-			{ url: "https://crust.dev/y", action: "allow", status: "served" },
-		]);
+		expect(decide("crust-net://app/ETC/HOSTS")?.action).toBe("block");
+		expect(decide("crust-net://APP/Etc/Hosts")?.action).toBe("block");
+		expect(decide("crust-net://app/other")?.action).toBe("allow");
 	});
 
 	test("the log keeps the last NETWORK_LOG_LIMIT entries and clearLog empties it", async () => {

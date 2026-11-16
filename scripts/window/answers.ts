@@ -52,33 +52,42 @@ export function sameLabels(answer: PageAnswer | undefined, expected: readonly st
 
 /** The origin of an absolute URL, or undefined when it is not one. */
 export function originOf(href: string): string | undefined {
+	return urlOf(href)?.origin;
+}
+
+/** The page's own URL, parsed; undefined when it is not one. */
+export function urlOf(href: string): URL | undefined {
 	try {
-		return new URL(href).origin;
+		return new URL(href);
 	} catch {
 		return undefined;
 	}
 }
 
 /**
- * What a created window's own page reported: the document it loaded, and the
- * answer its own `invoke` got. Absent means that page never ran, which is the
- * first thing the child checks fail on.
+ * What a created window's own page reported: the document it loaded, the answer its own `invoke`
+ * got, and the identity it carries. Absent means that page never ran, which is the first thing the
+ * child checks fail on.
  */
 export interface ChildReport {
 	href: string;
 	open?: PageAnswer;
+	/** The child's own `window.label` answer: the identity its document URL carried. */
+	label?: PageAnswer;
 }
 
 export function childReport(answer: PageAnswer | undefined): ChildReport | undefined {
 	// `resolved` already unwraps the answer's `value`, which is the object the
-	// child page built: `{ href, open }`.
+	// child page built: `{ href, open, label }`.
 	const value = resolved(answer);
 	if (typeof value !== "object" || value === null) return undefined;
-	const bag = value as { href?: unknown; open?: unknown };
+	const bag = value as { href?: unknown; open?: unknown; label?: unknown };
 	if (typeof bag.href !== "string") return undefined;
 	const open =
 		typeof bag.open === "object" && bag.open !== null ? (bag.open as PageAnswer) : undefined;
-	return { href: bag.href, open };
+	const label =
+		typeof bag.label === "object" && bag.label !== null ? (bag.label as PageAnswer) : undefined;
+	return { href: bag.href, open, label };
 }
 
 /**

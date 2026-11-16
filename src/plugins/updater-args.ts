@@ -9,6 +9,7 @@ export type UpdaterErrorCode =
 	| "check-failed"
 	| "bad-manifest"
 	| "download-failed"
+	| "invalid-archive"
 	| "hash-mismatch"
 	| "signature-mismatch"
 	| "install-failed"

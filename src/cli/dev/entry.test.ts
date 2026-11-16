@@ -84,9 +84,14 @@ describe("devEntrySource", () => {
 
 		const registerLine = (source: string): string | undefined =>
 			source.split("\n").find((row) => row.startsWith("registry.register("));
-		// The extension-loading lines, not every `import`: both entries now load them dynamically.
+		// The extension-loader lines by the shape `extensionEntrySource` generates, not by a path
+		// substring: the registry module lives under `extensions/` too, so a dynamic import of it
+		// would otherwise count as a loader, and an absolute extension path outside `extensions/`
+		// would not count at all. The count assertion below keeps the comparison from going vacuous.
 		const loaderLines = (source: string): string[] =>
-			source.split("\n").filter((row) => row.includes("(await import("));
+			source
+				.split("\n")
+				.filter((row) => /^\tconst extension\d+ = \(await import\(/.test(row));
 
 		expect(registerLine(dev)).toBe("registry.register(...(await extensionPlugins()));");
 		expect(registerLine(dev)).toBe(registerLine(build));

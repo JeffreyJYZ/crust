@@ -1,11 +1,10 @@
-// --- network: a WKURLSchemeHandler built at runtime -------------------------
-// Compiled alone by platform/darwin/network.ts, never joined into the window shim. The shim's
-// four rules hold — one fixed prototype per objc_msgSend, no framework header, no object and no
-// struct across bun:ffi, and every string built from bytes on this side.
-// The handler is one runtime class whose two IMPs are C; the rule decision is a JSCallback that
-// answers 1 (allow) or 0 (block). A blocked task gets a real NSError, never an empty body, and an
-// allowed one is fetched and delivered here, because WebKit's scheme handler has no pass-through
-// and no asynchronous path that avoids a block.
+// --- network: a WKURLSchemeHandler built at runtime, part one --------------
+// Compiled alone by platform/darwin/network.ts (with `113_network_serve.c` as ONE translation
+// unit), never joined into the window shim. The shim's four rules hold — one fixed prototype per
+// objc_msgSend, no framework header, no object and no struct across bun:ffi, and every string
+// built from bytes on this side.
+// This part is the handler class, the decision and the registration; the byte serving is in
+// `113_network_serve.c`, which shares this part's statics because the two compile as one unit.
 
 typedef void *obj_t;
 
@@ -25,8 +24,19 @@ extern int class_addMethod(void *cls, void *name, void *imp, const char *types);
 static obj_t net_handler_class;
 static obj_t net_handler;
 static void *net_decide;
+static void *net_fill;
 static char net_text[NET_TEXT];
 static int net_registered;
+
+// Defined in `113_network_serve.c`: answer one allowed task with the bytes JavaScript filled.
+static int net_serve(obj_t task, obj_t url);
+
+static long net_len(const char *text) {
+	long i = 0;
+	if (text)
+		while (text[i]) i++;
+	return i;
+}
 
 static void net_copy(const char *text) {
 	long i = 0;
@@ -69,12 +79,9 @@ static void net_fail(obj_t task, long long code) {
 
 // webView:startURLSchemeTask: — the whole interception surface.
 static void net_start(void *self, void *cmd, obj_t web, obj_t task) {
-	obj_t request, url, text, data, response, mime;
-	long long length;
+	obj_t request, url, text;
 	int allow;
-	(void)self;
-	(void)cmd;
-	(void)web;
+	(void)self; (void)cmd; (void)web;
 	request = ((obj_t (*)(void *, void *))objc_msgSend)(task, sel_registerName("request"));
 	url = request ? ((obj_t (*)(void *, void *))objc_msgSend)(request, sel_registerName("URL")) : 0;
 	if (!url) {
@@ -88,55 +95,39 @@ static void net_start(void *self, void *cmd, obj_t web, obj_t task) {
 		net_fail(task, NET_CANCELLED);
 		return;
 	}
-	// Synchronous on purpose: this handler has no completion block to resume from, and a block
-	// cannot be built here. The fetch is the honest cost of an allowed request.
-	data = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(objc_getClass("NSData"),
-	                                                       sel_registerName("dataWithContentsOfURL:"),
-	                                                       url);
-	if (!data) {
-		net_fail(task, NET_BAD_RESPONSE);
-		return;
-	}
-	length = (long long)((unsigned long (*)(void *, void *))objc_msgSend)(data,
-	                                                                     sel_registerName("length"));
-	mime = net_nsstring("application/octet-stream", 24);
-	response = ((obj_t (*)(void *, void *, obj_t, obj_t, long long, obj_t))objc_msgSend)(
-	    ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSURLResponse"),
-	                                              sel_registerName("alloc")),
-	    sel_registerName("initWithURL:MIMEType:expectedContentLength:textEncodingName:"), url, mime,
-	    length, 0);
-	if (!response) {
-		net_fail(task, NET_BAD_RESPONSE);
-		return;
-	}
-	((void (*)(void *, void *, obj_t))objc_msgSend)(task, sel_registerName("didReceiveResponse:"),
-	                                                response);
-	((void (*)(void *, void *, obj_t))objc_msgSend)(task, sel_registerName("didReceiveData:"), data);
-	((void (*)(void *, void *))objc_msgSend)(task, sel_registerName("didFinish"));
+	if (!net_serve(task, url)) net_fail(task, NET_BAD_RESPONSE);
 }
 
 // Every answer is sent from inside -startURLSchemeTask:, so a stopped task has nothing to undo.
 static void net_stop(void *self, void *cmd, obj_t web, obj_t task) {
-	(void)self;
-	(void)cmd;
-	(void)web;
-	(void)task;
+	(void)self; (void)cmd; (void)web; (void)task;
 }
 
 int net_abi(void) {
 	return objc_getClass("NSObject") && objc_getClass("WKWebViewConfiguration") ? 1 : 0;
 }
 
-const char *net_url(void) { return net_text; }
+// The URL the current decision is about, as a byte range: a cstring return is refused by bun:ffi.
+int net_url(char *dst, int cap) {
+	int i = 0;
+	if (!dst || cap <= 0) return -1;
+	while (net_text[i] && i < cap - 1) {
+		dst[i] = net_text[i];
+		i++;
+	}
+	dst[i] = 0;
+	return i;
+}
 
 int net_installed(void) { return net_registered; }
 
 // Register on a configuration no webview has used yet: WebKit raises for a used one, and a raised
 // exception is a SIGABRT with no JavaScript error, so the caller owns that precondition.
-int net_install(obj_t configuration, const char *bytes, long len, void *decide) {
+int net_install(obj_t configuration, const char *bytes, long len, void *decide, void *fill) {
 	obj_t super, scheme;
-	if (!configuration || !decide) return 0;
+	if (!configuration || !decide || !fill) return 0;
 	net_decide = decide;
+	net_fill = fill;
 	if (!net_handler) {
 		super = objc_getClass("NSObject");
 		if (!super) return 0;

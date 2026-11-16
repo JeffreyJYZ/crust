@@ -4,7 +4,7 @@
  * recipient does not have. The imports are dynamic and live inside a function, because a compiled
  * app re-runs its own executable as the crash guard: a static `import extension0 from "…"` would
  * evaluate the extension's module body on that launch, while a function body runs only at the
- * `registry.register` line, which is the one place a guard has already been ruled out.
+ * `registry.register` line, never while the entry itself is being evaluated.
  */
 
 import { isAbsolute, resolve } from "node:path";

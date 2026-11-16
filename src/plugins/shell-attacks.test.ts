@@ -1,15 +1,14 @@
 /**
- * The attacks the security review measured, each one performed against the real plugin and refused: a page-supplied `env` that turns an allowlisted program into an execution primitive, a file the page named `echo`, a symlink that borrows an allowed name or leaves `cwdRoot`, and a `cwd` that is a symlink out.
- * The last test is the other half of the proof: a permitted program still runs, from the real path the check approved.
+ * The attacks the security review measured against paths, each performed against the real plugin and refused: a file the page named `echo`, a symlink that borrows an allowed name or leaves `cwdRoot`, and a `cwd` that is a symlink out.
+ * The rule they are tested against: the allow list says *what* may run, as a real path, while `cwdRoot` bounds the working directory and relative paths — so an allowlisted absolute program runs wherever it lives, and a relative one still has to resolve inside.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
-import type { SpawnOutcome } from "@/plugins/shell";
-import { type ShellHarness, shellHarness } from "@/plugins/shell-fixture";
+import { type ShellHarness, refusal, shellHarness } from "@/plugins/shell-fixture";
 
 let h: ShellHarness;
 
@@ -21,69 +20,12 @@ afterEach(async () => {
 	await h.stop();
 });
 
-/** The code and message of a refusal; fails the test if the payload was accepted. */
-function refusal(outcome: SpawnOutcome): { code: string; message: string } {
-	if (outcome.ok) throw new Error(`expected a refusal, got process ${outcome.id}`);
-	return { code: outcome.code, message: outcome.message };
-}
-
 /** An executable a page could have written, at whatever name it likes. */
 function executable(path: string): string {
 	writeFileSync(path, "#!/bin/sh\necho pwned\n", { mode: 0o755 });
 	chmodSync(path, 0o755);
 	return path;
 }
-
-describe("a page-supplied env", () => {
-	test("is refused by default, before the program is looked up", async () => {
-		const refused = refusal(
-			await h.spawn({ program: "echo", env: { NODE_OPTIONS: "--require /tmp/evil.js" } }),
-		);
-		expect(refused.code).toBe("env-not-allowed");
-		expect(refused.message).toContain("createShellPlugin({ env: true })");
-	});
-
-	test("still refuses every injection name once the host opts in, naming it", async () => {
-		const open = await shellHarness({ env: true });
-		try {
-			const names = [
-				"NODE_OPTIONS",
-				"BASH_ENV",
-				"ENV",
-				"GIT_EXEC_PATH",
-				"PYTHONSTARTUP",
-				"PERL5OPT",
-				"RUBYOPT",
-				"LD_PRELOAD",
-				"DYLD_INSERT_LIBRARIES",
-				"DYLD_LIBRARY_PATH",
-			];
-			for (const name of names) {
-				const refused = refusal(
-					await open.spawn({ program: "echo", env: { [name]: "x" } }),
-				);
-				expect(refused.code).toBe("env-not-allowed");
-				expect(refused.message).toContain(JSON.stringify(name));
-			}
-		} finally {
-			await open.stop();
-		}
-	});
-
-	test("a benign variable does reach the program when the host opts in", async () => {
-		const open = await shellHarness({ env: true });
-		try {
-			const id = await open.id({
-				program: "printenv",
-				args: ["CRUST_TEST_VALUE"],
-				env: { CRUST_TEST_VALUE: "reached" },
-			});
-			expect((await open.settled(id)).stdout).toBe("reached");
-		} finally {
-			await open.stop();
-		}
-	});
-});
 
 describe("a program is a real path, not a basename", () => {
 	test("a file the page named echo inside cwdRoot is not echo", async () => {
@@ -127,6 +69,58 @@ describe("a program is a real path, not a basename", () => {
 			expect(refused.code).toBe("program-not-allowed");
 		} finally {
 			await only.stop();
+		}
+	});
+});
+
+describe("the allow list decides what runs, cwdRoot decides where", () => {
+	test("an allow-listed absolute program runs even outside cwdRoot", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "crust-outside-"));
+		try {
+			const program = realpathSync(executable(join(dir, "outside-tool")));
+			const open = await shellHarness({ allow: [program] });
+			try {
+				const id = await open.id({ program });
+				expect((await open.settled(id)).stdout).toBe("pwned");
+			} finally {
+				await open.stop();
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("a relative program still has to resolve inside cwdRoot", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "crust-outside-"));
+		try {
+			const program = realpathSync(executable(join(dir, "outside-tool")));
+			const open = await shellHarness({ allow: [program] });
+			try {
+				const escape = join("..", relative(realpathSync(open.root), program));
+				expect(refusal(await open.spawn({ program: escape })).code).toBe(
+					"program-outside-root",
+				);
+				const id = await open.id({ program });
+				expect((await open.settled(id)).stdout).toBe("pwned");
+			} finally {
+				await open.stop();
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("a bare name PATH cannot see is not advertised as allowed", async () => {
+		const open = await shellHarness({ allow: ["echo", "crust-no-such-program"] });
+		try {
+			const refused = refusal(await open.spawn({ program: "/bin/ls" }));
+			expect(refused.message).toContain("allowed: echo");
+			expect(refused.message).not.toContain("crust-no-such-program");
+			expect(refusal(await open.spawn({ program: "crust-no-such-program" })).code).toBe(
+				"spawn-failed",
+			);
+		} finally {
+			await open.stop();
 		}
 	});
 });

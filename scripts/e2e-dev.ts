@@ -4,7 +4,7 @@
  */
 
 import { join, resolve } from "node:path";
-import { clearSurvivors, probe, survivorsOf, Verdict } from "./e2e-harness.ts";
+import { clearSurvivors, probe, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const PROJECT_DIR = join(REPO_ROOT, "examples/hello");
@@ -100,12 +100,17 @@ async function main(): Promise<number> {
 	return verdict.report("e2e-dev");
 }
 
+let code: number;
 try {
-	process.exit(await main());
+	code = await main();
 } catch (error) {
 	for (const pattern of SURVIVOR_PATTERNS) {
 		await clearSurvivors(pattern).catch(() => undefined);
 	}
 	console.log(`e2e-dev: FAIL  ${error instanceof Error ? error.message : String(error)}`);
-	process.exit(1);
+	code = 1;
+} finally {
+	// Before the exit, because `process.exit` does not run a `finally`.
+	await restoreFocus();
 }
+process.exit(code);

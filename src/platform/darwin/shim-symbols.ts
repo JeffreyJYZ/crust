@@ -38,6 +38,8 @@ export interface Shim {
 
 		shim_new: LooseSymbol;
 		shim_cstr_len: LooseSymbol;
+		shim_webview_configuration: LooseSymbol;
+		shim_webview_new: LooseSymbol;
 		shim_webview_load: LooseSymbol;
 
 		shim_constraint: LooseSymbol;

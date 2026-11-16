@@ -76,6 +76,11 @@ function compile() {
 
 			shim_new: { args: [P], returns: P },
 			shim_cstr_len: { args: [P], returns: I64 },
+			// The webview is built from a configuration, never from `-init`: that object is the
+			// only place a `WKURLSchemeHandler` can be registered, and WebKit copies it at
+			// creation, so a handler added later never reaches an existing webview.
+			shim_webview_configuration: { args: [], returns: P },
+			shim_webview_new: { args: [P, F64, F64], returns: P },
 			shim_webview_load: { args: [P, P], returns: I32 },
 
 			shim_constraint: { args: [P, I64, I64, P, I64, F64, F64], returns: P },
@@ -176,6 +181,7 @@ export { createPlatform, DarwinPlatform } from "./platform.ts";
 export { PREFLIGHT, preflightError, type PreflightEntry } from "./preflight.ts";
 export { awaitSheetResult, type SheetReadings } from "./sheet.ts";
 export { darwinWindowAdapter } from "./window-adapter.ts";
+export { webviewConfiguration } from "./webview-configuration.ts";
 export { CURSOR_SELECTOR, windowChromeSends, type WindowChromeSends } from "./window-chrome.ts";
 export { TITLE_BAR_MASK, windowChromeAdapter } from "./window-chrome-adapter.ts";
 export { darwinMenuAdapter } from "./menu-api.ts";

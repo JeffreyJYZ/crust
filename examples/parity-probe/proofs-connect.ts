@@ -12,8 +12,8 @@ import { createCrashReporterPlugin } from "../../src/plugins/crash-reporter.ts";
 import { createDownloadsPlugin } from "../../src/plugins/downloads.ts";
 import {
 	createNetworkPlugin,
-	type NetworkAction,
 	type NetworkAdapter,
+	type NetworkDecision,
 } from "../../src/plugins/network.ts";
 import { defaultStateRoot } from "../../src/plugins/window-persist-store.ts";
 import { type CrashGuard, startCrashGuard } from "../../src/runtime-crash-guard.ts";
@@ -28,7 +28,7 @@ const PATTERN = "https://parity.invalid/*";
  * handler, so the probe takes that pointer and asks it about one URL — the same call WebKit makes.
  */
 export async function proveNetwork(): Promise<boolean> {
-	let decide: ((url: string) => NetworkAction) | undefined;
+	let decide: ((url: string) => NetworkDecision) | undefined;
 	const adapter: NetworkAdapter = {
 		install: (_scheme, next) => {
 			decide = next;
@@ -46,7 +46,7 @@ export async function proveNetwork(): Promise<boolean> {
 		{ rules: [{ pattern: PATTERN, action: "block" }] },
 		ctx,
 	);
-	const action = decide?.(PROBE_URL);
+	const action = decide?.(PROBE_URL)?.action;
 	const log = await network.commands.log(undefined, ctx);
 	const entry = "entries" in log ? log.entries.find((row) => row.url === PROBE_URL) : undefined;
 	const rules = "rules" in state ? state.rules.length : 0;
@@ -55,7 +55,7 @@ export async function proveNetwork(): Promise<boolean> {
 	console.log(`network   rules=${rules} blocked=${blocked}`);
 	// The darwin half registers on a WKWebViewConfiguration, which the window path never exposes,
 	// so its own refusal is printed here rather than left as an unstated gap.
-	const native = darwinNetworkAdapter().install("crust-net", () => "allow");
+	const native = darwinNetworkAdapter().install("crust-net", () => ({ action: "allow" }));
 	console.log(
 		`network   native handler: ${native.ok ? "registered" : `refused — ${native.reason}`}`,
 	);

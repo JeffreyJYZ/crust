@@ -80,9 +80,10 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 			}
 		}
 
-		// A request with no Origin is a non-browser local client. Refusing it
-		// explicitly is what stops a local process driving the bridge, so the
-		// check cannot be skipped by omitting the header.
+		// A request with no Origin is not a cross-origin request, so it is not the
+		// origin gate's business: WebKitGTK's EventSource sends none on a
+		// same-origin GET, and the token below is the credential either way. A
+		// *present* and foreign Origin is a hostile page, and stays refused.
 		if (!allowedOrigin(origin, devOrigins, state.port())) {
 			return errorResponse(
 				new CrustError("bad-origin", `origin not allowed: ${origin ?? "<absent>"}`),

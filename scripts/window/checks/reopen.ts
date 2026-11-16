@@ -11,6 +11,7 @@ import {
 	resolved,
 	sameLabels,
 	show,
+	urlOf,
 } from "../answers.ts";
 
 export function checkReopen(verdict: Verdict, byTag: Map<string, PageAnswer>): void {
@@ -41,14 +42,20 @@ export function checkReopen(verdict: Verdict, byTag: Map<string, PageAnswer>): v
 	);
 
 	// The re-created label loads its document again: the window's own page ran,
-	// and its own invoke found the window open under the same label. Without a
-	// fresh page there would be no `child.main` report at all.
+	// its own URL carries the identity, `window.label` answered the label it was
+	// opened under, and its own invoke found the window open. Without a fresh page
+	// there would be no `child.main` report at all.
 	const reopenChild = childReport(byTag.get("child.main"));
 	const reopenOrigin = reopenChild === undefined ? undefined : originOf(reopenChild.href);
+	const reopenUrl = reopenChild === undefined ? undefined : urlOf(reopenChild.href);
 	const reopenPage = resolved(reopenChild?.open);
+	const reopenLabel = resolved(reopenChild?.label);
 	const reopenLoadsOk =
 		reopenOrigin !== undefined &&
-		reopenChild?.href === `${reopenOrigin}/spare/child/main` &&
+		reopenUrl?.pathname === "/spare/child/main" &&
+		reopenUrl?.searchParams.get("window") === "main" &&
+		reopenLabel?.ok === true &&
+		reopenLabel?.label === "main" &&
 		reopenPage?.ok === true &&
 		reopenPage?.label === "main" &&
 		reopenPage?.open === true;
@@ -56,9 +63,11 @@ export function checkReopen(verdict: Verdict, byTag: Map<string, PageAnswer>): v
 		"reopen loads",
 		reopenLoadsOk,
 		reopenLoadsOk
-			? `the reused label loaded ${JSON.stringify(reopenChild?.href)} and its page invokes ` +
-					`back ${show(reopenPage)}`
-			: `page saw ${show(byTag.get("child.main"))}`,
+			? `the reused label loaded ${JSON.stringify(reopenChild?.href)}, window.label answered ` +
+					`${show(reopenLabel)}, and its page invokes back ${show(reopenPage)}`
+			: `page saw ${show(byTag.get("child.main"))} (path ${reopenUrl?.pathname}, window ` +
+					`${show(reopenUrl?.searchParams.get("window"))}, window.label ` +
+					`${show(reopenChild?.label)}, invoke ${show(reopenPage)})`,
 	);
 
 	const relist = resolved(byTag.get("relist"));

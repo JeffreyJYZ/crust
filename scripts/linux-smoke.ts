@@ -2,7 +2,8 @@
 /**
  * The real GTK proof: `createPlatform()` against libgtk-3 and libwebkit2gtk-4.1, a window that
  * opens, the app's own bridge served into its webview, page JS evaluated through
- * `webkit_web_view_evaluate_javascript`, and one `window.crust.invoke` crossing back to the host.
+ * `webkit_web_view_evaluate_javascript`, one `window.crust.invoke` crossing back to the host, and the
+ * event stream in both directions: a page listener receiving what a plugin's `ctx.emit` pushed.
  * Every other linux test injects a fake backend, so this file is the only place the shim's `dlopen`
  * path runs against the libraries it names.
  *
@@ -11,8 +12,8 @@
  * On macOS it prints `unavailable:` and exits 1 rather than passing — GTK is not installed there,
  * so a green here would claim a proof this machine cannot give.
  *
- * What it does not claim: the app's built frontend (the document here is the bridge's own), the
- * event stream, or any plugin's effect on the machine. `invoke` is proven against one handler.
+ * What it does not claim: the app's built frontend, or any plugin's effect on the machine. `invoke`
+ * is proven against one handler, and the stream against one push per subscription kind.
  */
 import {
 	createGtkBackend,
@@ -23,6 +24,7 @@ import {
 } from "../src/platform/linux/index.ts";
 import { Verdict } from "./e2e-harness.ts";
 import { DATA_PAGE_URL, type ProofPage, startProofPage } from "./linux/proof-page.ts";
+import { eventsStep } from "./linux/proof-events.ts";
 import {
 	documentStep,
 	failureStep,
@@ -139,6 +141,9 @@ async function main(): Promise<number> {
 	verdict.check("js", evaluated.ok, evaluated.detail);
 	const invoked = await invokeStep(symbols, web, page, pageError);
 	verdict.check("invoke", invoked.ok, invoked.detail);
+	const events = await eventsStep(symbols, web, page, pageError);
+	verdict.check("events", events.stream.ok, events.stream.detail);
+	verdict.check("ready", events.ready.ok, events.ready.detail);
 
 	// 7. A load that must fail: WebKit answers `load-failed` and the shim records its message, so
 	//    the error path is a printed line rather than a pump that never settles.
@@ -164,7 +169,7 @@ async function main(): Promise<number> {
 	if (page !== undefined) await page.stop();
 
 	console.log(
-		"not proven here: the app's built frontend, the event stream, and any plugin's effect on the machine.",
+		"not proven here: the app's built frontend, and any plugin's effect on the machine.",
 	);
 	return verdict.report("linux:smoke");
 }

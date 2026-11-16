@@ -35,3 +35,6 @@ kill -TERM $pid 2>/dev/null
 wait $pid 2>/dev/null
 rg -o 'notify .*' /tmp/notif-after.out || print -r -- "no notify line"
 pkill -f 'crust notif' 2>/dev/null
+
+# Every crust launch activates its app, so hand focus back to the terminal.
+open -a Ghostty 2>/dev/null || true

@@ -2,6 +2,8 @@
 
 The rules a page's own requests are matched against, and the log of what was seen. Interception is a `WKURLSchemeHandler` the darwin adapter registers, so the decision runs in the process that owns the webview.
 
+An `allow` rule **serves the bytes it carries**. It is never a pass-through and never a fetch: the handler answers `didReceiveResponse:` / `didReceiveData:` / `didFinish:` itself, with an `NSHTTPURLResponse` carrying `Content-Type`, `Content-Length` and `Access-Control-Allow-Origin`.
+
 Registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
 
 ## Commands
@@ -15,18 +17,27 @@ Registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.
 
 `scheme` is `"crust-net"`, and `registered` says whether the handler landed at all — a rule set that matches nothing is indistinguishable from a handler that was never installed, so both are reported.
 
+The handler lands only on a `WKWebViewConfiguration` no webview has used yet, so an app must supply one before its window builds the webview. `registered: false` means the rules and the log still work and nothing is intercepted: `darwinNetworkAdapter()` without `{ configuration }` refuses rather than guessing.
+
 ## Rules
 
 ```ts
 await window.crust.invoke("network", "setRules", {
 	rules: [
 		{ pattern: "crust-net://api.example.com/*", action: "block" },
-		{ pattern: "crust-net://cdn.example.com/*", action: "allow" },
+		{
+			pattern: "crust-net://fixture.example.com/hello.json",
+			action: "allow",
+			body: '{"hello":"crust"}',
+			type: "application/json",
+		},
 	],
 });
 ```
 
-Each rule needs a non-empty `pattern` and an `action` of `"allow"` or `"block"`. **The first match wins**, and no match allows. A rule set replaces the previous one whole.
+Each rule needs a non-empty `pattern` and an `action` of `"allow"` or `"block"`. **The first match wins**, and no match allows — with an empty body and the default type `text/plain; charset=utf-8`, which is an answered `200`, not a pass-through. A rule set replaces the previous one whole.
+
+`body` and `type` are for `allow` rules only. A `block` rule that carries either is refused, because nothing would ever serve it. Both are bounded by the native buffers: `body` at 262144 bytes and `type` at 127, and a body over the buffer is **refused rather than truncated**, so a page never reads a silently cut response.
 
 A pattern has one wildcard, `*`, standing for any run of characters — not a regular expression. That is deliberate: the handler asks once per task and cannot wait, so a page must not be able to hand the main thread a pattern that backtracks catastrophically.
 
@@ -36,17 +47,38 @@ A pattern has one wildcard, `*`, standing for any run of characters — not a re
 | `crust-net://a.example/*` | anything under that host |
 | `*.png`                   | any URL ending in `.png` |
 
+## What WebKit allows
+
+Measured on macOS 27 against a real `WKWebView`, with the handler registered on its configuration:
+
+| the page does                     | result                                                                     |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `<script src="crust-net://…">`    | served and **executed**                                                    |
+| `fetch("crust-net://…")`          | served, read as text, `status` 200 and the rule's `Content-Type`           |
+| `<img src="crust-net://…">`       | **refused** — the bytes are delivered, the element fires `error`, width 0  |
+| navigating the webview to the URL | **no document** — the handler runs and the load completes, nothing renders |
+
+So a custom scheme is for subresources: scripts, styles, JSON and anything else a page fetches. It cannot be the page itself, and it cannot be an image source. The `Access-Control-Allow-Origin: *` header is what makes a `fetch` from the bridge's `http://127.0.0.1:<port>` origin readable; without it the page gets `TypeError: Load failed` with status 0.
+
+The proof is one run of `bun run src/platform/darwin/network-probe.ts`, which serves a page over real `http://127.0.0.1:<port>` and has it read a rule's bytes through both a `<script src>` and a `fetch`:
+
+```
+network served=152 body=served-bytes-42 tasks=4
+network fetch="served-bytes-42" status=200 type="text/plain; charset=utf-8"
+network img=error width=0 inline=9px
+```
+
 ## The log
 
 ```ts
 const { entries } = await window.crust.invoke("network", "log");
 ```
 
-Entries are `{ url, action, status }`, oldest first, at most 100 — the oldest are dropped. `status` is `"served"` when the handler fetched and delivered the body, `"blocked"` when it answered an error.
+Entries are `{ url, action, status, bytes }`, oldest first, at most 100 — the oldest are dropped. `status` is `"served"` when the handler answered with bytes, `"blocked"` when it answered an error, and `bytes` is how many it delivered. A URL at the native buffer's bound is `blocked` with `reason: "url-too-long"` and is never matched, because a truncated prefix would let a tail-anchored rule be dodged.
 
 ```js
-window.crust.listen("network:request", ({ url, action, status }) => {
-	console.log(action, status, url);
+window.crust.listen("network:request", ({ url, action, status, bytes }) => {
+	console.log(action, status, bytes, url);
 });
 ```
 
@@ -55,6 +87,8 @@ One event per intercepted task, emitted in the same call that answers WebKit. `c
 ## What it does not intercept
 
 Only requests under the `crust-net` scheme reach `decide`. A page loading ordinary `https://` URLs is not observed by this plugin; a rule list is not a proxy, and `setRules` cannot block a request the handler never sees.
+
+The parity row for this surface is `partial` for two reasons: that scheme scope, and because a page inside a crust window cannot be driven yet — the proof above runs against a probe-owned webview with the same WebKit and the same handler.
 
 ## Failure shape
 

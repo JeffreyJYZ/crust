@@ -1,8 +1,9 @@
 /**
- * The KDF floor. A store file is the user's own, so its header can claim any round count; a header
- * below the KDF's documented parameter is refused before a key is derived from it, and a store
- * written at the floor still opens. Nothing here weakens a real store: the doctored file is written
- * by the test itself, and the password it was sealed under is the one the test already knows.
+ * The KDF's two bounds. A store file is the user's own, so its header can claim any round count: a
+ * count below the floor is no work at all, and one above the ceiling is a denial of service the page
+ * can aim at its own app. Both are refused before a key is derived, and a store written at either
+ * bound still opens. Nothing here weakens a real store: the doctored file is written by the test
+ * itself, and the password it was sealed under is the one the test already knows.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -14,6 +15,7 @@ import { createStrongholdPlugin, type StrongholdFile } from "@/plugins/stronghol
 import { createStore } from "@/plugins/stronghold-crypto";
 import {
 	KDF_ITERATIONS,
+	KDF_MAX_ITERATIONS,
 	KDF_MIN_ITERATIONS,
 	readStore,
 	STORE_FILE,
@@ -94,6 +96,55 @@ describe("stronghold KDF floor", () => {
 				await readFile(join(root, STORE_FILE), "utf8"),
 			) as StrongholdFile;
 			expect(file.kdf.iterations).toBe(KDF_MIN_ITERATIONS);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("stronghold KDF ceiling", () => {
+	test("the ceiling leaves headroom above the parameter a build writes today", () => {
+		expect(KDF_MAX_ITERATIONS).toBe(5_000_000);
+		expect(KDF_MAX_ITERATIONS).toBeGreaterThan(KDF_ITERATIONS * 8 - 1);
+	});
+
+	test("a header asking for four billion rounds is corrupt, and the message names it", async () => {
+		const root = await scratch();
+		try {
+			const path = await doctored(root, 4_000_000_000);
+			const read = await readStore(path);
+			expect(read).toMatchObject({ ok: false, code: "corrupt" });
+			if (!read.ok) {
+				expect(read.message).toContain("4000000000");
+				expect(read.message).toContain(`above the KDF ceiling of ${KDF_MAX_ITERATIONS}`);
+			}
+			// And `open` refuses it by the same name, without deriving a key.
+			expect(
+				await caller(createStrongholdPlugin({ root }))("open", { password: "pw" }),
+			).toMatchObject({ ok: false, code: "corrupt" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("createStore refuses to write a header above the ceiling", async () => {
+		await expect(createStore("pw", KDF_MAX_ITERATIONS + 1)).rejects.toThrow(
+			`above the KDF ceiling of ${KDF_MAX_ITERATIONS}`,
+		);
+	});
+
+	test("a store written at the ceiling still opens", async () => {
+		const root = await scratch();
+		try {
+			const store = await createStore("pw", KDF_MAX_ITERATIONS);
+			await writeFile(
+				join(root, STORE_FILE),
+				`${JSON.stringify(store.file, null, "\t")}\n`,
+				"utf8",
+			);
+			expect(
+				await caller(createStrongholdPlugin({ root }))("open", { password: "pw" }),
+			).toEqual({ ok: true, opened: true });
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

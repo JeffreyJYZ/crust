@@ -6,7 +6,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { clearSurvivors, survivorsOf, Verdict } from "./e2e-harness.ts";
+import { clearSurvivors, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
 import { lastLine } from "./lib/text.ts";
 import { runOnce } from "./dev-binary/run.ts";
 import {
@@ -152,6 +152,8 @@ async function main(): Promise<number> {
 	} finally {
 		for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
 		await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+		// Last, so a red run does not leave the human looking at the window it opened.
+		await restoreFocus();
 	}
 
 	return verdict.report("e2e-dev-binary");

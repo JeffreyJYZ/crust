@@ -47,7 +47,9 @@ A count of zero from a window that does not exist is not evidence of anything, w
 
 AppKit lists only windows on the **active Space**, and a window joins that Space only when its app is active. `-[NSApplication activate]` is silently refused for a process LaunchServices did not launch — which is how `crust dev` and the parity harness run — so a window can be visible, clickable and absent from `AXWindows` for every other process while `AXIsProcessTrusted` is true.
 
-crust therefore sends `-activateIgnoringOtherApps:` when the app is not already active, guarded on `isActive` so creating a second window does not pull the app forward. Measured on one window from a separate trusted process:
+crust therefore sends `-activateIgnoringOtherApps:` when the app is not already active, guarded on `isActive` so creating a second window does not pull the app forward. `app.activate` decides when that happens: `"always"` (the default) on every window create, `"first"` only for the first window create of the process, and `"never"` not at all.
+
+`isActive` alone cannot express `"first"`: it is false whenever the human is in another app, so a window created by the page would pull the app back in front. Measured on a built bundle with `lsappinfo info -only name $(lsappinfo front)` — front was `Activation crust` at t1.5 for the driver window, `Ghostty` at t3 after focus was handed away, and `Activation crust` again at t8 for a window the page created; a control run with window creation disabled showed no transition. `"first"` therefore uses one process-wide flag, and the cost is that a later window created while the app is inactive stays out of `AXWindows` until the user clicks the app — the same symptom `"never"` has for every such window. Measured on one window from a separate trusted process:
 
 ```
 before  external=windows:0,children:-1,status:0

@@ -1,6 +1,8 @@
 /**
- * `crust:shell`'s path rules: the allow list is canonicalised to absolute real paths once, and every program is compared as a real path.
- * A basename no longer satisfies the list, so a `/tmp/echo` the page planted is not `echo`, and a symlink cannot move a program or a `cwd` out of `cwdRoot` — the check and the spawn both use the resolved path.
+ * `crust:shell`'s path rules, and the division of labour between them:
+ * - the allow list decides **what** may run, as an absolute real path — an allow-listed program runs wherever it lives, so `/opt/homebrew/bin/ffmpeg` needs no `cwdRoot` containing it;
+ * - `cwdRoot` decides **where** a working directory and a *relative* program path may point, because a relative path means something only against a `cwd` the page supplies.
+ * The list is canonicalised once, so a basename no longer satisfies it — a `/tmp/echo` the page planted is not `echo` — and every check and the spawn itself use the same resolved path.
  */
 
 import { realpathSync } from "node:fs";
@@ -10,10 +12,10 @@ import { type ShellFailure, shellFailure } from "./shell-failure";
 
 /** What `createShellPlugin` decided a page may run, already canonicalised. */
 export interface ShellRules {
-	/** The entries as the host wrote them, so a bare name is matched before PATH is read. */
-	allow: readonly string[];
 	/** Every entry resolved to an absolute real path; a program must be one of these. */
 	allowed: ReadonlySet<string>;
+	/** The entries that resolved, which is the only list a refusal may advertise. */
+	advertised: readonly string[];
 	/** `cwdRoot` as a real path, so containment compares like with like. */
 	root: string;
 	/** Whether a page may supply `env` at all. */
@@ -23,7 +25,7 @@ export interface ShellRules {
 export interface ShellRuleOptions {
 	/** Program names and absolute paths the host allows; an empty or absent list allows nothing. */
 	allow?: readonly string[];
-	/** Directory every `cwd` and every path-form program must resolve inside. */
+	/** Directory every `cwd` and every relative program path must resolve inside. */
 	cwdRoot?: string;
 	/** The host's opt-in for a page-supplied `env`; the loader and shell names stay refused. */
 	env?: boolean;
@@ -62,14 +64,16 @@ function canonical(entry: string): string | undefined {
  * Canonicalise the host's rules once. A root that does not resolve yet keeps its lexical form, so a `cwd` inside it is still refused for the right reason.
  */
 export function shellRules(options: ShellRuleOptions = {}): ShellRules {
-	const allow = [...(options.allow ?? [])];
 	const allowed = new Set<string>();
-	for (const entry of allow) {
+	const advertised: string[] = [];
+	for (const entry of options.allow ?? []) {
 		const path = canonical(entry);
-		if (path !== undefined) allowed.add(path);
+		if (path === undefined) continue;
+		allowed.add(path);
+		advertised.push(entry);
 	}
 	const named = resolve(options.cwdRoot ?? process.cwd());
-	return { allow, allowed, root: real(named) ?? named, env: options.env === true };
+	return { allowed, advertised, root: real(named) ?? named, env: options.env === true };
 }
 
 /** The `cwd` a spawn runs in, or the refusal to answer with. */
@@ -105,7 +109,7 @@ function notAllowed(program: string, rules: ShellRules, resolved?: string): Shel
 	return shellFailure(
 		"program-not-allowed",
 		`shell.spawn: ${JSON.stringify(program)} is not in the allow list${detail}; ` +
-			`createShellPlugin names the programs a page may run (allowed: ${rules.allow.join(", ") || "none"})`,
+			`createShellPlugin names the programs a page may run (allowed: ${rules.advertised.join(", ") || "none"})`,
 	);
 }
 
@@ -123,7 +127,8 @@ function outsideRoot(
 }
 
 /**
- * The real path a spawn must execute, or the refusal to answer with. A name is looked up on PATH and a path is resolved against the `cwd`; either way the answer is the real path, which is what the allow list is compared against and what `Bun.spawn` is handed.
+ * The real path a spawn must execute, or the refusal to answer with.
+ * A bare name is looked up on PATH and an absolute path is taken as written: both are answered by the allow list alone, because that list is what says *what* may run. Only a relative path is also held to `cwdRoot`, since its target depends on a `cwd` the page supplies. The answer is the real path — the one the allow list was compared against and the one `Bun.spawn` is handed.
  */
 export function resolveProgram(
 	rules: ShellRules,
@@ -143,10 +148,22 @@ export function resolveProgram(
 		return { ok: true, path: actual };
 	}
 
-	const lexical = isAbsolute(program) ? resolve(program) : resolve(cwd, program);
+	if (isAbsolute(program)) {
+		const actual = real(resolve(program));
+		if (actual === undefined) {
+			return shellFailure(
+				"spawn-failed",
+				`shell.spawn: ${JSON.stringify(program)} does not exist`,
+			);
+		}
+		if (!rules.allowed.has(actual)) return notAllowed(program, rules, actual);
+		return { ok: true, path: actual };
+	}
+
+	const lexical = resolve(cwd, program);
+	if (!inside(lexical, rules.root)) return outsideRoot(program, lexical, rules, false);
 	const actual = real(lexical);
 	if (actual === undefined) {
-		if (!inside(lexical, rules.root)) return outsideRoot(program, lexical, rules, false);
 		return shellFailure(
 			"spawn-failed",
 			`shell.spawn: ${JSON.stringify(program)} resolves to ${lexical}, which does not exist`,

@@ -50,15 +50,23 @@ describe("origin gate", () => {
 		expect(body.result).toEqual({ hello: "world" });
 	});
 
-	test("an absent Origin is refused 403, not treated as same-origin", async () => {
+	test("an absent Origin with the right token is allowed: the token is the credential", async () => {
 		const bridge = start();
 		const response = await invoke(bridge, {
 			"content-type": "application/json",
 			authorization: `Bearer ${bridge.token}`,
 		});
-		expect(response.status).toBe(403);
+		expect(response.status).toBe(200);
 		const body = await readJson(response);
-		expect(body.error.code).toBe("bad-origin");
+		expect(body.result).toEqual({ hello: "world" });
+	});
+
+	test("an absent Origin without a token is still refused 401", async () => {
+		const bridge = start();
+		const response = await invoke(bridge, { "content-type": "application/json" });
+		expect(response.status).toBe(401);
+		const body = await readJson(response);
+		expect(body.error.code).toBe("unauthorized");
 	});
 
 	test("a foreign origin is refused 403", async () => {

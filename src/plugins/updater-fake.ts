@@ -77,6 +77,20 @@ export function writing(payload: string): UpdaterAdapter {
 	});
 }
 
+/**
+ * A download that writes real archive bytes into the temp dir, so `download` and `install` run
+ * against the artifact an author actually ships: a zip the node adapter reads and extracts itself.
+ */
+export function shipping(bytes: Uint8Array): UpdaterAdapter {
+	return offlineAdapter({
+		download: async (_url, directory) => {
+			const path = join(directory, "Notes.app.zip");
+			await writeFile(path, bytes);
+			return { path, bytes: bytes.length };
+		},
+	});
+}
+
 /** A download that delivers an already-extracted bundle, so a receipt exists for a real `.app`. */
 export function delivering(
 	source: string,
@@ -95,7 +109,8 @@ export function delivering(
 /** A real Ed25519 pair from WebCrypto: the same primitive the plugin verifies with. */
 export async function signer(): Promise<{
 	pubkey: string;
-	sign: (payload: string) => Promise<string>;
+	/** Sign the exact bytes a manifest's signature covers: text, or a zip's own bytes. */
+	sign: (payload: string | Uint8Array) => Promise<string>;
 }> {
 	const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
 		"sign",
@@ -106,10 +121,11 @@ export async function signer(): Promise<{
 	return {
 		pubkey,
 		sign: async (payload) => {
+			const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload;
 			const signature = await crypto.subtle.sign(
 				{ name: "Ed25519" },
 				pair.privateKey,
-				new TextEncoder().encode(payload),
+				new Uint8Array(bytes),
 			);
 			return Buffer.from(signature).toString("base64");
 		},

@@ -1,8 +1,9 @@
 /**
- * Compile the network C unit, once per process. It is one part and one translation unit
- * (`shim/110_network.c`): the handler class, its instance and the decision pointer are statics, and
- * a static is private to its unit. The source travels inside the binary as text, because a compiled
- * binary has no readable `import.meta.dir`.
+ * Compile the network C unit, once per process. It is two parts and ONE translation unit —
+ * `shim/110_network.c` (the handler class, the decision, the registration) and
+ * `shim/113_network_serve.c` (the byte serving, which uses the first part's statics), joined the
+ * way `navigation-unit.ts` joins its halves. The source travels inside the binary as text,
+ * because a compiled binary has no readable `import.meta.dir`.
  */
 
 import { cc, FFIType } from "bun:ffi";
@@ -11,15 +12,15 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import part from "./shim/110_network.c" with { type: "text" };
+import handler from "./shim/110_network.c" with { type: "text" };
+import serve from "./shim/113_network_serve.c" with { type: "text" };
 
-/** The unit as one translation unit; it is a single part, so this is byte-exact. */
-export const networkSource = part;
+/** The two parts as one translation unit. */
+export const networkSource = [handler, serve].join("\n");
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
-const CS = FFIType.cstring;
 
 export interface NetworkUnit {
 	symbols: {
@@ -29,9 +30,14 @@ export interface NetworkUnit {
 			bytes: number,
 			length: number,
 			decide: number,
+			fill: number,
 		) => number;
 		net_installed: () => number;
-		net_url: () => string | null;
+		/** The URL of the current decision, as a byte range into a caller-owned buffer. */
+		net_url: (dst: number, cap: number) => number;
+		/** Bytes delivered through the scheme since launch, and how many tasks answered. */
+		net_served: () => number;
+		net_tasks: () => number;
 	};
 }
 
@@ -49,9 +55,11 @@ function compile(): NetworkUnit {
 		flags: ["-framework", "AppKit", "-framework", "Foundation", "-framework", "WebKit"],
 		symbols: {
 			net_abi: { args: [], returns: I32 },
-			net_install: { args: [P, P, I64, P], returns: I32 },
+			net_install: { args: [P, P, I64, P, P], returns: I32 },
 			net_installed: { args: [], returns: I32 },
-			net_url: { args: [], returns: CS },
+			net_url: { args: [P, I32], returns: I32 },
+			net_served: { args: [], returns: I64 },
+			net_tasks: { args: [], returns: I32 },
 		},
 	}) as unknown as NetworkUnit;
 }

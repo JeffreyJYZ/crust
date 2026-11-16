@@ -1,3 +1,37 @@
+// --- webview construction -------------------------------------------------
+// A webview is built from a WKWebViewConfiguration, never from `[[WKWebView alloc] init]`.
+// WebKit copies the configuration when the webview is created, so a `WKURLSchemeHandler`
+// registered afterwards never reaches a webview that already exists — measured 2026-11-16: a
+// page loaded after `setURLSchemeHandler:forURLScheme:` on its configuration still failed its
+// fetch, while the same call on a fresh configuration serves bytes. Which schemes exist is not
+// this file's business: whoever owns the handler registers them on the object returned here.
+
+// The frame rect, built on the C stack so no struct crosses bun:ffi. Its own type, because
+// `40_window.c` defines `shim_rect` later in the unit and two typedefs of one name collide.
+typedef struct {
+	double x, y, w, h;
+} shim_web_rect;
+
+obj_t shim_webview_configuration(void) {
+	obj_t allocated = ((obj_t (*)(void *, void *))objc_msgSend)(
+	    objc_getClass("WKWebViewConfiguration"), sel_registerName("alloc"));
+	if (!allocated) return 0;
+	return ((obj_t (*)(void *, void *))objc_msgSend)(allocated, sel_registerName("init"));
+}
+
+// A nil configuration is refused, not defaulted: the webview WebKit builds for itself is
+// exactly the one no scheme handler can reach, so a silent fallback would hide the defect.
+obj_t shim_webview_new(obj_t configuration, double w, double h) {
+	obj_t allocated;
+	shim_web_rect frame = {0, 0, w, h};
+	if (!configuration) return 0;
+	allocated = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("WKWebView"),
+	                                                     sel_registerName("alloc"));
+	if (!allocated) return 0;
+	return ((obj_t (*)(void *, void *, shim_web_rect, obj_t))objc_msgSend)(
+	    allocated, sel_registerName("initWithFrame:configuration:"), frame, configuration);
+}
+
 // --- URL chain, entirely inside C -----------------------------------------
 
 long long shim_cstr_len(const char *p) {
