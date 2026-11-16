@@ -93,6 +93,19 @@ async function main(): Promise<number> {
 	//    "after com + class" as the only evidence. Same reason: diagnostic, never a verdict.
 	const stages = await runStages();
 	console.log(`stages    child ended with exit ${stages.code}`);
+	if (stages.code !== 0) {
+		// A red job has to explain itself: the last `stage` line names the call that died, and this names
+		// what is known about it so nobody re-runs the investigation from scratch.
+		console.log(
+			"stages    a child died — the last `stage` line above names the call. When this last " +
+				"happened it was the first Navigate faulting two frames inside " +
+				"EmbeddedBrowserWebView.dll while get_Source, put_IsVisible, put_Bounds and " +
+				"get_CoreWebView2 all answered S_OK on the same object, the message queue drained 0, " +
+				"and the controller callback arrived from a pump in both controller shapes — the URL " +
+				"lived in a stack buffer, and a static one fixed it. See " +
+				'docs/agents/windows-platform.md, "The first Navigate faults".',
+		);
+	}
 
 	// 4. COM, the window class, then a real window and controller. A machine that refuses any of
 	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
