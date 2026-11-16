@@ -1,0 +1,111 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type SymbolSpec, renderBindings, writeBindings } from "./extension-bindings";
+
+const transpiler = new Bun.Transpiler({ loader: "ts" });
+
+/** The generated module must be real TypeScript, so it goes through the parser every time. */
+function parses(text: string): boolean {
+	transpiler.transformSync(text);
+	return true;
+}
+
+const ADD: SymbolSpec = { name: "add", args: ["i32", "i32"], returns: "i32" };
+
+describe("renderBindings", () => {
+	test("dlopens the dylib beside the generated module", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD] });
+		expect(text).toContain('const ffi = dlopen(join(import.meta.dir, "math.dylib"), {');
+	});
+
+	test("declares the symbol map and the typed export exactly", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD] });
+		expect(text).toContain(
+			"\tadd: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },",
+		);
+		expect(text).toContain(
+			"export const add = ffi.symbols.add as (a0: number, a1: number) => number;",
+		);
+	});
+
+	test("i64 is bigint, cstring returns string | null, void returns void", () => {
+		const text = renderBindings({
+			name: "math",
+			symbols: [
+				{ name: "total", args: ["i64", "u64"], returns: "i64" },
+				{ name: "greet", args: ["cstring"], returns: "cstring" },
+				{ name: "reset", args: [], returns: "void" },
+			],
+		});
+		expect(text).toContain(
+			"export const total = ffi.symbols.total as (a0: bigint, a1: bigint) => bigint;",
+		);
+		expect(text).toContain(
+			"export const greet = ffi.symbols.greet as (a0: string) => string | null;",
+		);
+		expect(text).toContain("export const reset = ffi.symbols.reset as () => void;");
+		expect(text).toContain("\treset: { args: [], returns: FFIType.void },");
+	});
+
+	test("every declared type reaches the ffi table", () => {
+		const text = renderBindings({
+			name: "math",
+			symbols: [
+				{ name: "p", args: ["ptr", "f64", "u32"], returns: "ptr" },
+				{ name: "f", args: ["u64"], returns: "f64" },
+			],
+		});
+		expect(text).toContain(
+			"\tp: { args: [FFIType.ptr, FFIType.f64, FFIType.u32], returns: FFIType.ptr },",
+		);
+		expect(text).toContain("\tf: { args: [FFIType.u64], returns: FFIType.f64 },");
+	});
+
+	test("a custom dylib name is the dlopen argument", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD], dylib: "libmath.dylib" });
+		expect(text).toContain('dlopen(join(import.meta.dir, "libmath.dylib"), {');
+	});
+
+	test("an absolute dylib is refused rather than emitted as a broken join", () => {
+		expect(() =>
+			renderBindings({ name: "math", symbols: [ADD], dylib: "/tmp/math.dylib" }),
+		).toThrow("relative to the generated module");
+	});
+
+	test("a symbol that cannot be an export name is refused", () => {
+		expect(() =>
+			renderBindings({
+				name: "math",
+				symbols: [{ name: "delete", args: [], returns: "void" }],
+			}),
+		).toThrow("not a usable TypeScript export name");
+		expect(() =>
+			renderBindings({
+				name: "math",
+				symbols: [{ name: "1bad", args: [], returns: "void" }],
+			}),
+		).toThrow("not a usable TypeScript export name");
+	});
+
+	test("the module parses, including with no symbols at all", () => {
+		expect(parses(renderBindings({ name: "math", symbols: [ADD] }))).toBe(true);
+		expect(parses(renderBindings({ name: "empty", symbols: [] }))).toBe(true);
+	});
+});
+
+describe("writeBindings", () => {
+	test("writes <name>.ts beside the dylib with the rendered text", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "crust-bindings-"));
+		try {
+			const result = await writeBindings({ outDir: dir, name: "math", symbols: [ADD] });
+			expect(result.path).toBe(join(dir, "math.ts"));
+			expect(await readFile(result.path, "utf8")).toBe(result.text);
+			expect(result.text).toBe(renderBindings({ name: "math", symbols: [ADD] }));
+			expect(parses(result.text)).toBe(true);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+});

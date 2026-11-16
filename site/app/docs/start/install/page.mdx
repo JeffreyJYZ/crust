@@ -10,7 +10,7 @@ brew install JeffreyJYZ/tap/crust
 crust --version                 # 0.1.20
 ```
 
-  A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
+A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
 
   </TabPanel>
   <TabPanel label="bunx, with nothing installed">
@@ -21,7 +21,7 @@ cd my-app && bun install
 bunx crust dev
 ```
 
-  Needs Bun and nothing else. `bunx` resolves the specifier, caches it, and runs the binary out of the cache — no `PATH` entry, no global install.
+Needs Bun and nothing else. `bunx` resolves the specifier, caches it, and runs the binary out of the cache — no `PATH` entry, no global install.
 
   </TabPanel>
   <TabPanel label="From a checkout">
@@ -33,7 +33,7 @@ bun install                     # two dev dependencies: @types/bun, vite
 bun run start init my-app
 ```
 
-  `bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag the binary does. A scaffold made from a checkout pins `crust` as `link:<checkout>`, so an edit under `src/` reaches the app without republishing.
+`bun run start` is `bun run src/cli/index.ts`, so it takes every command and flag the binary does. A scaffold made from a checkout pins `crust` as `link:<checkout>`, so an edit under `src/` reaches the app without republishing.
 
   </TabPanel>
 </Tabs>

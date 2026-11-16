@@ -4,6 +4,7 @@
 
 import { resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { extensionErrorLines, loadProjectExtensions } from "@/extensions/project.ts";
 import { detectSingle } from "@/single";
 import { bridgeEnv, waitForDevServer } from "./dev/frontend.ts";
 import { watchRuntime } from "./dev/runtime.ts";
@@ -45,6 +46,21 @@ export async function dev(options: CliOptions): Promise<number> {
 	const projectDir = resolve(options.dir);
 	const configPath = resolve(projectDir, loaded.path);
 
+	// The same resolution `crust build` runs — the config's `extensions`, else `<project>/extensions`
+	// — so an extension cannot load under `crust dev` and vanish from a build. A broken file is
+	// printed and dev keeps running: one typo must not cost the window that is already open.
+	const extensions = await loadProjectExtensions({ projectDir, names: config.extensions });
+	if (extensions.files.length > 0) {
+		const count = extensions.files.length;
+		line(
+			"extensions",
+			`${extensions.loaded.length} of ${count} file${count === 1 ? "" : "s"} loaded`,
+		);
+	}
+	for (const text of extensionErrorLines(extensions.errors)) {
+		console.error(`  extensions ${text}`);
+	}
+
 	let frontend: ReturnType<typeof Bun.spawn> | undefined;
 	const beforeDevCommand = config.dev?.beforeDevCommand;
 	if (beforeDevCommand) {
@@ -70,6 +86,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		configPath,
 		devUrl,
 		env,
+		extensionFiles: extensions.loaded,
 	};
 
 	// The window loads `dev.url` once, when it is created, with no retry. On a cold

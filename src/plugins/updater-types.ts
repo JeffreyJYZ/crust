@@ -19,12 +19,13 @@ export interface CheckArgs {
 }
 
 export interface DownloadArgs {
+	/** Absolute `https` URL; `file` only when the config sets `updater.allowFileUrl`. */
 	url: string;
-	/** Hex, either case; a mismatch is refused before anything is installed. */
-	sha256?: string;
-	/** Base64 Ed25519 over the artifact bytes; needs `pubkey` or a configured one. */
+	/** Required, hex either case: no digest, no download. */
+	sha256: string;
+	/** Base64 Ed25519 over the artifact bytes; needs `updater.pubkey` in the config. */
 	signature?: string;
-	/** Base64 of 32 raw bytes; a page may omit it when the config pins one. */
+	/** Base64 of 32 raw bytes; it may only name the configured key, never replace it. */
 	pubkey?: string;
 }
 
@@ -32,14 +33,19 @@ export interface DownloadArgs {
 export interface UpdaterOptions {
 	/** Manifest URL `check` falls back to when the page passes none. */
 	endpoint?: string;
-	/** The only key this app accepts; a manifest naming another is refused. */
+	/** The only key this app accepts; a signature is verified with this key and no other. */
 	pubkey?: string;
 	/** Whether the app wants a check at startup; reported by `updater.config`. */
 	autoCheck?: boolean;
+	/** Whether `download` may fetch a `file:` URL. Off unless the app says so. */
+	allowFileUrl?: boolean;
 }
 
 export interface InstallArgs extends BundleArgs {
-	/** The downloaded artifact: it must already be an `.app` directory. */
+	/**
+	 * The artifact `updater.download` verified in this run. Any other path is refused with
+	 * `unverified-artifact`, because a page must not choose what gets renamed into place.
+	 */
 	path: string;
 	/** Start the replaced bundle once the swap lands; a launch failure is reported, not rolled back. */
 	relaunch?: boolean;
@@ -49,8 +55,10 @@ export interface DownloadResult {
 	readonly ok: true;
 	readonly path: string;
 	readonly bytes: number;
-	/** The digest actually computed, lowercase hex; absent when no hash was asked for. */
-	readonly sha256?: string;
+	/** The digest that was verified, lowercase hex; `download` never answers without one. */
+	readonly sha256: string;
+	/** The configured key that verified the signature, when the manifest carried one. */
+	readonly signer?: string;
 }
 
 export interface InstallResult {

@@ -1,0 +1,61 @@
+# Network
+
+The rules a page's own requests are matched against, and the log of what was seen. Interception is a `WKURLSchemeHandler` the darwin adapter registers, so the decision runs in the process that owns the webview.
+
+Registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
+
+## Commands
+
+| command    | arguments   | answer                                            |
+| ---------- | ----------- | ------------------------------------------------- |
+| `rules`    | none        | `{ ok: true, scheme, rules, registered, reason }` |
+| `setRules` | `{ rules }` | same                                              |
+| `log`      | none        | `{ ok: true, entries }`                           |
+| `clearLog` | none        | `{ ok: true, cleared }`                           |
+
+`scheme` is `"crust-net"`, and `registered` says whether the handler landed at all — a rule set that matches nothing is indistinguishable from a handler that was never installed, so both are reported.
+
+## Rules
+
+```ts
+await window.crust.invoke("network", "setRules", {
+	rules: [
+		{ pattern: "crust-net://api.example.com/*", action: "block" },
+		{ pattern: "crust-net://cdn.example.com/*", action: "allow" },
+	],
+});
+```
+
+Each rule needs a non-empty `pattern` and an `action` of `"allow"` or `"block"`. **The first match wins**, and no match allows. A rule set replaces the previous one whole.
+
+A pattern has one wildcard, `*`, standing for any run of characters — not a regular expression. That is deliberate: the handler asks once per task and cannot wait, so a page must not be able to hand the main thread a pattern that backtracks catastrophically.
+
+| pattern                   | matches                  |
+| ------------------------- | ------------------------ |
+| `crust-net://a.example/x` | exactly that URL         |
+| `crust-net://a.example/*` | anything under that host |
+| `*.png`                   | any URL ending in `.png` |
+
+## The log
+
+```ts
+const { entries } = await window.crust.invoke("network", "log");
+```
+
+Entries are `{ url, action, status }`, oldest first, at most 100 — the oldest are dropped. `status` is `"served"` when the handler fetched and delivered the body, `"blocked"` when it answered an error.
+
+```js
+window.crust.listen("network:request", ({ url, action, status }) => {
+	console.log(action, status, url);
+});
+```
+
+One event per intercepted task, emitted in the same call that answers WebKit. `clearLog` reports how many entries it removed.
+
+## What it does not intercept
+
+Only requests under the `crust-net` scheme reach `decide`. A page loading ordinary `https://` URLs is not observed by this plugin; a rule list is not a proxy, and `setRules` cannot block a request the handler never sees.
+
+## Failure shape
+
+Without an adapter, each command answers `not-implemented` with `requires: "WKURLSchemeHandler"`. A malformed rule list is a rejected invoke carrying `bad-request`, naming the rule index and field.

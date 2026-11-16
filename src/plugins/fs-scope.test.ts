@@ -54,10 +54,13 @@ describe("fs scope", () => {
 			path: join(root, "loose.md"),
 			contents: "x",
 		});
-		expect(await call<{ ok: true; paths: string[] }>(plugin, "scopeList")).toEqual({
-			ok: true,
-			paths: [],
-		});
+		const status = await call<{ ok: true; paths: string[]; scoped: boolean; reason?: string }>(
+			plugin,
+			"scopeList",
+		);
+		expect(status.paths).toEqual([]);
+		expect(status.scoped).toBe(false);
+		expect(status.reason).toContain("fs.scope");
 	});
 
 	test("a path inside a configured prefix is allowed", async () => {
@@ -73,6 +76,7 @@ describe("fs scope", () => {
 			path: inside,
 		});
 		expect(entries.map((entry) => entry.name)).toEqual(["kept.md"]);
+		expect((await call<{ scoped: boolean }>(plugin, "scopeList")).scoped).toBe(true);
 	});
 
 	test("a path outside every prefix is outside-scope and names the path", async () => {
@@ -111,10 +115,10 @@ describe("fs scope", () => {
 		).toBe("kept");
 	});
 
-	test("a grant persists to scope.json, survives a new instance, and is 0600", async () => {
+	test("a host grant persists to scope.json, survives a new instance, and is 0600", async () => {
 		const root = await scratch();
 		const { inside } = await tree(root);
-		const first = createFsPlugin({ allow: [], root });
+		const first = createFsPlugin({ allow: [], root, grants: "page" });
 		await expect(
 			call(first, "readTextFile", { path: join(inside, "kept.md") }),
 		).rejects.toMatchObject({ code: "outside-scope" });
@@ -131,16 +135,17 @@ describe("fs scope", () => {
 				path: join(inside, "kept.md"),
 			}),
 		).toBe("kept");
-		expect(await call<{ ok: true; paths: string[] }>(second, "scopeList")).toEqual({
+		expect(await call<{ ok: true; paths: string[] }>(second, "scopeList")).toMatchObject({
 			ok: true,
 			paths: [inside],
+			scoped: true,
 		});
 	});
 
 	test("revoke takes the grant back, and a relative grant is bad-request", async () => {
 		const root = await scratch();
 		const { inside } = await tree(root);
-		const plugin = createFsPlugin({ allow: [], root });
+		const plugin = createFsPlugin({ allow: [], root, grants: "page" });
 		await call(plugin, "scopeAllow", { path: inside });
 		await expect(call(plugin, "scopeAllow", { path: "notes" })).rejects.toMatchObject({
 			code: "bad-request",

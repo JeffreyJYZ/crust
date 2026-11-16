@@ -30,27 +30,27 @@ await window.crust.invoke("window", "create", {
 
 ## Commands
 
-| command | args | answers |
-| --- | --- | --- |
-| `create` | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }` |
-| `close` | `{ label }` | `{ ok: true, label, closed: true }` |
-| `focus` | `{ label }` | `{ ok: true, label, focused: true }` |
-| `setTitle` | `{ label, title }` | `{ ok: true, label, title }` |
-| `list` | none | `{ ok: true, labels }` |
-| `isOpen` | `{ label }` | `{ ok: true, label, open }` |
-| `setSize` | `{ label, width, height }` | `{ ok: true, label, width, height }` |
-| `getSize` | `{ label }` | `{ ok: true, label, width, height }` |
-| `setPosition` | `{ label, x, y }` | `{ ok: true, label, x, y }` |
-| `getPosition` | `{ label }` | `{ ok: true, label, x, y }` |
-| `setAlwaysOnTop` | `{ label, value }` | `{ ok: true, label, alwaysOnTop }` |
-| `isAlwaysOnTop` | `{ label }` | `{ ok: true, label, alwaysOnTop }` |
-| `setFullscreen` | `{ label, value }` | `{ ok: true, label, fullscreen }` |
-| `isFullscreen` | `{ label }` | `{ ok: true, label, fullscreen }` |
-| `minimize` | `{ label }` | `{ ok: true, label, minimized: true }` |
-| `unminimize` | `{ label }` | `{ ok: true, label, minimized: false }` |
-| `isMinimized` | `{ label }` | `{ ok: true, label, minimized }` |
-| `maximize` | `{ label }` | `{ ok: true, label, maximized: true }` |
-| `isMaximized` | `{ label }` | `{ ok: true, label, maximized }` |
+| command          | args                                       | answers                                 |
+| ---------------- | ------------------------------------------ | --------------------------------------- |
+| `create`         | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }`    |
+| `close`          | `{ label }`                                | `{ ok: true, label, closed: true }`     |
+| `focus`          | `{ label }`                                | `{ ok: true, label, focused: true }`    |
+| `setTitle`       | `{ label, title }`                         | `{ ok: true, label, title }`            |
+| `list`           | none                                       | `{ ok: true, labels }`                  |
+| `isOpen`         | `{ label }`                                | `{ ok: true, label, open }`             |
+| `setSize`        | `{ label, width, height }`                 | `{ ok: true, label, width, height }`    |
+| `getSize`        | `{ label }`                                | `{ ok: true, label, width, height }`    |
+| `setPosition`    | `{ label, x, y }`                          | `{ ok: true, label, x, y }`             |
+| `getPosition`    | `{ label }`                                | `{ ok: true, label, x, y }`             |
+| `setAlwaysOnTop` | `{ label, value }`                         | `{ ok: true, label, alwaysOnTop }`      |
+| `isAlwaysOnTop`  | `{ label }`                                | `{ ok: true, label, alwaysOnTop }`      |
+| `setFullscreen`  | `{ label, value }`                         | `{ ok: true, label, fullscreen }`       |
+| `isFullscreen`   | `{ label }`                                | `{ ok: true, label, fullscreen }`       |
+| `minimize`       | `{ label }`                                | `{ ok: true, label, minimized: true }`  |
+| `unminimize`     | `{ label }`                                | `{ ok: true, label, minimized: false }` |
+| `isMinimized`    | `{ label }`                                | `{ ok: true, label, minimized }`        |
+| `maximize`       | `{ label }`                                | `{ ok: true, label, maximized: true }`  |
+| `isMaximized`    | `{ label }`                                | `{ ok: true, label, maximized }`        |
 
 Success is `{ ok: true, … }`. Failure is an ordinary 200 with `{ ok: false, code, message, label? }`, where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-position`, `invalid-value`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
 
@@ -75,7 +75,7 @@ A label that is already open is `duplicate-label`: the platform map is keyed by 
 
 - **Liveness is visible, miniaturised, or the app hidden.** A minimised window is still open. `-windowNumber` keeps its value after `-close`, so it is never the test.
 - **A closed label leaves `list`**, answers `unknown-window` for every other command, and `isOpen` on it answers `unknown-window` rather than `open: false`.
-- **A closed label can be created again.** `create` releases the stale native entry first, so reuse works; a *live* label is refused before anything is touched.
+- **A closed label can be created again.** `create` releases the stale native entry first, so reuse works; a _live_ label is refused before anything is touched.
 - **Closing the last window ends the app** only when a `window-all-closed` listener exists — the check runs on a 250 ms poll and calls `quit()` after the listeners. With no listener the app keeps running with no window.
 
 ## Menu bar and shortcuts
@@ -83,10 +83,10 @@ A label that is already open is `duplicate-label`: the platform map is keyed by 
 crust installs a real `NSApp.mainMenu` at startup, because AppKit carries the standard
 shortcuts on menu items — without one, ⌘Q, ⌘C and ⌘V do nothing at all.
 
-| menu | items |
-| --- | --- |
-| app menu (the app's name) | **Quit**, ⌘Q |
-| Edit | Undo ⌘Z, Redo ⇧⌘Z, Cut ⌘X, Copy ⌘C, Paste ⌘V, Select All ⌘A |
+| menu                      | items                                                       |
+| ------------------------- | ----------------------------------------------------------- |
+| app menu (the app's name) | **Quit**, ⌘Q                                                |
+| Edit                      | Undo ⌘Z, Redo ⇧⌘Z, Cut ⌘X, Copy ⌘C, Paste ⌘V, Select All ⌘A |
 
 Every item targets `nil`, so the action goes to whatever has focus — the webview's text field
 included. Verified by hand in a built app: copy, paste and quit all fire, 2026-11-14. The menu

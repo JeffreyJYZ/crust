@@ -126,6 +126,15 @@ export class DarwinPlatform implements Platform {
 		return this.#registry.native(label);
 	}
 
+	/**
+	 * The `WKWebView *` behind a tracked label while the window is open; undefined when the
+	 * label was never created or the window has closed. What a native surface resolves a
+	 * command's `label` against, so it acts on that window rather than the first one.
+	 */
+	webview(label: string): number | undefined {
+		return this.#registry.webview(label);
+	}
+
 	/** The window device number while open, 0 once closed, undefined when unknown. */
 	windowNumber(label: string): number | undefined {
 		return this.#registry.number(label);

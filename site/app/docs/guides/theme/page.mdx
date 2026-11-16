@@ -1,0 +1,56 @@
+# Theme
+
+The appearance the app draws in, and the override a page may ask for. `current` reports what the app is actually showing; `set` and `reset` change it and push `theme:changed`, so a page that already rendered follows without polling.
+
+The macOS runtime registers this plugin with `darwinThemeAdapter()`, so `window.crust.invoke("theme", …)` works in an app that names no plugin at all.
+
+## Commands
+
+| command   | arguments                                       | answer                             |
+| --------- | ----------------------------------------------- | ---------------------------------- |
+| `current` | none                                            | `{ ok: true, appearance, source }` |
+| `set`     | `{ appearance: "light" \| "dark" \| "system" }` | `{ ok: true, appearance, source }` |
+| `reset`   | none                                            | `{ ok: true, appearance, source }` |
+
+`appearance` is `"light"` or `"dark"` — what the app is drawing in now. `source` is `"system"` when macOS decided and `"override"` when a page did.
+
+```ts
+const state = await window.crust.invoke("theme", "current");
+if (state.appearance === "dark") document.documentElement.dataset.theme = "dark";
+```
+
+## Setting one
+
+```ts
+await window.crust.invoke("theme", "set", { appearance: "dark" });
+await window.crust.invoke("theme", "reset");
+```
+
+`reset` and `set({ appearance: "system" })` are the same call: both send nil to `-[NSApplication setAppearance:]`, which hands the choice back to macOS.
+
+Every change is read back from the app after it is applied, so the answer is what the app shows rather than an echo of the argument. `set` with anything other than the three accepted strings is a rejected invoke carrying `bad-request`.
+
+## Following a change
+
+```js
+window.crust.listen("theme:changed", ({ appearance, source }) => {
+	document.documentElement.dataset.theme = appearance;
+});
+```
+
+The event carries the same two fields the command answers with, and fires after `set` and `reset` — not when the user flips the system appearance on their own, because nothing in this plugin observes that.
+
+## Failure shape
+
+Without an adapter — every platform but macOS — each command answers `not-implemented` and names what it waits on:
+
+```json
+{
+	"ok": false,
+	"code": "not-implemented",
+	"message": "theme.set needs -[NSApplication setAppearance:] …",
+	"requires": "NSAppearance"
+}
+```
+
+Branch on `result.ok`, not on a thrown error.

@@ -145,6 +145,7 @@ export const WINDOW_COMMANDS = [
 	"setTitle",
 	"list",
 	"isOpen",
+	"label",
 	"setSize",
 	"getSize",
 	"setPosition",

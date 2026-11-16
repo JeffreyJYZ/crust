@@ -4,11 +4,11 @@ What crust does not do, stated before you build on it. Each line is a boundary, 
 
 ## Platform
 
-| limit | detail |
-| --- | --- |
-| macOS 13 (Ventura) or later | the shim links AppKit, WebKit and Foundation by name; the Homebrew formula declares `depends_on macos: :ventura` |
-| Apple silicon only | there is no Intel, Windows or Linux path |
-| no Xcode required | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
+| limit                       | detail                                                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| macOS 13 (Ventura) or later | the shim links AppKit, WebKit and Foundation by name; the Homebrew formula declares `depends_on macos: :ventura`                    |
+| Apple silicon only          | there is no Intel, Windows or Linux path                                                                                            |
+| no Xcode required           | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
 
 ## Distribution
 
@@ -43,12 +43,12 @@ The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS
 
 `notification.notify()` returns `{ delivered, reason }`, and `delivered` is true only when the OS reported success. Four measured rules decide it:
 
-| rule | detail |
-| --- | --- |
-| a bundle in the system temp directory is refused | the same app delivered from `~/dev` and answered code 1 from `/var/folders`, twice each way |
-| a denied identifier is never re-asked | macOS records the denial; the app answers code 1 forever without a prompt |
-| a denial is reversible | System Settings → Notifications → Allow made an identifier that had answered code 1 four different ways deliver, with no rebuild |
-| the signature is not a cause | ad-hoc and Apple Development both deliver on a fresh identifier |
+| rule                                             | detail                                                                                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| a bundle in the system temp directory is refused | the same app delivered from `~/dev` and answered code 1 from `/var/folders`, twice each way                                      |
+| a denied identifier is never re-asked            | macOS records the denial; the app answers code 1 forever without a prompt                                                        |
+| a denial is reversible                           | System Settings → Notifications → Allow made an identifier that had answered code 1 four different ways deliver, with no rebuild |
+| the signature is not a cause                     | ad-hoc and Apple Development both deliver on a fresh identifier                                                                  |
 
 Unbundled, there is no bundle identifier, so the modern notification centre is never entered and `delivered` is false. A first post on a new identifier raises a permission prompt; an unanswered prompt is recorded as a denial, so `notify({ waitMs })` bounds how long it may stay up. `requestPermission` answers `not-implemented` — the notification itself requests authorization.
 

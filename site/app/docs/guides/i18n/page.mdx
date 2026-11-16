@@ -1,0 +1,67 @@
+# Language
+
+The language the app should speak, and the catalogue that answers in it. The only native half is the preferred-language read; the catalogue is plain data a caller supplies, so the same plugin works anywhere once messages are loaded.
+
+## Commands
+
+| command     | arguments        | answer                            |
+| ----------- | ---------------- | --------------------------------- |
+| `locale`    | none             | `{ ok: true, locale }`            |
+| `setLocale` | `{ locale }`     | `{ ok: true, locale }`            |
+| `messages`  | `{ locale? }`    | `{ ok: true, locale, messages }`  |
+| `translate` | `{ key, vars? }` | `{ ok: true, locale, key, text }` |
+
+```ts
+const plugin = createI18nPlugin({
+	locale: "en",
+	messages: {
+		en: { greeting: "Hello, {name}", files_one: "{count} file", files_other: "{count} files" },
+		de: {
+			greeting: "Hallo, {name}",
+			files_one: "{count} Datei",
+			files_other: "{count} Dateien",
+		},
+	},
+});
+```
+
+A catalogue is `locale → key → text`. The runtime registers the plugin with `darwinLocaleAdapter()` and no catalogue, so a page reads the system language out of the box and the messages are the app's to supply.
+
+## Which locale answers
+
+The order is: the page's `setLocale` choice, then the configured `locale`, then the system's preferred language, then the first catalogue entry.
+
+`messages` and `translate` resolve a table through the same fallbacks: the exact tag, then its language (`"en-GB"` → `"en"`), then the configured default, then the first entry. The answer names the table it actually found, so a fallback is visible rather than a relabelled copy of another locale's text.
+
+`setLocale` is **in-memory on purpose**. macOS keeps the language list in System Settings, and an app cannot change it; pretending otherwise would report a language the system does not use.
+
+## Plurals
+
+`translate` looks for the exact key first. If it is absent and `vars.count` is a finite number, it selects a form with `Intl.PluralRules`:
+
+```ts
+await window.crust.invoke("i18n", "translate", { key: "files", vars: { count: 1 } });
+// files_one
+await window.crust.invoke("i18n", "translate", { key: "files", vars: { count: 4 } });
+// files_other
+```
+
+A catalogue carries two forms, so every other category (`few`, `many`, `zero`) lands on `_other`. A locale tag `Intl` refuses falls back to `count === 1 ? "one" : "other"`.
+
+## Interpolation
+
+`{name}` is filled from `vars`. A placeholder nothing supplies is a rejected invoke carrying `bad-request` rather than a `{name}` shipped to a user:
+
+```json
+{
+	"ok": false,
+	"code": "bad-request",
+	"message": "i18n.translate: \"greeting\" needs {name}, which vars does not supply"
+}
+```
+
+A key that is in no form — exact, `_one`, `_other` — is the same kind of refusal, and it names the locale it looked in.
+
+## Failure shape
+
+With no catalogue loaded — the runtime's default — `messages` and `translate` answer `not-implemented` naming `createI18nPlugin({ messages })`. With no adapter and no configured locale, `locale` answers `not-implemented` naming `NSLocale`.

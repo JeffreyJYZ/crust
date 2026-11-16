@@ -1,36 +1,20 @@
 /**
- * `crust:shell`'s argument reading and its allowlist rules. A page payload is whatever the bridge parsed, so every reader answers a typed failure instead of throwing, and a program is refused before any process exists.
+ * `crust:shell`'s argument reading: a page payload is whatever the bridge parsed, so every reader answers a typed failure instead of throwing, and a program, a `cwd` or an `env` is refused before any process exists.
+ * The rules themselves live in `shell-resolve.ts` (paths) and `shell-env.ts` (environment); this file only reads the payload and hands each part to them.
  */
 
-import { isAbsolute, resolve, sep } from "node:path";
+import { readEnv } from "./shell-env";
+import { type ShellFailure, shellFailure } from "./shell-failure";
+import { type ShellRules, resolveCwd, resolveProgram } from "./shell-resolve";
 
 export interface SpawnArgs {
 	program: string;
 	args?: string[];
 	cwd?: string;
+	/** Refused unless the host opted in, and the loader and shell names are refused even then. */
 	env?: Record<string, string>;
 	/** `"pipe"` gives `write` something to feed; the default `"ignore"` reads as immediate EOF. */
 	stdin?: "pipe" | "ignore";
-}
-
-export type ShellFailureCode =
-	| "invalid-args"
-	| "program-not-allowed"
-	| "program-outside-root"
-	| "cwd-not-allowed"
-	| "spawn-failed"
-	| "unknown-process"
-	| "no-stdin";
-
-/** The refusal shape every `crust:shell` command answers with. */
-export interface ShellFailure {
-	ok: false;
-	code: ShellFailureCode;
-	message: string;
-}
-
-export function shellFailure(code: ShellFailureCode, message: string): ShellFailure {
-	return { ok: false, code, message };
 }
 
 export function unknownProcess(command: string, id: unknown): ShellFailure {
@@ -57,6 +41,7 @@ export function requireId(args: unknown, command: string): { ok: true; id: strin
 /** What `spawn` hands `Bun.spawn`, already checked. */
 export interface SpawnPlan {
 	ok: true;
+	/** `cmd[0]` is the real path that was checked, so nothing re-resolves a name at spawn time. */
 	cmd: string[];
 	cwd: string;
 	env: Record<string, string>;
@@ -64,24 +49,23 @@ export interface SpawnPlan {
 	pipe: boolean;
 }
 
-export interface ShellRules {
-	/** Program names a page may run, matched as basenames. */
-	allow: readonly string[];
-	/** Absolute directory every `cwd` and path-form program must stay inside. */
-	root: string;
-}
-
-/** A resolved path is inside `root`, or is `root` itself. */
-function inside(path: string, root: string): boolean {
-	return path === root || path.startsWith(root.endsWith(sep) ? root : `${root}${sep}`);
-}
-
-function notAllowed(program: string, allow: readonly string[]): ShellFailure {
-	return shellFailure(
-		"program-not-allowed",
-		`shell.spawn: ${JSON.stringify(program)} is not in the allow list; ` +
-			`createShellPlugin names the programs a page may run (allowed: ${allow.join(", ") || "none"})`,
-	);
+function readArgs(value: unknown): { ok: true; argv: string[] } | ShellFailure {
+	const argv: string[] = [];
+	if (value === undefined) return { ok: true, argv };
+	if (!Array.isArray(value)) {
+		return shellFailure("invalid-args", 'shell.spawn: "args" must be an array of strings');
+	}
+	for (const item of value) {
+		if (typeof item !== "string" || item.includes("\0")) {
+			return shellFailure(
+				"invalid-args",
+				`shell.spawn: every "args" entry must be a string without a null byte, ` +
+					`got ${JSON.stringify(item)}`,
+			);
+		}
+		argv.push(item);
+	}
+	return { ok: true, argv };
 }
 
 export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellFailure {
@@ -112,14 +96,8 @@ export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellF
 			`shell.spawn: "cwd" must be a string, got ${JSON.stringify(source.cwd)}`,
 		);
 	}
-	const cwd = resolve(rules.root, source.cwd ?? ".");
-	if (!inside(cwd, rules.root)) {
-		return shellFailure(
-			"cwd-not-allowed",
-			`shell.spawn: cwd ${JSON.stringify(source.cwd)} resolves to ${cwd}, ` +
-				`outside cwdRoot ${rules.root}`,
-		);
-	}
+	const dir = resolveCwd(rules, source.cwd);
+	if (!dir.ok) return dir;
 
 	if (source.stdin !== undefined && source.stdin !== "pipe" && source.stdin !== "ignore") {
 		return shellFailure(
@@ -127,59 +105,21 @@ export function parseSpawn(args: unknown, rules: ShellRules): SpawnPlan | ShellF
 			`shell.spawn: "stdin" must be "pipe" or "ignore", got ${JSON.stringify(source.stdin)}`,
 		);
 	}
-	const pipe = source.stdin === "pipe";
 
-	// A bare name is looked up on PATH; anything with a separator is a path, and
-	// it must both keep an allowed basename and resolve inside the root.
-	let target = program;
-	if (program.includes("/") || program.includes("\\")) {
-		const base = program.split(/[\\/]/).pop() ?? "";
-		if (!rules.allow.includes(base)) return notAllowed(program, rules.allow);
-		target = isAbsolute(program) ? resolve(program) : resolve(cwd, program);
-		if (!inside(target, rules.root)) {
-			return shellFailure(
-				"program-outside-root",
-				`shell.spawn: ${JSON.stringify(program)} resolves to ${target}, ` +
-					`outside cwdRoot ${rules.root}`,
-			);
-		}
-	} else if (!rules.allow.includes(program)) {
-		return notAllowed(program, rules.allow);
-	}
+	const parsedArgs = readArgs(source.args);
+	if (!parsedArgs.ok) return parsedArgs;
 
-	const argv: string[] = [];
-	if (source.args !== undefined) {
-		if (!Array.isArray(source.args)) {
-			return shellFailure("invalid-args", 'shell.spawn: "args" must be an array of strings');
-		}
-		for (const item of source.args) {
-			if (typeof item !== "string" || item.includes("\0")) {
-				return shellFailure(
-					"invalid-args",
-					`shell.spawn: every "args" entry must be a string without a null byte, ` +
-						`got ${JSON.stringify(item)}`,
-				);
-			}
-			argv.push(item);
-		}
-	}
+	const target = resolveProgram(rules, program, dir.cwd);
+	if (!target.ok) return target;
 
-	const env: Record<string, string> = {};
-	if (source.env !== undefined) {
-		if (typeof source.env !== "object" || source.env === null || Array.isArray(source.env)) {
-			return shellFailure("invalid-args", 'shell.spawn: "env" must be an object of strings');
-		}
-		for (const [key, value] of Object.entries(source.env)) {
-			if (typeof value !== "string") {
-				return shellFailure(
-					"invalid-args",
-					`shell.spawn: env ${JSON.stringify(key)} must be a string, ` +
-						`got ${JSON.stringify(value)}`,
-				);
-			}
-			env[key] = value;
-		}
-	}
+	const env = readEnv(source.env, rules.env);
+	if (!env.ok) return env;
 
-	return { ok: true, cmd: [target, ...argv], cwd, env, pipe };
+	return {
+		ok: true,
+		cmd: [target.path, ...parsedArgs.argv],
+		cwd: dir.cwd,
+		env: env.env,
+		pipe: source.stdin === "pipe",
+	};
 }

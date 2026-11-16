@@ -1,0 +1,77 @@
+# Crash reports
+
+What the app knows about its own last crash. The reporting happens in a **second process**, because the one thing a faulting process cannot do is finish writing — so every command here either reads a file or arms a handler, and none of them runs inside a process that is already failing.
+
+Registered by the macOS runtime as `createCrashReporterPlugin({ root, guard, native })`, with the app's data root and the guard it started at launch — so `window.crust.invoke("crash-reporter", …)` works in an app that names no plugin.
+
+## The two halves
+
+| half          | where                                              | what it does                                                                     |
+| ------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| the C handler | `src/platform/darwin/crash.ts`, `shim/111_crash.c` | writes a fixed 84-byte record, then `_exit(70)`                                  |
+| the guard     | `src/runtime-crash-guard.ts`                       | watches the app's pid, reads that record when the pid is gone, appends the crash |
+
+The handler may not format, allocate or measure anything — the process has already faulted — so the record is fixed-size and the reading side does all the work.
+
+| file, in the app's data directory | holds                                                                                   |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `crash-record.bin`                | magic `CRSH`, i32 signal, i32 `si_code`, u64 address, a 64-byte NUL-padded handler name |
+| `crashes.log`                     | one JSON object per line, appended by the guard                                         |
+| `last-crash.json`                 | the most recent crash, rewritten every time                                             |
+
+All three are created `0600`, and each write chmods an existing file back to `0600` — a log an older build left world-readable is still out there, so the mode is set on both paths, not only at creation. A crash artefact carries the signal, the fault address, the handler and the app's paths, which is nobody else's business on the machine.
+
+A crash the handler recorded always leaves exit status `70`. A clean exit leaves the record empty, so the guard writes nothing.
+
+## Starting the guard
+
+```ts
+const guard = startCrashGuard({ appDataDir });
+```
+
+The guard is a second Bun process running `src/runtime-crash-guard.ts --guard --pid <n> --root <dir>` and polling liveness every 100 ms. It polls rather than calling `waitpid`, because it did not spawn the process it watches, so it cannot reap it and cannot read a wait status; the record is therefore the only trustworthy signal that an exit was a fault.
+
+A compiled binary carries no readable copy of that file, so `startCrashGuard()` refuses with `not-implemented` there instead of spawning something that cannot work.
+
+## Commands
+
+| command     | arguments    | answer                                                                       |
+| ----------- | ------------ | ---------------------------------------------------------------------------- |
+| `last`      | none         | `{ crash, root }` — `crash` is `null` when nothing crashed                   |
+| `list`      | `{ limit? }` | `{ crashes, root }`, oldest first                                            |
+| `clear`     | none         | `{ ok: false, code: "page-cannot-clear", message, root }` — always a refusal |
+| `install`   | none         | `{ armed, reason, record, root }`                                            |
+| `uninstall` | none         | `{ armed: false, reason }`                                                   |
+
+A record is `{ signal, code, address, at, handler, exitCode }`. `signal` is a name such as `SIGSEGV`, `null` when the record named a signal this build does not map; `code` is `si_code`, where `1` (`SEGV_MAPERR`) and `2` (`SEGV_ACERR`) are the two a real fault produces; `address` is hex, `0x0` when the kernel supplied none.
+
+`install` arms the handlers so the next fault writes a record. `uninstall` restores the default disposition, so a fault is a plain fault again.
+
+## Reading, and why a page cannot clear
+
+`last` and `list` are the page-facing way to read crashes: `last` is the newest record, `list` is every record oldest first. Neither deletes anything.
+
+`clear` never deletes from a page. It answers a named refusal, because the page is the process whose bug produced the crash, so letting it erase the evidence is the wrong shape:
+
+```json
+{
+	"ok": false,
+	"code": "page-cannot-clear",
+	"message": "crash-reporter.clear: a page cannot delete its own crash evidence; the runtime calls clearCrashes(<root>) instead",
+	"root": "<root>"
+}
+```
+
+The runtime is the only caller that can clear, through `clearCrashes(root)` in `src/runtime-crash-store.ts` — documented there as runtime-only. A page that wants the list shorter asks its host, which is the same rule as every other write that outlives the window.
+
+The pending record is not part of this at all: `clearCrashes` removes `crashes.log` and `last-crash.json`, and the guard may still read `crash-record.bin`.
+
+## The refusal that matters
+
+Without a running guard, `last`, `list` and `clear` answer `not-implemented` naming `startCrashGuard()` — never an empty list. An empty list reads as "no crashes", which is exactly the wrong conclusion when nothing has been watching.
+
+Without the darwin signal unit, `install` and `uninstall` answer `not-implemented` naming `armCrashHandlers()`.
+
+## Limits
+
+The guard records the fault's signal, `si_code`, address and handler name. It does not capture a backtrace or symbolicate: those need a debugger, and a process that has already faulted cannot start one.

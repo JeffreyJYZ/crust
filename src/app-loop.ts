@@ -4,6 +4,7 @@
 
 import { CrustError } from "@/bridge/errors";
 import { type CrustConfig, type WindowConfig } from "@/config";
+import type { DarwinPlatform } from "@/platform/darwin";
 import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
 import { APP_NAMESPACE, type AppEvent, type AppListener, type Platform } from "./app-types.ts";
 import { corePlugins, windowPlugin } from "./plugins/index.ts";
@@ -45,11 +46,40 @@ export function windowUrl(
  * The only dynamic import of the native layer. Keeping it lazy is what lets
  * `bun check` and the bridge tests load `app.ts` on any machine, and why a
  * process that never calls `run()` never compiles the shim.
+ * One arm per OS, each importing its own barrel, so a Linux launch never loads AppKit and a macOS launch never loads GTK.
  */
 export async function loadPlatform(config: CrustConfig): Promise<Platform> {
-	if (process.platform !== "darwin") {
-		throw new Error(`crust: no platform for ${process.platform} — macOS only for v1`);
+	switch (process.platform) {
+		case "darwin": {
+			const darwin = await import("@/platform/darwin");
+			return darwin.createPlatform({ appName: config.app.name });
+		}
+		case "linux": {
+			// The whole config, because the Linux platform reads the window list;
+			// darwin takes only the name.
+			const linux = await import("@/platform/linux");
+			return linux.createPlatform(config);
+		}
+		case "win32": {
+			// `WindowsPlatformConfig` is `{ appName, userDataDir }`, so the whole config
+			// rides along and the name their window class reads is added beside it —
+			// passing the bare config would register every app as "crust".
+			const windows = await import("@/platform/windows");
+			return windows.createPlatform({ ...config, appName: config.app.name });
+		}
+		default:
+			throw new Error(
+				`crust: no platform for ${process.platform} — macOS, Linux and Windows for now`,
+			);
 	}
+}
+
+/**
+ * The macOS platform alone. The plugin layer reads Darwin-only members off it, so
+ * `runtime.ts` needs the narrower type; every other OS reaches its platform
+ * through `loadPlatform`, which is the same call with a wider return.
+ */
+export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPlatform> {
 	const darwin = await import("@/platform/darwin");
 	return darwin.createPlatform({ appName: config.app.name });
 }

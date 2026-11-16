@@ -1,6 +1,6 @@
 import type { Validator } from "./validator.ts";
 
-export const UPDATER_KEYS = ["endpoint", "pubkey", "autoCheck"] as const;
+export const UPDATER_KEYS = ["endpoint", "pubkey", "autoCheck", "allowFileUrl"] as const;
 
 /** Base64 of 32 raw bytes: 43 characters, or 44 with the one padding byte. */
 const BASE64_32 = /^[A-Za-z0-9+/]{43}=?$/;
@@ -24,5 +24,10 @@ export function validateUpdater(v: Validator, value: unknown): void {
 	const autoCheck = updater.autoCheck;
 	if (autoCheck !== undefined && typeof autoCheck !== "boolean") {
 		v.fail("updater.autoCheck", "a boolean", autoCheck);
+	}
+
+	const allowFileUrl = updater.allowFileUrl;
+	if (allowFileUrl !== undefined && typeof allowFileUrl !== "boolean") {
+		v.fail("updater.allowFileUrl", "a boolean", allowFileUrl);
 	}
 }

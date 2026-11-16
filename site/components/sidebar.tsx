@@ -2,11 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-	Collapsible,
-	CollapsiblePanel,
-	CollapsibleTrigger,
-} from "@ui-sdk/react/collapsible";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@ui-sdk/react/collapsible";
 import {
 	Dialog,
 	DialogBackdrop,

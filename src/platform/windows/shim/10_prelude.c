@@ -1,0 +1,89 @@
+// crust windows shim — compiled at launch by bun:ffi's cc().
+// No headers: TinyCC has no Windows SDK here, so every user32/kernel32/ole32 symbol is a
+// hand-written extern with a FIXED prototype, the same rule the darwin shim follows. Nothing but
+// ints, doubles and opaque pointers crosses bun:ffi; every string is converted to UTF-16 here and
+// consumed here. x64/arm64 only: one calling convention, which is why no __stdcall appears.
+
+typedef void *shim_h;
+typedef unsigned short shim_wchar;
+typedef unsigned long long shim_u64;
+typedef long long shim_i64;
+
+extern void *GetModuleHandleW(const shim_wchar *name);
+extern unsigned int GetLastError(void);
+extern int MultiByteToWideChar(unsigned int cp, unsigned int flags, const char *src, int srclen,
+                               shim_wchar *dst, int dstlen);
+extern shim_h LoadCursorW(shim_h instance, const shim_wchar *name);
+extern unsigned short RegisterClassExW(void *wc);
+extern shim_h CreateWindowExW(unsigned int ex, const shim_wchar *cls, const shim_wchar *title,
+                              unsigned int style, int x, int y, int w, int h, shim_h parent,
+                              shim_h menu, shim_h inst, void *param);
+extern int DestroyWindow(shim_h hwnd);
+extern int IsWindow(shim_h hwnd);
+extern int ShowWindow(shim_h hwnd, int cmd);
+extern int UpdateWindow(shim_h hwnd);
+extern int GetClientRect(shim_h hwnd, void *rect);
+extern int SetWindowTextW(shim_h hwnd, const shim_wchar *text);
+extern int PeekMessageW(void *msg, shim_h hwnd, unsigned int min, unsigned int max, int remove);
+extern int TranslateMessage(const void *msg);
+extern shim_i64 DispatchMessageW(const void *msg);
+extern shim_i64 DefWindowProcW(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp);
+extern void PostQuitMessage(int code);
+extern void Sleep(unsigned int ms);
+extern shim_i64 CoInitializeEx(void *reserved, unsigned int coinit);
+
+#define SHIM_WS_OVERLAPPEDWINDOW 0x00CF0000u
+#define SHIM_CW_USEDEFAULT ((int)0x80000000)
+#define SHIM_SW_SHOW 5
+#define SHIM_WM_DESTROY 2
+#define SHIM_WM_SIZE 5
+#define SHIM_WM_CLOSE 16
+#define SHIM_PM_REMOVE 1
+#define SHIM_COINIT_APARTMENTTHREADED 2
+#define SHIM_IDC_ARROW ((const shim_wchar *)32512)
+
+// Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.
+int shim_webview_put_bounds(shim_h hwnd, double w, double h);
+
+// --- strings ---------------------------------------------------------------
+
+// UTF-8 in, UTF-16 out, in a caller-owned buffer. 65001 is CP_UTF8 and -1 means
+// "NUL-terminated source". Returns the UTF-16 length, or -1 when nothing converted.
+int shim_utf16(const char *src, shim_wchar *dst, int cap) {
+	if (!src || !dst || cap <= 0) return -1;
+	int n = MultiByteToWideChar(65001u, 0u, src, -1, dst, cap);
+	if (n <= 0) return -1;
+	dst[n - 1] = 0;
+	return n - 1;
+}
+
+shim_i64 shim_last_error(void) { return (shim_i64)GetLastError(); }
+
+// STA, because WebView2's controller must live on the thread that created the window and a
+// free-threaded apartment would marshal every call. S_FALSE (1) means already initialised.
+shim_i64 shim_com_init(void) {
+	return (shim_i64)CoInitializeEx(0, SHIM_COINIT_APARTMENTTHREADED);
+}
+
+// --- pump ------------------------------------------------------------------
+
+// MSG is 48 bytes on x64. It is never read on this side: PeekMessageW fills it,
+// TranslateMessage and DispatchMessageW consume it.
+typedef struct {
+	shim_i64 a, b, c, d, e, f;
+} shim_msg;
+
+// One slice: drain what is queued, then return, so Bun's timer keeps the cadence the darwin
+// pump has. PM_REMOVE is 1 — without it the same message dispatches forever.
+int shim_pump(void) {
+	shim_msg msg;
+	int handled = 0;
+	while (PeekMessageW(&msg, 0, 0, 0, SHIM_PM_REMOVE)) {
+		TranslateMessage(&msg);
+		DispatchMessageW(&msg);
+		handled++;
+	}
+	return handled;
+}
+
+void shim_post_quit(void) { PostQuitMessage(0); }

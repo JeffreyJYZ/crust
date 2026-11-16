@@ -3,7 +3,7 @@
  * A signature that cannot be decoded is a failure value, never a throw, because WebCrypto raises on a wrong key or signature length.
  */
 
-import { readString, type UpdaterFailure } from "./updater-args";
+import { readString, seen, type UpdaterFailure } from "./updater-args";
 
 export const ED25519_PUBKEY_BYTES = 32;
 export const ED25519_SIGNATURE_BYTES = 64;
@@ -66,20 +66,29 @@ export interface SignatureArgs {
 
 /**
  * Both or neither: `undefined` means no signature was claimed, `null` means the claim is unusable.
- * `pinned` is the plugin's configured key, so a page may leave `pubkey` out and still be held to
- * the key the app shipped with — and may never substitute one of its own.
+ * `pinned` is the plugin's configured key and the only key a signature is ever verified with: a
+ * manifest's own `pubkey` may only name that key, so a page cannot certify itself with a key it
+ * shipped. With no pinned key there is nothing to verify against, and that is `null`, never the
+ * caller's key.
  */
 export function readSignatureArgs(
 	source: unknown,
 	pinned?: string,
 ): SignatureArgs | null | undefined {
 	const signature = readString(source, "signature");
-	const given = readString(source, "pubkey");
-	if (given !== undefined && pinned !== undefined && given !== pinned) return null;
-	const pubkey = given ?? pinned;
 	if (signature === undefined) return undefined;
-	if (pubkey === undefined) return null;
-	return { signature, pubkey };
+	if (pinned === undefined) return null;
+	const given = readString(source, "pubkey");
+	if (given !== undefined && given !== pinned) return null;
+	return { signature, pubkey: pinned };
+}
+
+/** A signature with no configured key is refused by name: the page's own key is never accepted. */
+export function requiresPubkey(args: unknown): UpdaterFailure {
+	const message =
+		"crust: updater.download requires updater.pubkey in crust.config.ts to verify a signature, " +
+		`and this app pins none, got ${seen(args)}`;
+	return { ok: false, code: "invalid-arguments", message, requires: "updater.pubkey" };
 }
 
 /** Nothing is installed from an artifact whose bytes are not the ones the manifest signed. */

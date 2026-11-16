@@ -54,10 +54,10 @@ there is no running copy to raise.
 
 ## Failure codes
 
-| shape | when |
-| --- | --- |
-| `handler-error` | `id` is empty, `.`, `..` or contains a separator, or `pid` is not an integer in 1…2147483647 |
-| `not-implemented` | `activate` ran on a launch that skipped the check |
+| shape             | when                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| `handler-error`   | `id` is empty, `.`, `..` or contains a separator, or `pid` is not an integer in 1…2147483647 |
+| `not-implemented` | `activate` ran on a launch that skipped the check                                            |
 
 `acquire` and `release` answer their own objects and carry no code. The two argument refusals throw,
 and the bridge reports a throw as `handler-error` with the message intact.

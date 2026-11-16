@@ -41,7 +41,7 @@ event queue (`nextEventMatchingMask:` → `sendEvent:` → `updateWindows`) befo
 `CFRunLoopRunInMode`.
 
 The slice length is the whole design: 0.25 ms and 0.5 ms both delivered 186 of 187 ticks, 1 ms
-reached 96.8%, 4 ms only 82.4%. A 4 ms slice is *worse than not pumping at all*. Blocking
+reached 96.8%, 4 ms only 82.4%. A 4 ms slice is _worse than not pumping at all_. Blocking
 JavaScript blocks drawing, so long work belongs on a `Worker`.
 
 ## The bridge
@@ -51,6 +51,12 @@ The page and the backend talk over a loopback HTTP bridge, not a promise inside 
 `app.id`** (45000–48999, walking upward), so the origin a page loads from is stable and can be
 named in the content security policy. This is also what makes `crust dev` work: the window loads
 `dev.url` exactly once, so the dev server must already be up.
+
+## How a page loads
+
+A page loads from the **bridge URL** (`http://127.0.0.1:<port>/`), navigated by the platform's own call — darwin sends `-loadRequest:`. No platform registers a custom scheme to serve a page: a scheme that cannot serve bytes earns nothing, and `crust://` is already taken. `urlScheme` is optional app config with no default, so `crust://` belongs to an app's deep links, never to the framework.
+
+That leaves a new platform one job: implement `Platform` — `start`, `pump`, `createWindow`, `window`, `quit` — and nothing more. A page-serving scheme invented per platform is how two lanes produced two incompatible loaders for one contract.
 
 ## Known shape, stated honestly
 

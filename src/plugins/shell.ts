@@ -1,19 +1,13 @@
 /**
  * `crust:shell` — the page-facing process API: spawn an allowlisted program, feed its stdin, read its bounded output, kill it, list what is live.
  * No shell is ever invoked, so a page's argument reaches the program as argv and never as a command line, and a program not named in `allow` is refused before any process exists.
+ * The allow list is a set of real paths, not names, and a page-supplied `env` is refused unless the host opts in — either one alone would make the list decorative.
  */
 
-import { resolve } from "node:path";
-
 import { definePlugin, type PluginContext, type PluginDefinition } from "./define";
-import {
-	type ShellFailure,
-	type SpawnArgs,
-	parseSpawn,
-	requireId,
-	shellFailure,
-	unknownProcess,
-} from "./shell-args";
+import { type SpawnArgs, parseSpawn, requireId, unknownProcess } from "./shell-args";
+import { type ShellFailure, shellFailure } from "./shell-failure";
+import { type ShellRuleOptions, shellRules } from "./shell-resolve";
 import { type WriteArgs, noStdin, readWrite } from "./shell-stdin";
 import {
 	type Child,
@@ -53,12 +47,11 @@ export type ShellCommands = {
 	list: () => ListOutcome;
 };
 
-export interface ShellOptions {
-	/** Program names a page may run; an empty or absent list runs nothing. */
-	allow?: readonly string[];
-	/** Every `cwd` and every path-form program must stay inside this directory. */
-	cwdRoot?: string;
-}
+/**
+ * The host's rules: what a page may run, where, and whether it may configure the environment.
+ * One definition, in `shell-resolve.ts`, because that is what reads them.
+ */
+export type ShellOptions = ShellRuleOptions;
 
 interface Live {
 	id: string;
@@ -73,8 +66,7 @@ interface Live {
 export function createShellPlugin(
 	options: ShellOptions = {},
 ): PluginDefinition<"shell", ShellCommands> {
-	const allow = [...(options.allow ?? [])];
-	const root = resolve(options.cwdRoot ?? process.cwd());
+	const rules = shellRules(options);
 	const processes = new Map<string, Live>();
 	let next = 0;
 
@@ -91,7 +83,7 @@ export function createShellPlugin(
 		name: "shell",
 		commands: {
 			spawn: async (args: SpawnArgs, ctx?: PluginContext): Promise<SpawnOutcome> => {
-				const plan = parseSpawn(args, { allow, root });
+				const plan = parseSpawn(args, rules);
 				if (!plan.ok) return plan;
 				let child: Child;
 				try {

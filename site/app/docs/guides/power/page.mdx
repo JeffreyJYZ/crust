@@ -1,0 +1,57 @@
+# Power
+
+The machine's power state, how long the user has been idle, and a sleep assertion a long task can hold. Registered by the macOS runtime with `darwinPowerAdapter()`.
+
+## Commands
+
+| command        | arguments    | answer                                             |
+| -------------- | ------------ | -------------------------------------------------- |
+| `state`        | none         | `{ ok: true, onAc, batteryPercent, lowPowerMode }` |
+| `idleSeconds`  | none         | `{ ok: true, seconds }`                            |
+| `sleepPrevent` | `{ reason }` | `{ ok: true, id }`                                 |
+| `sleepAllow`   | none         | `{ ok: true, released }`                           |
+
+## State
+
+```ts
+const power = await window.crust.invoke("power", "state");
+```
+
+| field            | meaning                                                                           |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `onAc`           | wall power right now                                                              |
+| `batteryPercent` | `0`–`100`, or `null` when the machine has no battery — a desktop is on wall power |
+| `lowPowerMode`   | the System Settings flag, read through `-[NSProcessInfo isLowPowerModeEnabled]`   |
+
+`null` is a real answer for a machine without a battery, not a failure; branch on it rather than on `0`.
+
+## Idle time
+
+```ts
+const { seconds } = await window.crust.invoke("power", "idleSeconds");
+```
+
+Seconds since the last input event in the combined session, fractional, from `CGEventSourceSecondsSinceLastEventType`. A value the adapter could not make finite arrives as `0`.
+
+## Holding off sleep
+
+```ts
+const held = await window.crust.invoke("power", "sleepPrevent", { reason: "exporting 4K video" });
+// … long task …
+await window.crust.invoke("power", "sleepAllow");
+```
+
+`reason` must be a non-empty string, because IOKit shows it in `pmset -g assertions` and an unnamed assertion is one nobody can attribute. The answer carries the assertion `id`.
+
+`sleepAllow` reports `released: false` when nothing was held. That is not an error: releasing twice is a legitimate call, and a caller that treats `false` as a failure will report one where nothing went wrong.
+
+The darwin adapter also releases the assertion on process exit, so a crash mid-export does not leave the machine unable to sleep.
+
+## Failure shape
+
+| shape                                                                          | when                                 |
+| ------------------------------------------------------------------------------ | ------------------------------------ |
+| `{ ok: false, code: "not-implemented", requires: "IOPSCopyPowerSourcesInfo" }` | no adapter: every platform but macOS |
+| `{ ok: false, code: "handler-error", message }`                                | the OS refused the assertion         |
+
+`sleepPrevent` with a missing or empty `reason` is a rejected invoke carrying `bad-request`.

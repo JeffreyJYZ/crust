@@ -1,20 +1,31 @@
 /**
- * `crust:fs`'s scope: absolute path prefixes the app may touch. The config's `fs.scope` supplies them, and
- * `fs.scope.allow` widens the list at runtime, persisting the grant to `scope.json` under the app's data
- * directory so it survives a restart. A page client reaches them as `fs.scope.list()` over `fs.scopeList`.
- * No `fs.scope` section means no restriction at all: locking every existing app out of its own files would be
- * a regression, so `check` answers nothing when the section is absent. A `..` walk or a symlink is resolved
- * before the comparison, so neither can land outside a prefix.
+ * `crust:fs`'s scope: absolute path prefixes the app may touch. The config's `fs.scope` supplies them.
+ *
+ * **A page may not widen its own boundary.** `fs.scopeAllow` appends a prefix and persists it to
+ * `scope.json`, so leaving it reachable made the boundary writable by the thing it bounds. It is
+ * refused with `outside-scope` unless the host opted in by building the plugin with
+ * `grants: "page"`; the grant belongs to the host (`fs.scope` in the config, or `createFsScope().allow`),
+ * because a page-reachable grant is a page-reachable boundary.
+ *
+ * **No `fs.scope` section means no restriction at all**, which every existing app relies on, so that
+ * default is unchanged and `fs.scopeList` reports `scoped: false` instead: an app author can see the
+ * boundary is absent rather than assume one exists.
+ *
+ * A `..` walk or a symlink is resolved before the comparison, so neither can land outside a prefix.
  */
 
-import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { join } from "node:path";
 
 import { CrustError } from "../bridge/errors";
+import { canonical, contains, outsideScope, readPath } from "./fs-scope-path.ts";
+import { readStore, SCOPE_FILE, writeStore } from "./fs-scope-store.ts";
 import { defaultStateRoot } from "./window-persist-store.ts";
 
-/** One file for every grant, so a check never scans a directory. */
-export const SCOPE_FILE = "scope.json";
+export { outsideScope } from "./fs-scope-path.ts";
+export { SCOPE_FILE } from "./fs-scope-store.ts";
+
+/** Who may grant a prefix: the host (`runtime`), or a page command (`page`, an explicit opt-in). */
+export type FsGrant = "runtime" | "page";
 
 export interface FsScopeOptions {
 	/** Configured prefixes. Absent means no restriction; an empty array means nothing is allowed. */
@@ -23,86 +34,39 @@ export interface FsScopeOptions {
 	root?: string;
 	/** App name for the default root, usually the config's `app.name`. */
 	app?: string;
+	/** Whether `fs.scopeAllow` is reachable from the page. Defaults to `"runtime"`, which refuses it. */
+	grants?: FsGrant;
+}
+
+/** What `fs.scopeList` answers: the prefixes in force, and whether there is a boundary at all. */
+export interface FsScopeStatus {
+	ok: true;
+	paths: string[];
+	/** False when no `fs.scope` is configured: `fs` can then read and write every file this user can. */
+	scoped: boolean;
+	/** Present only when `scoped` is false, naming what is missing. */
+	reason?: string;
 }
 
 export interface FsScope {
 	readonly enabled: boolean;
+	readonly grants: FsGrant;
+	status(): Promise<FsScopeStatus>;
 	list(): Promise<string[]>;
+	/** A host-side grant. `fs.scopeAllow` reaches this only with `grants: "page"`. */
 	allow(args: unknown): Promise<{ ok: true; paths: string[] }>;
 	revoke(args: unknown): Promise<{ ok: true; paths: string[] }>;
 	/** Throws `outside-scope` unless `path` resolves inside a prefix; a no-op with nothing configured. */
 	check(path: string): Promise<void>;
 }
 
-export function outsideScope(path: string): CrustError {
-	return new CrustError("outside-scope", `fs: ${path} is outside the app's scope`);
-}
-
-/**
- * The real location of a path. A missing leaf resolves through its nearest existing parent, so a check names
- * the directory a write will land in rather than the symlink in front of it.
- */
-async function canonical(path: string): Promise<string> {
-	const absolute = resolve(path);
-	const found = await realpath(absolute).catch(() => undefined);
-	if (found !== undefined) return found;
-	const parent = dirname(absolute);
-	if (parent === absolute) return absolute;
-	return join(await canonical(parent), basename(absolute));
-}
-
-/** A prefix allows itself and everything under it, never a sibling whose name merely starts the same. */
-function contains(prefix: string, target: string): boolean {
-	if (target === prefix) return true;
-	return target.startsWith(prefix.endsWith(sep) ? prefix : `${prefix}${sep}`);
-}
-
-function readPath(args: unknown): string {
-	const value = (args as { path?: unknown } | undefined)?.path;
-	if (typeof value !== "string" || value.trim() === "") {
-		throw new CrustError("bad-request", 'fs.scope: "path" must be a non-empty string');
-	}
-	if (!isAbsolute(value)) {
-		throw new CrustError("bad-request", `fs.scope: ${value} is not an absolute path`);
-	}
-	return value;
-}
-
-/** A missing, unreadable or corrupt file is an empty grant list, never a startup failure. */
-async function readStore(file: string): Promise<string[]> {
-	const text = await readFile(file, "utf8").catch(() => undefined);
-	if (text === undefined) return [];
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		return [];
-	}
-	if (!Array.isArray(parsed)) return [];
-	return parsed.filter((path): path is string => typeof path === "string" && isAbsolute(path));
-}
-
-/**
- * A temporary file in the same directory, then a rename: a crash mid-write leaves the previous grants intact
- * rather than a truncated file. `0600` because the list names private directories.
- */
-async function writeStore(file: string, paths: string[]): Promise<void> {
-	await mkdir(dirname(file), { recursive: true });
-	const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-	try {
-		await writeFile(temporary, `${JSON.stringify(paths, null, "\t")}\n`, {
-			mode: 0o600,
-		});
-		await rename(temporary, file);
-	} catch (error) {
-		await rm(temporary, { force: true });
-		throw error;
-	}
-}
+const UNSCOPED =
+	"fs.scope is not configured, so fs reads and writes every file this user can; add fs.scope to the app config to set a boundary";
 
 export function createFsScope(options: FsScopeOptions = {}): FsScope {
 	const file = join(options.root ?? defaultStateRoot(options.app ?? "crust"), SCOPE_FILE);
 	const enabled = options.allow !== undefined;
+	const grants: FsGrant = options.grants ?? "runtime";
 	const configured = [...(options.allow ?? [])];
 	const persisted = new Set<string>();
 	let loaded: Promise<void> | undefined;
@@ -129,8 +93,16 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 
 	return {
 		enabled,
+		grants,
 
 		list: current,
+
+		status: async () => {
+			const paths = await current();
+			return enabled
+				? { ok: true as const, paths, scoped: true as const }
+				: { ok: true as const, paths, scoped: false as const, reason: UNSCOPED };
+		},
 
 		check: async (path: string) => {
 			if (!enabled) return;
@@ -163,14 +135,26 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 	};
 }
 
-/** The three scope commands, spread into the `fs` plugin's own map so they need no second registration. */
+/** Why a page-reachable grant is refused, named so a page author reads the fix rather than a bare 403. */
+export function grantRefused(): CrustError {
+	return new CrustError(
+		"outside-scope",
+		'fs.scopeAllow: refused — a page may not widen its own scope (grants is "runtime"); the host grants a path through fs.scope in the app config, or by building the plugin with grants: "page"',
+	);
+}
+
+/**
+ * The scope commands, spread into the `fs` plugin's own map so they need no second registration.
+ * `scopeAllow` is refused before its argument is even read, so a malformed call names the real reason.
+ * `scopeRevoke` stays reachable: it can only take a grant away, never widen the boundary.
+ */
 export function scopeCommands(scope: FsScope) {
 	return {
-		scopeList: async (): Promise<{ ok: true; paths: string[] }> => ({
-			ok: true,
-			paths: await scope.list(),
-		}),
-		scopeAllow: (args: unknown) => scope.allow(args),
+		scopeList: (): Promise<FsScopeStatus> => scope.status(),
+		scopeAllow: (args: unknown) => {
+			if (scope.grants !== "page") throw grantRefused();
+			return scope.allow(args);
+		},
 		scopeRevoke: (args: unknown) => scope.revoke(args),
 	};
 }

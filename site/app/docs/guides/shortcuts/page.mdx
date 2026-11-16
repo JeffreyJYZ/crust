@@ -17,10 +17,10 @@ A registration answers the canonical spelling, and that is the name every other 
 
 The accelerator is modifiers, then the key, joined by `+`:
 
-| part | accepted |
-| --- | --- |
-| modifier | `command`, `control`, `option`, `shift`; aliases `cmd`, `cmdorctrl`, `commandorcontrol`, `ctrl`, `alt`, `opt` |
-| key | `a`–`z`, `0`–`9`, `f1`–`f19`, the named keys `escape tab space enter backspace forwarddelete insert home end pageup pagedown up down left right`, the punctuation `- = [ ] ; ' , . /` and the backtick |
+| part     | accepted                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| modifier | `command`, `control`, `option`, `shift`; aliases `cmd`, `cmdorctrl`, `commandorcontrol`, `ctrl`, `alt`, `opt`                                                                                          |
+| key      | `a`–`z`, `0`–`9`, `f1`–`f19`, the named keys `escape tab space enter backspace forwarddelete insert home end pageup pagedown up down left right`, the punctuation `- = [ ] ; ' , . /` and the backtick |
 
 The last token is the key and everything before it is a modifier. Canonical order is command,
 control, option, shift.
@@ -40,26 +40,26 @@ is what makes it global. `off()` unsubscribes.
 
 ## Commands
 
-| command | arguments | answers |
-| --- | --- | --- |
-| `register` | `{ accelerator }` | `{ ok: true, accelerator }` |
-| `unregister` | `{ accelerator }` | `{ ok: true, accelerator }` |
-| `unregisterAll` | none | `{ removed }` |
-| `isRegistered` | `{ accelerator }` | boolean |
-| `list` | none | canonical accelerators |
+| command         | arguments         | answers                     |
+| --------------- | ----------------- | --------------------------- |
+| `register`      | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregister`    | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregisterAll` | none              | `{ removed }`               |
+| `isRegistered`  | `{ accelerator }` | boolean                     |
+| `list`          | none              | canonical accelerators      |
 
 `isRegistered` answers `false` for a malformed accelerator instead of a failure, and `list` reads the
 registry the plugin owns, so neither needs an OS round-trip.
 
 ## Failure codes
 
-| code | when |
-| --- | --- |
-| `bad-accelerator` | a token the grammar has no name for; `part` is that token, verbatim |
-| `already-registered` | this process already holds that canonical accelerator |
-| `not-registered` | `unregister` named one nothing holds |
-| `native-failed` | `RegisterEventHotKey` refused, or the C unit would not compile |
-| `not-implemented` | no adapter, so nothing can reach the window server |
+| code                 | when                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `bad-accelerator`    | a token the grammar has no name for; `part` is that token, verbatim |
+| `already-registered` | this process already holds that canonical accelerator               |
+| `not-registered`     | `unregister` named one nothing holds                                |
+| `native-failed`      | `RegisterEventHotKey` refused, or the C unit would not compile      |
+| `not-implemented`    | no adapter, so nothing can reach the window server                  |
 
 `bad-accelerator` and `native-failed` carry `part` when a token can be named, so a settings UI can
 point at the broken piece rather than quoting the whole string.

@@ -1,0 +1,78 @@
+# Platforms
+
+macOS and Linux are proven; Windows is implemented and has never run. This page says which is which, because "it compiles" and "it ran" are different claims and only the second one ships.
+
+## The contract
+
+A platform implements `Platform` and nothing more: `start`, `pump`, `createWindow`, `window`, `quit`. Five methods, one page loader.
+
+A page loads from the **bridge URL** (`http://127.0.0.1:<port>/`), navigated by the platform's own call. No platform registers a custom scheme to serve a page, and `urlScheme` is optional app config with no default — so `crust://` belongs to an app's deep links, never to the framework. The reasoning is on the [design page](/docs/design).
+
+## macOS — proven
+
+`src/platform/darwin/` is the runtime the rest of the docs describe. Every AppKit call goes through `bun:ffi` into the Objective-C runtime, with the shim compiled at launch by the TinyCC inside Bun. The traps that shaped it — variadic `objc_msgSend`, structs that cannot cross, an unverified selector killing the process — are on the [design page](/docs/design).
+
+What proves it: `bun run e2e:parity` builds a real app, launches it, and asserts what it printed — twenty surfaces, twenty-seven assertions, quoted on the [parity page](/docs/reference/parity).
+
+## Linux — proven
+
+`src/platform/linux/` is GTK3 plus WebKitGTK over `bun:ffi`, with no native artifact: the C shim is compiled at launch and reaches both libraries through `dlopen`.
+
+`bun run e2e:linux` is the proof. It syncs the layer to an OrbStack machine (`ubuntu-sandbox`, Ubuntu 25.10 aarch64), installs only what is missing there, runs the unit suite, then the real-GTK smoke under `xvfb-run`:
+
+```
+PASS  machine         ubuntu-sandbox: Ubuntu 25.10 aarch64
+PASS  gtk + webkit    libgtk-3.so.0 and libwebkit2gtk-4.1.so.0 load, with the symbols the shim resolves
+PASS  gtk init        gtk_init_check returned 1 (DISPLAY=:99)
+PASS  window          smoke: GtkWindow + WebKitWebView, shown, loading about:blank
+PASS  pump            7 g_main_context_iteration slices in 120 ms at a 16 ms interval
+PASS  still open      shim_window_alive still answers 1 after the pump
+PASS  quit            quit() ended the process with 0 from inside the platform
+e2e:linux: PASS  8/8 assertions  7.9s
+```
+
+The unit suite in the same VM: `30 pass, 1 skip, 0 fail` on Linux arm64.
+
+CI runs the same smoke on `ubuntu-latest` — the `gate (ubuntu)` job runs `bun test src/platform/linux` and then `xvfb-run --auto-servernum … bun run scripts/linux-smoke.ts`, so a regression in the shim's `dlopen` path fails the build rather than waiting for the next manual run.
+
+| what the smoke proves                                     | how                                                               |
+| --------------------------------------------------------- | ----------------------------------------------------------------- |
+| the two libraries load with the symbols the shim resolves | `dlopen` per entry, `gtk_init_check` after it                     |
+| a window exists and is shown                              | `GtkWindow` + `WebKitWebView`, then `webkit_web_view_load_uri`    |
+| the pump runs                                             | 7 `g_main_context_iteration` slices in 120 ms at a 16 ms interval |
+| liveness is readable from C                               | `shim_window_alive` still answers 1 after the pump                |
+| `quit()` ends the process                                 | exit 0 from inside the platform                                   |
+
+**What it does not prove.** The window loads `about:blank` and nothing reads its content, so **no document is rendered**: no page JavaScript and no `invoke` round trip has crossed on Linux. Window-close pruning, multi-window behaviour and Linux packaging are unexercised. Those are the next findings, not a claim this page can make.
+
+## Windows — implemented, never run
+
+`src/platform/windows/` is Win32 plus WebView2, one window and one controller per label, pumped from Bun's main thread because Win32 will not dispatch without a message loop.
+
+The preflight names every entry point the shim calls and what breaks without it, because an unresolvable export is a crash with no JavaScript error to catch:
+
+| module               | example symbol                             | without it                                      |
+| -------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `user32.dll`         | `CreateWindowExW`                          | no window at all                                |
+| `user32.dll`         | `PeekMessageW`                             | the pump drains nothing                         |
+| `kernel32.dll`       | `MultiByteToWideChar`                      | no string reaches Win32, so no title and no URL |
+| `ole32.dll`          | `CoInitializeEx`                           | WebView2 cannot create its controller           |
+| `WebView2Loader.dll` | `CreateCoreWebView2EnvironmentWithOptions` | no WebView2 environment                         |
+
+WebView2 is a separate install on Windows 10, so the preflight carries Microsoft's Evergreen Bootstrapper URL as the remedy when the runtime is absent.
+
+**Never run on Win32.** The file was written on macOS and nothing in it has executed against `user32`, `ole32` or WebView2, so every ordering claim is untested. The backend is injected, which is the only reason the five methods can be tested at all; `fake-backend.ts` is what the suite drives.
+
+A `gate (windows)` CI job exists — `windows-latest`, `bun test src/platform/windows` then `bun run scripts/windows-smoke.ts` — and it would prove the window opens the first time it runs green. It has not run yet, so this page claims nothing for Windows. The Linux result above does not carry over: different libraries, different message loop, different loader.
+
+## All three are selected
+
+`loadPlatform` dispatches on the OS and imports one barrel per arm, so a Linux launch never loads AppKit and a macOS launch never loads GTK:
+
+| `process.platform` | barrel               |
+| ------------------ | -------------------- |
+| `darwin`           | `@/platform/darwin`  |
+| `linux`            | `@/platform/linux`   |
+| `win32`            | `@/platform/windows` |
+
+Anything else is refused by name: `crust: no platform for <os> — macOS, Linux and Windows for now`.

@@ -15,10 +15,10 @@ It runs `build.beforeBuildCommand` first, reads `build.assets`, compiles the bac
 assembles the bundle, then signs it ad-hoc. A failed frontend build stops the command instead of
 packaging stale bytes.
 
-| output | what it is |
-| --- | --- |
-| `dist/crust-app` | the compiled binary |
-| `dist/<app.name>.app` | the assembled bundle |
+| output                                        | what it is                      |
+| --------------------------------------------- | ------------------------------- |
+| `dist/crust-app`                              | the compiled binary             |
+| `dist/<app.name>.app`                         | the assembled bundle            |
 | `dist/crust-assets.ts`, `dist/crust-entry.ts` | generated inputs for that build |
 
 The two sizes are printed separately because they answer different questions: the binary is what
@@ -79,9 +79,9 @@ Developer ID gives the bundle a stable requirement.
 The hardened runtime is off by default. With `crust sign` it is on, and two entitlements are
 sealed:
 
-| entitlement | why |
-| --- | --- |
-| `com.apple.security.cs.allow-jit` | the one Apple documents; it permits `MAP_JIT` pages |
+| entitlement                                              | why                                                                                                                         |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `com.apple.security.cs.allow-jit`                        | the one Apple documents; it permits `MAP_JIT` pages                                                                         |
 | `com.apple.security.cs.allow-unsigned-executable-memory` | the TinyCC inside Bun writes machine code into ordinary unsigned executable memory, which `allow-jit` alone does not permit |
 
 Both are required, and the second is easy to miss. Sealed with `allow-jit` only, a signed app

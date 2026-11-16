@@ -1,0 +1,52 @@
+# Dock
+
+The app's dock tile: a badge, an attention bounce and a progress bar. Registered by the macOS runtime with `darwinDockAdapter()`, so no config names it.
+
+## Commands
+
+| command      | arguments       | answer                            |
+| ------------ | --------------- | --------------------------------- |
+| `badge`      | `{ label }`     | `{ ok: true, label, cleared }`    |
+| `badgeLabel` | none            | `{ ok: true, label }`             |
+| `bounce`     | `{ critical? }` | `{ ok: true, critical, request }` |
+| `progress`   | `{ value }`     | `{ ok: true, value }`             |
+
+```ts
+await window.crust.invoke("dock", "badge", { label: "3" });
+await window.crust.invoke("dock", "badge", { label: "" });
+```
+
+An empty `label` clears the badge, because that is how `-[NSDockTile setBadgeLabel:]` clears it; `cleared` reports which of the two happened. `badgeLabel` reads back what the tile currently shows.
+
+## Bounce
+
+```ts
+const answer = await window.crust.invoke("dock", "bounce", { critical: true });
+```
+
+`critical: false` (the default) is the one-shot notice; `critical: true` bounces until the app is frontmost. `request` is the id AppKit minted for that bounce, so a caller can prove which one it asked for.
+
+## Progress
+
+```ts
+await window.crust.invoke("dock", "progress", { value: 0.4 });
+```
+
+`value` is a fraction: `0` empty, `1` full. The bar is an `NSProgressIndicator` installed as the tile's content view. When that cannot be built the answer is `not-implemented` naming `-[NSDockTile setContentView:]`, never a value that pretends a bar appeared.
+
+A `value` outside `0…1`, or not a finite number, is a rejected invoke carrying `bad-request`.
+
+## Failure shape
+
+Two refusals, distinguishable:
+
+| shape                                                            | when                                 |
+| ---------------------------------------------------------------- | ------------------------------------ |
+| `{ ok: false, code: "not-implemented", requires: "NSDockTile" }` | no adapter: every platform but macOS |
+| `{ ok: false, code: "handler-error", message }`                  | the adapter ran and the OS said no   |
+
+`badge`, `badgeLabel` and `bounce` answer the second shape; `progress` answers `not-implemented` for a bar that could not be installed, because a missing view is a missing capability rather than a failed request.
+
+## Limits
+
+There is one dock tile per process, and the badge belongs to the app's own icon. Nothing here reaches another app's tile.

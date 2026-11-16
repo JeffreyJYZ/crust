@@ -8,13 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isNotImplemented } from "@/plugins/define.ts";
-import {
-	createOsPlugin,
-	exeExtension,
-	type OsAdapter,
-	osFamily,
-	osPlugin,
-} from "@/plugins/os.ts";
+import { createOsPlugin, exeExtension, type OsAdapter, osFamily, osPlugin } from "@/plugins/os.ts";
 import { darwinOsAdapter } from "@/platform/darwin/os-info.ts";
 import { openerUnitStatus } from "@/platform/darwin/opener.ts";
 
@@ -161,15 +155,18 @@ describe("darwin system information", () => {
 	 * `-systemUptime` counts awake time, so it is positive and never longer than wall-clock time
 	 * since boot; the gap between them is how long the machine slept (measured ~30 h here).
 	 */
-	test.skipIf(notDarwin)("uptime is positive and no longer than wall-clock time since boot", () => {
-		const seconds = darwinOsAdapter().uptime();
-		expect(Number.isFinite(seconds)).toBe(true);
-		expect(seconds).toBeGreaterThan(0);
-		const boot = Bun.spawnSync(["sysctl", "-n", "kern.boottime"]).stdout.toString();
-		const at = Number(boot.match(/sec = (\d+)/)?.[1] ?? 0);
-		expect(at).toBeGreaterThan(0);
-		expect(seconds).toBeLessThanOrEqual(Date.now() / 1000 - at + 1);
-	});
+	test.skipIf(notDarwin)(
+		"uptime is positive and no longer than wall-clock time since boot",
+		() => {
+			const seconds = darwinOsAdapter().uptime();
+			expect(Number.isFinite(seconds)).toBe(true);
+			expect(seconds).toBeGreaterThan(0);
+			const boot = Bun.spawnSync(["sysctl", "-n", "kern.boottime"]).stdout.toString();
+			const at = Number(boot.match(/sec = (\d+)/)?.[1] ?? 0);
+			expect(at).toBeGreaterThan(0);
+			expect(seconds).toBeLessThanOrEqual(Date.now() / 1000 - at + 1);
+		},
+	);
 
 	test.skipIf(notDarwin)("info answers the real machine through the darwin adapter", async () => {
 		const result = await createOsPlugin(darwinOsAdapter()).commands.info();

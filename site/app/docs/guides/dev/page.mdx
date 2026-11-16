@@ -13,13 +13,13 @@ crust dev --entry src/main.ts      # default: src/main.ts, then main.ts
 
 What happens, in order:
 
-| step | behaviour |
-| --- | --- |
-| config | loads `crust.config.ts` or `crust.json` |
-| frontend | spawns `dev.beforeDevCommand` in the project directory, un-awaited, output inherited |
-| dev URL | waits up to 30 s for `dev.url` to accept a TCP connection |
-| runtime | runs the backend in a child process, because the platform's `quit()` calls `process.exit` |
-| page | `dev.url` when set; otherwise the bridge serves `public/index.html` |
+| step     | behaviour                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------- |
+| config   | loads `crust.config.ts` or `crust.json`                                                   |
+| frontend | spawns `dev.beforeDevCommand` in the project directory, un-awaited, output inherited      |
+| dev URL  | waits up to 30 s for `dev.url` to accept a TCP connection                                 |
+| runtime  | runs the backend in a child process, because the platform's `quit()` calls `process.exit` |
+| page     | `dev.url` when set; otherwise the bridge serves `public/index.html`                       |
 
 ### The dev URL wait
 
@@ -40,10 +40,10 @@ The watcher covers the backend entry's directory. On a `dev.url` project that di
 UI too, so frontend extensions are skipped — a restart rotates the bridge token and the page
 already open starts failing its calls.
 
-| saved file | effect |
-| --- | --- |
-| `.ts`, `.js` | runtime restarts, bridge token rotates |
-| `.tsx`, `.jsx`, `.css`, `.scss`, `.sass`, `.less`, `.html`, images, fonts | nothing — the dev server owns HMR |
+| saved file                                                                | effect                                 |
+| ------------------------------------------------------------------------- | -------------------------------------- |
+| `.ts`, `.js`                                                              | runtime restarts, bridge token rotates |
+| `.tsx`, `.jsx`, `.css`, `.scss`, `.sass`, `.less`, `.html`, images, fonts | nothing — the dev server owns HMR      |
 
 `.ts` is not skipped because the backend entry is one. That is the one trap: a page module written
 as `.ts` restarts the backend on every save. Rename it `.tsx`, or move it under a skipped directory
@@ -54,13 +54,13 @@ such as `public/`. `crust doctor` names any file in that position.
 A positional ending in `.tsx`, `.jsx`, `.ts`, `.js` or `.html` runs that one file as an app: no
 `crust.config.ts`, no `main.ts`, one 900×700 window.
 
-| rule | behaviour |
-| --- | --- |
-| shape | the file must exist, and its directory must hold no `crust.config.ts` or `crust.json`; a config beside it means a project, and crust refuses |
-| `export default` in the source | treated as a React component, mounted into `#root` with `react-dom/client` from the file's own directory |
-| no default export | loaded for its side effects; the file renders the document itself |
-| commands | `info` and `echo` only — there is no backend module to register more |
-| edit | rebuilds `page.js`, writes a reload marker, the page reloads; the runtime is never restarted |
+| rule                           | behaviour                                                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| shape                          | the file must exist, and its directory must hold no `crust.config.ts` or `crust.json`; a config beside it means a project, and crust refuses |
+| `export default` in the source | treated as a React component, mounted into `#root` with `react-dom/client` from the file's own directory                                     |
+| no default export              | loaded for its side effects; the file renders the document itself                                                                            |
+| commands                       | `info` and `echo` only — there is no backend module to register more                                                                         |
+| edit                           | rebuilds `page.js`, writes a reload marker, the page reloads; the runtime is never restarted                                                 |
 
 ### An `.html` entry
 
@@ -97,8 +97,8 @@ project ends `all checks passed`, exit 0.
 
 Three lines matter for dev:
 
-| line | `[fail]` means |
-| --- | --- |
-| `dev port` | a process holds the port and answers nothing, so a `strictPort` server cannot start |
-| `dev url` | the dev server is not running or is on another port |
-| `dev watch` | `.ts` page modules the watcher will treat as backend code; a note, not a failure |
+| line        | `[fail]` means                                                                      |
+| ----------- | ----------------------------------------------------------------------------------- |
+| `dev port`  | a process holds the port and answers nothing, so a `strictPort` server cannot start |
+| `dev url`   | the dev server is not running or is on another port                                 |
+| `dev watch` | `.ts` page modules the watcher will treat as backend code; a note, not a failure    |

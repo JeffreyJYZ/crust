@@ -14,6 +14,7 @@ export type UpdaterErrorCode =
 	| "install-failed"
 	| "relaunch-failed"
 	| "not-an-app-bundle"
+	| "unverified-artifact"
 	| "handler-error";
 
 export interface UpdaterError {
@@ -26,6 +27,8 @@ export interface UpdaterFailure extends UpdaterError {
 	readonly ok: false;
 	/** The file or bundle the failure is about, when naming one helps. */
 	readonly path?: string;
+	/** The argument or config key the refusal needs, e.g. `sha256` or `updater.pubkey`. */
+	readonly requires?: string;
 }
 
 /** The JSON an update endpoint answers. `notes` stays unparsed Markdown: rendering it is the page's job. */

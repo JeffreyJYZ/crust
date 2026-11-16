@@ -1,0 +1,75 @@
+# Native extensions
+
+A `.zig`, `.rs` or `.c` file in `native/` compiles to a dylib that `bun:ffi` dlopens. Three compilers, three command lines, and one rule throughout: a missing toolchain is a verdict, never a thrown error, so a project that needs no extension still builds on a machine with no compiler.
+
+## Discovery
+
+```ts
+const found = await discoverExtensions(); // { zig: [], rust: [], c: [] }
+```
+
+Sources are `*.zig`, `*.rs` and `*.c` under `native/`, absolute and sorted per toolchain. With nothing found there, the project root is walked too, since `native/` is where the sources live. `node_modules`, `.git`, `target`, `zig-cache`, `.zig-cache` and `zig-out` are skipped — a compiled copy inside `native/` would otherwise be built again under a second name.
+
+## Compiling one file
+
+| source | compiler | argv                                                                         |
+| ------ | -------- | ---------------------------------------------------------------------------- |
+| `.zig` | `zig`    | `zig build-lib <file> -dynamic -femit-bin=<out>/<stem>.dylib -O ReleaseSafe` |
+| `.rs`  | `rustc`  | `rustc --crate-type cdylib -O -o <out>/lib<stem>.dylib <file>`               |
+| `.c`   | `clang`  | `clang -dynamiclib -o <out>/<stem>.dylib <file>`                             |
+
+```ts
+const built = await compileExtension({ file: "native/math.c", outDir: "dist/native" });
+```
+
+`rustc` is the only one that prefixes a cdylib with `lib`, and zig is given the `.dylib` suffix explicitly because it does not add one on macOS. The emitted name is the name `bun:ffi` will later dlopen, so the two halves cannot drift.
+
+A missing compiler answers a value, not a throw:
+
+```json
+{
+	"ok": false,
+	"file": "…/native/math.c",
+	"reason": "clang is not on PATH, so math.c cannot be built",
+	"requires": ["clang"]
+}
+```
+
+A compiler that ran and failed is the same shape with the tool's own text and an empty `requires`, because nothing is left to install.
+
+## Bindings
+
+```ts
+await writeBindings({
+	name: "math",
+	outDir: "dist/native",
+	symbols: [
+		{ name: "add", args: ["i32", "i32"], returns: "i32" },
+		{ name: "greet", args: ["cstring"], returns: "cstring" },
+	],
+});
+```
+
+That writes `dist/native/math.ts` beside the dylib, which `dlopen`s `join(import.meta.dir, "math.dylib")` and re-exports each symbol as a typed function, so an app imports `add(a, b)` and never touches `ffi.symbols`.
+
+| FFI type                   | TypeScript                                                 |
+| -------------------------- | ---------------------------------------------------------- |
+| `i64`, `u64`               | `bigint`                                                   |
+| `cstring` argument         | `string`                                                   |
+| `cstring` return           | `string \| null`, because a NULL pointer arrives as `null` |
+| `ptr`, `i32`, `u32`, `f64` | `number`                                                   |
+
+`i64`/`u64` are `bigint` because that is what `bun:ffi` returns for them; the number-returning `i64_fast` is deliberately not emitted. A symbol name that is not a usable TypeScript export, or is a reserved word, is refused rather than emitted. The dylib path must be relative to the generated module.
+
+## Doctor
+
+```ts
+const report = await doctorExtensions();
+console.log(describeExtensions(report));
+```
+
+Read-only: it compiles nothing and writes no dylib. It reports which of the three compilers are on `PATH`, what each answers for its version (`zig version`, `rustc --version`, `clang --version`), and a per-file verdict — `clang 18.1.8 can build it`, or `clang is not on PATH`.
+
+## Status
+
+The discovery, compilation, bindings and doctor modules exist and are tested against a recorder, so none of them needs a toolchain installed to pass. `crust doctor` prints the doctor block as its `extensions` section, after `bundle`; a project with no `native/` directory prints one line and adds no failure. Nothing compiles during a doctor run. There is still no `crust extensions build`.

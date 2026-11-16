@@ -1,0 +1,56 @@
+# Find in page
+
+The webview's own find, so a page's search bar gets the same highlight and scroll WebKit gives ⌘F. Backed by `-[WKWebView findString:withConfiguration:completionHandler:]`, the only public entry point.
+
+Registered by the macOS runtime with `darwinFindAdapter(webview)`, so `window.crust.invoke("findinpage", …)` works in an app that names no plugin.
+
+## Commands
+
+| command    | arguments                        | answer                                             |
+| ---------- | -------------------------------- | -------------------------------------------------- |
+| `search`   | `{ text, forward?, matchCase? }` | `{ ok: true, matches, found }`                     |
+| `next`     | none                             | `{ ok: true, matches, found }`                     |
+| `previous` | none                             | `{ ok: true, matches, found }`                     |
+| `clear`    | none                             | `{ ok: true, cleared: true }` or `not-implemented` |
+
+`text` must be a non-empty string. `forward` defaults to `true`, `matchCase` to `false`; a non-boolean value is a rejected invoke carrying `bad-request`.
+
+```ts
+const hit = await window.crust.invoke("findinpage", "search", { text: "invoice" });
+```
+
+The first match is highlighted and scrolled into view.
+
+## `matches` is 0 or 1
+
+`WKFindResult` carries `-matchFound` and nothing else. A real total needs a private selector this plugin does not send, so `matches` is `1` when something was found and `0` when it was not, and `found` is the same fact as a boolean.
+
+A search box that prints "3 of 12" cannot be built from this. Print "found" or "not found", or count the matches in the page's own DOM.
+
+## Stepping
+
+```ts
+await window.crust.invoke("findinpage", "next");
+await window.crust.invoke("findinpage", "previous");
+```
+
+Both re-run the last search in that direction; calling either before a `search` has nothing to step through.
+
+## Why `clear` refuses
+
+WebKit has no public way to drop the find indicator. The private `-[WKWebView _clearFindIndicator]` exists, and sending it from a public command would be a private API call made silently — so `clear` answers:
+
+```json
+{
+	"ok": false,
+	"code": "not-implemented",
+	"message": "…",
+	"requires": "WKWebView -_clearFindIndicator"
+}
+```
+
+An adapter that supplies a public `clear()` answers `{ ok: true, cleared: true }` instead.
+
+## Failure shape
+
+Without an adapter, each command answers `not-implemented` with `requires` naming `findString:withConfiguration:completionHandler:`. An adapter that threw, or a promise that rejected, becomes `{ ok: false, code: "handler-error", message }`.

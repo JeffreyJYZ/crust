@@ -3,13 +3,32 @@
  * Each member is a seam a test replaces, which is why the plugin never reaches past it.
  */
 
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rename, rm, stat } from "node:fs/promises";
+import { createHash, type Hash } from "node:crypto";
+import { mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { fileNameFor, UpdaterAdapterError } from "./updater-args";
 import type { UpdaterAdapter } from "./updater-types";
+
+/**
+ * A directory artifact's digest: relative names and file bytes in sorted order, so an `.app` bundle
+ * is verifiable the same way a downloaded file is. `install` re-runs this against the digest
+ * `download` recorded, so a bundle swapped in afterwards is caught. A plain file keeps the plain
+ * sha256 of its bytes, which is the value a manifest publishes.
+ */
+async function digestTree(hash: Hash, path: string, name: string): Promise<void> {
+	const info = await stat(path);
+	if (info.isDirectory()) {
+		hash.update(`d ${name}\n`);
+		for (const entry of (await readdir(path)).sort()) {
+			await digestTree(hash, join(path, entry), entry);
+		}
+		return;
+	}
+	hash.update(`f ${name}\n`);
+	hash.update(await readFile(path));
+}
 
 export function nodeUpdaterAdapter(): UpdaterAdapter {
 	return {
@@ -33,9 +52,13 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 			return { path, bytes: (await stat(path)).size };
 		},
 		async sha256(path) {
-			return createHash("sha256")
-				.update(await readFile(path))
-				.digest("hex");
+			const hash = createHash("sha256");
+			if ((await stat(path)).isDirectory()) {
+				await digestTree(hash, path, "");
+			} else {
+				hash.update(await readFile(path));
+			}
+			return hash.digest("hex");
 		},
 		async readBytes(path) {
 			return new Uint8Array(await readFile(path));

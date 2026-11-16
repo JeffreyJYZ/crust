@@ -1,9 +1,15 @@
 name: ci
 
-# Everything here is macOS-only. The runtime compiles its `.c` shim with TinyCC at
+# `gate (macOS)` is the product proof: the runtime compiles its `.c` shim with TinyCC at
 # launch and drives a system `WKWebView`, and the e2e suites build a real `.app` and
-# launch its binary windowed. None of that exists on a Linux runner, so a second OS
-# in the matrix would prove a product this repo does not ship.
+# launch its binary windowed.
+#
+# `gate (ubuntu)` and `gate (windows)` prove the two non-macOS platform layers, which the
+# unit suite only ever exercises against an injected fake backend. Each installs (Linux)
+# or finds (Windows) the real libraries and runs a smoke that opens a real window and
+# pumps twice — `scripts/linux-smoke.ts` and `scripts/windows-smoke.ts`. Neither builds
+# an app bundle nor runs an e2e suite: that claim belongs to the macOS job alone, and
+# both smokes print what they do not prove.
 #
 # The e2e suites need a window server session; a runner that has none skips them and
 # says so in the log rather than failing (see the "window session" step). `bun check`,
@@ -18,195 +24,260 @@ name: ci
 # shim. Neither is optional; both are cheap.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+    push:
+        branches: [main]
+    pull_request:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  gate:
-    name: gate (macOS)
-    # A windowed e2e bundle plus a pack/install cycle; the unit suite alone is seconds.
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # The multi-file decision diffs against the PR base, which must be present.
-          fetch-depth: 0
+    gate:
+        name: gate (macOS)
+        # A windowed e2e bundle plus a pack/install cycle; the unit suite alone is seconds.
+        runs-on: macos-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  # The multi-file decision diffs against the PR base, which must be present.
+                  fetch-depth: 0
 
-      # Bun is the whole toolchain: no Rust, no Node, no bundled Chromium.
-      # No version pin: the major tag tracks the current release, and a remembered
-      # number here silently stops tracking what a contributor actually runs.
-      - uses: oven-sh/setup-bun@v2
+            # Bun is the whole toolchain: no Rust, no Node, no bundled Chromium.
+            # No version pin: the major tag tracks the current release, and a remembered
+            # number here silently stops tracking what a contributor actually runs.
+            - uses: oven-sh/setup-bun@v2
 
-      - run: bun install --frozen-lockfile
+            - run: bun install --frozen-lockfile
 
-      # Type errors and formatting-independent checks over src/.
-      - run: bun check
+            # Type errors and formatting-independent checks over src/.
+            - run: bun check
 
-      - run: bun run test
+            - run: bun run test
 
-      # The 200-line cap and the docs site's internal links. Both are cheap file walks,
-      # and both fail on a rule nothing else would notice: a file that grows past the cap
-      # during review, and a link to a page that was renamed or deleted.
-      - run: bun run check:lines
-      - run: bun run check:links
-      # The parity matrix is hand-written, so this pins Tauri's official feature
-      # names against its rows: a surface cannot go missing from it unnoticed.
-      - run: bun run check:parity
+            # The 200-line cap and the docs site's internal links. Both are cheap file walks,
+            # and both fail on a rule nothing else would notice: a file that grows past the cap
+            # during review, and a link to a page that was renamed or deleted.
+            - run: bun run check:lines
+            - run: bun run check:links
+            # The parity matrix is hand-written, so this pins Tauri's official feature
+            # names against its rows: a surface cannot go missing from it unnoticed.
+            - run: bun run check:parity
 
-      # The docs site is a Next app in its own directory with its own lockfile, so it
-      # needs its own install. A build failure here is a page that does not compile.
-      - name: docs site
-        run: |
-          cd site
-          bun install --frozen-lockfile
-          bun run build
+            # The docs site is a Next app in its own directory with its own lockfile, so it
+            # needs its own install. A build failure here is a page that does not compile.
+            - name: docs site
+              run: |
+                  cd site
+                  bun install --frozen-lockfile
+                  bun run build
 
-      # Packs a tarball, installs it into a temp dir and runs `crust --help` and
-      # `crust init probe --react` from the installed copy. This is the only check
-      # that catches a package shipping without a file it needs, so it is not optional.
-      # Cost: a pack, an `tar -xzf` and one path install — measured 1.1 s here, so it
-      # is not the expensive step even on a runner.
-      - name: verify package
-        run: bun run verify:package
+            # Packs a tarball, installs it into a temp dir and runs `crust --help` and
+            # `crust init probe --react` from the installed copy. This is the only check
+            # that catches a package shipping without a file it needs, so it is not optional.
+            # Cost: a pack, an `tar -xzf` and one path install — measured 1.1 s here, so it
+            # is not the expensive step even on a runner.
+            - name: verify package
+              run: bun run verify:package
 
-      # Compiles `dist/crust` with `bun build --compile --asset=…` and then drives that
-      # binary the way a user does: from a temp dir, with `PATH=/usr/bin:/bin`, so
-      # nothing in this checkout can stand in for an embedded file. It asserts the
-      # version against package.json, all three scaffolds (templates must be inside the
-      # executable), and `doctor` reaching the shim, the templates and the platform from
-      # inside it. The standalone build first shipped unable to scaffold at all, then
-      # unable to compile its shim because `cc()` cannot read a `/$bunfs` path — this is
-      # the only step that catches either.
-      # Deliberately not behind the window gate, and that was read rather than assumed:
-      # `NSApplicationLoad` and `shim_window_new` are called only from the platform's
-      # `start()`, and doctor's "window" line only imports the module. `--version`,
-      # `init` and `doctor` therefore prove the binary with no Aqua session present.
-      # Cost: measured 1.0 s end to end here, 0.3 s of it the 90 MB compile; a runner
-      # differs only in cold disk, so budget seconds, not minutes. Cheap next to `e2e`;
-      # do not delete it as noise.
-      - name: standalone binary
-        run: bun run build:standalone
+            # Compiles `dist/crust` with `bun build --compile --asset=…` and then drives that
+            # binary the way a user does: from a temp dir, with `PATH=/usr/bin:/bin`, so
+            # nothing in this checkout can stand in for an embedded file. It asserts the
+            # version against package.json, all three scaffolds (templates must be inside the
+            # executable), and `doctor` reaching the shim, the templates and the platform from
+            # inside it. The standalone build first shipped unable to scaffold at all, then
+            # unable to compile its shim because `cc()` cannot read a `/$bunfs` path — this is
+            # the only step that catches either.
+            # Deliberately not behind the window gate, and that was read rather than assumed:
+            # `NSApplicationLoad` and `shim_window_new` are called only from the platform's
+            # `start()`, and doctor's "window" line only imports the module. `--version`,
+            # `init` and `doctor` therefore prove the binary with no Aqua session present.
+            # Cost: measured 1.0 s end to end here, 0.3 s of it the 90 MB compile; a runner
+            # differs only in cold disk, so budget seconds, not minutes. Cheap next to `e2e`;
+            # do not delete it as noise.
+            - name: standalone binary
+              run: bun run build:standalone
 
-      # Packaging: `crust dmg` and the `crust sign` refusal, checked against the artefacts
-      # rather than the printed lines — hdiutil verify, a read-only attach with the app
-      # inside, and a refusal that leaves the bundle's binary byte-identical. No window is
-      # opened, so this runs ungated. Cost: measured 3.7 s here, dominated by the bundle
-      # build and the image; it leaves nothing mounted (detach is in a finally and is
-      # verified), so it cannot wedge a runner.
-      - name: e2e package
-        run: bun run e2e:package
+            # Packaging: `crust dmg` and the `crust sign` refusal, checked against the artefacts
+            # rather than the printed lines — hdiutil verify, a read-only attach with the app
+            # inside, and a refusal that leaves the bundle's binary byte-identical. No window is
+            # opened, so this runs ungated. Cost: measured 3.7 s here, dominated by the bundle
+            # build and the image; it leaves nothing mounted (detach is in a finally and is
+            # verified), so it cannot wedge a runner.
+            - name: e2e package
+              run: bun run e2e:package
 
-      # A built app opens an NSWindow with a WKWebView, so the e2e run needs an Aqua
-      # session and a WindowServer. Probe for both and record the answer; the steps
-      # below use it instead of assuming this runner's shape.
-      - name: window session
-        id: window
-        run: |
-          uid="$(id -u)"
-          if launchctl print "gui/$uid" >/dev/null 2>&1 && pgrep -x WindowServer >/dev/null 2>&1; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Aqua session and WindowServer are present; the app can open a window."
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "No Aqua session (gui/$uid) or no WindowServer, so a Cocoa window cannot open."
-          fi
+            # A built app opens an NSWindow with a WKWebView, so the e2e run needs an Aqua
+            # session and a WindowServer. Probe for both and record the answer; the steps
+            # below use it instead of assuming this runner's shape.
+            - name: window session
+              id: window
+              run: |
+                  uid="$(id -u)"
+                  if launchctl print "gui/$uid" >/dev/null 2>&1 && pgrep -x WindowServer >/dev/null 2>&1; then
+                    echo "available=true" >> "$GITHUB_OUTPUT"
+                    echo "Aqua session and WindowServer are present; the app can open a window."
+                  else
+                    echo "available=false" >> "$GITHUB_OUTPUT"
+                    echo "No Aqua session (gui/$uid) or no WindowServer, so a Cocoa window cannot open."
+                  fi
 
-      # `crust build` signs and bundles `examples/hello`, launches its binary
-      # directly (never `open`) and asserts the page's command was answered.
-      # Cost: the job's cost centre — it runs a real `bun build --compile`, signs and
-      # bundles a `.app`, then launches it. Expect a minute or two on a runner, more
-      # than every other step combined; it is expensive because it is the only proof
-      # that a built app answers a command, so it is not noise.
-      - name: e2e
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e
+            # `crust build` signs and bundles `examples/hello`, launches its binary
+            # directly (never `open`) and asserts the page's command was answered.
+            # Cost: the job's cost centre — it runs a real `bun build --compile`, signs and
+            # bundles a `.app`, then launches it. Expect a minute or two on a runner, more
+            # than every other step combined; it is expensive because it is the only proof
+            # that a built app answers a command, so it is not noise.
+            - name: e2e
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e
 
-      # The parity probe is the only proof that the native surfaces work rather
-      # than compile: it reads a built menu back out of AppKit, round-trips a PNG
-      # through the pasteboard, toggles opacity and decorations on a real window
-      # and fires a Carbon hot key. Without it on CI, a surface can regress to
-      # "it still links" and nothing notices.
-      - name: e2e parity
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:parity
+            # The parity probe is the only proof that the native surfaces work rather
+            # than compile: it reads a built menu back out of AppKit, round-trips a PNG
+            # through the pasteboard, toggles opacity and decorations on a real window
+            # and fires a Carbon hot key. Without it on CI, a surface can regress to
+            # "it still links" and nothing notices.
+            - name: e2e parity
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:parity
 
-      # Whether this change touches the multi-file path, i.e. the runtime or the
-      # `examples/notes` app. On a push to main there is no PR base, so it runs.
-      - name: multi-file e2e decision
-        id: multi
-        run: |
-          base='${{ github.event.pull_request.base.sha }}'
-          if [ -z "$base" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "No pull-request base (push to main); running the multi-file e2e."
-            exit 0
-          fi
-          files="$(git diff --name-only "$base...HEAD" -- src examples/notes)"
-          if [ -n "$files" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            printf 'Multi-file path changed:\n%s\n' "$files"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "src/ and examples/notes/ are untouched; skipping the multi-file e2e."
-          fi
+            # Whether this change touches the multi-file path, i.e. the runtime or the
+            # `examples/notes` app. On a push to main there is no PR base, so it runs.
+            - name: multi-file e2e decision
+              id: multi
+              run: |
+                  base='${{ github.event.pull_request.base.sha }}'
+                  if [ -z "$base" ]; then
+                    echo "run=true" >> "$GITHUB_OUTPUT"
+                    echo "No pull-request base (push to main); running the multi-file e2e."
+                    exit 0
+                  fi
+                  files="$(git diff --name-only "$base...HEAD" -- src examples/notes)"
+                  if [ -n "$files" ]; then
+                    echo "run=true" >> "$GITHUB_OUTPUT"
+                    printf 'Multi-file path changed:\n%s\n' "$files"
+                  else
+                    echo "run=false" >> "$GITHUB_OUTPUT"
+                    echo "src/ and examples/notes/ are untouched; skipping the multi-file e2e."
+                  fi
 
-      # The multi-file proof: three embedded assets, backend-owned state, a page that
-      # calls a command on load. Cost: another full build-and-launch, so budget the same
-      # minute or two as `e2e`; the diff gate above keeps it off unrelated PRs.
-      - name: e2e notes
-        if: steps.window.outputs.available == 'true' && steps.multi.outputs.run == 'true'
-        run: bun run e2e:notes
+            # The multi-file proof: three embedded assets, backend-owned state, a page that
+            # calls a command on load. Cost: another full build-and-launch, so budget the same
+            # minute or two as `e2e`; the diff gate above keeps it off unrelated PRs.
+            - name: e2e notes
+              if: steps.window.outputs.available == 'true' && steps.multi.outputs.run == 'true'
+              run: bun run e2e:notes
 
-      # Single-file mode: `crust dev app.tsx` and `crust build app.tsx` — the positional
-      # path a newcomer tries first. It builds and launches, so it costs the same order
-      # as `e2e` (about 5 s locally: three window launches, one per phase).
-      - name: e2e single
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:single
+            # Single-file mode: `crust dev app.tsx` and `crust build app.tsx` — the positional
+            # path a newcomer tries first. It builds and launches, so it costs the same order
+            # as `e2e` (about 5 s locally: three window launches, one per phase).
+            - name: e2e single
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:single
 
-      # The dev-server path with a real Vite: the window must load the dev document, the
-      # page's invoke must cross that origin, and an edit must reload without restarting
-      # the backend. About 4 s locally, plus a `bun install` of the scaffold.
-      - name: e2e dev react
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:dev:react
+            # The dev-server path with a real Vite: the window must load the dev document, the
+            # page's invoke must cross that origin, and an edit must reload without restarting
+            # the backend. About 4 s locally, plus a `bun install` of the scaffold.
+            - name: e2e dev react
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:dev:react
 
-      # The `window` plugin driven from a page: list, isOpen, setTitle, focus, close, and
-      # the structured rejections. Two windows, so it is the widest windowed run here.
-      - name: e2e window
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:window
+            # The `window` plugin driven from a page: list, isOpen, setTitle, focus, close, and
+            # the structured rejections. Two windows, so it is the widest windowed run here.
+            - name: e2e window
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:window
 
-      # The repo's widest example: notes on disk through `fs` called from the page, the
-      # window title, a tray menu, and a folder-picker sheet. The page's own
-      # DOGEAR_SELFCHECK output is the evidence, and the ten step names are asserted
-      # exactly so a step that stops running fails instead of shrinking to nine PASS
-      # lines. Needs network for the scratch `bun install`; about 6 s here.
-      - name: e2e dogear
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:dogear
+            # The repo's widest example: notes on disk through `fs` called from the page, the
+            # window title, a tray menu, and a folder-picker sheet. The page's own
+            # DOGEAR_SELFCHECK output is the evidence, and the ten step names are asserted
+            # exactly so a step that stops running fails instead of shrinking to nine PASS
+            # lines. Needs network for the scratch `bun install`; about 6 s here.
+            - name: e2e dogear
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:dogear
 
-      # Same mode, but driven by the compiled binary from the `standalone binary` step
-      # above, with no Bun on PATH — that is the claim the step exists to keep true.
-      # Windowed like its neighbours, and it reuses dist/crust, so it needs the earlier
-      # step to have run.
-      - name: e2e single from binary
-        if: steps.window.outputs.available == 'true'
-        run: bun run e2e:dev:binary
-      # This note exists so the ordering — after the install, after `bun check`, behind
-      # the window probe — does not have to be rediscovered.
+            # Same mode, but driven by the compiled binary from the `standalone binary` step
+            # above, with no Bun on PATH — that is the claim the step exists to keep true.
+            # Windowed like its neighbours, and it reuses dist/crust, so it needs the earlier
+            # step to have run.
+            - name: e2e single from binary
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:dev:binary
+            # This note exists so the ordering — after the install, after `bun check`, behind
+            # the window probe — does not have to be rediscovered.
 
-      - name: e2e skipped
-        if: steps.window.outputs.available != 'true'
-        run: |
-          echo "::notice title=e2e skipped::This runner has no Aqua session, so a built app cannot open a window. Run 'bun run e2e' on a Mac with a desktop session to prove the bundle."
-          echo "skipped: no window session (see the 'window session' step above)"
+            - name: e2e skipped
+              if: steps.window.outputs.available != 'true'
+              run: |
+                  echo "::notice title=e2e skipped::This runner has no Aqua session, so a built app cannot open a window. Run 'bun run e2e' on a Mac with a desktop session to prove the bundle."
+                  echo "skipped: no window session (see the 'window session' step above)"
+
+    # The Linux platform layer, on the only OS where its two libraries exist. It has never
+    # run against real GTK before this job: every test injects a fake backend, so `bun test`
+    # proves the shape and this proves the calls.
+    linux:
+        name: gate (ubuntu)
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+
+            # The `-dev` packages are what provide `libgtk-3.so.0` and `libwebkit2gtk-4.1.so.0`
+            # on a runner image; the runtime packages alone are pulled in as dependencies.
+            # `xvfb` is the display server: GTK refuses to initialise without one, and a
+            # `gtk_init_check` failure is the one thing that would make the smoke meaningless.
+            - name: install GTK, WebKitGTK and a display server
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                    libwebkit2gtk-4.1-dev libgtk-3-dev xvfb
+
+            - run: bun install --frozen-lockfile
+
+            - run: bun check
+
+            # The injected-backend suite, which is the only part of this layer that can run
+            # without the libraries — and the reason this job exists is to stop being the only
+            # part that runs.
+            - run: bun test src/platform/linux
+
+            # A real GtkWindow, a real WebKitWebView, two real pump slices. Under `xvfb-run`,
+            # so a missing display fails here rather than being skipped: the script prints
+            # `unavailable: <reason>` and exits 1 when it cannot open a window.
+            - name: real GTK smoke
+              run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" bun run scripts/linux-smoke.ts
+              env:
+                  # Xvfb has no GPU, and WebKit's accelerated compositing path then fails to
+                  # start a web process. The smoke does not read a document, but a window whose
+                  # web process never starts is not the path an app takes, so force the software
+                  # path rather than proving a degraded one.
+                  WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+                  LIBGL_ALWAYS_SOFTWARE: "1"
+
+    # The Windows platform layer on the image that ships the WebView2 runtime. The runtime
+    # is preinstalled; `WebView2Loader.dll` is not part of it, so the smoke reports the
+    # loader separately and stages one from an Edge install when it can. A refusal prints
+    # its own text and exits 1 — never a green that means nothing.
+    windows:
+        name: gate (windows)
+        runs-on: windows-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+
+            - run: bun install --frozen-lockfile
+
+            - run: bun check
+
+            - run: bun test src/platform/windows
+
+            # A real HWND, a real WebView2 controller, two real PeekMessageW slices.
+            - name: real WebView2 smoke
+              run: bun run scripts/windows-smoke.ts

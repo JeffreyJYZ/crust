@@ -1,0 +1,52 @@
+# Accessibility
+
+Whether this process may drive the accessibility API, the one system prompt that grants it, and a count of the app's own window's AX children. Registered by the macOS runtime with `darwinAccessibilityAdapter()`.
+
+This is about the **AX API** — reading and driving other apps. It is not about whether crust's own windows expose an accessibility tree; that is a property of the webview and the native window, and `elementCount` is the only thing here that touches it.
+
+## Commands
+
+| command        | arguments | answer                                  |
+| -------------- | --------- | --------------------------------------- |
+| `trusted`      | none      | `{ ok: true, trusted }`                 |
+| `prompt`       | none      | `{ ok: true, trusted, prompted: true }` |
+| `elementCount` | none      | `{ ok: true, count }`                   |
+
+## Trust
+
+```ts
+const { trusted } = await window.crust.invoke("accessibility", "trusted");
+```
+
+A read: it never raises a dialog. Use it before a call that needs the API, so the app can explain itself instead of failing opaquely.
+
+```ts
+const { trusted, prompted } = await window.crust.invoke("accessibility", "prompt");
+```
+
+`prompt` raises the one system dialog that grants trust and answers the state after it. A human answers that dialog, so `trusted: false` is the common result of the first call. `prompted` is always `true` — it records that the dialog was raised, not that it was accepted.
+
+## Counting the app's own tree
+
+```ts
+const { count } = await window.crust.invoke("accessibility", "elementCount");
+```
+
+The walk starts at the app's own AX element and counts the children of its first window. A window with no children answers `count: 0`, which is a real answer.
+
+Two states are not a count, and both answer `not-implemented` rather than `0`:
+
+| `requires`                      | meaning                                           |
+| ------------------------------- | ------------------------------------------------- |
+| `NSWindow`                      | no window is up yet, so there is no tree to count |
+| `AXUIElementCopyAttributeValue` | the AX API refused the walk                       |
+
+A count of zero from a window that does not exist is not evidence of anything, which is why the two are separated.
+
+## Failure shape
+
+Without an adapter — every platform but macOS — each command answers `not-implemented` with `requires: "AXIsProcessTrusted"`.
+
+## Limits
+
+The walk reads the app's own element only. Reading another process's tree needs `trusted: true` and code this plugin does not ship.

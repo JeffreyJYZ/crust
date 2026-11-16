@@ -44,12 +44,12 @@ const info = await window.crust.invoke("os", "info");
 // { ok: true, platform: "darwin", arch: "arm64", hostname: "…", version: "27.0.1", appVersion: "1.4.0" }
 ```
 
-| field | source |
-| --- | --- |
-| `platform` | `process.platform`, e.g. `"darwin"` |
-| `arch` | `process.arch`, i.e. `uname -m` |
-| `hostname` | `hostname()`, as the kernel reports it |
-| `version` | the OS product version |
+| field        | source                                                                     |
+| ------------ | -------------------------------------------------------------------------- |
+| `platform`   | `process.platform`, e.g. `"darwin"`                                        |
+| `arch`       | `process.arch`, i.e. `uname -m`                                            |
+| `hostname`   | `hostname()`, as the kernel reports it                                     |
+| `version`    | the OS product version                                                     |
 | `appVersion` | `CFBundleShortVersionString`, or `null` when the process carries no bundle |
 
 `version` is the operating system, never the app. `appVersion` is `null` under `crust dev`, which has
@@ -67,14 +67,14 @@ for this user, not the one the bundle declares.
 
 ## Failure codes
 
-| plugin | code | when |
-| --- | --- | --- |
-| `opener` | `bad-request` | a path or URL that is not a non-empty string, or a URL with no scheme |
-| `opener` | `not-found` | the OS reported nothing at that path |
-| `opener` | `handler-error` | the send was refused, or the adapter threw |
-| `opener` | `not-implemented` | no `NSWorkspace` on this platform |
-| `os` | `handler-error` | the adapter threw; the message names the command |
-| `os` | `not-implemented` | no `NSProcessInfo`, `NSLocale` or `NSBundle` here |
+| plugin   | code              | when                                                                  |
+| -------- | ----------------- | --------------------------------------------------------------------- |
+| `opener` | `bad-request`     | a path or URL that is not a non-empty string, or a URL with no scheme |
+| `opener` | `not-found`       | the OS reported nothing at that path                                  |
+| `opener` | `handler-error`   | the send was refused, or the adapter threw                            |
+| `opener` | `not-implemented` | no `NSWorkspace` on this platform                                     |
+| `os`     | `handler-error`   | the adapter threw; the message names the command                      |
+| `os`     | `not-implemented` | no `NSProcessInfo`, `NSLocale` or `NSBundle` here                     |
 
 Both plugins answer a plain object rather than rejecting, so a page branches on `result.ok`. The one
 exception is `not-implemented`, which is the bridge's own error and carries `requires`.

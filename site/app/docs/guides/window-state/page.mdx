@@ -10,11 +10,11 @@ await window.crust.invoke("window-state", "save", { label: "main" });
 // { ok: true, label: "main", frame: { x: 120, y: 80, width: 900, height: 640 } }
 ```
 
-| command | arguments | answers |
-| --- | --- | --- |
-| `save` | `{ label }` | `{ ok: true, label, frame }` |
+| command   | arguments   | answers                                 |
+| --------- | ----------- | --------------------------------------- |
+| `save`    | `{ label }` | `{ ok: true, label, frame }`            |
 | `restore` | `{ label }` | `{ ok: true, label, restored, frame? }` |
-| `forget` | `{ label }` | `{ ok: true, label, removed }` |
+| `forget`  | `{ label }` | `{ ok: true, label, removed }`          |
 
 `restore` applies the stored size and then the stored position, and reports the frame it applied. With
 no entry it answers `restored: false` and no `frame` — that is an answer, not a failure, and the
@@ -40,13 +40,13 @@ app.on("ready", async () => {
 
 Five places, on the main screen's visible frame — the one that excludes the menu bar and the Dock:
 
-| command | arguments | answers |
-| --- | --- | --- |
-| `center` | `{ label }` | `{ ok: true, label, x, y, placed: true }` |
-| `topLeft` | `{ label }` | same |
-| `topRight` | `{ label }` | same |
-| `bottomLeft` | `{ label }` | same |
-| `bottomRight` | `{ label }` | same |
+| command       | arguments   | answers                                   |
+| ------------- | ----------- | ----------------------------------------- |
+| `center`      | `{ label }` | `{ ok: true, label, x, y, placed: true }` |
+| `topLeft`     | `{ label }` | same                                      |
+| `topRight`    | `{ label }` | same                                      |
+| `bottomLeft`  | `{ label }` | same                                      |
+| `bottomRight` | `{ label }` | same                                      |
 
 ```js
 await window.crust.invoke("positioner", "topRight", { label: "palette" });
@@ -58,13 +58,13 @@ menu bar and a `bottomLeft` one above the Dock. Coordinates are whole points, ro
 
 ## Failure codes
 
-| code | when |
-| --- | --- |
-| `invalid-label` | `label` missing or not a non-empty string |
-| `unknown-window` | no open window holds that label |
+| code              | when                                                                       |
+| ----------------- | -------------------------------------------------------------------------- |
+| `invalid-label`   | `label` missing or not a non-empty string                                  |
+| `unknown-window`  | no open window holds that label                                            |
 | `unknown-adapter` | the adapter lacks a member the command needs, or no screen frame is usable |
-| `handler-error` | the adapter threw, or a getter answered no geometry |
-| `not-implemented` | no window adapter on this platform, so neither plugin can act |
+| `handler-error`   | the adapter threw, or a getter answered no geometry                        |
+| `not-implemented` | no window adapter on this platform, so neither plugin can act              |
 
 `not-implemented` is the bridge's own error and carries `requires: "NSWindow"`; the rest arrive as a
 200 with `{ ok: false, code, message }`.

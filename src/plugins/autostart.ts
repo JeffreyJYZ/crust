@@ -107,8 +107,7 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 	/** The id the last `enable` used, so `disable`/`isEnabled` need no argument after one call. */
 	let known: string | undefined;
 
-	const resolveId = (given?: string): string | undefined =>
-		given ?? adapter.bundleId ?? known;
+	const resolveId = (given?: string): string | undefined => given ?? adapter.bundleId ?? known;
 
 	const unknownId = (command: string): AutostartFailure =>
 		fail(
@@ -122,7 +121,10 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 			enable: async (args: EnableArgs | undefined): Promise<AutostartResult> => {
 				const appPath = args?.appPath;
 				if (typeof appPath !== "string" || appPath.length === 0) {
-					return fail("bad-request", 'autostart.enable: "appPath" must be a non-empty string');
+					return fail(
+						"bad-request",
+						'autostart.enable: "appPath" must be a non-empty string',
+					);
 				}
 				const present = await stat(appPath).then(
 					() => true,

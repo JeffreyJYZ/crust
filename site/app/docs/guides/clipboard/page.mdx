@@ -5,12 +5,12 @@ Plain text on the general pasteboard, through `NSPasteboard`. Registered on macO
 
 ## Commands
 
-| command | arguments | answers |
-| --- | --- | --- |
-| `read` | none | `{ ok: true, text }` |
-| `write` | `{ text }` | `{ ok: true, written: true }` |
-| `readImage` | none | `not-implemented` |
-| `writeImage` | none | `not-implemented` |
+| command      | arguments  | answers                       |
+| ------------ | ---------- | ----------------------------- |
+| `read`       | none       | `{ ok: true, text }`          |
+| `write`      | `{ text }` | `{ ok: true, written: true }` |
+| `readImage`  | none       | `not-implemented`             |
+| `writeImage` | none       | `not-implemented`             |
 
 ```js
 const { text } = await window.crust.invoke("clipboard", "read");
@@ -41,13 +41,13 @@ empty result that would read as "no image on the clipboard".
 
 ## Failure codes
 
-| code | when |
-| --- | --- |
-| `bad-request` | `write` got no `text`, or a `text` that is not a string |
-| `write-failed` | the pasteboard refused the string |
-| `unknown-adapter` | the adapter has no `readText` or `writeText` member |
-| `handler-error` | the adapter threw; the message is the throw's own |
-| `not-implemented` | no pasteboard here, or the read answered `null` |
+| code              | when                                                    |
+| ----------------- | ------------------------------------------------------- |
+| `bad-request`     | `write` got no `text`, or a `text` that is not a string |
+| `write-failed`    | the pasteboard refused the string                       |
+| `unknown-adapter` | the adapter has no `readText` or `writeText` member     |
+| `handler-error`   | the adapter threw; the message is the throw's own       |
+| `not-implemented` | no pasteboard here, or the read answered `null`         |
 
 The typed failures arrive as a 200 with `{ ok: false, code, message }`, so branch on `result.ok`.
 `not-implemented` is the bridge's own error instead, carrying `requires: "NSPasteboard"`.
