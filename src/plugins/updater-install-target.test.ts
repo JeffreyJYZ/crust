@@ -21,8 +21,7 @@ describe("updater.install, this app's bundle only", () => {
 			const source = await bundle(dir, "Notes-new.app", "new");
 			const { commands, file } = await verifiedDownload(source, executableOf(own));
 			const refused = (await commands.install({ path: file.path, appPath: foreign })) as
-				| UpdaterFailure
-				| { ok: true };
+				UpdaterFailure | { ok: true };
 			expect(refused).toMatchObject({
 				ok: false,
 				code: "not-an-app-bundle",
@@ -49,8 +48,7 @@ describe("updater.install, this app's bundle only", () => {
 			// The default `execPath` is the interpreter running this test, which is no bundle at all.
 			const { commands, file } = await verifiedDownload(source, process.execPath);
 			const refused = (await commands.install({ path: file.path, appPath: own })) as
-				| UpdaterFailure
-				| { ok: true };
+				UpdaterFailure | { ok: true };
 			expect(refused).toMatchObject({ ok: false, code: "not-an-app-bundle", path: own });
 			expect((refused as UpdaterFailure).message).toContain(
 				"cannot tell which bundle is its own",

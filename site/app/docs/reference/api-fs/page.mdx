@@ -6,17 +6,17 @@ Four namespaces that touch disk or spawn: `fs` (text files, directories, and the
 
 ## `fs`
 
-| command         | arguments                       | answer                                                   |
-| --------------- | ------------------------------- | -------------------------------------------------------- |
-| `readTextFile`  | `{ path }`                      | the file's text, as a string                             |
-| `writeTextFile` | `{ path, contents }`            | `{ bytes }`                                              |
-| `list`          | `{ path }`                      | `{ entries: [{ name, path, directory, size }] }`         |
-| `stat`          | `{ path }`                      | `{ path, directory, size, modified }`                    |
-| `remove`        | `{ path, recursive? }`          | `{ removed: true, path }`                                |
-| `rename`        | `{ from, to }`                  | `{ path }` — the destination                             |
-| `scopeList`     | none                            | `{ ok: true, paths, scoped, reason? }`                   |
-| `scopeAllow`    | `{ path }`                      | `{ ok: true, paths }`                                    |
-| `scopeRevoke`   | `{ path }`                      | `{ ok: true, paths }`                                    |
+| command         | arguments              | answer                                           |
+| --------------- | ---------------------- | ------------------------------------------------ |
+| `readTextFile`  | `{ path }`             | the file's text, as a string                     |
+| `writeTextFile` | `{ path, contents }`   | `{ bytes }`                                      |
+| `list`          | `{ path }`             | `{ entries: [{ name, path, directory, size }] }` |
+| `stat`          | `{ path }`             | `{ path, directory, size, modified }`            |
+| `remove`        | `{ path, recursive? }` | `{ removed: true, path }`                        |
+| `rename`        | `{ from, to }`         | `{ path }` — the destination                     |
+| `scopeList`     | none                   | `{ ok: true, paths, scoped, reason? }`           |
+| `scopeAllow`    | `{ path }`             | `{ ok: true, paths }`                            |
+| `scopeRevoke`   | `{ path }`             | `{ ok: true, paths }`                            |
 
 `list` answers entries sorted by name, each with a basename and an absolute path, so a page never joins strings. `stat` reports `modified` in milliseconds since the epoch. `remove` deletes a directory only with `recursive: true`; a non-empty directory without it is refused by the OS. `rename` checks both ends against the scope: a rename out of a prefix leaks the file as surely as a read.
 
@@ -26,14 +26,14 @@ Failure codes: `bad-request` (a `path` or `contents` that is not a non-empty str
 
 ## `store`
 
-| command  | arguments        | answer                                        |
-| -------- | ---------------- | --------------------------------------------- |
-| `get`    | `{ key }`        | `{ ok, path, value, recovered? }`             |
-| `set`    | `{ key, value }` | `{ ok, path, key }`                           |
-| `delete` | `{ key }`        | `{ ok, path, key, existed }`                  |
-| `keys`   | none             | `{ ok, path, keys }`                          |
-| `clear`  | none             | `{ ok, path, cleared }`                       |
-| `save`   | none             | `{ ok, path, keys }`                          |
+| command  | arguments        | answer                            |
+| -------- | ---------------- | --------------------------------- |
+| `get`    | `{ key }`        | `{ ok, path, value, recovered? }` |
+| `set`    | `{ key, value }` | `{ ok, path, key }`               |
+| `delete` | `{ key }`        | `{ ok, path, key, existed }`      |
+| `keys`   | none             | `{ ok, path, keys }`              |
+| `clear`  | none             | `{ ok, path, cleared }`           |
+| `save`   | none             | `{ ok, path, keys }`              |
 
 One JSON object under the app's data directory, written atomically on every change. `get` answers `null` for a key that was never set, which is also what a stored `null` reads as. `keys` is sorted by code unit, so the list is the same on every machine. `recovered` appears once, on the first answer after a corrupt file was moved aside to `store.json.corrupt` — it says data was lost rather than leaving a page to mistake the empty store for a missing key.
 
@@ -41,14 +41,14 @@ Failure codes: `bad-request` (a `key` that is not a non-empty string, or a `valu
 
 ## `shell`
 
-| command  | arguments                                  | answer                                                      |
-| -------- | ------------------------------------------ | ----------------------------------------------------------- |
-| `spawn`  | `{ program, args?, cwd?, stdin? }`         | `{ ok: true, id }`                                          |
-| `output` | `{ id }`                                   | `{ ok, stdout, stderr, exitCode, signal }`                  |
-| `write`  | `{ id, data }`                             | `{ ok: true, bytes }`                                       |
-| `close`  | `{ id }`                                   | `{ ok, closed, id }`                                        |
-| `kill`   | `{ id }`                                   | `{ ok, killed, id }`                                        |
-| `list`   | none                                       | `{ ok: true, ids }`                                         |
+| command  | arguments                          | answer                                     |
+| -------- | ---------------------------------- | ------------------------------------------ |
+| `spawn`  | `{ program, args?, cwd?, stdin? }` | `{ ok: true, id }`                         |
+| `output` | `{ id }`                           | `{ ok, stdout, stderr, exitCode, signal }` |
+| `write`  | `{ id, data }`                     | `{ ok: true, bytes }`                      |
+| `close`  | `{ id }`                           | `{ ok, closed, id }`                       |
+| `kill`   | `{ id }`                           | `{ ok, killed, id }`                       |
+| `list`   | none                               | `{ ok: true, ids }`                        |
 
 No shell is ever invoked: a page's `args` reach the program as argv, so nothing is re-parsed as a command line. `allow` is a set of real paths, resolved once — a basename no longer satisfies it, so a `/tmp/echo` a page planted is not `echo`, and a symlink cannot move a program or a `cwd` out of `cwdRoot`. `stdin: "pipe"` gives `write` something to feed; the default `"ignore"` reads as immediate EOF. `output` answers the ring of lines (500 per stream) and still answers after the process exits; records of finished processes are kept for the last 256 ids. `close` ends stdin, `kill` sends the signal, and `list` names only live processes.
 
@@ -60,14 +60,14 @@ Events: `shell-output` carries `{ id, stream, line }` for every line, with `stre
 
 ## `stronghold`
 
-| command  | arguments        | answer                        |
-| -------- | ---------------- | ----------------------------- |
-| `open`   | `{ password }`   | `{ ok: true, opened: true }`  |
-| `close`  | none             | `{ ok: true, closed: true }`  |
-| `set`    | `{ key, value }` | `{ ok: true, key }`           |
-| `get`    | `{ key }`        | `{ ok: true, key, value }`    |
-| `delete` | `{ key }`        | `{ ok: true, key, deleted }`  |
-| `keys`   | none             | `{ ok: true, keys }`          |
+| command  | arguments        | answer                       |
+| -------- | ---------------- | ---------------------------- |
+| `open`   | `{ password }`   | `{ ok: true, opened: true }` |
+| `close`  | none             | `{ ok: true, closed: true }` |
+| `set`    | `{ key, value }` | `{ ok: true, key }`          |
+| `get`    | `{ key }`        | `{ ok: true, key, value }`   |
+| `delete` | `{ key }`        | `{ ok: true, key, deleted }` |
+| `keys`   | none             | `{ ok: true, keys }`         |
 
 One JSON file under the app's data directory with every key name and value sealed by AES-256-GCM under a key PBKDF2 derives from the password. Before `open` every command answers `locked`. A wrong password on an existing file is `bad-password`, never a fresh empty store — an empty store reads as "you had nothing saved", which a locked vault must not say. `set` and `delete` are serialised, so two racing writes cannot drop one of the keys. Values are strings only.
 

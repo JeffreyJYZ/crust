@@ -6,34 +6,34 @@ Every command answers a value, never a rejected invoke: `{ ok: true, … }` or `
 
 ## `window`
 
-| command             | arguments                          | answer                                  |
-| ------------------- | ---------------------------------- | --------------------------------------- |
-| `create`            | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }` |
-| `close`             | `{ label }`                        | `{ ok: true, label, closed: true }`     |
-| `focus`             | `{ label }`                        | `{ ok: true, label, focused: true }`    |
-| `setTitle`          | `{ label, title }`                 | `{ ok: true, label, title }`            |
-| `list`              | none                               | `{ ok: true, labels }`                  |
-| `isOpen`            | `{ label }`                        | `{ ok: true, label, open }`             |
-| `label`             | none                               | `{ ok: true, label }`                   |
-| `setSize`           | `{ label, width, height }`         | `{ ok: true, label, width, height }`    |
-| `getSize`           | `{ label }`                        | `{ ok: true, label, width, height }`    |
-| `setPosition`       | `{ label, x, y }`                  | `{ ok: true, label, x, y }`             |
-| `getPosition`       | `{ label }`                        | `{ ok: true, label, x, y }`             |
-| `setAlwaysOnTop`    | `{ label, value }`                 | `{ ok: true, label, alwaysOnTop }`      |
-| `isAlwaysOnTop`     | `{ label }`                        | `{ ok: true, label, alwaysOnTop }`      |
-| `setFullscreen`     | `{ label, value }`                 | `{ ok: true, label, fullscreen }`       |
-| `isFullscreen`      | `{ label }`                        | `{ ok: true, label, fullscreen }`       |
-| `minimize`          | `{ label }`                        | `{ ok: true, label, minimized: true }`  |
-| `unminimize`        | `{ label }`                        | `{ ok: true, label, minimized: false }` |
-| `isMinimized`       | `{ label }`                        | `{ ok: true, label, minimized }`        |
-| `maximize`          | `{ label }`                        | `{ ok: true, label, maximized: true }`  |
-| `isMaximized`       | `{ label }`                        | `{ ok: true, label, maximized }`        |
-| `setDecorations`    | `{ label, value }`                 | `{ ok: true, label, decorations }`      |
-| `isDecorated`       | `{ label }`                        | `{ ok: true, label, decorations }`      |
-| `setOpacity`        | `{ label, value }`                 | `{ ok: true, label, opacity }`          |
-| `opacity`           | `{ label }`                        | `{ ok: true, label, opacity }`          |
-| `setCursor`         | `{ cursor }`                       | `{ ok: true, cursor }`                  |
-| `setCursorVisible`  | `{ value }`                        | `{ ok: true, visible }`                 |
+| command            | arguments                                  | answer                                  |
+| ------------------ | ------------------------------------------ | --------------------------------------- |
+| `create`           | `{ label, title?, width?, height?, url? }` | `{ ok: true, label, created: true }`    |
+| `close`            | `{ label }`                                | `{ ok: true, label, closed: true }`     |
+| `focus`            | `{ label }`                                | `{ ok: true, label, focused: true }`    |
+| `setTitle`         | `{ label, title }`                         | `{ ok: true, label, title }`            |
+| `list`             | none                                       | `{ ok: true, labels }`                  |
+| `isOpen`           | `{ label }`                                | `{ ok: true, label, open }`             |
+| `label`            | none                                       | `{ ok: true, label }`                   |
+| `setSize`          | `{ label, width, height }`                 | `{ ok: true, label, width, height }`    |
+| `getSize`          | `{ label }`                                | `{ ok: true, label, width, height }`    |
+| `setPosition`      | `{ label, x, y }`                          | `{ ok: true, label, x, y }`             |
+| `getPosition`      | `{ label }`                                | `{ ok: true, label, x, y }`             |
+| `setAlwaysOnTop`   | `{ label, value }`                         | `{ ok: true, label, alwaysOnTop }`      |
+| `isAlwaysOnTop`    | `{ label }`                                | `{ ok: true, label, alwaysOnTop }`      |
+| `setFullscreen`    | `{ label, value }`                         | `{ ok: true, label, fullscreen }`       |
+| `isFullscreen`     | `{ label }`                                | `{ ok: true, label, fullscreen }`       |
+| `minimize`         | `{ label }`                                | `{ ok: true, label, minimized: true }`  |
+| `unminimize`       | `{ label }`                                | `{ ok: true, label, minimized: false }` |
+| `isMinimized`      | `{ label }`                                | `{ ok: true, label, minimized }`        |
+| `maximize`         | `{ label }`                                | `{ ok: true, label, maximized: true }`  |
+| `isMaximized`      | `{ label }`                                | `{ ok: true, label, maximized }`        |
+| `setDecorations`   | `{ label, value }`                         | `{ ok: true, label, decorations }`      |
+| `isDecorated`      | `{ label }`                                | `{ ok: true, label, decorations }`      |
+| `setOpacity`       | `{ label, value }`                         | `{ ok: true, label, opacity }`          |
+| `opacity`          | `{ label }`                                | `{ ok: true, label, opacity }`          |
+| `setCursor`        | `{ cursor }`                               | `{ ok: true, cursor }`                  |
+| `setCursorVisible` | `{ value }`                                | `{ ok: true, visible }`                 |
 
 `label` is the one command with no adapter behind it: the bridge reads the window identity off the calling request (`?window=<label>` in the URL crust opened the page with, sent by the page client on every invoke) and hands it over as `ctx.window`. It answers the label that request carried — never the first open window, the focused one, or the only one. A page the bridge did not open that way carries no identity, and the answer is `not-implemented` with `requires: "the calling page's window identity on the invoke request"`. A client-supplied label is a routing hint, not a credential: the bearer token is the only one, so a page that claims another label can mislabel itself and nothing else.
 
@@ -43,14 +43,14 @@ Failure codes: `invalid-label` (a missing or empty `label`, or a `create` title 
 
 ## `window-state`
 
-| command      | arguments  | answer                                        |
-| ------------ | ---------- | --------------------------------------------- |
-| `save`       | `{ label }` | `{ ok: true, label, frame }`                 |
-| `restore`    | `{ label }` | `{ ok: true, label, restored, frame? }`      |
-| `forget`     | `{ label }` | `{ ok: true, label, removed }`               |
-| `saveAll`    | none       | `{ ok: true, saved, skipped }`                |
-| `restoreAll` | none       | `{ ok: true, restored, missing }`             |
-| `forgetAll`  | none       | `{ ok: true, removed }`                       |
+| command      | arguments   | answer                                  |
+| ------------ | ----------- | --------------------------------------- |
+| `save`       | `{ label }` | `{ ok: true, label, frame }`            |
+| `restore`    | `{ label }` | `{ ok: true, label, restored, frame? }` |
+| `forget`     | `{ label }` | `{ ok: true, label, removed }`          |
+| `saveAll`    | none        | `{ ok: true, saved, skipped }`          |
+| `restoreAll` | none        | `{ ok: true, restored, missing }`       |
+| `forgetAll`  | none        | `{ ok: true, removed }`                 |
 
 `frame` is `{ x, y, width, height }`. A missing or corrupt state file is not an error: `restore` answers `restored: false` and the window opens at its configured size. `saveAll` names every window whose frame the platform could not read in `skipped` instead of aborting the rest; `restoreAll` names every label with no stored entry in `missing`; `forgetAll` answers the labels it dropped.
 

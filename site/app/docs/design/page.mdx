@@ -52,7 +52,7 @@ The page and the backend talk over a loopback HTTP bridge, not a promise inside 
 named in the content security policy. This is also what makes `crust dev` work: the window loads
 `dev.url` exactly once, so the dev server must already be up.
 
-The gate on `/_crust/*` is the **bearer token**; the origin check only rejects a *present* and
+The gate on `/_crust/*` is the **bearer token**; the origin check only rejects a _present_ and
 foreign `Origin`. An absent header is not a cross-origin request — a browser always sends `Origin`
 on one, and WebKitGTK's `EventSource` sends none at all on a same-origin GET, so refusing a null
 `Origin` killed every plugin event on Linux (`ctx.emit` to theme, menu, tray, downloads, navigation,

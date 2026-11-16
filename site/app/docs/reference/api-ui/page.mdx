@@ -6,11 +6,11 @@ Each answers a value rather than a rejected invoke. Without a native half the an
 
 ## `dialog`
 
-| command     | arguments                                        | answer                        |
-| ----------- | ------------------------------------------------ | ----------------------------- |
-| `openPanel` | `{ title?, multiple?, directory?, filters? }`     | `{ paths }`                   |
-| `savePanel` | `{ title?, suggestedName?, filters? }`            | `{ paths }`                   |
-| `cancel`    | none                                             | `{ cancelled, paths }`        |
+| command     | arguments                                     | answer                 |
+| ----------- | --------------------------------------------- | ---------------------- |
+| `openPanel` | `{ title?, multiple?, directory?, filters? }` | `{ paths }`            |
+| `savePanel` | `{ title?, suggestedName?, filters? }`        | `{ paths }`            |
+| `cancel`    | none                                          | `{ cancelled, paths }` |
 
 `filters` is `[{ name, extensions }]`. A cancelled pick is never an error: the panel answers `{ paths: [] }`. `savePanel` picks exactly one file, so `paths` holds one entry on a pick. `cancel` ends the sheet that is up, the way its Cancel button would, and answers `cancelled: false` when nothing was pending — an ordinary race with the user, not a failure.
 
@@ -18,10 +18,10 @@ One sheet at a time: a second `openPanel` or `savePanel` while a sheet is up ans
 
 ## `notification`
 
-| command             | arguments                              | answer                                    |
-| ------------------- | -------------------------------------- | ----------------------------------------- |
-| `requestPermission` | none                                   | `"granted" \| "denied" \| "unknown"`      |
-| `notify`            | `{ title, body?, id?, waitMs? }`       | `{ delivered, reason }`                   |
+| command             | arguments                        | answer                               |
+| ------------------- | -------------------------------- | ------------------------------------ |
+| `requestPermission` | none                             | `"granted" \| "denied" \| "unknown"` |
+| `notify`            | `{ title, body?, id?, waitMs? }` | `{ delivered, reason }`              |
 
 `delivered` is the OS's word, not the adapter's optimism: it is true only for status 0, and `reason` always says which centre ran and what it reported. The first `notify` on macOS raises the system prompt and nothing is delivered until a human answers, so a caller wanting one call to work passes `waitMs` around 30 000; the default 1500 asks and reports "not answered yet". `id` is a caller-chosen dedupe key.
 
@@ -29,13 +29,13 @@ One sheet at a time: a second `openPanel` or `savePanel` while a sheet is up ans
 
 ## `tray`
 
-| command    | arguments                       | answer                          |
-| ---------- | ------------------------------- | ------------------------------- |
-| `setTitle` | `{ text }`                      | `{ ok: true, text }`            |
-| `setMenu`  | `{ items: [{ label }] }`        | `{ ok: true, labels }`          |
-| `show`     | none                            | `{ ok: true, active: true }`    |
-| `hide`     | none                            | `{ ok: true, active: false }`   |
-| `destroy`  | none                            | `{ ok: true, destroyed: true }` |
+| command    | arguments                | answer                          |
+| ---------- | ------------------------ | ------------------------------- |
+| `setTitle` | `{ text }`               | `{ ok: true, text }`            |
+| `setMenu`  | `{ items: [{ label }] }` | `{ ok: true, labels }`          |
+| `show`     | none                     | `{ ok: true, active: true }`    |
+| `hide`     | none                     | `{ ok: true, active: false }`   |
+| `destroy`  | none                     | `{ ok: true, destroyed: true }` |
 
 One live status item per adapter; `destroy` releases the adapter's claim, and a second `createStatusBar()` throws until it lands. An empty `items` list detaches the menu. A click reaches the page as the `tray:click` event with `{ index, label }`, because a function cannot cross the bridge.
 
@@ -43,13 +43,13 @@ Failure codes: `invalid-text`, `invalid-menu`, `unknown-adapter` (the adapter la
 
 ## `menu`
 
-| command       | arguments                    | answer                        |
-| ------------- | ---------------------------- | ----------------------------- |
-| `setAppMenu`  | `{ items }`                  | `{ ok: true, count }`         |
-| `showContext` | `{ items, x, y }`            | `{ ok: true, count }`         |
-| `reset`       | none                         | `{ ok: true, reset: true }`   |
-| `read`        | none                         | `{ ok: true, items }`         |
-| `isDefault`   | none                         | `{ ok: true, isDefault }`     |
+| command       | arguments         | answer                      |
+| ------------- | ----------------- | --------------------------- |
+| `setAppMenu`  | `{ items }`       | `{ ok: true, count }`       |
+| `showContext` | `{ items, x, y }` | `{ ok: true, count }`       |
+| `reset`       | none              | `{ ok: true, reset: true }` |
+| `read`        | none              | `{ ok: true, items }`       |
+| `isDefault`   | none              | `{ ok: true, isDefault }`   |
 
 An item is `{ label, id?, accelerator?, separator?, submenu? }`; `id` defaults to the label and must be unique among selectable rows. `accelerator` is `Cmd`/`Ctrl`/`Alt`/`Shift` plus one printable ASCII key, e.g. `"Cmd+Shift+K"` — a bare key is refused because it would swallow ordinary typing in the webview. `showContext` takes page CSS pixels. `count` is selectable rows, separators and container entries excluded. `read` returns the live bar as AppKit holds it: `{ title, enabled, hasSubmenu, keyEquivalent, modifierMask, children? }` per row. `isDefault` says whether the bar is the one crust installed at launch. A selection arrives as the `menu` event with `{ id }`.
 
@@ -57,12 +57,12 @@ Failure codes: `bad-items`, `bad-accelerator` (with `part` naming the token at f
 
 ## `clipboard`
 
-| command      | arguments         | answer                            |
-| ------------ | ----------------- | --------------------------------- |
-| `read`       | none              | `{ ok: true, text }`              |
-| `write`      | `{ text }`        | `{ ok: true, written: true }`     |
-| `readImage`  | none              | `{ ok: true, png }`               |
-| `writeImage` | `{ png }`         | `{ ok: true, written: true }`     |
+| command      | arguments  | answer                        |
+| ------------ | ---------- | ----------------------------- |
+| `read`       | none       | `{ ok: true, text }`          |
+| `write`      | `{ text }` | `{ ok: true, written: true }` |
+| `readImage`  | none       | `{ ok: true, png }`           |
+| `writeImage` | `{ png }`  | `{ ok: true, written: true }` |
 
 `read` answers `""` for an empty pasteboard, which is a different answer from `not-implemented`. `write` accepts the empty string — that is how a page clears the clipboard. `png` is PNG bytes: `readImage` answers `null` when the pasteboard holds no image, and `writeImage` refuses anything whose first eight bytes are not the PNG magic. The binary route hands the bytes over as the argument itself, so bare `Uint8Array` and `{ png }` are the same request.
 
@@ -70,13 +70,13 @@ Failure codes: `bad-request` (`write` without a string `text`, `writeImage` with
 
 ## `shortcut`
 
-| command         | arguments         | answer                       |
-| --------------- | ----------------- | ---------------------------- |
-| `register`      | `{ accelerator }` | `{ ok: true, accelerator }`  |
-| `unregister`    | `{ accelerator }` | `{ ok: true, accelerator }`  |
-| `unregisterAll` | none              | `{ removed }`                |
-| `isRegistered`  | `{ accelerator }` | a boolean                    |
-| `list`          | none              | an array of accelerators     |
+| command         | arguments         | answer                      |
+| --------------- | ----------------- | --------------------------- |
+| `register`      | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregister`    | `{ accelerator }` | `{ ok: true, accelerator }` |
+| `unregisterAll` | none              | `{ removed }`               |
+| `isRegistered`  | `{ accelerator }` | a boolean                   |
+| `list`          | none              | an array of accelerators    |
 
 Process-wide hot keys. Registration answers a result rather than throwing, because a malformed accelerator has to name the token at fault: `part` carries it verbatim. `isRegistered` answers `false` for an accelerator it cannot parse rather than failing. A press reaches the page as the `shortcut` event with `{ accelerator }`, canonicalised.
 
