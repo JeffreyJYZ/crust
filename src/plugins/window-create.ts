@@ -2,6 +2,7 @@
  * `window.create`, the one command whose native half is optional. Split out of `window.ts` because it carries its own ordering rules: ask whether the adapter can create before validating arguments, refuse a label the platform still holds, and read the platform's list back rather than trusting the call just made.
  */
 
+import { withWindowLabel } from "@/bridge/window-identity.ts";
 import type { NotImplemented } from "./define";
 import { duplicateLabel, failure, missingWindow, parseCreate } from "./window-args.ts";
 import type {
@@ -39,7 +40,17 @@ export function createWindowCommand(
 	}
 	const parsed = parseCreate(args);
 	if (!parsed.ok) return parsed.failure;
-	const options: WindowCreateOptions = parsed.options;
+	// A window's identity is its URL, so a runtime-created window gets the same treatment as a
+	// configured one — but only for the app's own document. An absolute URL is the app's to define
+	// in full (it may carry a signature, or a `window` of its own), so it is handed through
+	// untouched; a page that wants an identity on one appends `?window=` itself.
+	const url = parsed.options.url;
+	const own = url === undefined || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
+	// An empty base answers a query-only reference (`?window=prefs`), which the adapter resolves
+	// against the document the app is already on — the path it was opened at, query kept.
+	const options: WindowCreateOptions = own
+		? { ...parsed.options, url: withWindowLabel(url ?? "", parsed.options.label) }
+		: parsed.options;
 	// Only the adapter can tell a closed-but-tracked label from a free
 	// one; this check covers what `list` reports, and the adapter throws
 	// `duplicate-label` for the rest.

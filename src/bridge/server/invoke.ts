@@ -6,6 +6,7 @@
 
 import type { PluginContext } from "../../plugins/define";
 import { type CommandHandler, isNotImplemented } from "../../plugins/define";
+import { asWindowLabel } from "../window-identity.ts";
 import { CrustError, toCrustError } from "../errors";
 import { encodeResult } from "./bytes.ts";
 import { errorResponse, jsonResponse } from "./http.ts";
@@ -13,18 +14,26 @@ import { errorResponse, jsonResponse } from "./http.ts";
 /** Bodies over this size are refused before parsing, as the probe measured. */
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
-export type Run = (plugin: string, command: string, args: unknown) => Promise<unknown>;
+export type Run = (
+	plugin: string,
+	command: string,
+	args: unknown,
+	window?: string,
+) => Promise<unknown>;
 
 /** Resolve `plugin.command` against the registry, with structured failures. */
 export function createRunner(handlers: Map<string, CommandHandler>, ctx: PluginContext): Run {
-	return async function run(plugin, command, args) {
+	return async function run(plugin, command, args, window) {
 		const handler: CommandHandler | undefined = handlers.get(`${plugin}.${command}`);
 		if (!handler) {
 			throw new CrustError("unknown-command", `${plugin}.${command}`);
 		}
+		// The calling window rides on the request, never in the handler's own arguments: it is a
+		// routing hint `window.label` answers, so no command can mistake it for a label it was given.
+		const request = window === undefined ? ctx : { ...ctx, window };
 		let result: unknown;
 		try {
-			result = await handler(args, ctx);
+			result = await handler(args, request);
 		} catch (error) {
 			throw toCrustError(error);
 		}
@@ -63,8 +72,10 @@ export async function invokeRequest(
 			if (bytes.byteLength > MAX_BODY_BYTES) {
 				throw new CrustError("too-large", "payload too large");
 			}
+			// The binary form has no JSON body to carry a field, so the window rides in the query.
+			const window = asWindowLabel(url.searchParams.get("window"));
 			return jsonResponse(
-				{ ok: true, result: encodeResult(await run(plugin, command, bytes)) },
+				{ ok: true, result: encodeResult(await run(plugin, command, bytes, window)) },
 				200,
 				cors,
 			);
@@ -74,12 +85,13 @@ export async function invokeRequest(
 		if (text.length > MAX_BODY_BYTES) {
 			throw new CrustError("too-large", "payload too large");
 		}
-		let parsed: { plugin?: unknown; command?: unknown; args?: unknown };
+		let parsed: { plugin?: unknown; command?: unknown; args?: unknown; window?: unknown };
 		try {
 			parsed = JSON.parse(text) as {
 				plugin?: unknown;
 				command?: unknown;
 				args?: unknown;
+				window?: unknown;
 			};
 		} catch {
 			throw new CrustError("bad-json", "body is not json");
@@ -87,7 +99,12 @@ export async function invokeRequest(
 		if (typeof parsed.plugin !== "string" || typeof parsed.command !== "string") {
 			throw new CrustError("bad-request", "body needs { plugin, command, args }");
 		}
-		const result = await run(parsed.plugin, parsed.command, parsed.args);
+		const result = await run(
+			parsed.plugin,
+			parsed.command,
+			parsed.args,
+			asWindowLabel(parsed.window),
+		);
 		return jsonResponse({ ok: true, result: encodeResult(result) }, 200, cors);
 	} catch (error) {
 		return errorResponse(error, cors);

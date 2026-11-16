@@ -12,6 +12,11 @@ typedef void WebKitWebView;
 
 extern void *dlopen(const char *file, int mode);
 extern void *dlsym(void *handle, const char *name);
+// Bun links mimalloc and exports its own malloc/free, so these two are Bun's
+// allocator rather than libc's. Never hand either one a block GLib allocated:
+// its header belongs to a foreign heap. GLib memory goes back through the g_free
+// the webview part resolves (measured: a GLib string freed with the shim's free
+// faulted at address 0xA6D0 on ubuntu-sandbox).
 extern void *malloc(unsigned long size);
 extern void free(void *p);
 
@@ -62,6 +67,14 @@ static int shim_sym(void *handle, const char *name, void **out) {
 		return 0;
 	}
 	return 1;
+}
+
+// Resolve without recording: an entry point the layer can live without must not
+// turn into "missing symbol" for the whole launch. The proof calls these, and a
+// library too old to carry one fails that proof's own step by name instead.
+static void *shim_sym_or_null(void *handle, const char *name) {
+	if (!handle) return 0;
+	return dlsym(handle, name);
 }
 
 void *shim_gtk_handle(void) { return shim_gtk; }

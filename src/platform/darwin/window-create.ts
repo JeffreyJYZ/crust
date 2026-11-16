@@ -4,7 +4,7 @@
  */
 import type { WindowOptions } from "@/app.ts";
 import { shim } from "./index.ts";
-import { allocInit, cstr, ptrValue, S } from "./objc.ts";
+import { allocInit, cls, cstr, ptrValue, S } from "./objc.ts";
 import type { NativeWindowPointers } from "./windows.ts";
 
 export function createNativeWindow(
@@ -69,9 +69,10 @@ export function createNativeWindow(
 	S.v1(win, "makeKeyAndOrderFront:", 0);
 	// `makeKeyAndOrderFront:` raises the window but still depends on the app being able to
 	// activate, and macOS 14+ refuses that for an unbundled process — which is exactly how
-	// `crust dev` runs. The window then exists, the page loads, and nothing appears on
-	// screen, silently. This raises it above its siblings without needing activation, so a
-	// dev session and a bundle behave the same.
+	// `crust dev` runs. Measured 2026-11-16: such a window is built, its page loads, and it is
+	// still off screen and out of the accessibility tree (AppKit `visible 1` while the
+	// WindowServer reported it not on screen). This raises it above its siblings without needing
+	// activation.
 	S.v0(win, "orderFrontRegardless");
 	// `canJoinAllSpaces | fullScreenAuxiliary` = 257. A launched app's window otherwise
 	// lands on the desktop Space while the user is in a fullscreen one: it is created,
@@ -83,6 +84,25 @@ export function createNativeWindow(
 		// Older systems: the default behaviour is the fallback.
 	}
 	activate();
+	// `-activate` is the macOS 14 cooperative call, and it is silently refused for a process
+	// LaunchServices did not launch, so the activation above never lands. Measured from a
+	// separate trusted process: a directly-exec'd bundle answered `active no`, and its app
+	// element carried `AXWindows` 0 with `AXChildren` = the menu bar alone — the window was
+	// mapped and `screencapture -l` captured it, yet VoiceOver was blind to it. AppKit lists
+	// only windows on the active Space (its own `accessibilityWindows` tracked `isOnActiveSpace`
+	// 1:1), and a window joins that Space only when its app is the active one.
+	// `-activateIgnoringOtherApps:` does land: `active yes`, then `AXWindows` 1 with 4 children
+	// from the same external read, which is what makes the window key, on the active Space and
+	// in the tree. Guarded on the app not already being active, so a second window does not pull
+	// the app forward again.
+	const app = S.p0(cls("NSApplication"), "sharedApplication", true);
+	if (!S.b0(app, "isActive")) {
+		try {
+			S.vb1(app, "activateIgnoringOtherApps:", 1);
+		} catch {
+			// An older system without the pre-14 call keeps the window as it is.
+		}
+	}
 
 	// A relative URL needs the bridge server, which the platform does not own;
 	// only an absolute URL can be handed to NSURL as-is.
