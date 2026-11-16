@@ -67,6 +67,8 @@ A green gate is the only proof a landing is safe.
   refuses a null `Origin` kills the whole event stream on Linux while the POST invoke path keeps
   working — the token is the credential, and a cross-origin page always sends `Origin` (measured
   2026-11-16).
+- **A `bun:ffi` vtable call declared to return `shim_i64` reads an undefined top half of RAX when the method returns a 32-bit `HRESULT`** — `< 0` can then read `S_OK` as a failure, so declare `int` and widen only where stored (measured 2026-11-16).
+- **`CoGetApartmentType` answers `0` STA, `1` MTA, `2` neutral, `3` main STA, `-1` not initialised** — `1` is MTA, so a probe reading it as STA inverts the verdict (2026-11-16).
 - **Crash reports are in `~/Library/Logs/DiagnosticReports/<binary>-<date>.ips`** (system-wide ones
   under `/Library/Logs/DiagnosticReports`) — read the `signal` and `indication` fields, and list with
   `ls -1 --sort=date`, never `ls -1t`, which eza reads as `--time <FIELD>` and errors into silence.

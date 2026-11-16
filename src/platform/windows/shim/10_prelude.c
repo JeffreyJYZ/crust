@@ -27,7 +27,12 @@ static int (*MultiByteToWideChar)(unsigned int cp, unsigned int flags, const cha
 static unsigned int (*GetLastError)(void);
 static unsigned int (*GetCurrentThreadId)(void);
 static unsigned int (*GetWindowThreadProcessId)(shim_h hwnd, unsigned int *processId);
-static shim_i64 (*CoGetApartmentType)(int *aptType, int *aptQualifier);
+static unsigned long long (*GetTickCount64)(void);
+static unsigned long long (*VirtualQuery)(const void *address, void *buffer,
+                                          unsigned long long length);
+// `int`, not `shim_i64`: CoGetApartmentType returns a 32-bit HRESULT, and a wider declaration reads an
+// undefined top half of RAX — the same trap as the vtable calls.
+static int (*CoGetApartmentType)(int *aptType, int *aptQualifier);
 static void (*Sleep)(unsigned int ms);
 static shim_h (*LoadLibraryW)(const shim_wchar *name);
 static shim_h (*GetModuleHandleW)(const shim_wchar *name);

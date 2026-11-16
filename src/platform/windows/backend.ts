@@ -59,11 +59,48 @@ export interface WindowsShim {
 	shim_webview_navigate(url: Uint8Array): number;
 
 	/**
+	 * The attach in its two halves — `get_CoreWebView2` (controller slot 25) and `put_Bounds` (slot 6, a
+	 * 16-byte struct by reference) — so a fault names which one. `shim_attach_hresult(0|1)` is the
+	 * HRESULT of each, and `shim_webview_handle` the ICoreWebView2 the first produced.
+	 */
+	shim_webview_bind(hwnd: number): number;
+	shim_webview_size(hwnd: number): number;
+	shim_webview_handle(): number;
+	shim_attach_hresult(which: number): number;
+
+	/** 1 when the environment callback fired inside `create_env`, not in a later pump iteration. */
+	shim_env_inline(): number;
+
+	/**
 	 * The thread that owns a window, and the apartment this thread is in — 0 STA, 1 MTA, 2 neutral,
-	 * 3 main STA, -1 not initialised. `com_init` answering S_OK is the claim; these are the check.
+	 * 3 main STA, -1 not initialised. `com_init` answering S_OK is the claim; these are the check, and
+	 * `shim_apartment_bound` separates "never bound" from "the call failed".
 	 */
 	shim_window_thread(hwnd: number): number;
 	shim_apartment_type(): number;
+	shim_apartment_bound(): number;
+	shim_apartment_hresult(): number;
+
+	/**
+	 * The controller object, as Windows will read it: its address, the environment's (equal addresses
+	 * mean the wrong one was stored), its vtable pointer, and one entry of it. Compared with
+	 * `shim_handler_vtbl_addr`, this says whether the object is a controller at all.
+	 */
+	shim_controller_addr(): number;
+	shim_environment_addr(): number;
+	shim_controller_vtbl(): number;
+	shim_controller_slot(index: number): number;
+
+	/** The ICoreWebView2's vtable and one entry, so a bad webview is printed before `Navigate`. */
+	shim_webview_vtbl(): number;
+	shim_webview_slot(index: number): number;
+
+	/**
+	 * The last vtable slot a call refused — `0`, `(void *)-1` or memory that is not committed and
+	 * executable — or -1. A refused slot returns `E_NOINTERFACE` instead of jumping, so a probe can
+	 * still print the next line.
+	 */
+	shim_bad_slot(): number;
 
 	/**
 	 * The HRESULT of the last begin call. `shim_webview_new` answers 0/1, so a caller that needs the

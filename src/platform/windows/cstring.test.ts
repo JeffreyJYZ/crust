@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { WindowsBackend, WindowsShim } from "./backend.ts";
-import { fakeShim } from "./fake-backend.ts";
+import { fakeShim } from "./fake-shim.ts";
 import { createPlatform } from "./platform.ts";
 
 /**

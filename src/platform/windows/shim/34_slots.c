@@ -14,17 +14,18 @@ typedef struct {
 // is passed **by reference** on x64 — so the parameter is declared as a pointer and the address is
 // passed, which is the call the ABI already makes. Declaring it by value would leave the sequence to
 // TinyCC's struct codegen, which nothing on this machine can test.
+// Returns the method's own HRESULT, so a refusal and a crash are distinguishable.
 int wv2_put_bounds(void *ctrl, double w, double h) {
 	shim_rect r;
 	void **vt;
-	if (!ctrl) return 0;
+	if (!ctrl) return -2147467259; /* E_FAIL */
 	r.left = 0;
 	r.top = 0;
 	r.right = (long)w;
 	r.bottom = (long)h;
 	vt = *(void ***)ctrl;
-	((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
-	return 1;
+	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_PUT_BOUNDS)) return -2147467262;
+	return ((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
 }
 
 // ICoreWebView2Controller slot 24.
@@ -32,6 +33,7 @@ void wv2_controller_close(void *ctrl) {
 	void **vt;
 	if (!ctrl) return;
 	vt = *(void ***)ctrl;
+	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_CLOSE)) return;
 	((int (*)(void *))vt[SHIM_SLOT_CONTROLLER_CLOSE])(ctrl);
 }
 
@@ -44,5 +46,6 @@ int wv2_navigate(void *web, const shim_wchar *url) {
 	void **vt;
 	if (!web || !url) return 0;
 	vt = *(void ***)web;
+	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_NAVIGATE)) return 0;
 	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(web, url) >= 0;
 }

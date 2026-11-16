@@ -8,10 +8,12 @@
  */
 import prelude from "./shim/10_prelude.c" with { type: "text" };
 import win32 from "./shim/12_win32.c" with { type: "text" };
+import guard from "./shim/14_guard.c" with { type: "text" };
 import windowClass from "./shim/20_class.c" with { type: "text" };
 import com from "./shim/30_com.c" with { type: "text" };
 import environment from "./shim/32_env.c" with { type: "text" };
 import slots from "./shim/34_slots.c" with { type: "text" };
+import probe from "./shim/36_probe.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import webview from "./shim/42_webview.c" with { type: "text" };
 
@@ -19,10 +21,12 @@ import webview from "./shim/42_webview.c" with { type: "text" };
 export const SHIM_PARTS = [
 	prelude,
 	win32,
+	guard,
 	windowClass,
 	com,
 	environment,
 	slots,
+	probe,
 	window,
 	webview,
 ] as const;
@@ -37,10 +41,12 @@ export const shimSource = SHIM_PARTS.join("\n");
 export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/10_prelude.c",
 	"src/platform/windows/shim/12_win32.c",
+	"src/platform/windows/shim/14_guard.c",
 	"src/platform/windows/shim/20_class.c",
 	"src/platform/windows/shim/30_com.c",
 	"src/platform/windows/shim/32_env.c",
 	"src/platform/windows/shim/34_slots.c",
+	"src/platform/windows/shim/36_probe.c",
 	"src/platform/windows/shim/40_window.c",
 	"src/platform/windows/shim/42_webview.c",
 ] as const;

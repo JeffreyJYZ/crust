@@ -32,6 +32,8 @@ int shim_win32_load(void) {
 	SHIM_BIND(g_kernel32, MultiByteToWideChar);
 	SHIM_BIND(g_kernel32, GetLastError);
 	SHIM_BIND(g_kernel32, GetCurrentThreadId);
+	SHIM_BIND(g_kernel32, GetTickCount64);
+	SHIM_BIND(g_kernel32, VirtualQuery);
 	SHIM_BIND(g_kernel32, Sleep);
 	SHIM_BIND(g_kernel32, LoadLibraryW);
 	SHIM_BIND(g_kernel32, GetModuleHandleW);

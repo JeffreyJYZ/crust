@@ -47,6 +47,8 @@ static shim_i64 g_ctrl_hresult;
 // answer yet" and "answered S_OK" would be the same value.
 static shim_h g_ctrl_hwnd;
 static int g_ctrl_requested;
+/** 1 when the environment callback fired inside `create_env`, 0 when a later pump iteration got it. */
+static int g_env_inline;
 
 // What each object produced, once its callback has fired; 0 until then.
 void *shim_environment_handle(void) { return g_env_handler.result; }
@@ -57,15 +59,6 @@ void *shim_controller_handle(void) { return g_ctrl_handler.result; }
 // different defects and only these two numbers tell them apart.
 shim_i64 shim_env_hresult(void) { return g_env_hresult; }
 shim_i64 shim_controller_hresult(void) { return g_ctrl_hresult; }
-
-// The apartment this thread is in: 0 STA, 1 MTA, 2 neutral, 3 main STA, -1 not initialised or the call
-// failed. `com_init` answering S_OK is the claim; this is the check on it.
-int shim_apartment_type(void) {
-	int type = 0;
-	if (!CoGetApartmentType) return -1;
-	if ((int)CoGetApartmentType(&type, 0) != 0) return -1;
-	return type;
-}
 
 // 1 when the bytes Windows reads as the vtable pointer really are the table this layer filled.
 int shim_handler_prepare(void) {
@@ -82,14 +75,20 @@ shim_i64 shim_handler_first_field(void) { return (shim_i64)(void *)*(void **)&g_
 
 // ICoreWebView2Environment slot 3.
 int wv2_env_create_controller(void *env, shim_h hwnd, void *handler) {
-	void **vt = *(void ***)env;
-	return ((int (*)(void *, shim_h, void *))vt[SHIM_SLOT_ENV_CREATE_CONTROLLER])(
-	    env, hwnd, handler);
+	void **vt;
+	if (!env) return -2147467259; /* E_FAIL */
+	vt = *(void ***)env;
+	if (!shim_slot_ok(vt, SHIM_SLOT_ENV_CREATE_CONTROLLER)) return -2147467262; /* E_NOINTERFACE */
+	return ((int (*)(void *, shim_h, void *))vt[SHIM_SLOT_ENV_CREATE_CONTROLLER])(env, hwnd,
+	                                                                             handler);
 }
 
 // ICoreWebView2Controller slot 25: the ICoreWebView2 the page-facing calls go to.
 int wv2_controller_webview(void *ctrl, void **out) {
-	void **vt = *(void ***)ctrl;
+	void **vt;
+	if (!ctrl) return -2147467259; /* E_FAIL */
+	vt = *(void ***)ctrl;
+	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_WEBVIEW)) return -2147467262; /* E_NOINTERFACE */
 	return ((int (*)(void *, void **))vt[SHIM_SLOT_CONTROLLER_WEBVIEW])(ctrl, out);
 }
 
@@ -103,6 +102,13 @@ void shim_controller_from_callback(void *env) {
 	g_ctrl_requested = 1;
 	g_ctrl_hresult = wv2_env_create_controller(env, g_ctrl_hwnd, &g_ctrl_handler);
 }
+
+// 1 when the environment callback fired *inside* `create_env` — the completion ran on the environment
+// call's own stack rather than in a later pump iteration. Measured on the runner: `env_begin` took
+// 643 ms and `env_wait` returned in 0.098 ms, so `done` was already set on entry. WebView2's threading
+// page calls a nested loop inside a handler unsupported, so this is printed before anything is built
+// on top of a controller that may have been created re-entrantly.
+int shim_env_inline(void) { return g_env_inline; }
 
 // Start the environment for one window and return the HRESULT of the call itself, before any callback.
 // `hwnd` is the window the controller will be built for, and it is recorded before the call because the
@@ -123,6 +129,7 @@ shim_i64 shim_env_begin(shim_h hwnd, const char *userData) {
 	g_ctrl_requested = 0;
 	g_ctrl_hresult = 0;
 	g_env_hresult = create_env(0, hasDir ? dir : 0, 0, &g_env_handler);
+	g_env_inline = g_env_handler.done;
 	return g_env_hresult;
 }
 
@@ -133,7 +140,7 @@ int shim_env_wait(void) {
 }
 
 // The HRESULT the completion handler carried; 0 when it never fired.
-shim_i64 shim_env_callback(void) { return g_env_handler.failed; }
+shim_i64 shim_env_callback(void) { return (shim_i64)g_env_handler.failed; }
 
 // The fallback, for an environment that was already complete before a window was known: the callback
 // that created it has returned, so the controller is built from here instead. Never twice — the
@@ -154,4 +161,4 @@ int shim_controller_wait(void) {
 	return g_ctrl_handler.done;
 }
 
-shim_i64 shim_controller_callback(void) { return g_ctrl_handler.failed; }
+shim_i64 shim_controller_callback(void) { return (shim_i64)g_ctrl_handler.failed; }

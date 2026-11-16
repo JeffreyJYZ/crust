@@ -11,7 +11,9 @@ typedef struct {
 	void **vtbl;
 	long refs;
 	void *result;
-	shim_i64 failed;
+	/** The HRESULT `Invoke` carried. `int`, because that parameter is 32 bits: a wider field stores an
+	 * undefined top half of RDX, and a sign test on that makes a successful callback look failed. */
+	int failed;
 	int done;
 	/** Which thread step this handler's callback belongs to, for `shim_thread_at`. */
 	int step;
@@ -34,7 +36,9 @@ static shim_u64 handler_release(void *self) {
 	return (shim_u64)--h->refs;
 }
 
-static shim_i64 handler_invoke(void *self, shim_i64 code, void *created) {
+// `Invoke`'s second parameter is a 32-bit HRESULT, so it is declared `int`: the caller sets EDX only,
+// and reading 64 bits there stores an undefined top half of RDX in `failed`.
+static shim_i64 handler_invoke(void *self, int code, void *created) {
 	shim_handler *h = (shim_handler *)self;
 	shim_note_thread(h->step);
 	h->failed = code;
@@ -99,13 +103,17 @@ shim_i64 shim_handler_entry(int index) {
 	return (shim_i64)(void *)g_handler_vtbl[index];
 }
 
-// WebView2 completes on this thread's own message queue, so the wait is a PeekMessage drain,
-// never a block: a blocked thread never receives the completion and the call times out.
+// WebView2 completes on this thread's own message queue, so the wait is a PeekMessage drain, never a
+// block: a blocked thread never receives the completion and the call times out.
+// The bound is a real deadline, not an iteration count: `Sleep(1)` rounds up to the ~15.6 ms timer tick
+// on Windows, so 5000 iterations of it measured ~48 s and a timeout cost the whole run.
 void handler_wait(shim_handler *h, int maxMs) {
-	int waited = 0;
-	while (!h->done && waited < maxMs) {
+	shim_u64 deadline;
+	if (h->done) return;
+	deadline = (GetTickCount64 ? GetTickCount64() : 0) + (shim_u64)maxMs;
+	while (!h->done) {
 		shim_pump();
+		if (!GetTickCount64 || GetTickCount64() >= deadline) return;
 		Sleep(1);
-		waited++;
 	}
 }
