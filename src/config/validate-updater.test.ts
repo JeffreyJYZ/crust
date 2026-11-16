@@ -20,12 +20,9 @@ describe("updater config", () => {
 	});
 
 	test("accepts allowFileUrl, which is the only way download may fetch a file: url", () => {
-		// `UpdaterConfig` in src/config/types.ts is the coordinator's file; the key is validated
-		// here and reaches the plugin through the whole section, so the cast asserts the value.
-		const parsed = validateConfig(withUpdater({ allowFileUrl: true })).updater as {
-			allowFileUrl?: boolean;
-		};
-		expect(parsed).toEqual({ allowFileUrl: true });
+		expect(validateConfig(withUpdater({ allowFileUrl: true })).updater).toEqual({
+			allowFileUrl: true,
+		});
 	});
 
 	test("an empty section is valid, and registers the plugin with no defaults", () => {

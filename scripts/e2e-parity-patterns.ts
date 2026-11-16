@@ -12,8 +12,8 @@ export const CHROME = /^chrome\s+opacity 0\.75, decorations false$/m;
 export const SHORTCUT = /^shortcut\s+(emitted: command\+shift\+k|seam unavailable.*)$/m;
 /** A posted chord is answered by the window server or it is not; both are honest. */
 export const KEYPRESS = /^shortcut-press (delivered: .+|not delivered: .+)$/m;
-/** The swap is deterministic, so only the proved line passes; a notification may refuse. */
-export const UPDATER = /^updater swapped old->\.old new->app$/m;
+/** Only the verified path passes: a signed download, a swap it authorised, and the receipt refusal. */
+export const UPDATER = /^updater\s+signed=true swapped=true unverified=refused$/m;
 export const NOTIFICATION = /^notification (delivered: .+|refused: .+)$/m;
 export const FS = /^fs ok \d+ bytes at .*Application Support\/land\.jyz\.parity-probe\/.*$/m;
 export const TRAY = /^tray items: 2 visible: true$/m;

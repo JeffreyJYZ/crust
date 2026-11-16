@@ -11,7 +11,7 @@ updater: {
 },
 ```
 
-A test or a private transport passes its own adapter: `createUpdaterPlugin(adapter, options)`.
+A test or a private transport passes its own adapter: `createUpdaterPlugin(adapter, options)`. `updater.config` answers what the app pinned — `{ endpoint, pubkey, autoCheck, allowFileUrl }` — so a page can tell which of the three refusals below would apply before it calls anything.
 
 ## check
 
@@ -139,18 +139,18 @@ The hardening does not close the update path. A pinned `updater.pubkey`, a `down
 
 ## Failure codes
 
-| code                  | when                                                                  |
-| --------------------- | --------------------------------------------------------------------- |
-| `invalid-arguments`   | a required string is missing, `sha256` is not 64 hex, or `url` is not `https` |
-| `check-failed`        | the manifest request answered non-2xx, or the fetch threw              |
+| code                  | when                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| `invalid-arguments`   | a required string is missing, `sha256` is not 64 hex, or `url` is not `https`                 |
+| `check-failed`        | the manifest request answered non-2xx, or the fetch threw                                     |
 | `bad-manifest`        | the JSON is not an object, a field has the wrong shape, or its `pubkey` is not the pinned one |
-| `download-failed`     | the artifact request answered non-2xx, or the write threw               |
-| `hash-mismatch`       | the computed digest differs — at download, or after the artifact changed |
-| `signature-mismatch`  | the bytes do not match the manifest signature                          |
-| `unverified-artifact` | `install` was handed a path this run never verified                    |
-| `install-failed`      | the rename failed, including a cross-volume move                       |
-| `not-an-app-bundle`   | a path is not an existing `.app`, or is not this app's own bundle       |
-| `relaunch-failed`     | the own bundle is right and the launcher still refused                  |
-| `handler-error`       | an adapter threw something it could not name                           |
+| `download-failed`     | the artifact request answered non-2xx, or the write threw                                     |
+| `hash-mismatch`       | the computed digest differs — at download, or after the artifact changed                      |
+| `signature-mismatch`  | the bytes do not match the manifest signature                                                 |
+| `unverified-artifact` | `install` was handed a path this run never verified                                           |
+| `install-failed`      | the rename failed, including a cross-volume move                                              |
+| `not-an-app-bundle`   | a path is not an existing `.app`, or is not this app's own bundle                             |
+| `relaunch-failed`     | the own bundle is right and the launcher still refused                                        |
+| `handler-error`       | an adapter threw something it could not name                                                  |
 
 `check` reports the first three inside `error`; `download` and `install` answer `{ ok: false, code, message, path?, requires? }`. `requires` names the argument or config key that would have let the call through — `sha256`, `updater.pubkey`, `updater.allowFileUrl` — so a UI can point at the fix rather than the symptom.
