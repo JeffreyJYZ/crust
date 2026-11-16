@@ -43,6 +43,31 @@ export interface WindowsShim {
 	shim_webview_new(hwnd: number, url: Uint8Array, userData: Uint8Array): number;
 	shim_webview_put_bounds(hwnd: number, width: number, height: number): number;
 	shim_webview_close(hwnd: number): void;
+
+	/**
+	 * The WebView2 path, one step at a time — the same functions `shim_webview_new` composes. A crash
+	 * inside a hand-built COM object is a jump, not an error code, so each step is separately callable
+	 * and each reports the HRESULT of its own call and of the callback that answered it.
+	 */
+	shim_env_begin(userData: Uint8Array): number;
+	shim_env_wait(): number;
+	shim_env_callback(): number;
+	shim_controller_begin(hwnd: number): number;
+	shim_controller_wait(): number;
+	shim_controller_callback(): number;
+	shim_webview_attach(hwnd: number): number;
+	shim_webview_navigate(url: Uint8Array): number;
+
+	/**
+	 * The handler object's ABI, read back the way Windows reads it: 1 when the object's first field
+	 * is the table, then the table's address, the object's address, that first field, and each entry.
+	 * A pointer where a vtable should be is the difference between a callback and a jump to -1.
+	 */
+	shim_handler_prepare(): number;
+	shim_handler_vtbl_addr(): number;
+	shim_handler_object_addr(): number;
+	shim_handler_first_field(): number;
+	shim_handler_entry(index: number): number;
 }
 
 export interface WindowsBackend {

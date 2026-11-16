@@ -115,8 +115,29 @@ describe("the handler vtable", () => {
 		].entries()) {
 			expect(source).toContain(`g_handler_vtbl[${index}] = (void *)${name};`);
 		}
-		// `handler_init` is what fills it, and both COM objects go through it.
+		// `handler_init` fills it, and both objects go through it.
 		expect(source).toContain("void handler_init(shim_handler *h) {");
-		expect(source.match(/handler_init\(&/g)?.length).toBe(2);
+		expect(source).toContain("handler_init(&g_env_handler)");
+		expect(source).toContain("handler_init(&g_ctrl_handler)");
+	});
+
+	/**
+	 * QueryInterface answers every IID, so WebView2 is told this object supports interfaces it does
+	 * not have. A call to one of those must land on a refusal, not on whatever follows the table in
+	 * .bss — which is how a call becomes a jump to `-1`.
+	 */
+	test("pads every slot past Invoke with a refusal", () => {
+		expect(source).toContain("#define SHIM_HANDLER_SLOTS 8");
+		expect(source).toMatch(/for \(slot = 4; slot < SHIM_HANDLER_SLOTS; slot\+\+\)/);
+		expect(source).toContain("g_handler_vtbl[slot] = (void *)handler_unsupported;");
+		expect(source).toContain("return -2147467262LL; /* E_NOINTERFACE */");
+	});
+
+	/** The readback the probe prints, so a wrong layout is a number instead of a guess. */
+	test("can be read back, the way Windows reads it", () => {
+		expect(source).toContain("shim_i64 shim_handler_vtbl_addr(void)");
+		expect(source).toContain("shim_i64 shim_handler_entry(int index)");
+		expect(source).toContain("shim_i64 shim_handler_first_field(void)");
+		expect(source).toContain("int shim_handler_prepare(void)");
 	});
 });

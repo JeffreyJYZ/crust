@@ -95,6 +95,23 @@ export function compile(): WindowsShim {
 				shim_webview_new: { args: [P, CS, CS], returns: I32 },
 				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
 				shim_webview_close: { args: [P], returns: V },
+
+				// The WebView2 path, one step at a time, so a probe can print between them.
+				shim_env_begin: { args: [CS], returns: I64 },
+				shim_env_wait: { args: [], returns: I32 },
+				shim_env_callback: { args: [], returns: I64 },
+				shim_controller_begin: { args: [P], returns: I64 },
+				shim_controller_wait: { args: [], returns: I32 },
+				shim_controller_callback: { args: [], returns: I64 },
+				shim_webview_attach: { args: [P], returns: I32 },
+				shim_webview_navigate: { args: [CS], returns: I32 },
+
+				// The handler object's ABI, as the numbers Windows would read.
+				shim_handler_prepare: { args: [], returns: I32 },
+				shim_handler_vtbl_addr: { args: [], returns: P },
+				shim_handler_object_addr: { args: [], returns: P },
+				shim_handler_first_field: { args: [], returns: P },
+				shim_handler_entry: { args: [I32], returns: P },
 			},
 		}) as unknown as ShimLibrary;
 		return shimSymbols(library);

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { WindowsBackend, WindowsShim } from "./backend.ts";
+import { fakeShim } from "./fake-backend.ts";
 import { createPlatform } from "./platform.ts";
 
 /**
@@ -13,9 +14,7 @@ function recordingBackend(): { backend: WindowsBackend; args: Record<string, unk
 	const open = new Set<number>();
 	let next = 100;
 	const shim: WindowsShim = {
-		shim_win32_ready: () => 1,
-		shim_com_init: () => 0,
-		shim_last_error: () => 0,
+		...fakeShim(),
 		shim_register_class: (name) => {
 			args.register_class = [name];
 			return 1;

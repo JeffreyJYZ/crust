@@ -51,15 +51,19 @@ function text(value: Uint8Array): string {
 	return Buffer.from(value).toString("utf8").replace(/\0$/, "");
 }
 
-export function fakeBackend(options: FakeOptions = {}): FakeBackend {
-	const calls: string[] = [];
-	const exits: number[] = [];
-	const hwnds: number[] = [];
-	const open = new Set<number>();
-	const report: WindowsRuntimeReport = { ...HEALTHY, ...options.report };
+/**
+ * The shim a test drives, with its call log. Exported on its own so a test that only needs to record
+ * a few arguments can spread this and override those, instead of restating all 27 methods.
+ */
+export function fakeShim(
+	options: FakeOptions = {},
+	calls: string[] = [],
+	hwnds: number[] = [],
+	open: Set<number> = new Set(),
+): WindowsShim {
 	let next = 100;
 
-	const shim: WindowsShim = {
+	return {
 		shim_win32_ready: () => {
 			calls.push("win32_ready");
 			return options.win32Ready ?? 1;
@@ -110,7 +114,52 @@ export function fakeBackend(options: FakeOptions = {}): FakeBackend {
 		shim_webview_close: () => {
 			calls.push("webview_close");
 		},
+
+		// The WebView2 steps, in the same order the platform would make them.
+		shim_env_begin: () => {
+			calls.push("env_begin");
+			return 0;
+		},
+		shim_env_wait: () => {
+			calls.push("env_wait");
+			return options.failWebView ? 0 : 1;
+		},
+		shim_env_callback: () => 0,
+		shim_controller_begin: () => {
+			calls.push("controller_begin");
+			return 0;
+		},
+		shim_controller_wait: () => {
+			calls.push("controller_wait");
+			return options.failWebView ? 0 : 1;
+		},
+		shim_controller_callback: () => 0,
+		shim_webview_attach: () => {
+			calls.push("webview_attach");
+			return options.failWebView ? 0 : 1;
+		},
+		shim_webview_navigate: (_url) => {
+			calls.push("webview_navigate");
+			return options.failWebView ? 0 : 1;
+		},
+
+		// The handler readback: a table at 0x1000, an object whose first field is that table.
+		shim_handler_prepare: () => 1,
+		shim_handler_vtbl_addr: () => 0x1000,
+		shim_handler_object_addr: () => 0x2000,
+		shim_handler_first_field: () => 0x1000,
+		shim_handler_entry: () => 0x3000,
 	};
+}
+
+/** The real backend, with a shim that records instead of reaching Windows. */
+export function fakeBackend(options: FakeOptions = {}): FakeBackend {
+	const calls: string[] = [];
+	const exits: number[] = [];
+	const hwnds: number[] = [];
+	const report: WindowsRuntimeReport = { ...HEALTHY, ...options.report };
+	const open = new Set<number>();
+	const shim = fakeShim(options, calls, hwnds, open);
 
 	return {
 		calls,
