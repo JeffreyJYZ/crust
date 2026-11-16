@@ -125,3 +125,31 @@ void *shim_controller_slot(int index) {
 	if (!vt || index < 0 || index >= 32) return 0;
 	return vt[index];
 }
+
+// --- how big a frame may be -------------------------------------------------
+// Two functions identical except for the size of one local buffer. Bun pins TinyCC at
+// `oven-sh/tinycc@05f0faf`, and in the PE branch of `x86_64-gen.c` `gfunc_prolog` sets
+// `func_scratch = 32`, `gfunc_epilog` computes `loc = (loc & -16) - func_scratch` and `v = -loc`, and
+// then chooses the prologue by `v >= 4096`: below it `push rbp; mov rbp, rsp; sub rsp, imm32`, at or
+// above it `mov v, eax; call __chkstk`. So `small` below is a 2080-byte frame and `large` is 4128.
+//
+// Nothing in this unit defines `__chkstk`: `12_win32.c` binds no such name, `cc()` passes no library,
+// Bun builds TinyCC with `TCC_LIBTCC1: ""` (scripts/build/deps/tinycc.ts) so no libtcc1 is linked, and
+// TinyCC's own `__chkstk` lives in `win32/lib/chkstk.S`, which only ships inside libtcc1.a.
+//
+// Both buffers are `volatile` and read back, so neither compiler can drop the frame being measured.
+// A fault here happens in the prologue, before the body runs — which is why the probe prints the name
+// before the call.
+int shim_frame_probe_small(void) {
+	volatile unsigned char buf[2048];
+	buf[0] = 1;
+	buf[sizeof(buf) - 1] = 2;
+	return buf[0] == 1 && buf[sizeof(buf) - 1] == 2 ? 1 : 0;
+}
+
+int shim_frame_probe_large(void) {
+	volatile unsigned char buf[4096];
+	buf[0] = 1;
+	buf[sizeof(buf) - 1] = 2;
+	return buf[0] == 1 && buf[sizeof(buf) - 1] == 2 ? 1 : 0;
+}
