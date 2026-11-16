@@ -15,6 +15,9 @@ research/*/probe/
 # Runtime handshake between the bridge and a dev server
 .crust/
 
+# Native extensions are compiled, not committed: `bun run build:native` writes these.
+examples/native/extensions/generated/
+
 .DS_Store
 *.log
 

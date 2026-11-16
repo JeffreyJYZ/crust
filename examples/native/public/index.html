@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Native</title>
+		<style>
+			:root {
+				color-scheme: dark;
+				font-family: system-ui, sans-serif;
+			}
+			body {
+				margin: 0;
+				padding: 2rem;
+				background: #12100e;
+				color: #ece7e1;
+			}
+			main {
+				max-width: 42rem;
+				margin: 0 auto;
+			}
+			h1 {
+				font-size: 1.25rem;
+				font-weight: 600;
+			}
+			p,
+			li {
+				font-family: ui-monospace, monospace;
+				font-size: 0.8125rem;
+				color: #a9a199;
+			}
+			ul {
+				padding-left: 1.1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>two dylibs — Zig and Rust, reached from the page</h1>
+			<p id="zig">asking zigclock.now…</p>
+			<p id="rust">asking rustclock.now…</p>
+			<ul id="log"></ul>
+		</main>
+		<script src="/app.js"></script>
+	</body>
+</html>

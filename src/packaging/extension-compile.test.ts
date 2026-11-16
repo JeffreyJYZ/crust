@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { dlopen, FFIType } from "bun:ffi";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { compileExtension } from "./extension-compile";
 import type { RunResult } from "./exec";
+import { findTool } from "./extension-tools";
 
 const OK: RunResult = { code: 0, stdout: "", stderr: "" };
 
@@ -113,4 +115,50 @@ describe("compileExtension", () => {
 			expect(!failed.ok && failed.reason).toBe("zig failed (exit 1): error: expected ';'");
 		});
 	});
+});
+
+/**
+ * The argv assertions above prove the command line, never that the command line compiles. This block
+ * runs the real compiler and then does what the framework does with its output: `dlopen` it and call
+ * the symbol. A missing toolchain is a named skip, so a machine without Zig or Rust still reports
+ * why instead of passing quietly.
+ */
+const REAL = [
+	{
+		tool: "zig",
+		file: "answer.zig",
+		source: "export fn answer() i32 {\n\treturn 42;\n}\n",
+	},
+	{
+		tool: "rustc",
+		file: "answer.rs",
+		source: '#[no_mangle]\npub extern "C" fn answer() -> i32 {\n\t42\n}\n',
+	},
+] as const;
+
+describe("compileExtension with the real toolchain", () => {
+	for (const entry of REAL) {
+		const label = `${entry.tool} compiles a dylib that bun:ffi dlopens and calls`;
+		if (findTool(entry.tool) === undefined) {
+			test.skip(`${label} — skipped: ${entry.tool} is not on PATH`);
+			continue;
+		}
+		test(label, async () => {
+			await withDir(async (dir) => {
+				const file = join(dir, entry.file);
+				await writeFile(file, entry.source, "utf8");
+				const result = await compileExtension({ file, outDir: join(dir, "out") });
+				expect(result.ok).toBe(true);
+				if (!result.ok) return;
+
+				expect((await stat(result.output)).size).toBeGreaterThan(1024);
+				const ffi = dlopen(result.output, { answer: { args: [], returns: FFIType.i32 } });
+				try {
+					expect(ffi.symbols.answer()).toBe(42);
+				} finally {
+					ffi.close();
+				}
+			});
+		});
+	}
 });
