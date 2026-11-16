@@ -323,11 +323,25 @@ jobs:
 
             - run: bun install --frozen-lockfile
 
-            # No runner image ships NSIS. Chocolatey is on `windows-latest`, and its shim
-            # puts `makensis` on PATH — which is what `buildNsis` looks for, through `where`
-            # on this platform rather than `which`.
+            # No runner image ships NSIS. Chocolatey is on `windows-latest`, and its shim lands
+            # under `C:\ProgramData\chocolatey\bin` — but a machine-level install does not change
+            # the PATH this job already captured, so the shim is invisible to a later step until
+            # its directory is written to `$GITHUB_PATH`. Measured 2026-11-16: choco installed
+            # 3.13.0 successfully and the very next step still answered "makensis is not
+            # recognized". The version is printed here as well, so the install step is its own
+            # proof rather than a promise.
             - name: install NSIS
-              run: choco install nsis -y --no-progress
+              shell: pwsh
+              run: |
+                choco install nsis -y --no-progress
+                $candidates = @(
+                  "C:\ProgramData\chocolatey\bin\makensis.exe",
+                  "C:\Program Files (x86)\NSIS\makensis.exe"
+                )
+                $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+                if (-not $exe) { throw "makensis is not on this image after choco install nsis" }
+                (Get-Item $exe).DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+                & $exe /VERSION
 
             # Printed so the log names the compiler that built the installer.
             - name: makensis version
