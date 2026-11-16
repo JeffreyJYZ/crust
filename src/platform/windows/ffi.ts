@@ -115,6 +115,7 @@ export function compile(): WindowsShim {
 				shim_env_inline: { args: [], returns: I32 },
 				shim_ctrl_from: { args: [], returns: I32 },
 				shim_ctrl_inline: { args: [], returns: I32 },
+				shim_ctrl_mode: { args: [I32], returns: I32 },
 				shim_window_thread: { args: [P], returns: I32 },
 				shim_apartment_type: { args: [], returns: I32 },
 				shim_apartment_bound: { args: [], returns: I32 },

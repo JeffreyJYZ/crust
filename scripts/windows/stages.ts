@@ -58,10 +58,14 @@ function skipped(reason: string): void {
 }
 
 /** Every call from a cold start to a navigated window, in the order the platform makes them. */
-async function steps(): Promise<number> {
+async function steps(mode: 1 | 2): Promise<number> {
 	await slotReport();
 	const shim = compile();
 	handlerReport(shim);
+	// 1 = deferral (the product path), 2 = create from `shim_controller_begin`: one child per shape, so
+	// the next run tests the move instead of measuring it again.
+	shim.shim_ctrl_mode(mode);
+	console.log(`stage     === controller mode ${mode} (1 deferral, 2 from controller_begin) ===`);
 
 	let failures = 0;
 	const expect = (ok: boolean): void => {
@@ -129,10 +133,14 @@ async function steps(): Promise<number> {
 	expect(!stageHr("webview_source", () => shim.shim_webview_source()));
 	expect(!stageHr("controller_visible", () => shim.shim_controller_visible()));
 
-	// The thread has never run a message loop, so pump before the first navigation and print how many
-	// messages that drained: WebView2's browser-process state is established by message traffic.
+	// The thread has never run a message loop, so pump before the first navigation. The helper prints the
+	// count it drained: `pump_before_navigate ok <n>` — once, from its return value.
+	stage("pump_before_navigate", () => shim.shim_pump());
+	// The decisive number, printed *before* the call that faults: 1 means the controller completion ran
+	// inside `CreateCoreWebView2Controller`, so the webview was built reentrantly and never saw a pump.
 	console.log(
-		`stage     pump_before_navigate ok ${stage("pump_before_navigate", () => shim.shim_pump())}`,
+		`stage     ctrl_from ${shim.shim_ctrl_from()} ctrl_inline ${shim.shim_ctrl_inline()}` +
+			" (1 = the controller callback ran inside CreateCoreWebView2Controller)",
 	);
 	// Immediately before the call that faulted with a perfect-looking vtable, and its answer after it.
 	console.log(
@@ -163,13 +171,18 @@ async function steps(): Promise<number> {
  * pipe would lose the line that names the call when the child dies.
  */
 export async function runStages(): Promise<{ code: number }> {
-	const child = Bun.spawn([process.execPath, import.meta.path], { stdout: "inherit" });
-	return { code: await child.exited };
+	let code = 0;
+	for (const mode of ["1", "2"]) {
+		const child = Bun.spawn([process.execPath, import.meta.path, mode], { stdout: "inherit" });
+		const ended = await child.exited;
+		if (ended !== 0) code = ended;
+	}
+	return { code };
 }
 
 if (import.meta.main) {
 	try {
-		process.exit(await steps());
+		process.exit(await steps(process.argv[2] === "2" ? 2 : 1));
 	} catch (error) {
 		const text = error instanceof Error ? error.message : String(error);
 		console.log(`stage     build failed: ${text.split("\n")[0] ?? text}`);

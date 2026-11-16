@@ -80,6 +80,8 @@ export interface WindowsShim {
 	shim_ctrl_from(): number;
 	/** 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 from a pump. */
 	shim_ctrl_inline(): number;
+	/** 1 = deferral (default), 2 = create from `shim_controller_begin`; returns the previous mode. */
+	shim_ctrl_mode(mode: number): number;
 
 	/**
 	 * The thread that owns a window, and the apartment this thread is in — 0 STA, 1 MTA, 2 neutral,

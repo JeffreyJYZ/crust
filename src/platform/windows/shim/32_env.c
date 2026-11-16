@@ -46,9 +46,17 @@ static shim_i64 g_ctrl_hresult;
 static shim_h g_ctrl_hwnd;
 static int g_ctrl_requested;
 static int g_ctrl_pending;
-static int g_ctrl_from;
+int g_ctrl_from;
+/**
+ * 1 = create the controller from the deferral (the default, and the shape that produced a valid
+ * controller), 2 = create it from `shim_controller_begin`, i.e. a fresh FFI call after `env_wait`
+ * returned. 2 is the experiment the probe runs in a second child: that shape answered
+ * UI_E_WRONG_THREAD once, but that was before AddRef — the error was a dangling environment, not a
+ * thread. Nothing on the product path changes; the probe selects it.
+ */
+int g_ctrl_mode = 1;
 /** 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 when a pump got it. */
-static int g_ctrl_inline;
+int g_ctrl_inline;
 /** 1 when the environment callback fired inside `create_env`, 0 when a later pump iteration got it. */
 static int g_env_inline;
 
@@ -100,6 +108,7 @@ void shim_controller_from_callback(void *env) {
 // answered UI_E_WRONG_THREAD. Both callers here stay inside one C call: `shim_env_begin` when the callback
 // fired inline, `shim_env_wait` when it arrived during the pump. Do not simplify it back into the callback.
 static void shim_controller_deferred(int from) {
+	if (g_ctrl_mode == 2) return; /* the probe is testing the `shim_controller_begin` shape */
 	if (!g_ctrl_pending || g_ctrl_requested || !g_env_handler.result) return;
 	g_ctrl_pending = 0;
 	g_ctrl_requested = 1;
@@ -108,17 +117,6 @@ static void shim_controller_deferred(int from) {
 	g_ctrl_hresult = wv2_env_create_controller(g_env_handler.result, g_ctrl_hwnd, &g_ctrl_handler);
 	g_ctrl_inline = g_ctrl_handler.done;
 }
-
-/**
- * 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 when a later pump
- * iteration got it. An inline completion means the webview was constructed reentrantly and never saw a
- * message loop — which is a candidate cause of a fault inside WebView2 on the first `Navigate`.
- */
-int shim_ctrl_inline(void) { return g_ctrl_inline; }
-
-// Where the controller call was made: 2 right after `create_env` returned, 3 after a pump, 4 the
-// fallback. 1 would mean back inside the callback, which is the shape that produced a half-built object.
-int shim_ctrl_from(void) { return g_ctrl_from; }
 
 // 1 when the environment callback fired *inside* `create_env` — the completion ran on the environment
 // call's own stack rather than in a later pump iteration. Measured on the runner: `env_begin` took

@@ -114,7 +114,7 @@ describe("the controller is created inside the environment callback", () => {
 		expect(env).toContain("static void shim_controller_deferred(int from) {");
 		expect(env).toContain("shim_controller_deferred(2);");
 		expect(env).toContain("shim_controller_deferred(3);");
-		expect(env).toContain("int shim_ctrl_from(void)");
+		expect(source).toContain("int shim_ctrl_from(void)");
 	});
 
 	test("the deferral happens after create_env returns, and after the pump", () => {

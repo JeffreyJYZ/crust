@@ -114,3 +114,38 @@ describe("the pump before the first navigation", () => {
 		expect(report).toContain("shim.shim_ctrl_inline()");
 	});
 });
+
+describe("the next run tests the controller shape, not just measures it", () => {
+	/**
+	 * `ctrl_inline` decides whether the fault is ours or WebView2's, so it has to print *before* the call
+	 * that faults — it used to be in the late report, which the one run that needed it never reached.
+	 */
+	test("ctrl_inline prints before Navigate", () => {
+		expect(stages).toContain("shim.shim_ctrl_inline()");
+		expect(stages.indexOf("shim.shim_ctrl_inline()")).toBeLessThan(
+			stages.indexOf('stage("webview_navigate"'),
+		);
+	});
+
+	/** The helper prints the count; wrapping it in a template printed the line twice. */
+	test("the pump count is printed once", () => {
+		expect(stages).not.toContain("pump_before_navigate ok ${stage(");
+		expect(stages.match(/stage\("pump_before_navigate"/g)?.length).toBe(1);
+	});
+
+	/**
+	 * `shim_controller_begin` answered UI_E_WRONG_THREAD once, before AddRef — that error was a dangling
+	 * environment, not a thread. The probe now runs one child per shape, so the move is tested without
+	 * changing the product path.
+	 */
+	test("both shapes are selectable, and the product path keeps the deferral", () => {
+		expect(source).toContain("int shim_ctrl_mode(int mode)");
+		expect(source).toContain("int g_ctrl_mode = 1;");
+		// The setter has to assign, or the probe's "mode 2" child silently runs the deferral again.
+		expect(source).toContain("if (mode == 1 || mode == 2) g_ctrl_mode = mode;");
+		expect(source).toContain("if (g_ctrl_mode == 2) return;");
+		expect(source).toContain("int shim_ctrl_mode(int mode) {");
+		expect(stages).toContain('for (const mode of ["1", "2"])');
+		expect(stages).toContain("shim.shim_ctrl_mode(mode)");
+	});
+});

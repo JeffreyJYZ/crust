@@ -33,6 +33,24 @@ void *shim_handler_created(int step) {
 	return 0;
 }
 
+/**
+ * 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 when a later pump
+ * iteration got it. An inline completion means the webview was constructed reentrantly and never saw a
+ * message loop — the measurement that decides whether a fault on the first `Navigate` is ours.
+ */
+int shim_ctrl_inline(void) { return g_ctrl_inline; }
+
+// Where the controller call was made: 2 right after `create_env` returned, 3 after a pump, 4 the
+// fallback. 1 would mean back inside the callback, which is the shape that produced a half-built object.
+int shim_ctrl_from(void) { return g_ctrl_from; }
+
+// 1 = deferral (default), 2 = create from `shim_controller_begin`. Returns the previous mode, so 0 reads
+// it back. The probe runs one child per mode, which tests the move without touching the product path.
+int shim_ctrl_mode(int mode) {
+	int previous = g_ctrl_mode;
+	if (mode == 1 || mode == 2) g_ctrl_mode = mode;
+	return previous;
+}
 static int g_apartment_hresult;
 static int g_apartment_type;
 static int g_apartment_qualifier;
