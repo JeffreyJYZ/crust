@@ -69,18 +69,18 @@ Windows and Linux are no longer out of scope by design — both have a `Platform
 | Find in page       | `findinpage.search/next/previous` over `WKWebView` find                                                                                      | partial — `matches` is 0 or 1, and `clear` refuses for want of a public selector                                     |
 | Downloads          | `downloads.list/start/cancel/directory/setDirectory`, four `download:*` events                                                               | same — five commands over `WKDownloadDelegate`; a destination is refused outside the app's data root                 |
 | Network            | `network.rules/setRules/log/clearLog` over a `WKURLSchemeHandler`, 100-entry log                                                             | partial — only `crust-net` requests are intercepted, and the proof runs against a probe-owned webview                |
-| Crash reporter     | `crash-reporter.last/list/clear/install/uninstall`, records written by a second guard process                                                | partial — `startCrashGuard()` must run first, and a compiled binary carries no readable copy of it                   |
+| Crash reporter     | `crash-reporter.last/list/clear/install/uninstall`, records written by a second guard process                                                | same — the runtime starts the guard; a compiled binary re-runs itself in guard mode, and `install` arms the handlers |
 | Language           | `i18n.locale/setLocale/messages/translate` — catalogue, `{name}` interpolation, `_one`/`_other` plurals                                      | same — the catalogue is the app's to supply, and `setLocale` is in-memory because macOS owns the language list       |
 
 ## What this means
 
-- **same** — 31 rows
+- **same** — 32 rows
 - **via Bun** — 8 rows
-- **partial** — 3 rows
+- **partial** — 2 rows
 - **module only** — 0 rows
 - **total** — 42 rows
 
-The three partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview, and the crash reporter needs its guard process — which a compiled binary cannot carry. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names.
+The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names.
 
 The ten rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
 
