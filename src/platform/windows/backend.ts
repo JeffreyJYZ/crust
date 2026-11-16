@@ -95,6 +95,8 @@ export interface WindowsShim {
 	shim_object_bytes(obj: number, out: Uint32Array, words: number): number;
 	/** What WebView2 handed the callback for a step — compare with what `result` holds now. */
 	shim_handler_created(step: number): number;
+	/** The refcount `AddRef` answered for that object: > 0 taken, 0 refused, -1 unreadable. */
+	shim_handler_addref(step: number): number;
 
 	/**
 	 * The controller object, as Windows will read it: its address, the environment's (equal addresses

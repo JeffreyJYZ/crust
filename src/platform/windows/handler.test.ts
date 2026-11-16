@@ -100,8 +100,8 @@ describe("the controller is created inside the environment callback", () => {
 	 * the call happens inside the `handler_wait` drain, so the thread is pumping at that moment.
 	 */
 	test("the callback records the request, and the call is deferred out of it", () => {
-		expect(com).toContain("h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && created");
-		expect(com).toContain("shim_controller_from_callback(created);");
+		expect(com).toContain("h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && h->result");
+		expect(com).toContain("shim_controller_from_callback(h->result);");
 		// The callback itself must not call into WebView2: that is the reentrant shape that produced a
 		// half-built object (first dword 0xffffffff where the vtable belongs).
 		const callback = env.slice(
@@ -132,7 +132,7 @@ describe("the controller is created inside the environment callback", () => {
 	test("the callback marks itself done before it creates the controller", () => {
 		const body = com.slice(com.indexOf("static shim_i64 handler_invoke("));
 		const done = body.indexOf("h->done = 1;");
-		const nested = body.indexOf("shim_controller_from_callback(created);");
+		const nested = body.indexOf("shim_controller_from_callback(h->result);");
 		expect(done).toBeGreaterThan(-1);
 		expect(nested).toBeGreaterThan(-1);
 		expect(done).toBeLessThan(nested);

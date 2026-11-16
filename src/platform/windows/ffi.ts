@@ -120,6 +120,7 @@ export function compile(): WindowsShim {
 				shim_bad_object: { args: [], returns: I32 },
 				shim_object_bytes: { args: [P, P, I32], returns: I32 },
 				shim_handler_created: { args: [I32], returns: P },
+				shim_handler_addref: { args: [I32], returns: I32 },
 				shim_controller_addr: { args: [], returns: P },
 				shim_environment_addr: { args: [], returns: P },
 				shim_controller_vtbl: { args: [], returns: P },

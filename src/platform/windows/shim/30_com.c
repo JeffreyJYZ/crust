@@ -17,6 +17,8 @@ typedef struct {
 	int done;
 	/** What `Invoke` last handed us. Kept across `handler_init`, so "stored then overwritten" is visible. */
 	void *created;
+	/** The refcount `AddRef` answered for `created`, or 0 / -1 when it was not taken. */
+	int addref;
 	/** Which thread step this handler's callback belongs to, for `shim_thread_at`. */
 	int step;
 } shim_handler;
@@ -42,23 +44,51 @@ static shim_u64 handler_release(void *self) {
 	return (shim_u64)--h->refs;
 }
 
+/**
+ * AddRef through the guarded accessor — slot 1 of the object's own vtable, the same `shim_object_vtbl`
+ * path the other call sites use. Returns the refcount, 0 when the object refused, -1 when it could not be
+ * read or the slot is not code.
+ *
+ * **The rule this layer missed for ten rounds:** the out-parameter of a completion handler is *borrowed*.
+ * WebView2 drops its reference when our `Invoke` returns, so an object we keep must be AddRef'd first.
+ * Without it the environment was freed under us: `CreateCoreWebView2Controller` still answered S_OK inside
+ * the callback (the object was alive for that instant), the controller it returned was borrowed too, and
+ * by the time we read either one the memory had been recycled — `0xffffffff` where a vtable belongs, a
+ * null first field, `UI_E_WRONG_THREAD` from a dead environment, `E_FAIL` from `get_CoreWebView2`.
+ *
+ * Nothing in this layer calls `Release`: these objects live for the process, the same convention as the
+ * loader handle. Do not "balance" this later — that is how the bug comes back.
+ */
+static int handler_addref_object(void *obj) {
+	void **vt = shim_object_vtbl(obj);
+	if (!vt) return -1;
+	if (!shim_slot_ok(vt, SHIM_SLOT_IUNKNOWN_ADDREF)) return -1;
+	return (int)((unsigned int (*)(void *))vt[SHIM_SLOT_IUNKNOWN_ADDREF])(obj);
+}
+
 // `Invoke`'s second parameter is a 32-bit HRESULT, so it is declared `int`: the caller sets EDX only,
 // and reading 64 bits there stores an undefined top half of RDX in `failed`.
 static shim_i64 handler_invoke(void *self, int code, void *created) {
 	shim_handler *h = (shim_handler *)self;
 	shim_note_thread(h->step);
 	h->failed = code;
-	h->result = created;
 	h->created = created;
+	// AddRef *before* the store: the out-parameter is borrowed and WebView2 drops its reference the
+	// moment this returns. `result` stays 0 when the reference could not be taken, so a caller sees "no
+	// object" rather than a pointer into recycled memory.
+	h->addref = 0;
+	if (code == 0 && created) {
+		h->addref = handler_addref_object(created);
+		h->result = h->addref > 0 ? created : 0;
+	} else {
+		h->result = 0;
+	}
 	h->done = 1;
-	// The environment's own completion is the frame WebView2 created the environment in, and the only
-	// frame allowed to build a controller from it: the same call one frame later answers
-	// UI_E_WRONG_THREAD (0x802A000C), which is what this layer kept getting.
-	// `done` is set before the nested call, so a slow WebView2 call cannot keep `handler_wait` spinning.
-	// The controller's own callback may arrive later in this same drain or in the next one, so
-	// `shim_controller_wait` pumps rather than assuming it has already fired.
-	if (h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && created)
-		shim_controller_from_callback(created);
+	// The environment's own completion is the frame WebView2 created the environment in. The call is
+	// deferred by one statement (`shim_controller_deferred`), never made here: a reentrant call inside a
+	// handler is unsupported, and `done` is set first so a slow call cannot keep `handler_wait` spinning.
+	if (h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && h->result)
+		shim_controller_from_callback(h->result);
 	return 0;
 }
 

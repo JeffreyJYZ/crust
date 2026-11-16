@@ -76,6 +76,7 @@ int shim_win32_ready(void);
 // ICoreWebView2, and this layer called slot 37 for a year of one run, which is
 // GetBrowserProcessId(UINT*) and silently did nothing.
 #define SHIM_SLOT_ENV_CREATE_CONTROLLER 3  // ICoreWebView2Environment::CreateCoreWebView2Controller
+#define SHIM_SLOT_IUNKNOWN_ADDREF 1        // IUnknown::AddRef — the refcount a borrowed object needs
 #define SHIM_SLOT_CONTROLLER_PUT_BOUNDS 6  // ICoreWebView2Controller::put_Bounds
 #define SHIM_SLOT_CONTROLLER_CLOSE 24      // ICoreWebView2Controller::Close
 #define SHIM_SLOT_CONTROLLER_WEBVIEW 25    // ICoreWebView2Controller::get_CoreWebView2

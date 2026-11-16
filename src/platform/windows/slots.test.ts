@@ -74,7 +74,7 @@ describe("the vtable slots", () => {
 	const defined = slots();
 
 	test("the parser saw the block it is meant to check", () => {
-		expect(defined.size).toBe(5);
+		expect(defined.size).toBe(6);
 	});
 
 	test("Navigate is the fifth method of ICoreWebView2, not the thirty-seventh slot", () => {

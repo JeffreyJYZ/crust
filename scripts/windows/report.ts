@@ -108,11 +108,13 @@ export function objectReport(shim: WindowsShim): void {
 	if (vtbl !== 0 && vtbl === handler) flags.push("HANDLER-OBJECT");
 	console.log(
 		`stage     controller stored ${addr(shim.shim_handler_created(4))} read ${addr(controller)} ` +
+			`addref ${shim.shim_handler_addref(4)} ` +
 			`${objectStateName(shim.shim_object_state(controller))} first ${addr(vtbl)}` +
 			(flags.length > 0 ? ` ${flags.join(" ")}` : ""),
 	);
 	console.log(
 		`stage     environment stored ${addr(shim.shim_handler_created(2))} read ${addr(environment)} ` +
+			`addref ${shim.shim_handler_addref(2)} ` +
 			`${objectStateName(shim.shim_object_state(environment))}`,
 	);
 	console.log(`stage     controller bytes ${words(shim, controller)}`);

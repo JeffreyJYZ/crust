@@ -67,6 +67,18 @@ shim_i64 shim_apartment_hresult(void) { return (shim_i64)g_apartment_hresult; }
 
 // The two objects the controller path holds. Equal addresses mean the wrong one was stored.
 /**
+ * The refcount `AddRef` answered for the object a callback was handed, per step: > 0 means the reference
+ * was taken and the object we stored is ours; 0 means the object refused; -1 means it could not be read or
+ * the AddRef slot was not code. Printed beside `stored`/`read`, because a borrowed object that nobody
+ * AddRef'd is exactly what produced `0xffffffff` where a vtable belongs.
+ */
+int shim_handler_addref(int step) {
+	if (step == SHIM_THREAD_ENV_CALLBACK) return g_env_handler.addref;
+	if (step == SHIM_THREAD_CTRL_CALLBACK) return g_ctrl_handler.addref;
+	return 0;
+}
+
+/**
  * The first `words` 32-bit words of `obj`, written into a caller-owned buffer, or 0 when the object is
  * unreadable. "Not a COM object" is provable this way rather than inferred: ASCII, a small integer, or a
  * duplicate of the handler table each names what was actually stored.
