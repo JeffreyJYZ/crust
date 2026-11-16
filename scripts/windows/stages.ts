@@ -20,6 +20,7 @@ import { compile } from "../../src/platform/windows/ffi.ts";
 import {
 	affinityReport,
 	handlerReport,
+	lateReport,
 	hex,
 	objectReport,
 	slotReport,

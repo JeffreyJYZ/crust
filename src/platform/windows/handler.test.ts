@@ -99,11 +99,33 @@ describe("the controller is created inside the environment callback", () => {
 	 * compared for this (gosx, go-webview2, webview) do it the same way, and doing it here also means
 	 * the call happens inside the `handler_wait` drain, so the thread is pumping at that moment.
 	 */
-	test("the environment callback is what calls it", () => {
+	test("the callback records the request, and the call is deferred out of it", () => {
 		expect(com).toContain("h->step == SHIM_THREAD_ENV_CALLBACK && code == 0 && created");
 		expect(com).toContain("shim_controller_from_callback(created);");
-		expect(env).toContain("void shim_controller_from_callback(void *env) {");
-		expect(env).toContain("wv2_env_create_controller(env, g_ctrl_hwnd, &g_ctrl_handler)");
+		// The callback itself must not call into WebView2: that is the reentrant shape that produced a
+		// half-built object (first dword 0xffffffff where the vtable belongs).
+		const callback = env.slice(
+			env.indexOf("void shim_controller_from_callback(void *env) {"),
+			env.indexOf("\n}", env.indexOf("void shim_controller_from_callback(void *env) {")),
+		);
+		expect(callback).not.toContain("wv2_env_create_controller");
+		expect(callback).toContain("g_ctrl_pending = 1;");
+		// One statement later, still inside the same C call.
+		expect(env).toContain("static void shim_controller_deferred(int from) {");
+		expect(env).toContain("shim_controller_deferred(2);");
+		expect(env).toContain("shim_controller_deferred(3);");
+		expect(env).toContain("int shim_ctrl_from(void)");
+	});
+
+	test("the deferral happens after create_env returns, and after the pump", () => {
+		const begin = env.slice(env.indexOf("shim_i64 shim_env_begin("));
+		expect(begin.indexOf("shim_controller_deferred(2);")).toBeGreaterThan(
+			begin.indexOf("g_env_hresult = create_env("),
+		);
+		const wait = env.slice(env.indexOf("int shim_env_wait(void) {"));
+		expect(wait.indexOf("shim_controller_deferred(3);")).toBeGreaterThan(
+			wait.indexOf("handler_wait(&g_env_handler, 5000);"),
+		);
 	});
 
 	/** `done` is set before the nested call, so a slow WebView2 call cannot keep the env wait spinning. */
@@ -135,6 +157,9 @@ describe("the controller is created inside the environment callback", () => {
 		expect(env).toContain(
 			"if (g_ctrl_requested && g_ctrl_hwnd == hwnd) return g_ctrl_hresult;",
 		);
-		expect(env).toContain("if (!env || !g_ctrl_hwnd || g_ctrl_requested) return;");
+		expect(env).toContain("if (!g_ctrl_hwnd || g_ctrl_requested) return;");
+		expect(env).toContain(
+			"if (!g_ctrl_pending || g_ctrl_requested || !g_env_handler.result) return;",
+		);
 	});
 });

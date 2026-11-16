@@ -7,7 +7,7 @@
 import type { WindowOptions } from "@/app.ts";
 import type { WindowsShim } from "./backend.ts";
 import { cstring } from "./cstring.ts";
-import { DEFAULT_HEIGHT, DEFAULT_WIDTH, absoluteUrl } from "./platform-config.ts";
+import { DEFAULT_HEIGHT, DEFAULT_WIDTH, absoluteUrl, objectStateName } from "./platform-config.ts";
 
 export interface OpenedWindow {
 	hwnd: number;
@@ -36,22 +36,30 @@ export function openWindow(
 	const url = absoluteUrl(options.url ?? "/");
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
 		shim.shim_window_destroy(hwnd);
-		// 126 is ERROR_MOD_NOT_FOUND: the shim's LoadLibraryW("WebView2Loader.dll") did not find the
-		// loader. Otherwise the reason is in the two HRESULTs: the controller call's own, and the one
-		// its completion handler carried — a refused call and a callback that never came differ only
-		// there, and the composite that failed answers 0/1.
+		// 126 is ERROR_MOD_NOT_FOUND: LoadLibraryW("WebView2Loader.dll") did not find the loader.
+		// Anything else is named by the HRESULTs and by what the controller pointer turned out to be:
+		// the runner's CreateCoreWebView2Controller and its callback both returned S_OK while the object
+		// they produced had no readable vtable, so blaming the runtime would send the next person wrong.
 		const error = Number(shim.shim_last_error());
 		const begin = Number(shim.shim_controller_hresult());
 		const callback = Number(shim.shim_controller_callback());
 		const environment = Number(shim.shim_env_callback());
+		const state = Number(shim.shim_object_state(shim.shim_controller_addr()));
+		const hex = (value: number): string => `0x${(value >>> 0).toString(16)}`;
+		const reason =
+			error === 126
+				? "WebView2Loader.dll did not load; it must sit beside the executable or on PATH"
+				: state === 1
+					? "the controller pointer is unreadable, so it never named an ICoreWebView2Controller"
+					: state === 2
+						? "the controller has no readable vtable, so it is not an ICoreWebView2Controller yet"
+						: `a vtable entry was refused (bad slot ${Number(shim.shim_bad_slot())})`;
 		throw new Error(
 			`WebView2 controller failed for "${label}" (GetLastError ${error}, ` +
-				`CreateCoreWebView2Controller 0x${(begin >>> 0).toString(16)}, ` +
-				`controller callback 0x${(callback >>> 0).toString(16)}, ` +
-				`environment callback 0x${(environment >>> 0).toString(16)}) — ` +
-				(error === 126
-					? "WebView2Loader.dll did not load; it must sit beside the executable or on PATH"
-					: "the runtime is installed but did not answer"),
+				`CreateCoreWebView2Controller ${hex(begin)}, ` +
+				`controller callback ${hex(callback)}, ` +
+				`environment callback ${hex(environment)}, ` +
+				`object ${objectStateName(state)}, ctrl_from ${Number(shim.shim_ctrl_from())}) — ${reason}`,
 		);
 	}
 	return { hwnd, url };

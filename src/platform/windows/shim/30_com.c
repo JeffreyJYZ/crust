@@ -21,6 +21,10 @@ typedef struct {
 	int step;
 } shim_handler;
 
+// One translation unit: the readback part reads these two directly.
+shim_handler g_env_handler;
+shim_handler g_ctrl_handler;
+
 static shim_i64 handler_qi(void *self, const void *iid, void **out) {
 	if (!out) return -2147467261LL; /* E_POINTER */
 	// Every IID is answered with this object: WebView2 asks only for the handler interface it

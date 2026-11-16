@@ -26,3 +26,14 @@ export function absoluteUrl(url: string): string {
 export function hresult(value: number): string {
 	return `0x${(value >>> 0).toString(16)}`;
 }
+
+/**
+ * What `shim_object_state` answered, in words: 0 the object reads, 1 it does not, 2 its first field does
+ * not. One home, because the failure message and the probe must say the same thing.
+ */
+export function objectStateName(state: number): string {
+	if (state === 0) return "readable";
+	if (state === 1) return "OBJECT-UNREADABLE";
+	if (state === 2) return "VTABLE-UNREADABLE";
+	return `state-${state}`;
+}

@@ -70,6 +70,8 @@ export interface WindowsShim {
 
 	/** 1 when the environment callback fired inside `create_env`, not in a later pump iteration. */
 	shim_env_inline(): number;
+	/** Where the controller call was made: 2 after `create_env` returned, 3 after a pump, 4 the fallback. */
+	shim_ctrl_from(): number;
 
 	/**
 	 * The thread that owns a window, and the apartment this thread is in — 0 STA, 1 MTA, 2 neutral,

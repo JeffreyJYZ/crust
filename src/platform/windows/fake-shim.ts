@@ -120,6 +120,7 @@ export function fakeShim(
 		shim_object_bytes: (_obj, out) => out.length,
 		shim_handler_created: () => 0x2000,
 		shim_env_inline: () => 0,
+		shim_ctrl_from: () => 2,
 		shim_controller_addr: () => 0x2000,
 		shim_environment_addr: () => 0x2100,
 		shim_controller_vtbl: () => 0x3000,

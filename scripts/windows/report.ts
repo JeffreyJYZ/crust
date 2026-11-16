@@ -9,6 +9,7 @@
  */
 import { join } from "node:path";
 import type { WindowsShim } from "../../src/platform/windows/backend.ts";
+import { objectStateName } from "../../src/platform/windows/platform-config.ts";
 
 /**
  * An HRESULT as hex. `bun:ffi` returns an `i64` as a **bigint** and `>>>` is not defined on one, so both
@@ -30,14 +31,6 @@ export function addr(value: number): string {
 	if (!Number.isFinite(value)) return String(value);
 	const text = Math.trunc(Math.abs(value)).toString(16).padStart(8, "0");
 	return `${value < 0 ? "-" : ""}0x${text}`;
-}
-
-/** 0 fine, 1 the object itself is unreadable, 2 its first field is unreadable. */
-export function stateName(state: number): string {
-	if (state === 0) return "readable";
-	if (state === 1) return "OBJECT-UNREADABLE";
-	if (state === 2) return "VTABLE-UNREADABLE";
-	return `state-${state}`;
 }
 
 /** The first four 32-bit words of an object, which is enough to recognise ASCII, a small int or a table. */
@@ -115,12 +108,12 @@ export function objectReport(shim: WindowsShim): void {
 	if (vtbl !== 0 && vtbl === handler) flags.push("HANDLER-OBJECT");
 	console.log(
 		`stage     controller stored ${addr(shim.shim_handler_created(4))} read ${addr(controller)} ` +
-			`${stateName(shim.shim_object_state(controller))} first ${addr(vtbl)}` +
+			`${objectStateName(shim.shim_object_state(controller))} first ${addr(vtbl)}` +
 			(flags.length > 0 ? ` ${flags.join(" ")}` : ""),
 	);
 	console.log(
 		`stage     environment stored ${addr(shim.shim_handler_created(2))} read ${addr(environment)} ` +
-			`${stateName(shim.shim_object_state(environment))}`,
+			`${objectStateName(shim.shim_object_state(environment))}`,
 	);
 	console.log(`stage     controller bytes ${words(shim, controller)}`);
 	console.log(`stage     environment bytes ${words(shim, environment)}`);
@@ -132,11 +125,30 @@ export function objectReport(shim: WindowsShim): void {
 	);
 }
 
+/**
+ * The same two objects, read again at the end of the run. The controller was VTABLE-UNREADABLE with
+ * `0xffffffff` where its vtable belongs; if this line shows a readable object, it was not built yet when
+ * the earlier line ran, and the fix is the deferral, not the call.
+ */
+export function lateReport(shim: WindowsShim): void {
+	const controller = shim.shim_controller_addr();
+	const environment = shim.shim_environment_addr();
+	console.log(
+		`stage     controller late ${addr(controller)} first ${addr(shim.shim_controller_vtbl())} ` +
+			`${objectStateName(shim.shim_object_state(controller))} bytes ${words(shim, controller)}`,
+	);
+	console.log(
+		`stage     environment late ${addr(environment)} ` +
+			`${objectStateName(shim.shim_object_state(environment))} bytes ${words(shim, environment)}`,
+	);
+	console.log(`stage     ctrl_from ${shim.shim_ctrl_from()}`);
+}
+
 /** The ICoreWebView2 object, before `Navigate` is called on it. */
 export function webReport(shim: WindowsShim): void {
 	const web = shim.shim_webview_handle();
 	console.log(
-		`stage     webview read ${addr(web)} ${stateName(shim.shim_object_state(web))} ` +
+		`stage     webview read ${addr(web)} ${objectStateName(shim.shim_object_state(web))} ` +
 			`first ${addr(shim.shim_webview_vtbl())}`,
 	);
 	console.log(`stage     webview bytes ${words(shim, web)}`);

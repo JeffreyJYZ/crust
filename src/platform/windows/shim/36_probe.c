@@ -7,6 +7,32 @@
 // reads an undefined top half of RAX. `-1` used to mean three different things, so the binding and the
 // raw HRESULT are separate exports now.
 
+// 1 when the bytes Windows reads as the vtable pointer really are the table this layer filled.
+int shim_handler_prepare(void) {
+	void *table;
+	handler_init(&g_env_handler, SHIM_THREAD_ENV_CALLBACK);
+	handler_init(&g_ctrl_handler, SHIM_THREAD_CTRL_CALLBACK);
+	table = (void *)(shim_h)shim_handler_vtbl_addr();
+	return *(void **)&g_env_handler == table ? 1 : 0;
+}
+
+shim_i64 shim_handler_object_addr(void) { return (shim_i64)(void *)&g_env_handler; }
+
+
+shim_i64 shim_handler_first_field(void) { return (shim_i64)(void *)*(void **)&g_env_handler; }
+
+
+/**
+ * What WebView2 handed the callback, per step — kept beside what `result` holds now. Equal means the
+ * object we read later is the object it passed; different means the field was overwritten after the
+ * store (a second `handler_init`), which is a different fix from "WebView2 passed a non-object".
+ */
+void *shim_handler_created(int step) {
+	if (step == SHIM_THREAD_ENV_CALLBACK) return g_env_handler.created;
+	if (step == SHIM_THREAD_CTRL_CALLBACK) return g_ctrl_handler.created;
+	return 0;
+}
+
 static int g_apartment_hresult;
 static int g_apartment_type;
 static int g_apartment_qualifier;

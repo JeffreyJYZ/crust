@@ -149,3 +149,18 @@ describe("the apartment call passes two real out-params", () => {
 		expect(source).toContain("int shim_apartment_qualifier(void)");
 	});
 });
+
+describe("the failure message names what actually failed", () => {
+	/**
+	 * It said "the runtime is installed but did not answer" while `CreateCoreWebView2Controller` and its
+	 * callback both returned S_OK and the object they produced had no readable vtable. A message that
+	 * blames the runtime for a bad object sends the next person to the wrong fix.
+	 */
+	test("it reports the object state, not a runtime that never answered", () => {
+		const open = lf(readFileSync(join(import.meta.dir, "window-open.ts"), "utf8"));
+		expect(open).not.toContain("did not answer");
+		expect(open).toContain("objectStateName(state)");
+		expect(open).toContain("shim.shim_object_state(shim.shim_controller_addr())");
+		expect(open).toContain("ctrl_from");
+	});
+});

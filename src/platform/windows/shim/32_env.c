@@ -36,8 +36,6 @@ static shim_create_env_fn shim_load_create_env(void) {
 // Both handler objects are statics, not stack locals: WebView2 keeps the pointer until its completion
 // arrives, so an object whose frame has returned is a callback into freed memory. They are also what
 // the `shim_handler_*` readback inspects, which is how a wrong layout becomes a printed number.
-static shim_handler g_env_handler;
-static shim_handler g_ctrl_handler;
 static shim_i64 g_env_hresult;
 static shim_i64 g_ctrl_hresult;
 
@@ -47,6 +45,8 @@ static shim_i64 g_ctrl_hresult;
 // answer yet" and "answered S_OK" would be the same value.
 static shim_h g_ctrl_hwnd;
 static int g_ctrl_requested;
+static int g_ctrl_pending;
+static int g_ctrl_from;
 /** 1 when the environment callback fired inside `create_env`, 0 when a later pump iteration got it. */
 static int g_env_inline;
 
@@ -59,19 +59,6 @@ void *shim_controller_handle(void) { return g_ctrl_handler.result; }
 // different defects and only these two numbers tell them apart.
 shim_i64 shim_env_hresult(void) { return g_env_hresult; }
 shim_i64 shim_controller_hresult(void) { return g_ctrl_hresult; }
-
-// 1 when the bytes Windows reads as the vtable pointer really are the table this layer filled.
-int shim_handler_prepare(void) {
-	void *table;
-	handler_init(&g_env_handler, SHIM_THREAD_ENV_CALLBACK);
-	handler_init(&g_ctrl_handler, SHIM_THREAD_CTRL_CALLBACK);
-	table = (void *)(shim_h)shim_handler_vtbl_addr();
-	return *(void **)&g_env_handler == table ? 1 : 0;
-}
-
-shim_i64 shim_handler_object_addr(void) { return (shim_i64)(void *)&g_env_handler; }
-
-shim_i64 shim_handler_first_field(void) { return (shim_i64)(void *)*(void **)&g_env_handler; }
 
 // ICoreWebView2Environment slot 3.
 int wv2_env_create_controller(void *env, shim_h hwnd, void *handler) {
@@ -95,11 +82,33 @@ int wv2_controller_webview(void *ctrl, void **out) {
 // UI_E_WRONG_THREAD (0x802A000C, "this method can only be called from the thread that created the
 // object"), which is why this is here and not in `shim_controller_begin`.
 void shim_controller_from_callback(void *env) {
-	if (!env || !g_ctrl_hwnd || g_ctrl_requested) return;
-	shim_note_thread(SHIM_THREAD_CTRL_CALL);
-	g_ctrl_requested = 1;
-	g_ctrl_hresult = wv2_env_create_controller(env, g_ctrl_hwnd, &g_ctrl_handler);
+	(void)env;
+	if (!g_ctrl_hwnd || g_ctrl_requested) return;
+	g_ctrl_pending = 1;
 }
+
+// The controller call, deferred by exactly one statement out of the callback. WebView2's threading model
+// calls a nested loop or a reentrant call inside a handler unsupported, and the runner proved this is the
+// reentrant case: `env_inline 1` means the environment completion ran inside
+// `CreateCoreWebView2EnvironmentWithOptions`, and the controller built there had `0xffffffff` where its
+// vtable belongs — a half-constructed object. So the callback records the request and this makes the call
+// from the first moment WebView2's own stack is gone.
+//
+// This is NOT the same as `shim_controller_begin`, which is a *later FFI call* from JavaScript and
+// answered UI_E_WRONG_THREAD. Both callers here stay inside one C call: `shim_env_begin` when the callback
+// fired inline, `shim_env_wait` when it arrived during the pump. Do not simplify it back into the callback.
+static void shim_controller_deferred(int from) {
+	if (!g_ctrl_pending || g_ctrl_requested || !g_env_handler.result) return;
+	g_ctrl_pending = 0;
+	g_ctrl_requested = 1;
+	g_ctrl_from = from;
+	shim_note_thread(SHIM_THREAD_CTRL_CALL);
+	g_ctrl_hresult = wv2_env_create_controller(g_env_handler.result, g_ctrl_hwnd, &g_ctrl_handler);
+}
+
+// Where the controller call was made: 2 right after `create_env` returned, 3 after a pump, 4 the
+// fallback. 1 would mean back inside the callback, which is the shape that produced a half-built object.
+int shim_ctrl_from(void) { return g_ctrl_from; }
 
 // 1 when the environment callback fired *inside* `create_env` — the completion ran on the environment
 // call's own stack rather than in a later pump iteration. Measured on the runner: `env_begin` took
@@ -125,15 +134,19 @@ shim_i64 shim_env_begin(shim_h hwnd, const char *userData) {
 	handler_init(&g_ctrl_handler, SHIM_THREAD_CTRL_CALLBACK);
 	g_ctrl_hwnd = hwnd;
 	g_ctrl_requested = 0;
+	g_ctrl_pending = 0;
+	g_ctrl_from = 0;
 	g_ctrl_hresult = 0;
 	g_env_hresult = create_env(0, hasDir ? dir : 0, 0, &g_env_handler);
 	g_env_inline = g_env_handler.done;
+	shim_controller_deferred(2);
 	return g_env_hresult;
 }
 
 // Drain the queue for up to 5 s. 1 when the callback fired, 0 when it timed out.
 int shim_env_wait(void) {
 	handler_wait(&g_env_handler, 5000);
+	shim_controller_deferred(3);
 	return g_env_handler.done;
 }
 
@@ -150,6 +163,8 @@ shim_i64 shim_controller_begin(shim_h hwnd) {
 	handler_init(&g_ctrl_handler, SHIM_THREAD_CTRL_CALLBACK);
 	g_ctrl_hwnd = hwnd;
 	g_ctrl_requested = 1;
+	g_ctrl_pending = 0;
+	g_ctrl_from = 4;
 	g_ctrl_hresult = wv2_env_create_controller(g_env_handler.result, hwnd, &g_ctrl_handler);
 	return g_ctrl_hresult;
 }
@@ -161,13 +176,3 @@ int shim_controller_wait(void) {
 
 shim_i64 shim_controller_callback(void) { return (shim_i64)g_ctrl_handler.failed; }
 
-/**
- * What WebView2 handed the callback, per step — kept beside what `result` holds now. Equal means the
- * object we read later is the object it passed; different means the field was overwritten after the
- * store (a second `handler_init`), which is a different fix from "WebView2 passed a non-object".
- */
-void *shim_handler_created(int step) {
-	if (step == SHIM_THREAD_ENV_CALLBACK) return g_env_handler.created;
-	if (step == SHIM_THREAD_CTRL_CALLBACK) return g_ctrl_handler.created;
-	return 0;
-}
