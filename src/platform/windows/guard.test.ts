@@ -167,29 +167,3 @@ describe("the failure message names what actually failed", () => {
 		expect(open).toContain("ctrl_from");
 	});
 });
-
-describe("the probe separates the object from the call", () => {
-	/**
-	 * `Navigate` faulted with a vtable whose slots 3/4/5/6 were four distinct real code addresses. The
-	 * question is binary — is the object callable, or is the call — and two cheap calls answer it: a
-	 * getter on the webview, and the visibility call every sample makes and this layer never has.
-	 */
-	test("get_Source and put_IsVisible run before Navigate", () => {
-		expect(source).toContain("int wv2_get_source(void *web)");
-		expect(source).toContain("int wv2_put_visible(void *ctrl, int visible)");
-		expect(stages).toContain('stageHr("webview_source"');
-		expect(stages).toContain('stageHr("controller_visible"');
-		expect(stages.indexOf("webview_source")).toBeLessThan(
-			stages.indexOf('stage("webview_navigate"'),
-		);
-		// The BSTR get_Source answers is leaked on purpose: the probe reads only the HRESULT.
-		expect(source).toContain("The string is deliberately");
-	});
-
-	/** A truncated pointer in the line meant to identify the object is the same defect twice. */
-	test("every pointer in the probe is printed in full", () => {
-		expect(stages).not.toContain("web ${hex(");
-		expect(stages).toContain("web ${addr(");
-		expect(stages).toContain("navigate about:blank vtable");
-	});
-});

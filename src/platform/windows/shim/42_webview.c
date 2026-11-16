@@ -14,6 +14,7 @@ static int g_windows;
 static int g_webview_hr;
 static int g_navigate_hr;
 static int g_bounds_hr;
+static int g_visible_hr;
 
 static int find_window(shim_h hwnd) {
 	int i;
@@ -28,9 +29,9 @@ int shim_webview_put_bounds(shim_h hwnd, double w, double h) {
 	return wv2_put_bounds(g_ctrl[i], w, h);
 }
 
-// The ICoreWebView2 the last bind produced, and the HRESULT of each half: `which` 0 is
-// get_CoreWebView2, 1 is put_Bounds. A refused slot and a slot that returned an error are different
-// defects and only these two numbers tell them apart.
+// The HRESULT of each step of the attach: `which` 0 is get_CoreWebView2, 1 is put_Bounds, 2 is
+// put_IsVisible. A refused slot and a slot that returned an error are different defects and only these
+// numbers tell them apart.
 void *shim_webview_handle(void) { return g_web; }
 
 // The webview object's vtable and one entry of it, so a bad ICoreWebView2 is a printed number before
@@ -45,10 +46,14 @@ void *shim_webview_slot(int index) {
 	return vt[index];
 }
 
-shim_i64 shim_attach_hresult(int which) { return (shim_i64)(which == 0 ? g_webview_hr : g_bounds_hr); }
+shim_i64 shim_attach_hresult(int which) {
+	if (which == 0) return (shim_i64)g_webview_hr;
+	if (which == 1) return (shim_i64)g_bounds_hr;
+	return (shim_i64)g_visible_hr;
+}
 
-// `get_CoreWebView2`, plus the bookkeeping that makes the hwnd findable afterwards. Its own step,
-// because a jump here is the object being wrong rather than the index.
+// `get_CoreWebView2`, the controller's visibility, and the bookkeeping that makes the hwnd findable
+// afterwards. Its own step, because a jump here is the object being wrong rather than the index.
 int shim_webview_bind(shim_h hwnd) {
 	void *ctrl = shim_controller_handle();
 	void *web = 0;
@@ -61,6 +66,10 @@ int shim_webview_bind(shim_h hwnd) {
 	g_hwnd[i] = hwnd;
 	g_ctrl[i] = ctrl;
 	g_web = web;
+	// `get_IsVisible` starts FALSE and a controller that is never made visible renders nothing, so this is
+	// on the *product* path — every sample calls it between creating the controller and `put_Bounds`. Its
+	// HRESULT is recorded rather than swallowed: a refusal here is a finding, not a silent no-op.
+	g_visible_hr = wv2_put_visible(ctrl, 1);
 	return 1;
 }
 
@@ -104,6 +113,9 @@ int shim_controller_visible(void) { return wv2_put_visible(shim_controller_handl
 // The whole path in one call, which is what the platform uses: environment, controller, attach,
 // navigate. Every step is exported on its own above, so a probe can print between them; this
 // composite exists so `window-open.ts` keeps one call and one failure.
+// A pump before the first navigation, because this thread has never run a message loop: WebView2's own
+// state is established by message traffic, and the canonical sample navigates from inside a running
+// `GetMessage` loop rather than immediately after creating the controller.
 int shim_webview_new(shim_h hwnd, const char *url, const char *userData) {
 	if (!hwnd) return 0;
 	if (g_windows >= SHIM_MAX_WINDOWS) return 0;
@@ -116,6 +128,7 @@ int shim_webview_new(shim_h hwnd, const char *url, const char *userData) {
 	if (!shim_controller_wait()) return 0;
 	if (shim_controller_callback() < 0 || !shim_controller_handle()) return 0;
 	if (!shim_webview_attach(hwnd)) return 0;
+	shim_pump();
 	return shim_webview_navigate(url);
 }
 

@@ -113,7 +113,7 @@ async function steps(): Promise<number> {
 	console.log(
 		`stage     web ${addr(shim.shim_webview_handle())} get_CoreWebView2 ${hex(
 			shim.shim_attach_hresult(0),
-		)}`,
+		)} put_IsVisible ${hex(shim.shim_attach_hresult(2))}`,
 	);
 	expect(stage("webview_size", () => shim.shim_webview_size(hwnd)) === 1);
 	console.log(`stage     put_Bounds ${hex(shim.shim_attach_hresult(1))}`);
@@ -129,6 +129,11 @@ async function steps(): Promise<number> {
 	expect(!stageHr("webview_source", () => shim.shim_webview_source()));
 	expect(!stageHr("controller_visible", () => shim.shim_controller_visible()));
 
+	// The thread has never run a message loop, so pump before the first navigation and print how many
+	// messages that drained: WebView2's browser-process state is established by message traffic.
+	console.log(
+		`stage     pump_before_navigate ok ${stage("pump_before_navigate", () => shim.shim_pump())}`,
+	);
 	// Immediately before the call that faulted with a perfect-looking vtable, and its answer after it.
 	console.log(
 		`stage     navigate about:blank vtable ${addr(shim.shim_webview_vtbl())} slot5 ${addr(

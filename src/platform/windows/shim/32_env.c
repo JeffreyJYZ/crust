@@ -47,6 +47,8 @@ static shim_h g_ctrl_hwnd;
 static int g_ctrl_requested;
 static int g_ctrl_pending;
 static int g_ctrl_from;
+/** 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 when a pump got it. */
+static int g_ctrl_inline;
 /** 1 when the environment callback fired inside `create_env`, 0 when a later pump iteration got it. */
 static int g_env_inline;
 
@@ -104,7 +106,15 @@ static void shim_controller_deferred(int from) {
 	g_ctrl_from = from;
 	shim_note_thread(SHIM_THREAD_CTRL_CALL);
 	g_ctrl_hresult = wv2_env_create_controller(g_env_handler.result, g_ctrl_hwnd, &g_ctrl_handler);
+	g_ctrl_inline = g_ctrl_handler.done;
 }
+
+/**
+ * 1 when the controller completion fired inside `CreateCoreWebView2Controller`, 0 when a later pump
+ * iteration got it. An inline completion means the webview was constructed reentrantly and never saw a
+ * message loop — which is a candidate cause of a fault inside WebView2 on the first `Navigate`.
+ */
+int shim_ctrl_inline(void) { return g_ctrl_inline; }
 
 // Where the controller call was made: 2 right after `create_env` returned, 3 after a pump, 4 the
 // fallback. 1 would mean back inside the callback, which is the shape that produced a half-built object.
@@ -166,6 +176,7 @@ shim_i64 shim_controller_begin(shim_h hwnd) {
 	g_ctrl_pending = 0;
 	g_ctrl_from = 4;
 	g_ctrl_hresult = wv2_env_create_controller(g_env_handler.result, hwnd, &g_ctrl_handler);
+	g_ctrl_inline = g_ctrl_handler.done;
 	return g_ctrl_hresult;
 }
 

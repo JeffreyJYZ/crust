@@ -143,7 +143,10 @@ export function lateReport(shim: WindowsShim): void {
 		`stage     environment late ${addr(environment)} ` +
 			`${objectStateName(shim.shim_object_state(environment))} bytes ${words(shim, environment)}`,
 	);
-	console.log(`stage     ctrl_from ${shim.shim_ctrl_from()}`);
+	console.log(
+		`stage     ctrl_from ${shim.shim_ctrl_from()} ctrl_inline ${shim.shim_ctrl_inline()}` +
+			" (1 = the controller callback ran inside CreateCoreWebView2Controller)",
+	);
 }
 
 /** The ICoreWebView2 object, before `Navigate` is called on it. */
