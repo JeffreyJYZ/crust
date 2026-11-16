@@ -15,6 +15,8 @@ typedef struct {
 	 * undefined top half of RDX, and a sign test on that makes a successful callback look failed. */
 	int failed;
 	int done;
+	/** What `Invoke` last handed us. Kept across `handler_init`, so "stored then overwritten" is visible. */
+	void *created;
 	/** Which thread step this handler's callback belongs to, for `shim_thread_at`. */
 	int step;
 } shim_handler;
@@ -43,6 +45,7 @@ static shim_i64 handler_invoke(void *self, int code, void *created) {
 	shim_note_thread(h->step);
 	h->failed = code;
 	h->result = created;
+	h->created = created;
 	h->done = 1;
 	// The environment's own completion is the frame WebView2 created the environment in, and the only
 	// frame allowed to build a controller from it: the same call one frame later answers

@@ -35,14 +35,12 @@ void *shim_webview_handle(void) { return g_web; }
 // The webview object's vtable and one entry of it, so a bad ICoreWebView2 is a printed number before
 // `Navigate` is attempted rather than a jump.
 void *shim_webview_vtbl(void) {
-	if (!g_web) return 0;
-	return *(void **)g_web;
+	return (void *)shim_object_vtbl(g_web);
 }
 
 void *shim_webview_slot(int index) {
-	void **vt;
-	if (!g_web || index < 0 || index >= 32) return 0;
-	vt = *(void ***)g_web;
+	void **vt = shim_object_vtbl(g_web);
+	if (!vt || index < 0 || index >= 32) return 0;
 	return vt[index];
 }
 

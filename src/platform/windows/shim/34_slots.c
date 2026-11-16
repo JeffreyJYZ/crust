@@ -17,22 +17,20 @@ typedef struct {
 // Returns the method's own HRESULT, so a refusal and a crash are distinguishable.
 int wv2_put_bounds(void *ctrl, double w, double h) {
 	shim_rect r;
-	void **vt;
-	if (!ctrl) return -2147467259; /* E_FAIL */
+	void **vt = shim_object_vtbl(ctrl);
+	if (!vt) return -2147467259; /* E_FAIL: the object itself is unreadable */
 	r.left = 0;
 	r.top = 0;
 	r.right = (long)w;
 	r.bottom = (long)h;
-	vt = *(void ***)ctrl;
 	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_PUT_BOUNDS)) return -2147467262;
 	return ((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
 }
 
 // ICoreWebView2Controller slot 24.
 void wv2_controller_close(void *ctrl) {
-	void **vt;
-	if (!ctrl) return;
-	vt = *(void ***)ctrl;
+	void **vt = shim_object_vtbl(ctrl);
+	if (!vt) return;
 	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_CLOSE)) return;
 	((int (*)(void *))vt[SHIM_SLOT_CONTROLLER_CLOSE])(ctrl);
 }
@@ -44,8 +42,9 @@ void wv2_controller_close(void *ctrl) {
 // has none either and `crust://` is the deep-link scheme.
 int wv2_navigate(void *web, const shim_wchar *url) {
 	void **vt;
-	if (!web || !url) return 0;
-	vt = *(void ***)web;
+	if (!url) return 0;
+	vt = shim_object_vtbl(web);
+	if (!vt) return 0;
 	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_NAVIGATE)) return 0;
 	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(web, url) >= 0;
 }

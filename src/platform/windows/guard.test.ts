@@ -77,3 +77,75 @@ describe("the probe reports every defect in one run", () => {
 		expect(stages).toMatch(/skipped\("no ICoreWebView2/);
 	});
 });
+
+describe("an unreadable object is a verdict, not a fault", () => {
+	/**
+	 * The panic was the dereference *before* the call: a `ctrl` of `(void *)-1` faults on
+	 * `*(void ***)ctrl`, reading `0xFFFFFFFFFFFFFFFF`. So readability is asked first, and the four
+	 * answers are distinct: fine, object unreadable, first field unreadable, entry not code.
+	 */
+	test("readability is a separate question from callability", () => {
+		expect(guard).toContain("int shim_is_readable(const void *address)");
+		expect(guard).toContain("int shim_is_code(const void *address)");
+		// MEM_COMMIT required; PAGE_NOACCESS (0x01) and PAGE_GUARD (0x100) refused.
+		expect(guard).toContain("& 0x1000u) == 0) return 0; /* MEM_COMMIT */");
+		expect(guard).toContain("& 0x101u) return 0; /* NOACCESS | GUARD */");
+	});
+
+	test("the four verdicts have four values", () => {
+		expect(guard).toContain("#define SHIM_OBJ_OK 0");
+		expect(guard).toContain("#define SHIM_OBJ_UNREADABLE 1");
+		expect(guard).toContain("#define SHIM_OBJ_VTBL_UNREADABLE 2");
+		expect(guard).toContain("#define SHIM_OBJ_SLOT_NOT_CODE 3");
+		// `(void *)-1` and a null are refused before VirtualQuery is even asked.
+		expect(guard).toContain("if (!address || address == (const void *)-1) return 0;");
+	});
+
+	/** The regression that produced the panic: a site that dereferences the object itself. */
+	test("no call site dereferences an object directly", () => {
+		const outside = SHIM_PART_NAMES.filter((name) => name !== "14_guard.c")
+			.map(readShimPart)
+			.join("\n");
+		// Taking a vtable from an object is the guard's job and nowhere else.
+		expect(outside).not.toContain("*(void ***)");
+		// The only `*(void **)` left reads our own static handler, never a caller's pointer.
+		for (const line of outside.split("\n").filter((text) => text.includes("*(void **)"))) {
+			expect(line).toContain("&g_env_handler");
+		}
+		// Nine call sites plus the definition in the guard.
+		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(10);
+	});
+});
+
+describe("the store is compared with the readback", () => {
+	/**
+	 * `handler_invoke` writes `h->result = created`. Recording `created` separately, and keeping it across
+	 * `handler_init`, separates "WebView2 handed us a non-object" from "the field was overwritten after
+	 * the store" — two defects with different fixes.
+	 */
+	test("the callback keeps what it was handed, across handler_init", () => {
+		expect(com).toContain("void *created;");
+		expect(com).toContain("h->created = created;");
+		const init = com.slice(com.indexOf("void handler_init(shim_handler *h, int step) {"));
+		const body = init.slice(0, init.indexOf("\n}"));
+		expect(body).not.toContain("h->created =");
+		expect(source).toContain("void *shim_handler_created(int step)");
+	});
+
+	test("the first bytes of an object can be dumped", () => {
+		expect(source).toContain("int shim_object_bytes(void *obj, void *out, int words)");
+		expect(source).toContain("if (!dst || words <= 0 || !shim_is_readable(obj)) return 0;");
+	});
+});
+
+describe("the apartment call passes two real out-params", () => {
+	/**
+	 * `CoGetApartmentType(&type, 0)` answered `E_INVALIDARG` (0x80070057) — the qualifier is not optional
+	 * — and the probe read that as "not initialised" for two runs.
+	 */
+	test("the qualifier is a variable, not a null", () => {
+		expect(source).toContain("CoGetApartmentType(&type, &qualifier)");
+		expect(source).not.toContain("CoGetApartmentType(&type, 0)");
+		expect(source).toContain("int shim_apartment_qualifier(void)");
+	});
+});

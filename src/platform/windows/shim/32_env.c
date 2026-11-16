@@ -75,9 +75,8 @@ shim_i64 shim_handler_first_field(void) { return (shim_i64)(void *)*(void **)&g_
 
 // ICoreWebView2Environment slot 3.
 int wv2_env_create_controller(void *env, shim_h hwnd, void *handler) {
-	void **vt;
-	if (!env) return -2147467259; /* E_FAIL */
-	vt = *(void ***)env;
+	void **vt = shim_object_vtbl(env);
+	if (!vt) return -2147467259; /* E_FAIL: the object itself is unreadable */
 	if (!shim_slot_ok(vt, SHIM_SLOT_ENV_CREATE_CONTROLLER)) return -2147467262; /* E_NOINTERFACE */
 	return ((int (*)(void *, shim_h, void *))vt[SHIM_SLOT_ENV_CREATE_CONTROLLER])(env, hwnd,
 	                                                                             handler);
@@ -85,9 +84,8 @@ int wv2_env_create_controller(void *env, shim_h hwnd, void *handler) {
 
 // ICoreWebView2Controller slot 25: the ICoreWebView2 the page-facing calls go to.
 int wv2_controller_webview(void *ctrl, void **out) {
-	void **vt;
-	if (!ctrl) return -2147467259; /* E_FAIL */
-	vt = *(void ***)ctrl;
+	void **vt = shim_object_vtbl(ctrl);
+	if (!vt) return -2147467259; /* E_FAIL: the object itself is unreadable */
 	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_WEBVIEW)) return -2147467262; /* E_NOINTERFACE */
 	return ((int (*)(void *, void **))vt[SHIM_SLOT_CONTROLLER_WEBVIEW])(ctrl, out);
 }
@@ -162,3 +160,14 @@ int shim_controller_wait(void) {
 }
 
 shim_i64 shim_controller_callback(void) { return (shim_i64)g_ctrl_handler.failed; }
+
+/**
+ * What WebView2 handed the callback, per step — kept beside what `result` holds now. Equal means the
+ * object we read later is the object it passed; different means the field was overwritten after the
+ * store (a second `handler_init`), which is a different fix from "WebView2 passed a non-object".
+ */
+void *shim_handler_created(int step) {
+	if (step == SHIM_THREAD_ENV_CALLBACK) return g_env_handler.created;
+	if (step == SHIM_THREAD_CTRL_CALLBACK) return g_ctrl_handler.created;
+	return 0;
+}

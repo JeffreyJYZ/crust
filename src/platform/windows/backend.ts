@@ -80,6 +80,19 @@ export interface WindowsShim {
 	shim_apartment_type(): number;
 	shim_apartment_bound(): number;
 	shim_apartment_hresult(): number;
+	/** APTTYPEQUALIFIER beside the type. The qualifier out-param is not optional: NULL answered E_INVALIDARG. */
+	shim_apartment_qualifier(): number;
+
+	/**
+	 * 0 when the object reads and its first field reads, 1 when the object does not, 2 when the vtable
+	 * does not — the difference between "the pointer is garbage" and "one entry is bad".
+	 */
+	shim_object_state(obj: number): number;
+	shim_bad_object(): number;
+	/** The first `words` 32-bit words of `obj`, into a caller-owned buffer; 0 when unreadable. */
+	shim_object_bytes(obj: number, out: Uint32Array, words: number): number;
+	/** What WebView2 handed the callback for a step — compare with what `result` holds now. */
+	shim_handler_created(step: number): number;
 
 	/**
 	 * The controller object, as Windows will read it: its address, the environment's (equal addresses
