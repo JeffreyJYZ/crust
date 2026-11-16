@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, realpath, rm, symlink } from "node:fs/promises";
+import { realpath, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BundleArgs, UpdaterFailure } from "@/plugins/updater";
 import { ownBundleOf } from "@/plugins/updater-bundle";
-import { bundle, offlineAdapter, plugin, scratch } from "@/plugins/updater-fake";
+import { bundle, executableOf, offlineAdapter, plugin, scratch } from "@/plugins/updater-fake";
 
 /** An adapter that records every bundle it is asked to start, so a test never opens one. */
 function launching(): { adapter: ReturnType<typeof offlineAdapter>; started: string[] } {
@@ -15,11 +15,6 @@ function launching(): { adapter: ReturnType<typeof offlineAdapter>; started: str
 		},
 	});
 	return { adapter, started };
-}
-
-/** The executable inside a bundle: the shape `relaunch` derives this app's own bundle from. */
-function executableOf(bundlePath: string): string {
-	return join(bundlePath, "Contents", "MacOS", "Notes");
 }
 
 describe("ownBundleOf", () => {

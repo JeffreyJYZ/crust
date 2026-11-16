@@ -6,7 +6,7 @@
  * bundle is that bundle and a symlink out of it is not.
  */
 
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
 import { errorOf, notAppBundle, type UpdaterError, type UpdaterFailure } from "./updater-args";
@@ -46,6 +46,16 @@ export async function ownBundleFailure(
 	const target = await realpath(appPath).catch(() => undefined);
 	if (target === own) return undefined;
 	return notAppBundle(appPath, `is not this app's bundle; ${verb} ${own}`, command);
+}
+
+/** A link is not the bundle: renaming over it would replace the link and leave the app alone. */
+export async function linkedPath(appPath: string): Promise<UpdaterFailure | undefined> {
+	const info = await lstat(appPath).catch(() => undefined);
+	if (info?.isSymbolicLink() !== true) return undefined;
+	const message =
+		`crust: updater.install: ${appPath} is a symlink; install replaces the bundle itself, ` +
+		"not a link to it, because a rename over a link would leave the app in place";
+	return { ok: false, code: "not-an-app-bundle", message, path: appPath };
 }
 
 /** The launch seam: the own-bundle gate, then the adapter; a refusal or a throw is the answer. */

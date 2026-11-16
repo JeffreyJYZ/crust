@@ -19,7 +19,7 @@ import {
 } from "./updater-args";
 import { parseManifest } from "./updater-manifest";
 import { nodeUpdaterAdapter } from "./updater-node";
-import { createLauncher, ownBundleFailure } from "./updater-bundle";
+import { createLauncher, linkedPath, ownBundleFailure } from "./updater-bundle";
 import { changedSinceDownload, createReceipts, unverifiedArtifact } from "./updater-receipt";
 import {
 	readSignatureArgs,
@@ -155,6 +155,8 @@ export function createUpdaterPlugin(
 					// only replace the bundle this process is running from.
 					const elsewhere = await ownBundleFailure(appPath, execPath, "install");
 					if (elsewhere !== undefined) return elsewhere;
+					const linked = await linkedPath(appPath);
+					if (linked !== undefined) return linked;
 					if (!(await adapter.isAppBundle(source))) {
 						return notAppBundle(source, "is not an .app directory; extract it first");
 					}

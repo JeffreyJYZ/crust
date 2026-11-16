@@ -60,11 +60,10 @@ describe("updater.install", () => {
 			const appPath = await bundle(dir, "Notes.app", "old");
 			const source = await bundle(dir, "Notes-new.app", "new");
 			const { file } = await verifiedDownload(source, executableOf(appPath));
-			const elsewhere = (await plugin(
-				offlineAdapter(),
-				{},
-				executableOf(appPath),
-			).install({ path: file.path, appPath })) as UpdaterFailure;
+			const elsewhere = (await plugin(offlineAdapter(), {}, executableOf(appPath)).install({
+				path: file.path,
+				appPath,
+			})) as UpdaterFailure;
 			expect(elsewhere).toMatchObject({ ok: false, code: "unverified-artifact" });
 			expect(await readFile(join(appPath, MARKER), "utf8")).toBe("old");
 		} finally {
@@ -102,7 +101,10 @@ describe("updater.install", () => {
 			const payload = "not a bundle";
 			const sha256 = createHash("sha256").update(payload).digest("hex");
 			const archive = plugin(writing(payload), {}, executableOf(target));
-			const artifact = (await archive.download({ url: UPDATE_URL, sha256 })) as DownloadResult;
+			const artifact = (await archive.download({
+				url: UPDATE_URL,
+				sha256,
+			})) as DownloadResult;
 			expect(await archive.install({ path: artifact.path, appPath: target })).toMatchObject({
 				ok: false,
 				code: "not-an-app-bundle",

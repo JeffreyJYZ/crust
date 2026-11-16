@@ -11,7 +11,8 @@ import { proveDeepLink, proveFs, proveTray } from "./proofs-system.ts";
 import { proveShell, proveStore, proveStronghold } from "./proofs-data.ts";
 import { proveDialog, proveOpener, proveOs } from "./proofs-io.ts";
 import { proveAutostart, proveLogging, provePositioner, proveWindowState } from "./proofs-state.ts";
-import { proveNotification, proveUpdater } from "./proofs-update.ts";
+import { proveNotification } from "./proofs-update.ts";
+import { proveUpdater } from "./proofs-updater.ts";
 import { proveChrome, proveShortcut } from "./proofs-window.ts";
 import { proveI18n, proveTheme } from "./proofs-locale.ts";
 import { proveKeyPress } from "./proofs-keypress.ts";
@@ -55,6 +56,10 @@ async function main(): Promise<void> {
 	await attempt("crash-reporter", proveCrashReporter);
 	const passed = proofs.filter((proof) => proof.ok).length;
 	const verdict = passed === proofs.length ? "PASS" : "FAIL";
+	if (verdict === "FAIL") {
+		const unproved = proofs.filter((proof) => !proof.ok).map((proof) => proof.name);
+		console.log(`parity: unproved ${unproved.join(", ")}`);
+	}
 	console.log(`parity: ${verdict} ${passed}/${proofs.length}`);
 	process.exit(verdict === "PASS" ? 0 : 1);
 }

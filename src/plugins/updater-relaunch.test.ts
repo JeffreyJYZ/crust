@@ -12,6 +12,7 @@ import {
 	bundle,
 	delivering,
 	digestOf,
+	executableOf,
 	offlineAdapter,
 	plugin,
 	scratch,
@@ -19,11 +20,6 @@ import {
 } from "@/plugins/updater-fake";
 
 const MARKER = join("Contents", "marker.txt");
-
-/** The executable inside a bundle: the shape `relaunch` derives this app's own bundle from. */
-function executableOf(bundlePath: string): string {
-	return join(bundlePath, "Contents", "MacOS", "Notes");
-}
 
 /** An adapter that records every bundle it is asked to start, so a test never opens one. */
 function launching(): { adapter: UpdaterAdapter; started: string[] } {
