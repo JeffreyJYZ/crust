@@ -78,8 +78,10 @@ int shim_win32_ready(void);
 #define SHIM_SLOT_ENV_CREATE_CONTROLLER 3  // ICoreWebView2Environment::CreateCoreWebView2Controller
 #define SHIM_SLOT_IUNKNOWN_ADDREF 1        // IUnknown::AddRef — the refcount a borrowed object needs
 #define SHIM_SLOT_CONTROLLER_PUT_BOUNDS 6  // ICoreWebView2Controller::put_Bounds
+#define SHIM_SLOT_CONTROLLER_PUT_VISIBLE 4 // ICoreWebView2Controller::put_IsVisible
 #define SHIM_SLOT_CONTROLLER_CLOSE 24      // ICoreWebView2Controller::Close
 #define SHIM_SLOT_CONTROLLER_WEBVIEW 25    // ICoreWebView2Controller::get_CoreWebView2
+#define SHIM_SLOT_WEBVIEW_GET_SOURCE 4     // ICoreWebView2::get_Source
 #define SHIM_SLOT_WEBVIEW_NAVIGATE 5       // ICoreWebView2::Navigate
 
 // Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.

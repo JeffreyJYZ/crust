@@ -74,15 +74,17 @@ describe("the vtable slots", () => {
 	const defined = slots();
 
 	test("the parser saw the block it is meant to check", () => {
-		expect(defined.size).toBe(6);
+		expect(defined.size).toBe(8);
 	});
 
-	test("Navigate is the fifth method of ICoreWebView2, not the thirty-seventh slot", () => {
+	test("get_Source is slot 4 and Navigate is slot 5, not the thirty-seventh slot", () => {
+		expect(defined.get("WEBVIEW_GET_SOURCE")).toBe(slotOf(WEBVIEW, "get_Source"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(slotOf(WEBVIEW, "Navigate"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(5);
 	});
 
-	test("the controller slots are put_Bounds, Close and get_CoreWebView2", () => {
+	test("the controller slots are put_Bounds, put_IsVisible, Close and get_CoreWebView2", () => {
+		expect(defined.get("CONTROLLER_PUT_VISIBLE")).toBe(slotOf(CONTROLLER, "put_IsVisible"));
 		expect(defined.get("CONTROLLER_PUT_BOUNDS")).toBe(slotOf(CONTROLLER, "put_Bounds"));
 		expect(defined.get("CONTROLLER_CLOSE")).toBe(slotOf(CONTROLLER, "Close"));
 		expect(defined.get("CONTROLLER_WEBVIEW")).toBe(slotOf(CONTROLLER, "get_CoreWebView2"));

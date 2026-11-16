@@ -57,6 +57,12 @@ export interface WindowsShim {
 	shim_controller_callback(): number;
 	shim_webview_attach(hwnd: number): number;
 	shim_webview_navigate(url: Uint8Array): number;
+	/** The HRESULT `Navigate` returned, for the print after the call. */
+	shim_navigate_hresult(): number;
+	/** `ICoreWebView2::get_Source` — S_OK proves the webview object is callable at all. */
+	shim_webview_source(): number;
+	/** `ICoreWebView2Controller::put_IsVisible(TRUE)` — the call every sample makes and this layer never did. */
+	shim_controller_visible(): number;
 
 	/**
 	 * The attach in its two halves — `get_CoreWebView2` (controller slot 25) and `put_Bounds` (slot 6, a

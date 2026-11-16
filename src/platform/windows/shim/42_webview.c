@@ -12,6 +12,7 @@ static void *g_ctrl[SHIM_MAX_WINDOWS];
 static void *g_web;
 static int g_windows;
 static int g_webview_hr;
+static int g_navigate_hr;
 static int g_bounds_hr;
 
 static int find_window(shim_h hwnd) {
@@ -79,13 +80,26 @@ int shim_webview_attach(shim_h hwnd) {
 }
 
 // Navigate the webview `shim_webview_bind` recorded. `url` is the value the caller already resolved,
-// and it is the same value darwin hands to `loadRequest:`.
+// and it is the same value darwin hands to `loadRequest:`. The HRESULT is kept so a probe can print it
+// after the call — the last run faulted *inside* this call with a vtable that looked perfect.
 int shim_webview_navigate(const char *url) {
 	shim_wchar target[2048];
 	if (!g_web) return 0;
 	if (shim_utf16(url, target, 2048) < 0) return 0;
-	return wv2_navigate(g_web, target);
+	g_navigate_hr = wv2_navigate(g_web, target);
+	return g_navigate_hr >= 0;
 }
+
+int shim_navigate_hresult(void) { return g_navigate_hr; }
+
+// ICoreWebView2 slot 4 (`get_Source`): S_OK proves the webview object is callable at all, which is what
+// separates "the object is unusable" from "Navigate is the fault". The BSTR it answers is leaked on
+// purpose — a probe never frees it, and only the HRESULT is read.
+int shim_webview_source(void) { return wv2_get_source(g_web); }
+
+// ICoreWebView2Controller slot 4 (`put_IsVisible(TRUE)`): what every sample calls after creating the
+// controller and before `put_Bounds`, and what this layer never has.
+int shim_controller_visible(void) { return wv2_put_visible(shim_controller_handle(), 1); }
 
 // The whole path in one call, which is what the platform uses: environment, controller, attach,
 // navigate. Every step is exported on its own above, so a probe can print between them; this

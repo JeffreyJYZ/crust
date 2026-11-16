@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { cstring } from "../../src/platform/windows/cstring.ts";
 import { compile } from "../../src/platform/windows/ffi.ts";
 import {
+	addr,
 	affinityReport,
 	handlerReport,
 	lateReport,
@@ -110,7 +111,7 @@ async function steps(): Promise<number> {
 	// The two calls that can still jump: get_CoreWebView2 (slot 25) and put_Bounds (slot 6, by reference).
 	expect(stage("webview_bind", () => shim.shim_webview_bind(hwnd)) === 1);
 	console.log(
-		`stage     web ${hex(shim.shim_webview_handle())} get_CoreWebView2 ${hex(
+		`stage     web ${addr(shim.shim_webview_handle())} get_CoreWebView2 ${hex(
 			shim.shim_attach_hresult(0),
 		)}`,
 	);
@@ -122,9 +123,22 @@ async function steps(): Promise<number> {
 		return failures === 0 ? 0 : 1;
 	}
 	webReport(shim);
+
+	// Two calls whose answers separate "the object is unusable" from "Navigate is the fault": a trivial
+	// getter on the webview, and the visibility call every sample makes and this layer never has.
+	expect(!stageHr("webview_source", () => shim.shim_webview_source()));
+	expect(!stageHr("controller_visible", () => shim.shim_controller_visible()));
+
+	// Immediately before the call that faulted with a perfect-looking vtable, and its answer after it.
+	console.log(
+		`stage     navigate about:blank vtable ${addr(shim.shim_webview_vtbl())} slot5 ${addr(
+			shim.shim_webview_slot(5),
+		)}`,
+	);
 	expect(
 		stage("webview_navigate", () => shim.shim_webview_navigate(cstring("about:blank"))) === 1,
 	);
+	console.log(`stage     navigate hresult ${hex(shim.shim_navigate_hresult())}`);
 
 	stage("pump", () => shim.shim_pump());
 	stage("set_title", () => shim.shim_window_set_title(hwnd, cstring("crust stages 2")));

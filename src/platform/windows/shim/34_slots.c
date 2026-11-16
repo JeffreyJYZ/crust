@@ -35,16 +35,41 @@ void wv2_controller_close(void *ctrl) {
 	((int (*)(void *))vt[SHIM_SLOT_CONTROLLER_CLOSE])(ctrl);
 }
 
+// ICoreWebView2Controller slot 4, `put_IsVisible(TRUE)` — what every sample does after creating the
+// controller and before `put_Bounds`, and what this layer never has. Its HRESULT is a finding on its own.
+int wv2_put_visible(void *ctrl, int visible) {
+	void **vt;
+	if (!ctrl) return -2147467259; /* E_FAIL */
+	vt = shim_object_vtbl(ctrl);
+	if (!vt) return -2147467259;
+	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_PUT_VISIBLE)) return -2147467262;
+	return ((int (*)(void *, int))vt[SHIM_SLOT_CONTROLLER_PUT_VISIBLE])(ctrl, visible);
+}
+
+// ICoreWebView2 slot 4, `get_Source`: a trivial getter that answers a BSTR. **The string is deliberately
+// leaked** — the probe never frees it — and only the HRESULT matters: S_OK proves the object is callable,
+// which turns a fault in `Navigate` into "the call", not "the object".
+int wv2_get_source(void *web) {
+	void **vt;
+	void *bstr = 0;
+	if (!web) return -2147467259; /* E_FAIL */
+	vt = shim_object_vtbl(web);
+	if (!vt) return -2147467259;
+	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_GET_SOURCE)) return -2147467262;
+	return ((int (*)(void *, void **))vt[SHIM_SLOT_WEBVIEW_GET_SOURCE])(web, &bstr);
+}
+
 // ICoreWebView2 slot 5, `Navigate`. It was slot 37 — `GetBrowserProcessId`, whose second parameter
 // is a `UINT *` — so navigation silently did nothing and a process id was written over the URL. This
 // is the only navigation crust does on Windows: the URL the window was created with, the same value
 // darwin hands to `-[WKWebView loadRequest:]`. There is no page-serving scheme here, because darwin
 // has none either and `crust://` is the deep-link scheme.
+// Returns the method's own HRESULT so a refusal is distinguishable from success.
 int wv2_navigate(void *web, const shim_wchar *url) {
 	void **vt;
-	if (!url) return 0;
+	if (!url) return -2147467259; /* E_FAIL */
 	vt = shim_object_vtbl(web);
-	if (!vt) return 0;
-	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_NAVIGATE)) return 0;
-	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(web, url) >= 0;
+	if (!vt) return -2147467259;
+	if (!shim_slot_ok(vt, SHIM_SLOT_WEBVIEW_NAVIGATE)) return -2147467262;
+	return ((int (*)(void *, const shim_wchar *))vt[SHIM_SLOT_WEBVIEW_NAVIGATE])(web, url);
 }
