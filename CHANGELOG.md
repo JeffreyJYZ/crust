@@ -2,9 +2,9 @@
 
 Newest first, one line per entry. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow semver.
 
-`0.1.21` is the last published package version, the last `chore:` release commit and the last git tag (`v0.1.21`). The wave after it has no version and no tag, so it stays under `Unreleased` until the owner cuts one.
+`0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
-## Unreleased
+## [0.1.22] — 2026-11-17
 
 ### Added
 
