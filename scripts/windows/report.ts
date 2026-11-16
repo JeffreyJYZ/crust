@@ -9,8 +9,20 @@
 import { join } from "node:path";
 import type { WindowsShim } from "../../src/platform/windows/backend.ts";
 
-/** A pointer or an HRESULT as hex, because both are read as bit patterns. */
-export function hex(value: number): string {
+/**
+ * A pointer or an HRESULT as hex, because both are read as bit patterns.
+ *
+ * `bun:ffi` returns an `i64` as a **bigint**, and `>>>` is not defined on one: the probe died with
+ * "BigInt does not support >>> operator" exactly where it was about to print the apartment HRESULT,
+ * which is the line that would have named the next defect (measured 2026-11-16). Pointers arrive as
+ * numbers, HRESULTs from an `i64` export as bigints, so both are handled here instead of at every
+ * call site — a probe that cannot format a number is worse than no probe.
+ */
+export function hex(value: number | bigint): string {
+	if (typeof value === "bigint") {
+		const pattern = BigInt.asUintN(64, value);
+		return `0x${pattern.toString(16).padStart(pattern > 0xffffffffn ? 16 : 8, "0")}`;
+	}
 	return `0x${(value >>> 0).toString(16).padStart(8, "0")}`;
 }
 
