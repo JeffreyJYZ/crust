@@ -1,5 +1,5 @@
 /**
- * Compiling the shipped C shim, once per process. `cc()` compiles C only, and this unit links nothing beyond libc — GTK and WebKit are reached through `dlopen` inside the shim — so there are no `-l` flags and no `-dev` headers are needed.
+ * Compiling the shipped C shim, once per process. `cc()` compiles C only, and this unit links nothing beyond libc — GTK and WebKit are reached through `dlopen` inside the shim — so there are no `-l` flags and no `-dev` headers are needed. Linking libc still wants the `libc.so` **linker script**, which only the C development package ships: that one package is the whole reason a machine with GTK and WebKitGTK can still fail here, so a `library c not found` from TinyCC is translated by `linkError` instead of escaping raw.
  * Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file does not exist, so the source travels in the binary as text and is materialised to a temp file before `cc()` is called.
  */
 import { cc, FFIType } from "bun:ffi";
@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkError } from "./preflight.ts";
 import { shimSource } from "./shim-source.ts";
 
 const P = FFIType.ptr;
@@ -61,7 +62,7 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 	const path = join(tmpdir(), `crust-linux-shim-${hash}.c`);
 	if (!existsSync(path)) writeFileSync(path, shimSource);
 
-	return cc({
+	const options = {
 		source: path,
 		symbols: {
 			shim_lib_open: { args: [], returns: I32 },
@@ -86,7 +87,18 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 			shim_webview_eval_state: { args: [], returns: I32 },
 			shim_webview_eval_text: { args: [], returns: CS },
 		},
-	}) as unknown as { symbols: LinuxShim & LinuxProofShim };
+	};
+
+	try {
+		return cc(options) as unknown as { symbols: LinuxShim & LinuxProofShim };
+	} catch (error) {
+		// TinyCC's own message names a library nobody installed and not the package that ships it,
+		// so a missing linker script becomes the install line here, where the compile failed.
+		const detail = error instanceof Error ? error.message : String(error);
+		const translated = linkError(detail);
+		if (translated === undefined) throw error;
+		throw new Error(`crust: ${translated}`, { cause: error });
+	}
 }
 
 let shimOnce: { symbols: LinuxShim & LinuxProofShim } | undefined;
