@@ -22,7 +22,7 @@ const REQUIRED = [
 	'!define APP_VERSION "0.1.0"',
 	`!define APP_ID "${ID}"`,
 	'OutFile "',
-	`InstallDir "$PROGRAMFILES64\\${NAME}"`,
+	`InstallDir "$LOCALAPPDATA\\Programs\\${NAME}"`,
 	"RequestExecutionLevel user",
 	"Page directory",
 	"Page instfiles",
@@ -46,7 +46,7 @@ async function fixture(): Promise<string> {
 /** `which` answers with a path; makensis writes its output so `stat` sees a file. */
 function fakeExec(hasTool: boolean): Exec {
 	return async (command) => {
-		if (command[0] === "which") {
+		if (command[0] === "which" || command[0] === "where") {
 			return hasTool
 				? { code: 0, stdout: `/usr/bin/${command[1]}\n`, stderr: "" }
 				: { code: 1, stdout: "", stderr: "" };
@@ -96,7 +96,7 @@ describe("buildNsis", () => {
 			const calls: string[][] = [];
 			const exec: Exec = async (command) => {
 				calls.push(command);
-				if (command[0] === "which") {
+				if (command[0] === "which" || command[0] === "where") {
 					return { code: 0, stdout: "/usr/bin/makensis\n", stderr: "" };
 				}
 				await writeFile(out, "MZ installer");

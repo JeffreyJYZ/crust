@@ -2,7 +2,7 @@
 
 Newest first, one line per entry. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow semver.
 
-`0.1.21` is the last published package version and the last `chore:` release commit; the last git tag is `v0.1.9`, so every version heading below is read from the release commit rather than a tag. The wave after `0.1.21` has no version and no tag, so it stays under `Unreleased` until the owner cuts one.
+`0.1.21` is the last published package version, the last `chore:` release commit and the last git tag (`v0.1.21`). The wave after it has no version and no tag, so it stays under `Unreleased` until the owner cuts one.
 
 ## Unreleased
 
@@ -22,6 +22,8 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `stronghold` plugin — `open`/`set`/`get`/`delete`/`keys`/`close`, PBKDF2-SHA256 at 600 000 iterations plus AES-256-GCM, and no plaintext in the file.
 - `fs.scope` — `list`/`allow`/`revoke` with grants persisted in `scope.json`, so a page can be granted a folder for longer than one launch.
 - `window` chrome commands — `setOpacity` and `setDecorations` alongside size, position, always-on-top, fullscreen, minimize, maximize and cursor.
+- `window.label` — answers which window the calling request came from, carried as `?window=<label>` on the window's URL and handed to the handler as `ctx.window`, so two pages on one bridge each read their own label and a page with no identity is refused by name.
+- `app.activate` config — `always` (the default), `first` or `never`, deciding whether a window create brings the app forward, which is what puts a window on the active Space and therefore into AppKit's accessibility tree.
 - `menu` plugin — `setAppMenu`/`showContext`/`reset`, plus `read()` which answers what `NSApp.mainMenu` actually holds.
 - `positioner` plugin — nine presets: center, four corners and four edge midpoints, each read from the screen the window is on.
 - `window-state` plugin — `save`/`restore`/`forget` plus `saveAll`/`restoreAll`/`forgetAll` across every tracked window.
@@ -37,15 +39,17 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `logging` plugin — `setLevel`/`level`/`write`/`tail` with a trace level and rotation at 1 MiB into `app.log.1`.
 - `dialog.save` — a save panel beside the open panel, shown as a sheet so an invoke issued while it is up is still answered.
 - Linux platform — `src/platform/linux/` drives GTK3 and WebKitGTK through `bun:ffi`, resolving every symbol by hand-written prototype through C-side `dlopen`/`dlsym`, with `createPlatform(config, backend)` injecting a fake for tests.
-- Windows platform — `src/platform/windows/` drives Win32 and WebView2 through seven C units joined in load order, with a named C helper per COM slot because a bare function pointer cannot reach one.
+- Windows platform — `src/platform/windows/` drives Win32 and WebView2 through ten C units joined in load order, with a named C helper per COM slot because a bare function pointer cannot reach one. The shim links nothing: TinyCC's PE import thunk jumped to `0xFFFFFFFFFFFFFFFF` on the first DLL call, so `12_win32.c` loads `kernel32`, `user32` and `ole32` with `LoadLibraryA` and binds twenty-five entry points with `GetProcAddress`, leaving only `_LoadLibraryA` and `_GetProcAddress` unresolved, and `shim_win32_ready()` names a missing export instead of calling a null pointer. The WebView2 loader is resolved the same way, so a machine without it costs one symbol rather than the whole shim.
 - `loadPlatform` now dispatches `darwin`, `linux` and `win32`, each arm importing its own barrel, with a named error for anything else.
 - TypeScript extensions — an `extensions` config key, `crust/extension` and `crust/extensions` exports, `crust build` embedding the imports plus `registry.register(…)` into the generated entry, and `crust dev` loading them from disk so the dev server runs the same files a build embeds.
-- `crust package --format dmg|appimage|nsis` and `crust notarize` — one line per format, exit 1 for a missing tool without throwing, so the other formats still build.
+- Zig, Rust and C extensions — `extensions/*.{zig,rs,c}` compiled to a dylib with `zig build-lib`, `rustc --crate-type cdylib` or `clang -dynamiclib`, emitted under the name `bun:ffi` later opens, with generated typed bindings and a `crust doctor` block naming a missing toolchain.
+- `crust package --format dmg|appimage|nsis`, `crust sign` and `crust notarize` — one line per format, exit 1 for a missing tool or certificate without throwing, so the other formats still build; `sign` refuses before reading the bundle rather than signing something it cannot verify.
 - `crust doctor` extensions block, reusing the same `describeExtensions` report the extensions command prints.
-- `examples/parity-probe` and `bun run e2e:parity` — a built app that proves twenty native surfaces with twenty-seven assertions, printing each surface's real answer.
+- `examples/parity-probe` and `bun run e2e:parity` — a built app that proves each native surface at runtime, printing the surface's real answer rather than that it links.
 - `bun run check:parity` — pins Tauri's official feature names against the parity rows, so a surface cannot vanish from the matrix unnoticed.
-- CI gained `gate (ubuntu)` and `gate (windows)` jobs: each installs or finds the real libraries and runs a smoke that opens a real window and pumps twice.
+- CI gained `gate (ubuntu)` and `gate (windows)` jobs: each installs or finds the real libraries and runs that platform's own smoke against them, so a missing symbol is a job failure rather than a claim.
 - `bun run e2e:linux` — a host-side driver that asks the OrbStack `ubuntu-sandbox` machine what it has, installs only the gap, streams the layer in, then runs the unit suite and the real-GTK smoke under `xvfb-run`.
+- `bun run e2e:package` — builds a real `.dmg` from a compiled app, mounts it, checks the one-drag `Applications` link, verifies the checksum with `hdiutil verify`, and proves `crust sign` refuses without a certificate while leaving the bundle's hash and seal untouched.
 - Docs — fifteen surface guides, `reference/platforms`, and the parity matrix at 42 rows.
 
 ### Changed
@@ -57,7 +61,7 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `fs` rewritten around `fs-scope.ts`; `shell` rewritten around `shell-args.ts`, `shell-stdin.ts` and `shell-stream.ts`; `updater` split into manifest, signature, node and install modules.
 - `menu` now reads back through `menu-read.ts` and `98_menu_read.c`, so the command answers AppKit's state rather than the request it sent.
 - `shortcuts` maps accelerators to Carbon key codes in `shortcut-keycodes.ts` and exposes a `dispatch` seam, which is what the parity probe fires.
-- The parity page went from 32 to 42 rows; the ten Tauri-less surfaces print as `unlisted 10` rather than failing the check.
+- The parity page went from 32 to 42 rows — 31 same, 8 via Bun, 3 partial, none module-only — and the ten Tauri-less surfaces print as `unlisted 10` rather than failing the check.
 - `crust build` embeds extensions in the generated entry, and a build with no extensions stays byte-identical to the pre-change wrapper.
 - Single-file mode now refuses a project that has extensions, naming the file it found and the `crust dev --dir <project>` command that can carry it, instead of dropping the extension silently.
 - `examples/parity-probe` proofs split by area (`proofs-window`, `proofs-keypress`, `proofs-system`, `proofs-update`, `proofs-data`, `proofs-io`, `proofs-state`), so a proof is a file rather than a growing `main.ts`.
@@ -68,17 +72,29 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `store.save` writes a temporary file and renames it, so a crash mid-write leaves the previous `store.json` intact instead of a truncated one the next read would quarantine.
 - `startCrashGuard` truncates the record before arming, so an earlier run's crash cannot be reported as this one's.
 - `downloads` and `fs.scope` resolve a destination before the containment check, so a sibling whose name merely starts with the data root is refused instead of accepted.
-- `crash-reporter` catches the guard's refusal at registration, so a compiled app answers its own named refusal instead of dying before a window exists.
+- `crash-reporter` catches the guard's refusal at registration, so an app answers a named refusal instead of dying before a window exists.
 - `dock.setBadge("")` no longer throws `bun:ffi cannot convert argument to 'ptr'`: `bytesOf` answers `{ address: 0, length: 0 }` for an empty label instead of handing `ptr()` a zero-length buffer, and the probe now prints `dock badge="…" read="…" cleared=true`.
-- A crust window now appears in AppKit's accessibility tree for other processes. AppKit lists only windows on the active Space, and a window joins that Space only when its app is active — while `-[NSApplication activate]` is silently refused for a process LaunchServices did not launch, which is how `crust dev` and the parity harness run. `window-create.ts` sends `-activateIgnoringOtherApps:` when the app is not already active, guarded on `isActive` so a second window does not pull the app forward; a directly-executed app cannot become active through `activate`, which is why the pre-14 call is the one used. Measured on the same window from a separate trusted process: `external=windows:0,children:-1` before, `external=windows:1,children:4` after.
+- A crust window now appears in AppKit's accessibility tree for other processes. AppKit lists only windows on the active Space, and a window joins that Space only when its app is active — while `-[NSApplication activate]` is silently refused for a process LaunchServices did not launch, which is how `crust dev` and the parity harness run. `window-create.ts` sends `-activateIgnoringOtherApps:` when the app is not already active, guarded on `isActive` so a second window does not pull the app forward; a directly-executed app cannot become active through `activate`, which is why the pre-14 call is the one used. Measured on the same window from a separate trusted process: `external=windows:0,children:-1` before, `external=windows:1,children:4` after. Because that activation takes focus whenever the app is not frontmost, the policy is now `app.activate`, defaulting to `always`.
 - The generated extension entry registered `undefined` — it emitted a default import and then passed `extension0.default` to `registry.register`; it now passes `extension0`, and a test executes the generated entry against the real registry so the shape cannot regress.
+- `crash-reporter` works inside a compiled binary, which is the only place it matters: `import.meta.path` is `/$bunfs/root/…` there, so the guard is now the app's own executable relaunched with `CRUST_CRASH_GUARD` in the environment, recognised before the single-instance lock touches argv. A real `SIGSEGV` produced `last-crash.json` with signal, code and address, both artefacts `0600`.
+- The single-file wrapper runs the guard check before importing the user's module, so a guard launch of a `crust build page.html` binary exits 0 having written nothing instead of evaluating the app a second time.
+- `updater.install` replaces only the bundle this process is running, resolved from `process.execPath`, and refuses a symlink even to its own bundle: `rename` replaces the link and leaves the app in place, so the old code answered `ok:true` having updated nothing. `relaunch` still accepts that symlink, because starting it does start the bundle.
+- `updater` can install a real update again: `download` verifies the archive's sha256 and signature, extracts it, and records both digests, so `install` compares the tree instead of trusting a path; zip only, by magic bytes, with zip-slip refused over the whole directory before a byte is written.
+- The Windows COM handler's vtable was a static initialiser holding code addresses, which an unrelocated read turns into `0xFFFFFFFFFFFFFFFF`; it is filled at run time now, because an assignment is not a relocation.
+- Windows slot 37 was documented as `Navigate`, but against the published `ICoreWebView2` declaration order `Navigate` is the fifth method and 37 is `GetBrowserProcessId`, so navigation wrote a process id over the URL. Every index is a named `SHIM_SLOT_*` with the order it was checked against, and a test re-derives each one from a transcribed method list.
+- The Windows controller is created inside the environment's completion callback, because `UI_E_WRONG_THREAD` (`0x802A000C`) is what `CreateCoreWebView2Controller` answers on any thread but the one that created the object — the frame that owns it is the callback, not the export that started the environment.
+- Every Windows vtable call was declared to return a 64-bit value while the method returns an `HRESULT`, so the undefined top half of RAX could read `S_OK` as a failure; the six calls that answer an `HRESULT` are `int` now, widened only where stored.
+- The shim's `cc()` answer — `{ symbols, close }` — was cast straight to the platform type, so every call was `undefined` and the smoke died on `shim_com_init`; one unwrap reads it now, and a test drops a symbol from the map to prove the guard bites.
 
 ### Security
 
+- The bridge's origin gate admits a request that carries the right token and no `Origin` at all, because WebKitGTK's `EventSource` sends none on a same-origin GET and refusing a null one killed the whole event stream on Linux; the token is the credential, a foreign `Origin` is still 403, and a missing token is still 401.
 - `network` matching folds both sides to lower case on darwin and win32, where the filesystem compares case-insensitively, so a `block` rule cannot be dodged by changing the case of a host or path; Linux keeps the byte-wise compare, because `/Etc/Hosts` and `/etc/hosts` are two files there.
-- A request URL at or over the handler's 2047-byte buffer is blocked and logged rather than matched on a truncated prefix.
-- `shell.spawn` matches the allowlist as basenames and requires a path-form program and every `cwd` to resolve inside the configured root, answering `program-outside-root` or `cwd-not-allowed` before any process exists.
-- `stronghold` refuses a store whose recorded KDF iteration count is not a positive integer before a key is derived from it.
+- A request URL at or over the handler's 2047-byte buffer is blocked and logged rather than matched on a truncated prefix, and the darwin adapter reads `NETWORK_URL_LIMIT + 1` bytes so the check sees every byte the handler holds — until then it compared an already-truncated string, so the fail-closed branch could never fire.
+- `shell.spawn` canonicalises the allow list once, so _what_ may run is decided by that list as an absolute real path and a `/tmp/echo` the page planted no longer satisfies `echo`; only a relative path is also held inside `cwdRoot`, and `program-not-allowed` or `cwd-not-allowed` answers before any process exists. Containment was tested first, which refused a program the host had allowed wherever it lives.
+- The `fs` scope store is not addressable from a page — the store's own canonical path is refused by name before the file is read — and `fs.scopeAllow` refuses unless the host built the plugin with `grants: "page"`, because the store is exactly where a page may write and a page-reachable grant is a page-reachable boundary.
+- `updater` installs only an artifact verified in the same run, takes the Ed25519 key from config rather than the page, restricts schemes to https with `file:` an explicit opt-in, and pins `install` and `relaunch` to this app's own bundle.
+- `stronghold` refuses a store whose recorded KDF iteration count is not a positive integer before a key is derived from it, and refuses one above `KDF_MAX_ITERATIONS` — the floor was there and the ceiling was not, so a crafted file could pin a derivation for as long as it liked.
 
 ### Removed
 
@@ -87,15 +103,16 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 ### Limits
 
-- Linux is proven on real GTK: `bun run e2e:linux` on `ubuntu-sandbox` (Ubuntu 25.10 arm64) prints `e2e:linux: PASS 8/8 assertions` — both sonames load, `gtk_init_check` returns 1, a real `GtkWindow` and `WebKitWebView` are created and shown, seven `g_main_context_iteration` slices run, C-side liveness still reads 1, and `quit()` ends the process with 0; the unit suite in that VM is `30 pass, 1 skip, 0 fail`.
-- What Linux still does not prove: no document is rendered (`about:blank`), so no page JS and no `invoke`; window-close pruning, multi-window and packaging are untested there.
-- Windows remains unproven on Win32: every test injects a fake backend, and no `user32`, `ole32` or WebView2 call in this tree has executed.
-- On Windows every vtable index is read from `WebView2.h`'s declaration order and none has been checked against a live object, and the hand-written `WNDCLASSEXW`/`MSG` sizes have no header to agree with.
-- The Windows CI smoke proves the window opens and pumps twice; it does not read a loaded document, run page JS or cross `invoke`, and it prints that in its own output.
-- Notarization is code-complete but unproven: it needs a Developer ID Application certificate and a `notarytool` credential, and it refuses before any bundle lookup rather than pretending.
+- Linux is proven end to end on real GTK3 + WebKitGTK 4.1 under Xvfb: `bun run e2e:linux` on `ubuntu-sandbox` (Ubuntu 25.10 arm64) prints `e2e:linux: PASS` with both sonames loading, `gtk_init_check` returning 1, a real `GtkWindow` and `WebKitWebView` shown, the document reaching `FINISHED` with its title read back through `webkit_web_view_get_title`, page JS running, `window.crust.invoke` answering through the app's own bridge, the event stream and `crust:ready` arriving, a failed load reported rather than swallowed, and `quit()` exiting 0; the unit suite is green on that machine.
+- What Linux still does not prove: window-close pruning, multi-window and packaging are untested there.
+- Windows is not yet green on CI. The `gate (windows)` job compiles the shim, creates the window, class, environment and controller on one thread, and then faults in `webview_attach` on a jump to `0xFFFFFFFFFFFFFFFF` — the value an unrelocated vtable slot reads as — so the hand-built COM object is the call still to prove; the macOS and Ubuntu gates pass.
+- On Windows every vtable index is derived from a transcribed `ICoreWebView2` declaration order and none has been checked against a live object, and the hand-written `WNDCLASSEXW`/`MSG` sizes have no header to agree with.
+- The Windows smoke prints every stage with its own `HRESULT` and the calling thread, so a failure names the call; it has not yet reached a loaded document, page JS or `invoke`.
+- Of the three installers only the `.dmg` is proven by artifact: `e2e:package` built one measuring 38.87 MiB on the run that proved it, `hdiutil verify` accepted it, and the mounted image carries one `Applications` link pointing at `/Applications`. `appimage` and `nsis` are real option builders with tests that refuse a missing tool by name, and neither has been built on its own platform.
+- Notarization is code-complete but unproven: it needs a Developer ID Application certificate and a `notarytool` credential, and both `crust sign` and `crust notarize` exit 1 before any bundle lookup rather than pretending, `sign` naming `CRUST_SIGNING_IDENTITY` as the variable to set.
 - `network` intercepts only requests under its own `crust-net` scheme; a page served from the bridge URL is not intercepted, and a `WKURLSchemeHandler` has no pass-through.
 - `findinpage.matches` is 0 or 1, never a total, because `WKFindResult` carries only `-matchFound`; `clear()` refuses naming the private `-_clearFindIndicator`.
-- `crash-reporter` refuses inside a compiled binary — the guard is a second Bun process needing a readable copy of its own file, so `startCrashGuard` answers `not-implemented` naming "a source checkout".
+- `crash-reporter` is registered only on macOS: the handler that writes the record is `platform/darwin/crash.ts`, and the runtime's non-darwin plugin list omits it, so a page on Linux or Windows has no `crash-reporter` command at all.
 - A physical key press reaching a Carbon hot key is unproven: the probe fires the adapter's `dispatch` seam, which proves the grab was accepted and the process-side chain, not the window server's table.
 - `downloads`, `findinpage` and `navigation` resolve their webview from `windowLabels()[0]`, so they act on the first window only; a second window is not covered.
 - `i18n.setLocale` is in-memory because macOS owns the language list; a single-file build carries no extensions, and now says so instead of dropping them.

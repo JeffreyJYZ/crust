@@ -39,6 +39,12 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 	["kernel32.dll", "MultiByteToWideChar", "no string reaches Win32, so no title and no URL"],
 	["kernel32.dll", "Sleep", "the WebView2 wait spins without yielding"],
 	["ole32.dll", "CoInitializeEx", "WebView2 cannot create its controller"],
+	["ole32.dll", "CoGetApartmentType", "the apartment a WebView2 call runs in cannot be read"],
+	[
+		"user32.dll",
+		"GetWindowThreadProcessId",
+		"the window's own thread cannot be compared with the caller's",
+	],
 	["WebView2Loader.dll", "CreateCoreWebView2EnvironmentWithOptions", "no WebView2 environment"],
 ];
 

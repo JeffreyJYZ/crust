@@ -3,8 +3,9 @@
  * uses it: no Win32 symbol can run on the machine this suite runs on, and an injected fake is the
  * only way the five `Platform` methods are testable at all.
  */
-import type { WindowsBackend, WindowsShim } from "./backend.ts";
+import type { WindowsBackend } from "./backend.ts";
 import type { WindowsRuntimeReport } from "./preflight.ts";
+import { fakeShim } from "./fake-shim.ts";
 
 export interface FakeOptions {
 	/** Override any probe field, so one fake covers a healthy and a broken machine. */
@@ -42,75 +43,14 @@ const HEALTHY: WindowsRuntimeReport = {
 	coreVersion: "120.0.2210.91",
 };
 
-/**
- * The UTF-8 a `cstring` argument carries, minus its terminator. The fake records readable call
- * names, so a test can still assert `window_new:Crust Test:900x640:crust-test` while the buffer
- * itself is checked in `cstring.test.ts`.
- */
-function text(value: Uint8Array): string {
-	return Buffer.from(value).toString("utf8").replace(/\0$/, "");
-}
-
+/** The real backend, with a shim that records instead of reaching Windows. */
 export function fakeBackend(options: FakeOptions = {}): FakeBackend {
 	const calls: string[] = [];
 	const exits: number[] = [];
 	const hwnds: number[] = [];
-	const open = new Set<number>();
 	const report: WindowsRuntimeReport = { ...HEALTHY, ...options.report };
-	let next = 100;
-
-	const shim: WindowsShim = {
-		shim_win32_ready: () => {
-			calls.push("win32_ready");
-			return options.win32Ready ?? 1;
-		},
-		shim_com_init: () => {
-			calls.push("com_init");
-			return options.comInit ?? 0;
-		},
-		shim_last_error: () => 87,
-		shim_register_class: (name) => {
-			calls.push(`register_class:${text(name)}`);
-			return options.classAtom ?? 1;
-		},
-		shim_pump: () => {
-			calls.push("pump");
-			return 0;
-		},
-		shim_post_quit: () => {
-			calls.push("post_quit");
-		},
-		shim_window_new: (title, width, height, className) => {
-			calls.push(`window_new:${text(title)}:${width}x${height}:${text(className)}`);
-			if (options.failWindow) return 0;
-			const hwnd = next++;
-			hwnds.push(hwnd);
-			open.add(hwnd);
-			return hwnd;
-		},
-		shim_window_is_open: (hwnd) => (open.has(Number(hwnd)) ? 1 : 0),
-		shim_window_set_title: (_hwnd, title) => {
-			calls.push(`set_title:${text(title)}`);
-			return 1;
-		},
-		shim_window_destroy: (hwnd) => {
-			calls.push("window_destroy");
-			open.delete(Number(hwnd));
-			return 1;
-		},
-		shim_window_client_num: (_hwnd, component) => (component === 2 ? 800 : 600),
-		shim_webview_new: (_hwnd, url) => {
-			calls.push(`webview_new:${text(url)}`);
-			return options.failWebView ? 0 : 1;
-		},
-		shim_webview_put_bounds: (_hwnd, width, height) => {
-			calls.push(`bounds:${width}x${height}`);
-			return 1;
-		},
-		shim_webview_close: () => {
-			calls.push("webview_close");
-		},
-	};
+	const open = new Set<number>();
+	const shim = fakeShim(options, calls, hwnds, open);
 
 	return {
 		calls,

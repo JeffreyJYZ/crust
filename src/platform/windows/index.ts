@@ -11,6 +11,7 @@ export {
 	type WindowsPlatformConfig,
 	absoluteUrl,
 	hresult,
+	objectStateName,
 } from "./platform-config.ts";
 export {
 	PREFLIGHT,

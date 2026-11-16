@@ -25,6 +25,14 @@ extern void *GetProcAddress(shim_h module, const char *name);
 static int (*MultiByteToWideChar)(unsigned int cp, unsigned int flags, const char *src, int srclen,
                                   shim_wchar *dst, int dstlen);
 static unsigned int (*GetLastError)(void);
+static unsigned int (*GetCurrentThreadId)(void);
+static unsigned int (*GetWindowThreadProcessId)(shim_h hwnd, unsigned int *processId);
+static unsigned long long (*GetTickCount64)(void);
+static unsigned long long (*VirtualQuery)(const void *address, void *buffer,
+                                          unsigned long long length);
+// `int`, not `shim_i64`: CoGetApartmentType returns a 32-bit HRESULT, and a wider declaration reads an
+// undefined top half of RAX — the same trap as the vtable calls.
+static int (*CoGetApartmentType)(int *aptType, int *aptQualifier);
 static void (*Sleep)(unsigned int ms);
 static shim_h (*LoadLibraryW)(const shim_wchar *name);
 static shim_h (*GetModuleHandleW)(const shim_wchar *name);
@@ -68,13 +76,46 @@ int shim_win32_ready(void);
 // ICoreWebView2, and this layer called slot 37 for a year of one run, which is
 // GetBrowserProcessId(UINT*) and silently did nothing.
 #define SHIM_SLOT_ENV_CREATE_CONTROLLER 3  // ICoreWebView2Environment::CreateCoreWebView2Controller
+#define SHIM_SLOT_IUNKNOWN_ADDREF 1        // IUnknown::AddRef — the refcount a borrowed object needs
 #define SHIM_SLOT_CONTROLLER_PUT_BOUNDS 6  // ICoreWebView2Controller::put_Bounds
+#define SHIM_SLOT_CONTROLLER_PUT_VISIBLE 4 // ICoreWebView2Controller::put_IsVisible
 #define SHIM_SLOT_CONTROLLER_CLOSE 24      // ICoreWebView2Controller::Close
 #define SHIM_SLOT_CONTROLLER_WEBVIEW 25    // ICoreWebView2Controller::get_CoreWebView2
+#define SHIM_SLOT_WEBVIEW_GET_SOURCE 4     // ICoreWebView2::get_Source
 #define SHIM_SLOT_WEBVIEW_NAVIGATE 5       // ICoreWebView2::Navigate
+#define SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING 6 // ICoreWebView2::NavigateToString
 
 // Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.
 int shim_webview_put_bounds(shim_h hwnd, double w, double h);
+
+// --- thread bookkeeping -----------------------------------------------------
+// `CreateCoreWebView2Controller` answered UI_E_WRONG_THREAD (0x802A000C, "this method can only be
+// called from the thread that created the object") while the environment call on the same code path
+// succeeded. Which thread each step ran on is therefore the measurement, not a guess: every step
+// records it and the probe prints them side by side.
+#define SHIM_THREAD_COM 0
+#define SHIM_THREAD_ENV_CALL 1
+#define SHIM_THREAD_ENV_CALLBACK 2
+#define SHIM_THREAD_CTRL_CALL 3
+#define SHIM_THREAD_CTRL_CALLBACK 4
+#define SHIM_THREAD_STEPS 5
+static unsigned int g_threads[SHIM_THREAD_STEPS];
+
+static void shim_note_thread(int step) {
+	if (step >= 0 && step < SHIM_THREAD_STEPS)
+		g_threads[step] = GetCurrentThreadId ? GetCurrentThreadId() : 0;
+}
+
+unsigned int shim_thread_at(int step) {
+	if (step < 0 || step >= SHIM_THREAD_STEPS) return 0;
+	return g_threads[step];
+}
+
+unsigned int shim_thread_id(void) { return GetCurrentThreadId ? GetCurrentThreadId() : 0; }
+
+// Defined in `32_env.c`: the controller is created inside the environment's completion callback,
+// because a WebView2 object may only be called from the frame that created it.
+void shim_controller_from_callback(void *env);
 
 // --- strings ---------------------------------------------------------------
 
@@ -99,6 +140,7 @@ shim_i64 shim_last_error(void) { return GetLastError ? (shim_i64)GetLastError() 
 // E_FAIL when the entry points did not resolve, which `shim_win32_ready` reports first.
 shim_i64 shim_com_init(void) {
 	if (!shim_win32_load()) return -2147467259LL;
+	shim_note_thread(SHIM_THREAD_COM);
 	return (shim_i64)CoInitializeEx(0, SHIM_COINIT_APARTMENTTHREADED);
 }
 

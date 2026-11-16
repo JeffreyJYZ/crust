@@ -96,12 +96,18 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 		}
 	}
 
-	const binaryBytes = (await stat(binaryPath)).size;
-	const assembled = await assembleApp({ ...options.app, binary: binaryPath, outDir });
+	const written = await compiledBinary(binaryPath);
+	if (written === undefined) {
+		throw new Error(
+			`bun wrote no binary at ${binaryPath}${process.platform === "win32" ? ` or ${binaryPath}.exe` : ""}`,
+		);
+	}
+	const binaryBytes = (await stat(written)).size;
+	const assembled = await assembleApp({ ...options.app, binary: written, outDir });
 
 	if (options.verbose !== false) {
 		console.log(
-			`binary    ${formatBytes(binaryBytes).padStart(9)}  ${binaryBytes} bytes  ${binaryPath}`,
+			`binary    ${formatBytes(binaryBytes).padStart(9)}  ${binaryBytes} bytes  ${written}`,
 		);
 		console.log(
 			`assembled ${formatBytes(assembled.assembledBytes).padStart(9)}  ` +
@@ -109,5 +115,16 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 		);
 	}
 
-	return { ...assembled, binaryPath, binaryBytes, entry: options.entry };
+	return { ...assembled, binaryPath: written, binaryBytes, entry: options.entry };
+}
+
+/**
+ * Bun appends `.exe` on Windows when the outfile carries no extension, so the path it actually wrote is read back rather than assumed — a wrong guess is an `ENOENT` on the one host where nobody can see the build.
+ */
+async function compiledBinary(path: string): Promise<string | undefined> {
+	for (const candidate of [path, `${path}.exe`]) {
+		const info = await stat(candidate).catch(() => undefined);
+		if (info?.isFile() === true && info.size > 0) return candidate;
+	}
+	return undefined;
 }

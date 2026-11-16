@@ -12,18 +12,18 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SHIM_CC_OPTIONS, tccCommand } from "./ffi.ts";
 import { PREFLIGHT } from "./preflight.ts";
-import { SHIM_PART_NAMES } from "./shim-source.ts";
+import { lf, readShimPart, SHIM_PART_NAMES } from "./shim-source.ts";
 
 const DIR = import.meta.dir;
 const SHIM = join(DIR, "shim");
 
 /** Every `.c` part, in the order the unit compiles. */
 function parts(): string[] {
-	return SHIM_PART_NAMES.map((name) => readFileSync(join(SHIM, name), "utf8"));
+	return SHIM_PART_NAMES.map(readShimPart);
 }
 
 const source = parts().join("\n");
-const binding = readFileSync(join(DIR, "ffi.ts"), "utf8");
+const binding = lf(readFileSync(join(DIR, "ffi.ts"), "utf8"));
 
 /** Win32 names the unit calls, as opposed to the two imports that do the resolving. */
 const RESOLVERS = ["LoadLibraryA", "GetProcAddress"];
@@ -62,9 +62,10 @@ describe("what the unit imports", () => {
 
 	test("every Win32 entry point is a pointer, never a call to an unresolved symbol", () => {
 		const pointers = declaredPointers();
-		// 20 in all: 5 kernel32, 14 user32 and ole32's CoInitializeEx, plus the loader's
-		// LoadLibraryW. Each one is bound in `12_win32.c`; none is an `extern`.
-		expect(pointers.length).toBe(20);
+		// 25 in all: 8 kernel32 (MultiByteToWideChar, GetLastError, GetCurrentThreadId, GetTickCount64,
+		// VirtualQuery, Sleep, LoadLibraryW, GetModuleHandleW), 15 user32 and ole32's CoInitializeEx +
+		// CoGetApartmentType. Each one is bound in `12_win32.c`; none is an `extern`.
+		expect(pointers.length).toBe(25);
 		expect(pointers).toContain("CreateWindowExW");
 		expect(pointers).toContain("PeekMessageW");
 		expect(pointers).toContain("CoInitializeEx");

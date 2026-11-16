@@ -31,6 +31,9 @@ int shim_win32_load(void) {
 	if (!g_kernel32) return 0;
 	SHIM_BIND(g_kernel32, MultiByteToWideChar);
 	SHIM_BIND(g_kernel32, GetLastError);
+	SHIM_BIND(g_kernel32, GetCurrentThreadId);
+	SHIM_BIND(g_kernel32, GetTickCount64);
+	SHIM_BIND(g_kernel32, VirtualQuery);
 	SHIM_BIND(g_kernel32, Sleep);
 	SHIM_BIND(g_kernel32, LoadLibraryW);
 	SHIM_BIND(g_kernel32, GetModuleHandleW);
@@ -51,10 +54,12 @@ int shim_win32_load(void) {
 	SHIM_BIND(g_user32, DispatchMessageW);
 	SHIM_BIND(g_user32, DefWindowProcW);
 	SHIM_BIND(g_user32, PostQuitMessage);
+	SHIM_BIND(g_user32, GetWindowThreadProcessId);
 
 	g_ole32 = LoadLibraryA("ole32.dll");
 	if (!g_ole32) return 0;
 	SHIM_BIND(g_ole32, CoInitializeEx);
+	SHIM_BIND(g_ole32, CoGetApartmentType);
 
 	g_win32_state = 1;
 	return 1;
