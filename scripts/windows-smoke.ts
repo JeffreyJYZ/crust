@@ -11,16 +11,17 @@
  * WebView2Loader.dll ships with the WebView2 SDK, not with the Evergreen runtime, so a runner can
  * have the runtime and still fail the probe. When that happens this script copies the loader out
  * of an Edge install into a temp dir and puts that dir on `PATH` — printing exactly what it did —
- * because the loader must be resolvable both by `cc()`'s `-lWebView2Loader` and at load time.
+ * because the loader has to be loadable at runtime, which is where the shim resolves it.
  *
  * What it does not claim: that a document loaded, that page JS ran, or that invoke crossed the
  * bridge. The window navigates to `about:blank` and nothing reads its content.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { createPlatform, defaultBackend, preflightError } from "../src/platform/windows/index.ts";
+import { linkReport, shimPath, tccCommand } from "../src/platform/windows/ffi.ts";
 import { Verdict } from "./e2e-harness.ts";
+import { findLoader, stageLoader } from "./windows/loader.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
 const USER_DATA = join(tmpdir(), "crust-smoke-webview2");
@@ -29,42 +30,13 @@ function message(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Every Edge install that might carry the loader, bounded to a fixed list of directories. */
-function loaderRoots(): string[] {
-	const bases = [
-		process.env["ProgramFiles(x86)"],
-		process.env.ProgramFiles,
-		process.env.LOCALAPPDATA,
-	]
-		.filter((base): base is string => Boolean(base))
-		.filter((base) => existsSync(base));
-	return bases.flatMap((base) => [
-		join(base, "Microsoft", "Edge", "Application"),
-		join(base, "Microsoft", "EdgeWebView", "Application"),
-	]);
-}
-
-/** The first `WebView2Loader.dll` in one of those installs, version subdirectories included. */
-function findLoader(): string | undefined {
-	for (const root of loaderRoots()) {
-		if (!existsSync(root)) continue;
-		const direct = join(root, "WebView2Loader.dll");
-		if (existsSync(direct)) return direct;
-		for (const entry of readdirSync(root)) {
-			const candidate = join(root, entry, "WebView2Loader.dll");
-			if (existsSync(candidate)) return candidate;
-		}
-	}
-	return undefined;
-}
-
-/** Copy the loader somewhere stable and make it resolvable by both tcc and LoadLibrary. */
-function stageLoader(found: string): string {
-	const dir = join(tmpdir(), "crust-webview2");
-	mkdirSync(dir, { recursive: true });
-	copyFileSync(found, join(dir, "WebView2Loader.dll"));
-	process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ""}`;
-	return dir;
+/**
+ * Why a compile failed, in the terms the linker used: the message, the exact command line the shim
+ * was compiled with, and the file each library resolved to. A missing library is what produces a
+ * wall of unresolved references, so it is named instead of being left to be inferred.
+ */
+function compileFailure(error: unknown): string[] {
+	return [message(error), tccCommand(shimPath()), ...linkReport()];
 }
 
 async function main(): Promise<number> {
@@ -100,7 +72,7 @@ async function main(): Promise<number> {
 		report.loader,
 		report.loader
 			? "WebView2Loader.dll is beside the executable or on PATH"
-			: "WebView2Loader.dll is absent — the shim's -lWebView2Loader cannot link without it",
+			: "WebView2Loader.dll is absent — the shim's LoadLibraryW cannot resolve without it",
 	);
 
 	// The probe names the runtime and the loader only; the shim's own compile is what proves each
@@ -114,9 +86,20 @@ async function main(): Promise<number> {
 	verdict.check("preflight", true, "the runtime and loader the shim needs are both present");
 
 	// 2. COM, the window class, then a real window and controller. A machine that refuses any of
-	//    these reports the refusal verbatim instead of a stack trace.
+	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *compile*
+	//    is the exception: it is a defect in crust, so it prints the command line and the library
+	//    each name resolved to, which is the difference between "16 unresolved references" and the
+	//    one library that was missing.
 	const platform = createPlatform({ appName: "crust-smoke", userDataDir: USER_DATA });
-	await platform.start();
+	try {
+		await platform.start();
+	} catch (error) {
+		const [first, ...rest] = compileFailure(error);
+		console.log(`unavailable: ${first ?? "the shim did not compile"}`);
+		for (const line of rest) console.log(`             ${line}`);
+		verdict.check("shim", false, first ?? "the shim did not compile");
+		return verdict.report("windows:smoke");
+	}
 	if (platform.unavailable) {
 		console.log(`unavailable: ${platform.unavailable}`);
 		verdict.check(
