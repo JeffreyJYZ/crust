@@ -32,6 +32,11 @@ extern void PostQuitMessage(int code);
 extern void Sleep(unsigned int ms);
 extern shim_i64 CoInitializeEx(void *reserved, unsigned int coinit);
 
+// kernel32, and the pair that reaches WebView2Loader.dll without linking it: `32_env.c` explains why
+// the loader is a runtime dependency rather than a link one.
+extern shim_h LoadLibraryW(const shim_wchar *name);
+extern void *GetProcAddress(shim_h module, const char *name);
+
 #define SHIM_WS_OVERLAPPEDWINDOW 0x00CF0000u
 #define SHIM_CW_USEDEFAULT ((int)0x80000000)
 #define SHIM_SW_SHOW 5
