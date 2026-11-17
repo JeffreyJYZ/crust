@@ -73,15 +73,45 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 | Crash reporter     | `crash-reporter.last/list/clear/install/uninstall`, records written by a second guard process                                                | same — the runtime starts the guard; a compiled binary re-runs itself in guard mode, and `install` arms the handlers |
 | Language           | `i18n.locale/setLocale/messages/translate` — catalogue, `{name}` interpolation, `_one`/`_other` plurals                                      | same — the catalogue is the app's to supply, and `setLocale` is in-memory because macOS owns the language list       |
 
+## Framework guarantees
+
+Every row above answers "can crust call this surface". These answer a different question — *who is
+allowed to* — which a matrix of surfaces cannot show, and which is why the capability model and the
+token boundary were both absent from this page for two revisions while the sweep stayed green.
+
+| Tauri                          | crust                                                                                                    | Status    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- | --------- |
+| Security / capabilities        | `security.capabilities` + `security.grants`, checked in the bridge before a handler runs                    | same      |
+| CSP                            | `security.csp`, and `DEFAULT_CSP` when absent: no inline script, no evaluated string, no framing           | same      |
+| Isolation pattern              | none — there is no second document between the page and the bridge                                         | absent    |
+| IPC transport                  | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all        | partial   |
+| Command authorisation          | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same      |
+| Updater signing                | Ed25519 over the manifest, sha256 over every artefact, a swapped-out key refused                          | same      |
+
+Three of these are worth stating plainly rather than in a cell:
+
+- **`partial` on the transport is the honest shape.** Tauri and Butter both register a custom scheme
+  on the WebView, so there is no port to ask and nothing to fetch. crust serves the page over
+  loopback, which is what lets one code path cover `crust dev` and a built app. The token now rides
+  the navigation URL instead of the document body, so a local process can no longer read it, but the
+  socket still exists and the boundary is the local account.
+- **`absent` on isolation is a real gap**, not a naming difference. Tauri's isolation pattern puts a
+  second document between the page and the IPC layer with a key the page cannot read, so script
+  injected into the app cannot issue commands. crust has no equivalent.
+- **Capabilities are authorisation, not a sandbox.** A window granted `fs:*` can write anywhere its
+  scope allows. What the model stops is a page calling what nobody granted it — that is the whole
+  claim, and the guides page says so in the same words.
+
 ## What this means
 
-- **same** — 32 rows
+- **same** — 36 rows
 - **via Bun** — 8 rows
-- **partial** — 2 rows
+- **partial** — 3 rows
+- **absent** — 1 row
 - **module only** — 0 rows
-- **total** — 42 rows
+- **total** — 48 rows, in two tables: 42 callable surfaces and 6 framework guarantees
 
-The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names.
+The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
 
 The ten rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
 

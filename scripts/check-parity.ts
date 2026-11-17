@@ -50,6 +50,21 @@ const OFFICIAL = [
 /** Mobile-only in Tauri, so they are not rows: barcode, biometric, geolocation, haptics, NFC. */
 const PAGE = "site/app/docs/reference/parity/page.mdx";
 
+/**
+ * Framework guarantees, not plugin surfaces. This list exists because the sweep went green while
+ * the capability model was missing entirely: `OFFICIAL` is Tauri's *plugin* list, and security is
+ * not a plugin there — it is a framework-level concept, so a matrix of callable surfaces could not
+ * show its absence. A concept may be answered `absent`; what it may not do is have no row.
+ */
+const CONCEPTS = [
+	"Security / capabilities",
+	"CSP",
+	"Isolation pattern",
+	"IPC transport",
+	"Command authorisation",
+	"Updater signing",
+] as const;
+
 const text = await Bun.file(PAGE).text();
 const rows = text
 	.split("\n")
@@ -61,16 +76,29 @@ const rows = text
 
 const seen = new Set(rows.map((row) => row.toLowerCase()));
 const missing = OFFICIAL.filter((feature) => !seen.has(feature.toLowerCase()));
+/**
+ * A concept row may answer `absent` — that is an honest answer. It may not be missing, because a
+ * row that does not exist is indistinguishable from a guarantee nobody thought to check.
+ */
+const missingConcepts = CONCEPTS.filter((concept) => !seen.has(concept.toLowerCase()));
 const extra = rows.filter(
-	(row) => !OFFICIAL.some((feature) => feature.toLowerCase() === row.toLowerCase()),
+	(row) =>
+		!OFFICIAL.some((feature) => feature.toLowerCase() === row.toLowerCase()) &&
+		!CONCEPTS.some((concept) => concept.toLowerCase() === row.toLowerCase()),
 );
 
-console.log(`parity rows: ${rows.length}  official: ${OFFICIAL.length}`);
+console.log(
+	`parity rows: ${rows.length}  official: ${OFFICIAL.length}  concepts: ${CONCEPTS.length}`,
+);
 if (missing.length > 0) {
 	console.log(`MISSING ${missing.length}: ${missing.join(", ")}`);
+}
+if (missingConcepts.length > 0) {
+	console.log(`MISSING CONCEPT ${missingConcepts.length}: ${missingConcepts.join(", ")}`);
 }
 if (extra.length > 0) {
 	console.log(`unlisted ${extra.length}: ${extra.join(", ")}`);
 }
-console.log(missing.length === 0 ? "check:parity  PASS" : "check:parity  FAIL");
-process.exit(missing.length === 0 ? 0 : 1);
+const failed = missing.length > 0 || missingConcepts.length > 0;
+console.log(failed ? "check:parity  FAIL" : "check:parity  PASS");
+process.exit(failed ? 1 : 0);
