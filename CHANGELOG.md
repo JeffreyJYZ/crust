@@ -2,9 +2,9 @@
 
 Newest first, one line per entry. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow semver.
 
-`0.1.21` is the last published package version, the last `chore:` release commit and the last git tag (`v0.1.21`). The wave after it has no version and no tag, so it stays under `Unreleased` until the owner cuts one.
+`0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
-## Unreleased
+## [0.1.22] — 2026-11-17
 
 ### Added
 
@@ -43,6 +43,7 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `loadPlatform` now dispatches `darwin`, `linux` and `win32`, each arm importing its own barrel, with a named error for anything else.
 - TypeScript extensions — an `extensions` config key, `crust/extension` and `crust/extensions` exports, `crust build` embedding the imports plus `registry.register(…)` into the generated entry, and `crust dev` loading them from disk so the dev server runs the same files a build embeds.
 - Zig, Rust and C extensions — `extensions/*.{zig,rs,c}` compiled to a dylib with `zig build-lib`, `rustc --crate-type cdylib` or `clang -dynamiclib`, emitted under the name `bun:ffi` later opens, with generated typed bindings and a `crust doctor` block naming a missing toolchain.
+- `bun run e2e:native` — compiles a Zig and a Rust extension with the real toolchain, loads both in `crust dev`, and waits for the page's `window.crust.invoke` to reach each dylib and come back, so a dylib that fails to dlopen shows as a missing answer instead of a passing argv assertion.
 - `crust package --format dmg|appimage|nsis`, `crust sign` and `crust notarize` — one line per format, exit 1 for a missing tool or certificate without throwing, so the other formats still build; `sign` refuses before reading the bundle rather than signing something it cannot verify.
 - `crust doctor` extensions block, reusing the same `describeExtensions` report the extensions command prints.
 - `examples/parity-probe` and `bun run e2e:parity` — a built app that proves each native surface at runtime, printing the surface's real answer rather than that it links.
@@ -50,6 +51,8 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - CI gained `gate (ubuntu)` and `gate (windows)` jobs: each installs or finds the real libraries and runs that platform's own smoke against them, so a missing symbol is a job failure rather than a claim.
 - `bun run e2e:linux` — a host-side driver that asks the OrbStack `ubuntu-sandbox` machine what it has, installs only the gap, streams the layer in, then runs the unit suite and the real-GTK smoke under `xvfb-run`.
 - `bun run e2e:package` — builds a real `.dmg` from a compiled app, mounts it, checks the one-drag `Applications` link, verifies the checksum with `hdiutil verify`, and proves `crust sign` refuses without a certificate while leaving the bundle's hash and seal untouched.
+- `bun run e2e:appimage` — builds a real AppImage on Linux and asserts the artefact rather than the line it prints: an ELF with the AppImage type-2 magic, an executable bit, a size floor, and the AppDir `--appimage-extract` gives back — `AppRun`, the binary it names, the desktop entry and the icon; `gate (ubuntu)` installs `appimagetool` and runs it.
+- `bun run e2e:package:nsis` — builds a real installer on Windows, runs it silently with `/S` into a temp directory, and asserts the installed executable and uninstaller, in its own `package (windows)` job so the WebView2 smoke can neither mask it nor be masked by it.
 - Docs — fifteen surface guides, `reference/platforms`, and the parity matrix at 42 rows.
 
 ### Changed
@@ -61,7 +64,7 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `fs` rewritten around `fs-scope.ts`; `shell` rewritten around `shell-args.ts`, `shell-stdin.ts` and `shell-stream.ts`; `updater` split into manifest, signature, node and install modules.
 - `menu` now reads back through `menu-read.ts` and `98_menu_read.c`, so the command answers AppKit's state rather than the request it sent.
 - `shortcuts` maps accelerators to Carbon key codes in `shortcut-keycodes.ts` and exposes a `dispatch` seam, which is what the parity probe fires.
-- The parity page went from 32 to 42 rows — 31 same, 8 via Bun, 3 partial, none module-only — and the ten Tauri-less surfaces print as `unlisted 10` rather than failing the check.
+- The parity page went from 32 to 42 rows — 32 same, 8 via Bun, 2 partial, none module-only — because crash reporting became `same`: the runtime starts the guard and a compiled binary re-runs its own executable in guard mode, so an app takes no step. The ten Tauri-less surfaces print as `unlisted 10` rather than failing the check.
 - `crust build` embeds extensions in the generated entry, and a build with no extensions stays byte-identical to the pre-change wrapper.
 - Single-file mode now refuses a project that has extensions, naming the file it found and the `crust dev --dir <project>` command that can carry it, instead of dropping the extension silently.
 - `examples/parity-probe` proofs split by area (`proofs-window`, `proofs-keypress`, `proofs-system`, `proofs-update`, `proofs-data`, `proofs-io`, `proofs-state`), so a proof is a file rather than a growing `main.ts`.
@@ -85,6 +88,15 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - The Windows controller is created inside the environment's completion callback, because `UI_E_WRONG_THREAD` (`0x802A000C`) is what `CreateCoreWebView2Controller` answers on any thread but the one that created the object — the frame that owns it is the callback, not the export that started the environment.
 - Every Windows vtable call was declared to return a 64-bit value while the method returns an `HRESULT`, so the undefined top half of RAX could read `S_OK` as a failure; the six calls that answer an `HRESULT` are `int` now, widened only where stored.
 - The shim's `cc()` answer — `{ symbols, close }` — was cast straight to the platform type, so every call was `undefined` and the smoke died on `shim_com_init`; one unwrap reads it now, and a test drops a symbol from the map to prove the guard bites.
+- `crust build` signed with `codesign` on every platform, so every Linux build died `Executable not found in PATH: codesign`; signing is darwin-only now, and the icon goes through `sips` only there, so a Linux artefact carries the PNG instead of a `.icns` only an Apple bundle reads.
+- The installer looked for its tool with `which`, which Windows does not have, so an installed NSIS was never found; it asks `where` on win32.
+- The NSIS script installed under `$PROGRAMFILES64` while requesting the user execution level, so no elevation ever happened and `SetOutPath` would fail for every real user; it installs under `LOCALAPPDATA` Programs now, the per-user shape VS Code and Discord use.
+- The installer's size line shelled out to `du -sk`, and a machine without `du` answers ENOENT, which killed the build; it falls back to a recursive logical sum.
+- `crust build` stat'd `dist/crust-app` while Bun appends `.exe` on Windows, so a successful compile read as a missing binary.
+- `put_Bounds` takes the `RECT` by reference — the signature says `put_Bounds(RECT bounds)` and a 16-byte struct crosses x64 by pointer, so the parameter is declared as a pointer and the address is passed, which is the call the ABI already makes; by value would leave the sequence to TinyCC's struct codegen.
+- A completion handler's out-parameter is borrowed and the shim never AddRef'd it: WebView2 drops its reference when `Invoke` returns, so the environment was freed under it and the controller read `0xffffffff` where its vtable belongs; `handler_invoke` AddRefs through the guarded vtable before storing, and stores nothing when the refcount is 0 or -1.
+- `shim_wchar target[2048]` is 4096 bytes of local, which with TinyCC's 32-byte scratch makes a 4128-byte frame — and at 4096 TinyCC stops emitting the inline prologue and emits `call __chkstk`, which nothing in this unit's link set defines, so the call landed in a relocation filled with `-1`. The crash reports named WebView2's DLL twice because of a shared `.pdata` record; the function that died was crust's own, at its first instruction. `frame.test.ts` now fails the gate for any local array that reaches 4096 bytes.
+- `CoInitializeEx` was declared to return 64 bits while an `HRESULT` is 32, so the undefined top half of RAX could read `S_OK` as a failure and `start()` could refuse a healthy machine; the widening stays at the export, and a test asserts a width verdict for every declared entry point.
 
 ### Security
 
@@ -105,10 +117,10 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 - Linux is proven end to end on real GTK3 + WebKitGTK 4.1 under Xvfb: `bun run e2e:linux` on `ubuntu-sandbox` (Ubuntu 25.10 arm64) prints `e2e:linux: PASS` with both sonames loading, `gtk_init_check` returning 1, a real `GtkWindow` and `WebKitWebView` shown, the document reaching `FINISHED` with its title read back through `webkit_web_view_get_title`, page JS running, `window.crust.invoke` answering through the app's own bridge, the event stream and `crust:ready` arriving, a failed load reported rather than swallowed, and `quit()` exiting 0; the unit suite is green on that machine.
 - What Linux still does not prove: window-close pruning, multi-window and packaging are untested there.
-- Windows is not yet green on CI. The `gate (windows)` job compiles the shim, creates the window, class, environment and controller on one thread, and then faults in `webview_attach` on a jump to `0xFFFFFFFFFFFFFFFF` — the value an unrelocated vtable slot reads as — so the hand-built COM object is the call still to prove; the macOS and Ubuntu gates pass.
-- On Windows every vtable index is derived from a transcribed `ICoreWebView2` declaration order and none has been checked against a live object, and the hand-written `WNDCLASSEXW`/`MSG` sizes have no header to agree with.
+- Windows is green on CI: `gate (windows)` compiles the shim, creates the window, class, environment and controller on one thread, navigates to `about:blank` and pumps, and `package (windows)` proves the installer, so the hand-built COM object is exercised rather than asserted.
+- On Windows every vtable index is derived from the published `ICoreWebView2` declaration order and is now exercised against a live object, and the hand-written `WNDCLASSEXW`/`MSG` sizes still have no header to agree with.
 - The Windows smoke prints every stage with its own `HRESULT` and the calling thread, so a failure names the call; it has not yet reached a loaded document, page JS or `invoke`.
-- Of the three installers only the `.dmg` is proven by artifact: `e2e:package` built one measuring 38.87 MiB on the run that proved it, `hdiutil verify` accepted it, and the mounted image carries one `Applications` link pointing at `/Applications`. `appimage` and `nsis` are real option builders with tests that refuse a missing tool by name, and neither has been built on its own platform.
+- All three installers are proven by artefact: `e2e:package` builds a `.dmg` on macOS, `e2e:appimage` an AppImage on Linux, and `e2e:package:nsis` an installer on Windows that installs silently and asserts the tree it leaves. NSIS writes no icon here, so the installer carries the stock one.
 - Notarization is code-complete but unproven: it needs a Developer ID Application certificate and a `notarytool` credential, and both `crust sign` and `crust notarize` exit 1 before any bundle lookup rather than pretending, `sign` naming `CRUST_SIGNING_IDENTITY` as the variable to set.
 - `network` intercepts only requests under its own `crust-net` scheme; a page served from the bridge URL is not intercepted, and a `WKURLSchemeHandler` has no pass-through.
 - `findinpage.matches` is 0 or 1, never a total, because `WKFindResult` carries only `-matchFound`; `clear()` refuses naming the private `-_clearFindIndicator`.
@@ -117,6 +129,8 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - `downloads`, `findinpage` and `navigation` resolve their webview from `windowLabels()[0]`, so they act on the first window only; a second window is not covered.
 - `i18n.setLocale` is in-memory because macOS owns the language list; a single-file build carries no extensions, and now says so instead of dropping them.
 - `minWidth`/`minHeight` do nothing on Windows (`WM_GETMINMAXINFO` is unhandled), and no DPI-awareness declaration exists in that layer, so bounds come from `GetClientRect` in physical pixels.
+- On Windows the shim keeps one global webview pointer beside its per-window table, so `Navigate` drives the last-attached webview, and closing a window neither decrements the count nor clears it, so eight closes end all attaching.
+- `crust build` has no native compile step, so a standalone binary looks for its Zig or Rust dylib under `$bunfs/root` and dies; native extensions are a `crust dev` feature until the bundle learns to carry them.
 
 ## [0.1.21] — 2026-11-15
 

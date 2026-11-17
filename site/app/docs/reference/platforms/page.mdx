@@ -18,6 +18,19 @@ What proves it: `bun run e2e:parity` builds a real app, launches it, and asserts
 
 `src/platform/linux/` is GTK3 plus WebKitGTK over `bun:ffi`, with no native artifact: the C shim is compiled at launch and reaches both libraries through `dlopen`.
 
+Three packages, and only one of them is a compiler dependency — the asymmetry is what costs people a first run:
+
+- **GTK3 and WebKitGTK 4.1** — `gtk3 webkit2gtk4.1` on Fedora, `libgtk-3-0 libwebkit2gtk-4.1-0` on Debian and Ubuntu. These are the runtime libraries and they are `dlopen`ed, so **no `-devel` package is needed for either**.
+- **The C development package** — `glibc-devel` on Fedora and openSUSE, `libc6-dev` on Debian and Ubuntu. `cc()` compiles the shim against libc, and linking wants the `libc.so` **linker script**, which only that package ships; the runtime package carries `libc.so.6` and no script. Installing GTK and WebKitGTK alone leaves the very first command failing.
+
+Without it TinyCC answers `library c not found`, which names no package at all — crust translates that message into the install line below rather than letting it through raw.
+
+```sh
+sudo dnf install gtk3 webkit2gtk4.1 glibc-devel        # Fedora
+sudo zypper install gtk3 webkit2gtk4.1 glibc-devel      # openSUSE
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libc6-dev   # Debian, Ubuntu
+```
+
 `bun run e2e:linux` is the proof. It syncs the layer to an OrbStack machine (`ubuntu-sandbox`, Ubuntu 25.10 aarch64), installs only what is missing there, runs the unit suite, then the real-GTK smoke under `xvfb-run`:
 
 ```

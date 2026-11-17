@@ -24,9 +24,11 @@ const REPO_ROOT = resolve(import.meta.dir, "../..");
  */
 const SLICE = ["src", "scripts", "package.json", "tsconfig.json", "bunfig.toml"];
 
-/** The exact apt line, quoted in the report, so the install is reproducible and auditable. */
+/**
+ * The exact apt line, quoted in the report, so the install is reproducible and auditable. `libc6-dev` is not a runtime library: `cc()` links the shim against libc, so the `libc.so` linker script it ships is required, and GTK plus WebKitGTK alone leave `library c not found`.
+ */
 export const APT_LINE =
-	"sudo apt-get install -y --no-install-recommends libgtk-3-0t64 libwebkit2gtk-4.1-0 xvfb curl unzip";
+	"sudo apt-get install -y --no-install-recommends libgtk-3-0t64 libwebkit2gtk-4.1-0 libc6-dev xvfb curl unzip";
 
 /** Bun, installed inside the machine: the Linux arm64 build, never the host's binary. */
 export const BUN_LINE = "curl -fsSL https://bun.sh/install | bash";
@@ -116,7 +118,7 @@ export async function probeRuntime(): Promise<Runtime> {
 	};
 }
 
-/** Install the GTK, WebKitGTK, Xvfb and archive tools the proof needs. Machine only. */
+/** Install GTK, WebKitGTK, the libc linker script, Xvfb and archive tools the proof needs. Machine only. */
 export function installRuntime(): Promise<Exec> {
 	return exec(`sudo apt-get update -qq && ${APT_LINE}`);
 }

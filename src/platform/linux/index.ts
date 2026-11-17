@@ -7,6 +7,9 @@ export { createPlatform, LinuxPlatform } from "./platform.ts";
 export {
 	dlopenProbe,
 	INSTALL_LINE,
+	LIBC_INSTALL_LINE,
+	LIBC_PKG,
+	linkError,
 	PREFLIGHT,
 	preflightError,
 	preflightErrors,

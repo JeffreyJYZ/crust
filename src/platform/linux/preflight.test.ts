@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { INSTALL_LINE, PREFLIGHT, preflightError, preflightErrors } from "./index.ts";
+import {
+	INSTALL_LINE,
+	LIBC_INSTALL_LINE,
+	LIBC_PKG,
+	linkError,
+	PREFLIGHT,
+	preflightError,
+	preflightErrors,
+} from "./index.ts";
 
 const [gtk] = PREFLIGHT;
 const [, webkit] = PREFLIGHT;
@@ -62,5 +70,38 @@ describe("preflightError", () => {
 	test.skipIf(process.platform === "linux")("the real probe reports the libraries absent", () => {
 		expect(preflightError(gtk)).toContain("libgtk-3.so.0 not loadable");
 		expect(preflightError(webkit)).toContain("libwebkit2gtk-4.1.so.0 not loadable");
+	});
+});
+
+/**
+ * The compiler-level dependency: `cc()` links libc, so the `libc.so` linker script from the C
+ * development package is required even though GTK and WebKitGTK are `dlopen`ed. A Fedora user met
+ * the raw `library c not found` on their first command, so these pin the package name in the text.
+ */
+describe("linkError", () => {
+	test("TinyCC's missing libc message becomes the package that ships the linker script", () => {
+		const text = linkError("library c not found") ?? "";
+		expect(text).toContain("glibc-devel");
+		expect(text).toContain("libc6-dev");
+		expect(text).toContain("library c not found");
+	});
+
+	test("the install line names a package per family, with the tool that installs it", () => {
+		expect(LIBC_PKG).toBe("glibc-devel");
+		expect(LIBC_INSTALL_LINE).toContain("apt install libc6-dev");
+		expect(LIBC_INSTALL_LINE).toContain("dnf install glibc-devel");
+		expect(LIBC_INSTALL_LINE).toContain("zypper install glibc-devel");
+	});
+
+	test("the -lc wording from a direct tcc call is the same failure", () => {
+		expect(linkError("tcc: error: unable to find library -lc")).toContain("glibc-devel");
+	});
+
+	test("says why GTK and WebKitGTK need no devel package", () => {
+		expect(linkError("library c not found")).toContain("dlopen");
+	});
+
+	test("a genuine C error keeps its own text and names no package", () => {
+		expect(linkError("shim.c:41: error: 'gtk_widget' undeclared")).toBeUndefined();
 	});
 });
