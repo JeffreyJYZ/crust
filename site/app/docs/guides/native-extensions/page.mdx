@@ -12,17 +12,21 @@ Sources are `*.zig`, `*.rs` and `*.c` under `native/`, absolute and sorted per t
 
 ## Compiling one file
 
-| source | compiler | argv                                                                         |
-| ------ | -------- | ---------------------------------------------------------------------------- |
-| `.zig` | `zig`    | `zig build-lib <file> -dynamic -femit-bin=<out>/<stem>.dylib -O ReleaseSafe` |
-| `.rs`  | `rustc`  | `rustc --crate-type cdylib -O -o <out>/lib<stem>.dylib <file>`               |
-| `.c`   | `clang`  | `clang -dynamiclib -o <out>/<stem>.dylib <file>`                             |
+| source | compiler | argv (`<ext>` is the host's: `.dylib`, `.so`, `.dll`)                         |
+| ------ | -------- | ----------------------------------------------------------------------------- |
+| `.zig` | `zig`    | `zig build-lib <file> -dynamic -femit-bin=<out>/<stem><ext> -O ReleaseSafe`   |
+| `.rs`  | `rustc`  | `rustc --crate-type cdylib -O -o <out>/lib<stem><ext> <file>`                 |
+| `.c`   | `clang`  | `clang -dynamiclib -o <out>/<stem><ext> <file>` on macOS, `-shared` elsewhere |
 
 ```ts
 const built = await compileExtension({ file: "native/math.c", outDir: "dist/native" });
 ```
 
-`rustc` is the only one that prefixes a cdylib with `lib`, and zig is given the `.dylib` suffix explicitly because it does not add one on macOS. The emitted name is the name `bun:ffi` will later dlopen, so the two halves cannot drift.
+`rustc` prefixes a cdylib with `lib` (except on Windows, where it does not), and zig is given the suffix explicitly because it does not add one. The emitted name is the name `bun:ffi` will later dlopen, so the two halves cannot drift — `dylibSuffix()` is the one place that decides it per platform.
+
+### The ABI marker
+
+A dylib rebuilt with a changed signature would otherwise bind silently to a declaration that no longer matches it. Pass `abiVersion` to `writeBindings` and the generated module declares a `crust_extension_abi` symbol and refuses a dylib that answers another number — the export the source must provide is `int crust_extension_abi(void) { return 1; }`. The module also exports `reload()`: it closes the handle and re-opens, so a rebuilt dylib answers without restarting the app.
 
 A missing compiler answers a value, not a throw:
 

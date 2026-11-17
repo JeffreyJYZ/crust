@@ -30,13 +30,11 @@ interface Plan {
 	source: string;
 	/** Extension name, which is also the generated module's name. */
 	name: string;
-	/** The emitted dylib's file name: `rustc` prefixes a cdylib with `lib`. */
-	dylib: string;
 }
 
 const PLAN: Plan[] = [
-	{ source: "clock.zig", name: "zigclock", dylib: "clock.dylib" },
-	{ source: "clock.rs", name: "rustclock", dylib: "libclock.dylib" },
+	{ source: "clock.zig", name: "zigclock" },
+	{ source: "clock.rs", name: "rustclock" },
 ];
 
 async function build(plan: Plan): Promise<boolean> {
@@ -48,7 +46,9 @@ async function build(plan: Plan): Promise<boolean> {
 	}
 	// `compileExtension` already emitted into `OUT`, and the generated module opens its dylib from
 	// its own directory, so the dylib and the module end up side by side with no copy in between.
-	await writeBindings({ outDir: OUT, name: plan.name, symbols: SYMBOLS, dylib: plan.dylib });
+	// The name is left to `writeBindings`, which uses the host's suffix — naming a `.dylib` here
+	// would point Linux and Windows at a file their compilers never wrote.
+	await writeBindings({ outDir: OUT, name: plan.name, symbols: SYMBOLS });
 	console.log(`  ${plan.name}  ${result.tool} -> ${result.output}`);
 	return true;
 }
