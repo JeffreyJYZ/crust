@@ -27,6 +27,11 @@ export function artifactName(target: Target): string {
 
 /** The target this machine builds natively and can therefore also execute. */
 export function hostTarget(): Target | undefined {
-	const key = `bun-${process.platform}-${process.arch}`;
+	// `process.platform` says `win32` and the release table says `bun-windows-x64`, so the
+	// key is not always `bun-<platform>-<arch>`: Windows was the one that never lined up, and
+	// a release job passing `--target bun-windows-x64` died on "no release target for
+	// win32-x64" before it compiled anything (2026-11-17).
+	const platform = process.platform === "win32" ? "windows" : process.platform;
+	const key = `bun-${platform}-${process.arch}`;
 	return key in TARGETS ? (key as Target) : undefined;
 }
