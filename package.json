@@ -28,7 +28,7 @@
 		"typecheck": "bun check",
 		"format": "bun fmt src scripts",
 		"format:check": "bun fmt --check src scripts",
-		"test": "bun test src/bridge src/plugins src/platform src/cli src/packaging scripts/release scripts/docs-reference.test.ts scripts/e2e-detail.test.ts scripts/e2e-parity-patterns.test.ts",
+		"test": "bun test src/bridge src/plugins src/platform src/cli src/packaging scripts/release scripts/docs-reference.test.ts scripts/e2e-detail.test.ts scripts/e2e-parity-patterns.test.ts scripts/butter-sweep.test.ts",
 		"e2e": "bun run scripts/e2e.ts",
 		"e2e:notes": "bun run scripts/e2e-notes.ts",
 		"e2e:window": "bun run scripts/e2e-window.ts",

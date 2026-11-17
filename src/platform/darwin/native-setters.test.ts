@@ -67,14 +67,17 @@ describe("navigation.loadUrl reaches -[WKWebView loadRequest:]", () => {
 			await Bun.sleep(400);
 
 			const adapter = darwinNavigationAdapter((l) => platform.webview(l ?? "main") ?? null);
-			console.log("LOADED=" + String(adapter.loadUrl?.("about:blank#native-proof")));
+			console.log("LOADED=" + String(adapter.loadUrl?.("about:blank?native=proof")));
 			// Read after the load, from the webview rather than from the adapter's own bookkeeping.
+			// The assertion is on the query, not the fragment: WebKit percent-encodes a hash in the
+			// URL it hands back as %23, so a fragment makes the expected string depend on the
+			// runner's WebKit build rather than on whether the load happened.
 			console.log("URL=" + String(adapter.state("main")?.url));
 			platform.stopPump();
 			process.exit(0);
 		`);
 		expect(out).toContain("LOADED=true");
-		expect(out).toContain("URL=about:blank#native-proof");
+		expect(out).toContain("URL=about:blank?native=proof");
 		expect(code).toBe(0);
 	}, 30_000);
 });

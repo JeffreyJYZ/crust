@@ -149,11 +149,47 @@ that wants Butter's exact clear-and-set timing cannot get it back.
   through `i18n:init({ dir })`; crust now matches it with
   `i18n.load({ directory })`, so the row is `same` rather than a gap.
 
+## Capabilities Butter has that crust deliberately does not
+
+Two rows the table above cannot cover, because they are not commands — they are how a Butter app is
+built. Both were read from Butter's own README and shim in this repo's clone, not assumed.
+
+| capability                    | Butter                                                              | crust                                                                                                     | verdict |
+| ----------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------- |
+| asset + IPC transport         | `butter://` custom protocol on the WebView; **no listening socket** | loopback HTTP on `127.0.0.1` with a bearer token on the navigation URL                                     | different, stated |
+| IPC payload path              | shared-memory ring buffer between the Bun host and a native child     | one process; `POST /_crust/invoke` over that loopback socket                                              | different, stated |
+
+Neither is a gap in a plugin, and neither is `partial`: crust's transport has a property Butter's does
+not (a single code path covers `crust dev` and a packaged app, because the page is served by the same
+bridge that answers it), and Butter's has one crust does not (with no socket there is nothing for a
+local process to fetch). The parity page states the transport row as `partial` for exactly this
+reason, and `site/app/docs/limits/page.mdx` states the security consequence: the boundary is the local
+account, not the process.
+
+**What crust would need to close it:** a page-serving URI scheme per platform
+(`register_uri_scheme_protocol` on WKWebView, `WebView2`'s `AddWebResourceRequestedFilter`), which is
+the one thing `AGENTS.md` records as a deliberate rejection — a scheme leaked into two layers once
+already, and a wrong one collides with an app's own deep links. Recorded here so the difference is a
+decision with a reason rather than an unnoticed hole.
+
 ## Re-checking this table
+
+The table is a document, and two `same` rows in this file turned out to be wrong — a native setter
+that did not exist, and a hand-written name list that re-tested its own assumptions. So the claim is
+now backed by a command, not by reading:
+
+```sh
+bun test scripts/butter-sweep.test.ts
+```
+
+That sweep brings up the **real** darwin platform with a live window, drives the commands this file
+names, and fails on `not-implemented` — the exact answer a hollow row produces. Its expectation comes
+from the plugin objects at run time, and its `SKIP` list requires a written reason per command (a
+skip whose reason says "not implemented" fails the test).
+
+For the full command sets, both sides can be printed:
 
 ```sh
 bun -e 'const m = await import("./src/plugins/index.ts"); for (const k of Object.keys(m)) { const p = m[k]; if (p && p.commands) console.log(p.name, Object.keys(p.commands).join(", ")); }'
 rg -o 'ctx\.on\("([^"]+)"' -r '$1' ~/dev/resources/butter-src/src/plugins/*/index.ts | sort -u
 ```
-
-The first prints the crust command set, the second Butter's. A row is stale the moment either list moves.
