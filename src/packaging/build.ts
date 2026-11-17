@@ -113,6 +113,13 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 		names: options.sidecars ?? [],
 		projectDir: options.projectDir ?? process.cwd(),
 		targetDir: dirname(assembled.executablePath),
+		// On macOS the manifest goes to `Contents/Resources`: a JSON file in `Contents/MacOS` is
+		// nested code to codesign and fails the ad-hoc signature with "code object is not signed
+		// at all". Linux and Windows are a flat directory, so the executable's own dir is used.
+		manifestDir:
+			process.platform === "darwin"
+				? join(dirname(dirname(assembled.executablePath)), "Resources")
+				: undefined,
 	});
 
 	if (options.verbose !== false) {
@@ -148,6 +155,12 @@ export async function copySidecars(options: {
 	names: readonly string[];
 	projectDir: string;
 	targetDir: string;
+	/**
+	 * Where the manifest goes. macOS passes `Contents/Resources`: codesign treats every file in
+	 * `Contents/MacOS` as nested code and refuses a JSON document there, so the manifest beside the
+	 * executable failed the ad-hoc sign on every packaged build.
+	 */
+	manifestDir?: string;
 }): Promise<void> {
 	for (const name of options.names) {
 		const source = resolveSidecar(options.projectDir, name);
@@ -167,9 +180,7 @@ export async function copySidecars(options: {
 	}
 	// The runtime plugin reads this manifest to learn which names were declared, so a
 	// page-spawned name that was not copied (or a stale name) is refused by name.
-	await writeFile(
-		join(options.targetDir, SIDECAR_MANIFEST),
-		JSON.stringify(options.names),
-		"utf8",
-	);
+	const manifestDir = options.manifestDir ?? options.targetDir;
+	await mkdir(manifestDir, { recursive: true });
+	await writeFile(join(manifestDir, SIDECAR_MANIFEST), JSON.stringify(options.names), "utf8");
 }

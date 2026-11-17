@@ -9,16 +9,26 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 /** Name of the manifest `crust build` writes beside the binary, listing every declared sidecar. */
 export const SIDECAR_MANIFEST = "crust-sidecars.json";
 
-/** Read the declared names from the build manifest; a missing or corrupt manifest declares none. */
+/**
+ * Read the declared names from the build manifest; a missing or corrupt manifest declares none.
+ *
+ * macOS keeps it in `Contents/Resources`, not `Contents/MacOS`: codesign treats every file beside
+ * the executable as nested code, and a JSON document there fails the ad-hoc sign with "code object
+ * is not signed at all". The executable's own directory is still searched first, so Linux and
+ * Windows (a flat directory) and an older bundle keep working.
+ */
 export function declaredSidecars(dir: string): string[] {
-	try {
-		const value: unknown = JSON.parse(readFileSync(join(dir, SIDECAR_MANIFEST), "utf8"));
-		return Array.isArray(value)
-			? value.filter((name): name is string => typeof name === "string")
-			: [];
-	} catch {
-		return [];
+	for (const candidate of [join(dir, SIDECAR_MANIFEST), join(dir, "..", "Resources", SIDECAR_MANIFEST)]) {
+		try {
+			const value: unknown = JSON.parse(readFileSync(candidate, "utf8"));
+			return Array.isArray(value)
+				? value.filter((name): name is string => typeof name === "string")
+				: [];
+		} catch {
+			// Try the next location; a missing manifest is "declares none", not an error.
+		}
 	}
+	return [];
 }
 
 /** A compiled binary carries its sidecars beside it; a dev process uses the project (cwd). */

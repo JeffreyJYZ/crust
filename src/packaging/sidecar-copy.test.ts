@@ -36,6 +36,28 @@ describe("copySidecars", () => {
 		expect(JSON.parse(await readFile(join(bundle, SIDECAR_MANIFEST), "utf8"))).toEqual([]);
 	});
 
+	/**
+	 * The bug CI found: a JSON document in `Contents/MacOS` is nested code to codesign, so the
+	 * ad-hoc sign failed on every packaged build with "code object is not signed at all" naming
+	 * `crust-sidecars.json`. macOS therefore writes the manifest to `Contents/Resources` while the
+	 * binaries still land beside the executable, which is where the plugin resolves them.
+	 */
+	test("a manifestDir keeps the sidecar beside the binary and the manifest in Resources", async () => {
+		const resources = join(bundle, "..", "Resources");
+		await copySidecars({
+			names: ["ffmpeg.sh"],
+			projectDir: project,
+			targetDir: bundle,
+			manifestDir: resources,
+		});
+		expect((await stat(join(bundle, "ffmpeg.sh"))).isFile()).toBe(true);
+		expect(JSON.parse(await readFile(join(resources, SIDECAR_MANIFEST), "utf8"))).toEqual([
+			"ffmpeg.sh",
+		]);
+		// And nothing named like the manifest sits beside the executable.
+		expect(await stat(join(bundle, SIDECAR_MANIFEST)).catch(() => undefined)).toBeUndefined();
+	});
+
 	test("a declared binary missing on disk fails by name", async () => {
 		try {
 			await copySidecars({ names: ["gone"], projectDir: project, targetDir: bundle });
