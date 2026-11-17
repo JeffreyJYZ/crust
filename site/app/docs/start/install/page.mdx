@@ -1,6 +1,37 @@
 # Install
 
-Four ways in: Homebrew, a checkout, the standalone executable, or a tagged `bunx`. Every one needs **macOS 13 (Ventura) or later on Apple silicon** and a working `bun --version`. Installing crust needs nothing else — no SDK, and no native artifact is built at install time. Building an app is the step that wants the Xcode command line tools, for `codesign`.
+Four ways in: a release binary, Homebrew, a checkout, or a tagged `bunx`. Every one needs a working
+`bun --version`. Installing crust needs nothing else — no SDK, and no native artifact is built at
+install time. Building a macOS app is the step that wants the Xcode command line tools, for
+`codesign`.
+
+## Download a binary
+
+One file per platform, built by the release workflow and attached to the tag that names it:
+
+| platform              | file                                  |
+| --------------------- | ------------------------------------- |
+| macOS, Apple silicon  | `crust-<version>-darwin-arm64`        |
+| macOS, Intel          | `crust-<version>-darwin-x64`          |
+| Linux, x86_64         | `crust-<version>-linux-x64`           |
+| Linux, arm64          | `crust-<version>-linux-arm64`         |
+| Windows, x86_64       | `crust-<version>-windows-x64.exe`     |
+
+**[Get the newest release →](https://github.com/JeffreyJYZ/crust/releases/latest)** — the release page
+lists the version, so no number here can go stale. The file is self-contained: the framework sources
+are embedded, and `init`, `doctor`, `dev`, `build` and `package` all run from it on a machine that has
+Bun and nothing else.
+
+```sh
+chmod +x crust-*-darwin-arm64
+./crust-*-darwin-arm64 init my-app
+cd my-app && bun install && ./crust-*-darwin-arm64 dev
+```
+
+A binary is not signed with a Developer ID, so macOS quarantines a downloaded one:
+`xattr -dr com.apple.quarantine ./crust-*` clears it. Windows may show SmartScreen for the same
+reason; there is no certificate to avoid it. Linux needs the GTK3 and WebKitGTK packages listed on
+the [platforms page](/docs/reference/platforms).
 
 **There is no npm package, and there is not going to be one.** `crust` in the root `package.json` is a workspace name, `crust init` pins the dependency as `link:<the checkout that ran init>`, and the `crust` name on npm belongs to an unrelated 2020 package — so `bun add crust`, `npm i -g crust`, and `bunx crust` outside a scaffolded app all fetch that stranger.
 
@@ -9,7 +40,7 @@ Four ways in: Homebrew, a checkout, the standalone executable, or a tagged `bunx
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.1.21
+crust --version                 # 0.1.23
 ```
 
 A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
@@ -39,7 +70,7 @@ bun run build:standalone        # writes dist/crust
 cd my-app && bun install && ./dist/crust dev
 ```
 
-One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (`build` and `sign` still want the Xcode command line tools for `codesign`, exactly as they do from a checkout.) A tagged release will attach one per platform as `crust-<version>-<os>-<arch>`; the release page is the authority for what a given version carries.
+One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (`build` and `sign` still want the Xcode command line tools for `codesign`, exactly as they do from a checkout.) This is the same file the [release page](https://github.com/JeffreyJYZ/crust/releases/latest) attaches per platform; building it yourself is how you get one for a target the workflow does not ship.
 
   </TabPanel>
 </Tabs>
@@ -47,7 +78,7 @@ One file with the framework sources embedded — `src/`, `templates/`, `tsconfig
 ## A tag, without cloning
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.21 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.23 init my-app
 cd my-app && bun install
 bun run dev
 ```
@@ -64,7 +95,7 @@ crust: unknown option --next
 run "crust --help" for usage
 ```
 
-Name a tag. `#v0.1.21` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
+Name a tag. `#v0.1.23` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
 
 ```sh
 rm -rf ~/.bun/install/cache/.bunx-501/crust@github@*

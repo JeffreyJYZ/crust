@@ -1,7 +1,8 @@
 # Parity with Tauri
 
-Tauri's feature list is cross-platform. crust is macOS 13+ on Apple silicon only, so this page
-compares against **Tauri's macOS column** and says plainly what is out of scope by design.
+Tauri's feature list is cross-platform. crust runs on macOS 13+, Linux and Windows, all three with
+the system WebView, so this page compares capability by capability and says plainly what is partial
+or absent.
 
 Measured 2026-11-15 against the tree at `v0.1.21`, and the ten plugin rows below it on 2026-11-16. A row marked _same_ means crust ships the
 capability; _partial_ names the piece that is absent; _via Bun_ means the backend half already has it
@@ -18,7 +19,7 @@ name a limitation that registration cannot remove.
 - Tauri's mobile-only features: barcode scanner, biometric, geolocation, haptics, NFC.
 - A Rust plugin ABI. crust plugins are TypeScript objects registered on the `App`.
 
-Windows and Linux are no longer out of scope by design — both have a `Platform`, and Linux is proven on real GTK while Windows has never run. The status of each is on the [platforms page](/docs/reference/platforms).
+Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK, Windows by a `windows-latest` runner executing `CoInitializeEx`, `RegisterClassExW` and a real WebView2 controller. The status of each is on the [platforms page](/docs/reference/platforms).
 
 ## Core
 

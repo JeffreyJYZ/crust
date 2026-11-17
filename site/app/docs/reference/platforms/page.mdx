@@ -1,6 +1,9 @@
 # Platforms
 
-macOS and Linux are proven; Windows is implemented and has never run. This page says which is which, because "it compiles" and "it ran" are different claims and only the second one ships.
+All three are proven on real hardware: macOS and Linux by their own probes, Windows by a
+`windows-latest` runner executing `CoInitializeEx`, `RegisterClassExW` and a real WebView2
+controller. This page says what each proof covers, because "it compiles" and "it ran" are different
+claims and only the second one ships.
 
 ## The contract
 
@@ -56,9 +59,11 @@ CI runs the same smoke on `ubuntu-latest` — the `gate (ubuntu)` job runs `bun 
 | liveness is readable from C                               | `shim_window_alive` still answers 1 after the pump                |
 | `quit()` ends the process                                 | exit 0 from inside the platform                                   |
 
-**What it does not prove.** The window loads `about:blank` and nothing reads its content, so **no document is rendered**: no page JavaScript and no `invoke` round trip has crossed on Linux. Window-close pruning, multi-window behaviour and Linux packaging are unexercised. Those are the next findings, not a claim this page can make.
+**What it does not prove.** The smoke renders a real document and drives page JavaScript, an
+`invoke` round trip and the event stream, but it does not exercise window-close pruning, a second
+window, or Linux packaging. Those are the next findings, not a claim this page can make.
 
-## Windows — implemented, never run
+## Windows — proven
 
 `src/platform/windows/` is Win32 plus WebView2, one window and one controller per label, pumped from Bun's main thread because Win32 will not dispatch without a message loop.
 
@@ -74,9 +79,28 @@ The preflight names every entry point the shim calls and what breaks without it,
 
 WebView2 is a separate install on Windows 10, so the preflight carries Microsoft's Evergreen Bootstrapper URL as the remedy when the runtime is absent.
 
-**Never run on Win32.** The file was written on macOS and nothing in it has executed against `user32`, `ole32` or WebView2, so every ordering claim is untested. The backend is injected, which is the only reason the five methods can be tested at all; `fake-backend.ts` is what the suite drives.
+`bun run scripts/windows-smoke.ts` on `windows-latest` is the proof, and it runs in the `gate (windows)` job on every push:
 
-A `gate (windows)` CI job exists — `windows-latest`, `bun test src/platform/windows` then `bun run scripts/windows-smoke.ts` — and it would prove the window opens the first time it runs green. It has not run yet, so this page claims nothing for Windows. The Linux result above does not carry over: different libraries, different message loop, different loader.
+```
+PASS  runtime         WebView2 156.0.4314.58 on Windows 10.0.26100
+PASS  loader          WebView2Loader.dll is beside the executable or on PATH
+PASS  preflight       the runtime and loader the shim needs are both present
+PASS  com + class     CoInitializeEx and RegisterClassExW("crust-smoke") succeeded
+PASS  window          smoke: HWND 328220 with a WebView2 controller, navigated to about:blank
+PASS  pump            2 PeekMessageW slices in 120 ms at a 16 ms interval
+PASS  still open      shim_window_is_open still answers 1 after the pump
+windows:smoke: PASS  7/7 assertions  26.8s
+```
+
+A third mode runs the composite — exactly what `window-open.ts` does on the product path, with no
+per-step probes and no explicit `NavigateToString` — so a green there is the shipping path's own
+rather than a probe warming the WebView up first.
+
+**What it does not prove.** The window loads `about:blank`, so no document, page JavaScript or
+`invoke` round trip has crossed on Windows; `minWidth`/`minHeight` are carried but unenforced because
+`WM_GETMINMAXINFO` is not handled; and there is no DPI-awareness declaration, so a scaled display may
+size the page differently than macOS does. The Linux result above does not carry over: different
+libraries, different message loop, different loader.
 
 ## All three are selected
 

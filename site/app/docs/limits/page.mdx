@@ -7,8 +7,10 @@ What crust does not do, stated before you build on it. Each line is a boundary, 
 | limit                       | detail                                                                                                                              |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | macOS 13 (Ventura) or later | the shim links AppKit, WebKit and Foundation by name; the Homebrew formula declares `depends_on macos: :ventura`                    |
-| Apple silicon only          | there is no Intel, Windows or Linux path                                                                                            |
+| x64 and arm64 only          | no riscv64 — Bun ships no such binary, so there is no target to build even if the platform layer would run                          |
 | no Xcode required           | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
+| Linux needs two packages    | GTK3 and WebKitGTK are `dlopen`ed at launch, and the C development package supplies the `libc.so` linker script the shim links against |
+| Windows needs WebView2      | it ships with Windows 11 and is an Evergreen update on 10; absent, the preflight says so before the first window                   |
 
 ## Distribution
 

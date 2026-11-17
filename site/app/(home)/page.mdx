@@ -57,8 +57,9 @@ model.
 
 ## What it will not do
 
-macOS arm64 only. Ad-hoc signing by default, so a bundle you hand someone else is refused by
-Gatekeeper until it carries a Developer ID. Intel, Windows and Linux are out of scope.
+Ad-hoc signing by default, so a bundle you hand someone else is refused by Gatekeeper until it
+carries a Developer ID. Linux needs GTK3 and WebKitGTK installed; Windows needs the WebView2 runtime,
+which ships with Windows 11 and updates itself on 10.
 
 The [limits page](/docs/limits) states each one, and the [evidence
 page](/docs/evidence) says what has been measured rather than assumed.
