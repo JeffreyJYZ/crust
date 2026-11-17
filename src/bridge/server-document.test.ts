@@ -115,4 +115,28 @@ describe("dev origin", () => {
 		const response = await fetch(`${bridge.url}/`, { headers: { origin: ownOrigin(bridge) } });
 		expect(response.headers.get("access-control-allow-origin")).toBeNull();
 	});
+
+	test("a foreign Origin cannot read the document, so it cannot read the token", async () => {
+		const bridge = start({
+			handlers: [testPlugin],
+			indexHtml: "<html><head></head><body></body></html>",
+		});
+		const response = await fetch(`${bridge.url}/`, {
+			headers: { origin: "http://evil.example" },
+		});
+		expect(response.status).toBe(403);
+		expect(await response.text()).not.toContain(bridge.token);
+	});
+
+	test("a client-side route with a foreign Origin is refused too", async () => {
+		const bridge = start({
+			handlers: [testPlugin],
+			indexHtml: "<html><head></head><body></body></html>",
+		});
+		const response = await fetch(`${bridge.url}/settings`, {
+			headers: { origin: "http://evil.example" },
+		});
+		expect(response.status).toBe(403);
+		expect(await response.text()).not.toContain(bridge.token);
+	});
 });

@@ -24,6 +24,10 @@ export interface PowerState {
 	/** 0–100, or null when the machine has no battery (a desktop is on wall power). */
 	batteryPercent: number | null;
 	lowPowerMode: boolean;
+	/** False when the native read never reached the OS; the fields above are placeholders. */
+	available?: boolean;
+	/** Why the read failed, present when `available` is false. */
+	reason?: string;
 }
 
 /** One assertion attempt: the id it holds, or the step that refused it. */
@@ -43,7 +47,7 @@ export interface SleepRelease {
 /** The native half as this module hands it out; `crust:power` takes it structurally. */
 export interface DarwinPowerAdapter {
 	state(): PowerState;
-	idleSeconds(): number;
+	idleSeconds(): number | { available: false; reason: string };
 	preventSleep(reason: string): SleepAssertion;
 	allowSleep(): SleepRelease;
 }
@@ -106,13 +110,21 @@ export function darwinPowerAdapter(): DarwinPowerAdapter {
 		state: () => {
 			const unit = compiled();
 			if (typeof unit === "string") {
-				return { onAc: false, batteryPercent: null, lowPowerMode: false };
+				// Fabricated readings are worse than a refusal: a machine on wall power would be
+				// reported as running on battery, and a caller has no way to tell the two apart.
+				return {
+					onAc: false,
+					batteryPercent: null,
+					lowPowerMode: false,
+					available: false,
+					reason: unit,
+				};
 			}
 			return readState(unit);
 		},
 		idleSeconds: () => {
 			const unit = compiled();
-			if (typeof unit === "string") return 0;
+			if (typeof unit === "string") return { available: false, reason: unit };
 			const seconds = Number(unit.symbols.crust_power_idle_seconds() ?? 0);
 			return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
 		},

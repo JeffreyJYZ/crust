@@ -34,15 +34,39 @@ export function installInvoke(
 		}
 	}
 
-	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep.
+	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep; a data
+	// object that carried a tag key arrives as `{ __crustLiteral: … }` and is handed back whole.
 	const fromBase64 = (text: string): Uint8Array =>
 		Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
 
+	// `Object.defineProperty`, because a key literally named `__proto__` would otherwise set the
+	// prototype instead of surviving as a field.
+	const put = (out: any, key: string, value: any) => {
+		Object.defineProperty(out, key, {
+			value,
+			enumerable: true,
+			writable: true,
+			configurable: true,
+		});
+	};
+
 	const revive = (value: any, depth: number): any => {
 		if (depth > 1 || value === null || typeof value !== "object") return value;
+		if (
+			typeof value.__crustLiteral === "object" &&
+			value.__crustLiteral !== null &&
+			!Array.isArray(value.__crustLiteral)
+		) {
+			// Real data that merely carried a tag key. Walk its *values* one level down, so the
+			// object itself is never read as a tag while a genuine binary inside it still revives.
+			const literal = value.__crustLiteral;
+			const out: any = {};
+			for (const key of Object.keys(literal)) put(out, key, revive(literal[key], depth + 1));
+			return out;
+		}
 		if (typeof value.__crustBytes === "string") return fromBase64(value.__crustBytes);
 		const out: any = Array.isArray(value) ? [] : {};
-		for (const key of Object.keys(value)) out[key] = revive(value[key], depth + 1);
+		for (const key of Object.keys(value)) put(out, key, revive(value[key], depth + 1));
 		return out;
 	};
 
@@ -61,6 +85,11 @@ export function installInvoke(
 				window: label ?? null,
 			}),
 		});
+		// A completed HTTP response is a handshake even when it is an error: the page has learned
+		// the bridge is reachable, and a `ready` that never settles on a stale token or an unmounted
+		// plugin is a hang the page cannot recover from. A transport throw stays pending — the
+		// stream can still open and answer.
+		onAnswer();
 		const text = await response.text();
 		let body: any;
 		try {
@@ -81,7 +110,6 @@ export function installInvoke(
 				typeof error.requires === "string" ? error.requires : undefined,
 			);
 		}
-		onAnswer();
 		return revive(body.result, 0);
 	};
 }

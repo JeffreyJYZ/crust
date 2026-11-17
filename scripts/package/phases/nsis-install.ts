@@ -96,22 +96,24 @@ export async function installPhase(
 		.text()
 		.catch(() => "");
 	const installDir = `InstallDir "$LOCALAPPDATA\\Programs\\${built.name}"`;
+	// The payload is one named file, not the directory: copying `dist` would ship the
+	// macOS `.app`, stray AppImages and earlier installers into a Windows install.
 	verdict.check(
 		"script",
-		scriptText.includes(installDir) && scriptText.includes(`File /r "${built.dist}\\*.*"`),
+		scriptText.includes(installDir) && scriptText.includes(`File "${built.binary}"`),
 		scriptText.length === 0
 			? `no script at ${built.script}`
 			: scriptText.includes(installDir)
-				? `the script installs under $LOCALAPPDATA, which the user level can write`
+				? `the script installs under $LOCALAPPDATA and carries only the binary`
 				: `the script has no ${installDir} line`,
 	);
-	// `File /r` copies the directory the script sits in, so a script inside it ships
-	// itself inside the installer it defines.
+	// The installer must not embed itself: a script or setup `.exe` inside the payload
+	// directory would ship itself inside the installer it defines.
 	verdict.check(
 		"script dir",
 		!built.script.startsWith(`${built.dist}\\`) && !built.script.startsWith(`${built.dist}/`),
 		built.script.startsWith(`${built.dist}\\`)
-			? `${built.script} is inside ${built.dist}, so File /r ships it`
+			? `${built.script} is inside ${built.dist}, so it would ship inside itself`
 			: `${built.script} sits outside ${built.dist}`,
 	);
 

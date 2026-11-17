@@ -178,7 +178,7 @@ src/ui/             the markup: Toolbar, NoteList, Editor, StatusBar, Diagnostic
 src/notes.tsx       note rules shared by the page and its self-check
 src/bridge.tsx      the typed window.crust surface this app uses
 src/selfcheck.tsx   the run behind DOGEAR_SELFCHECK=1: eleven steps, then done
-src/selfcheck/      checks.tsx (the harness), steps.tsx (1-8), panels.tsx (9-10)
+src/selfcheck/      checks.tsx (the harness), steps.tsx (1-9), panels.tsx (10-11)
 src/styles/         base, sidebar, editor, status — imported in that order
 vite.config.ts      React + the crust plugin, port pinned to dev.url
 ```

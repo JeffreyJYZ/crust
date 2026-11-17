@@ -28,6 +28,12 @@ export interface Platform {
 	createWindow(options: WindowOptions): WindowHandle;
 	window(label: string): WindowHandle | undefined;
 	quit(): void;
+	/**
+	 * Every label the platform still holds open. Optional because it is the honest answer to "is
+	 * anything still on screen": `window.create` opens windows under labels the config never names,
+	 * so a platform that omits this is watched by its config windows only.
+	 */
+	windowLabels?(): string[];
 }
 
 export type AppEvent = "ready" | "window-all-closed";

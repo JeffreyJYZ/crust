@@ -1,6 +1,6 @@
 /**
  * The seam nothing else checks: `bun:ffi` places values by the JSON-style argument list in `index.ts`, so adding a C parameter without updating that list shifts every argument by one — no error, no crash, just the wrong value in the wrong place.
- * This cost a real defect: a four-argument call to the five-argument `shim_open_panel` put `allowMultiple` into `runModal` and opened a modal file picker inside the test suite. Both sides may be split across files, so the test finds them instead of naming one path.
+ * This cost a real defect: a four-argument call to the five-argument `shim_open_panel` put `allowMultiple` into `runModal` and opened a modal file picker inside the test suite. Both sides are split across files, so the test walks every C source and every binding module instead of naming one path.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -73,11 +73,12 @@ function declaredArities(source: string): Map<string, number> {
 }
 
 /**
- * Every C source under this directory that defines a `shim_*` function, joined
- * in path order. One file or several parts both read as one unit, which is what
- * `cc()` compiles.
+ * Every C source under this directory, joined in path order. The units use
+ * several prefixes (`shim_*`, `tray_*`, `crust_notification_*`, `menu_api_*`),
+ * and a binding for any of them must be checked — filtering by one prefix is
+ * how the old guard missed 27 of 28 binding files.
  */
-function shimCSource(): string {
+function cSource(): string {
 	const files: string[] = [];
 	const walk = (dir: string): void => {
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -89,30 +90,39 @@ function shimCSource(): string {
 	walk(DIR);
 	const parts = files
 		.map((path) => [path, readFileSync(path, "utf8")] as const)
-		.filter(([, source]) => /\bshim_[a-z_]*\s*\(/.test(source))
 		.sort(([left], [right]) => left.localeCompare(right));
 	if (parts.length === 0) throw new Error("crust: no C source defines the shim functions");
 	return parts.map(([, source]) => source).join("\n");
 }
 
-/** The module holding the shim's `symbols: { … }` block, whatever it is called. */
-function bindingSource(): string {
+/** Every binding module under this directory, not just the one with `shim_window_new`. */
+function bindingSources(): string[] {
 	const candidates = readdirSync(DIR)
 		.filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
 		.sort();
-	for (const name of candidates) {
-		const source = readFileSync(join(DIR, name), "utf8");
-		if (source.includes("symbols: {") && source.includes("shim_window_new")) return source;
-	}
-	throw new Error("crust: no module declares the shim bindings");
+	const sources = candidates
+		.map((name) => readFileSync(join(DIR, name), "utf8"))
+		.filter((source) => source.includes("symbols: {"));
+	if (sources.length === 0) throw new Error("crust: no module declares FFI bindings");
+	return sources;
 }
 
-const shimC = shimCSource();
-const indexTs = bindingSource();
+const shimC = cSource();
+const bindings = bindingSources();
 
 describe("bun:ffi declarations match the C prototypes", () => {
 	const c = cArities(shimC);
-	const declared = declaredArities(indexTs);
+	const declared = new Map<string, number>();
+	const conflicts: string[] = [];
+	for (const source of bindings) {
+		for (const [name, arity] of declaredArities(source)) {
+			const earlier = declared.get(name);
+			if (earlier !== undefined && earlier !== arity) {
+				conflicts.push(`${name}: ${earlier} in one binding, ${arity} in another`);
+			}
+			declared.set(name, arity);
+		}
+	}
 
 	test("the parser saw the C functions it is meant to check", () => {
 		// If this fails the test is worthless even when it reports no mismatch.
@@ -128,6 +138,20 @@ describe("bun:ffi declarations match the C prototypes", () => {
 		expect(c.get("shim_save_panel")).toBe(4);
 		expect(c.get("shim_webview_load")).toBe(2);
 		expect(c.get("shim_send_p0")).toBe(2);
+	});
+
+	test("the guard read every binding file, not just index.ts", () => {
+		// Each of these is declared outside index.ts — exactly the files the old
+		// one-file guard skipped — so their presence is the proof the walk works.
+		expect(bindings.length).toBeGreaterThanOrEqual(8);
+		expect(declared.get("shim_clipboard_read")).toBe(2);
+		expect(declared.get("menu_api_item")).toBe(6);
+		expect(declared.get("tray_set_title")).toBe(3);
+		expect(declared.get("crust_notification_post")).toBe(3);
+	});
+
+	test("no symbol is declared twice with different arities", () => {
+		expect(conflicts).toEqual([]);
 	});
 
 	test("every declared symbol exists in the C file", () => {

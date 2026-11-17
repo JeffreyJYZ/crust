@@ -88,6 +88,26 @@ int shim_window_is_miniaturized(obj_t win) {
 	    win, sel_registerName("isMiniaturized"));
 }
 
+// -isVisible and -isMiniaturized cannot tell a closed window from one ordered
+// out by Cmd+H: both read 0/0. Membership in -[NSApplication windows] can —
+// -close removes the window from that array immediately — so the liveness rule
+// gates on this. Preflight already verifies NSApplication/windows, NSArray/count
+// and NSArray/objectAtIndex:, the three selectors sent here.
+int shim_window_in_app_windows(obj_t app, obj_t win) {
+	if (!app || !win) return 0;
+	if (!class_getInstanceMethod(object_getClass(app), sel_registerName("windows"))) return 0;
+	obj_t list = ((obj_t (*)(void *, void *))objc_msgSend)(app, sel_registerName("windows"));
+	if (!list) return 0;
+	unsigned long long n =
+	    ((unsigned long long (*)(void *, void *))objc_msgSend)(list, sel_registerName("count"));
+	for (unsigned long long i = 0; i < n; i++) {
+		obj_t w = ((obj_t (*)(void *, void *, unsigned long long))objc_msgSend)(
+		    list, sel_registerName("objectAtIndex:"), i);
+		if (w == win) return 1;
+	}
+	return 0;
+}
+
 // Is the window on the Space the user is looking at? A window on another Space is drawn
 // nowhere, so `screencapture -l` returns an empty frame and the user sees nothing — which
 // looks exactly like a rendering bug and is not one.

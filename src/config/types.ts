@@ -81,7 +81,10 @@ export interface UpdaterConfig {
 	endpoint?: string;
 	/** Base64 of 32 raw bytes: the only signing key this app accepts. */
 	pubkey?: string;
-	/** Whether the app wants a startup check; `updater.config` reports it. */
+	/**
+	 * Reported by `updater.config` and nothing else: crust starts no check on its own, so an app
+	 * that wants one calls `updater.check` from `main.ts`. Set it and it is still only echoed back.
+	 */
 	autoCheck?: boolean;
 	/** Allow a `file:` url in `updater.download`; https is the only scheme otherwise. */
 	allowFileUrl?: boolean;

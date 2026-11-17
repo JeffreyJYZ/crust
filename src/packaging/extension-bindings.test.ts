@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type SymbolSpec, renderBindings, writeBindings } from "./extension-bindings";
+import { ABI_SYMBOL, type SymbolSpec, renderBindings, writeBindings } from "./extension-bindings";
+import { dylibSuffix } from "./extension-tools";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -17,16 +18,16 @@ const ADD: SymbolSpec = { name: "add", args: ["i32", "i32"], returns: "i32" };
 describe("renderBindings", () => {
 	test("dlopens the dylib beside the generated module", () => {
 		const text = renderBindings({ name: "math", symbols: [ADD] });
-		expect(text).toContain('const ffi = dlopen(join(import.meta.dir, "math.dylib"), {');
+		expect(text).toContain(`const DYLIB = join(import.meta.dir, "math${dylibSuffix()}");`);
 	});
 
 	test("declares the symbol map and the typed export exactly", () => {
 		const text = renderBindings({ name: "math", symbols: [ADD] });
 		expect(text).toContain(
-			"\tadd: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },",
+			"\t\tadd: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },",
 		);
 		expect(text).toContain(
-			"export const add = ffi.symbols.add as (a0: number, a1: number) => number;",
+			"export const add = (a0: number, a1: number): number => ffi.symbols.add(a0, a1);",
 		);
 	});
 
@@ -40,13 +41,39 @@ describe("renderBindings", () => {
 			],
 		});
 		expect(text).toContain(
-			"export const total = ffi.symbols.total as (a0: bigint, a1: bigint) => bigint;",
+			"export const total = (a0: bigint, a1: bigint): bigint => " +
+				"ffi.symbols.total(a0, a1);",
 		);
 		expect(text).toContain(
-			"export const greet = ffi.symbols.greet as (a0: string) => string | null;",
+			"export const greet = (a0: string): string | null => ffi.symbols.greet(a0);",
 		);
-		expect(text).toContain("export const reset = ffi.symbols.reset as () => void;");
-		expect(text).toContain("\treset: { args: [], returns: FFIType.void },");
+		expect(text).toContain("export const reset = (): void => ffi.symbols.reset();");
+		expect(text).toContain("\t\treset: { args: [], returns: FFIType.void },");
+	});
+
+	test("a symbol is called through the handle, never captured at module evaluation", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD] });
+		// `ffi.symbols.add` destructured or assigned once would keep answering from the first build.
+		expect(text).not.toContain("ffi.symbols.add as");
+		expect(text).toContain("let ffi = open();");
+		expect(text).toContain("export function reload(): void {");
+		expect(text).toContain("\tffi.close();");
+		expect(text).toContain("\tffi = open();");
+	});
+
+	test("with no abiVersion the marker is not declared, so a bare dylib still binds", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD] });
+		expect(text).not.toContain(ABI_SYMBOL);
+		expect(text).not.toContain("const ABI =");
+	});
+
+	test("an abiVersion declares the marker and refuses a dylib that answers another", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD], abiVersion: 3 });
+		expect(text).toContain(`\t\t${ABI_SYMBOL}: { args: [], returns: FFIType.i32 },`);
+		expect(text).toContain(`const ABI = 3;`);
+		expect(text).toContain(`const abi = ffi.symbols.${ABI_SYMBOL}();`);
+		expect(text).toContain("rebuild the extension");
+		expect(parses(text)).toBe(true);
 	});
 
 	test("every declared type reaches the ffi table", () => {
@@ -58,14 +85,14 @@ describe("renderBindings", () => {
 			],
 		});
 		expect(text).toContain(
-			"\tp: { args: [FFIType.ptr, FFIType.f64, FFIType.u32], returns: FFIType.ptr },",
+			"\t\tp: { args: [FFIType.ptr, FFIType.f64, FFIType.u32], returns: FFIType.ptr },",
 		);
-		expect(text).toContain("\tf: { args: [FFIType.u64], returns: FFIType.f64 },");
+		expect(text).toContain("\t\tf: { args: [FFIType.u64], returns: FFIType.f64 },");
 	});
 
 	test("a custom dylib name is the dlopen argument", () => {
 		const text = renderBindings({ name: "math", symbols: [ADD], dylib: "libmath.dylib" });
-		expect(text).toContain('dlopen(join(import.meta.dir, "libmath.dylib"), {');
+		expect(text).toContain('const DYLIB = join(import.meta.dir, "libmath.dylib");');
 	});
 
 	test("an absolute dylib is refused rather than emitted as a broken join", () => {
@@ -92,6 +119,7 @@ describe("renderBindings", () => {
 	test("the module parses, including with no symbols at all", () => {
 		expect(parses(renderBindings({ name: "math", symbols: [ADD] }))).toBe(true);
 		expect(parses(renderBindings({ name: "empty", symbols: [] }))).toBe(true);
+		expect(parses(renderBindings({ name: "empty", symbols: [], abiVersion: 1 }))).toBe(true);
 	});
 });
 

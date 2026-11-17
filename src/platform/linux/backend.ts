@@ -3,7 +3,7 @@
  */
 import type { WindowOptions } from "@/app.ts";
 import { cstring } from "./cstring.ts";
-import { INSTALL_LINE } from "./preflight.ts";
+import { INSTALL_LINE, preflightErrors } from "./preflight.ts";
 import { type LinuxShim, shim } from "./shim-ffi.ts";
 
 /** What a native window is, minus the platform's own handle. */
@@ -23,8 +23,8 @@ export interface NativeWindow {
 export interface LinuxBackend {
 	/** Load the shim and resolve every entry point; throws the preflight text when a library is missing. */
 	load(): void;
-	/** Run one main-context iteration. Never blocks. */
-	iterate(): void;
+	/** Run one native main-context iteration; true only when the shim actually called into GTK. */
+	iterate(): boolean;
 	/** Build the window and its webview, attach, show, then load `url`. */
 	createWindow(options: WindowOptions, url: string): NativeWindow;
 	/** Whether GTK still holds this window open — read from C, never from a freed widget. */
@@ -39,8 +39,16 @@ export interface LinuxBackend {
 const DEFAULT_WIDTH = 1100;
 const DEFAULT_HEIGHT = 760;
 
-/** Build the GTK backend. Nothing loads until `load()` runs. */
-export function createGtkBackend(symbolsFor: () => LinuxShim = () => shim().symbols): LinuxBackend {
+/**
+ * Build the GTK backend. Nothing loads until `load()` runs. `probe` answers the
+ * same question as the smoke's preflight — are every library and every required
+ * symbol present — so the launch path and the smoke cannot disagree about what
+ * "preflight passed" means. Tests inject it so no machine needs GTK.
+ */
+export function createGtkBackend(
+	symbolsFor: () => LinuxShim = () => shim().symbols,
+	probe: () => string[] = preflightErrors,
+): LinuxBackend {
 	let opened = false;
 
 	/**
@@ -50,6 +58,10 @@ export function createGtkBackend(symbolsFor: () => LinuxShim = () => shim().symb
 	 */
 	function open(): void {
 		if (opened) return;
+		// The probe is the launch check, not just a smoke's assertion: a missing
+		// symbol gets its own name here instead of a bare `missing symbol` from C.
+		const missing = probe();
+		if (missing.length > 0) throw new Error(`crust: ${missing.join("\n  ")}`);
 		const symbols = symbolsFor();
 		if (Number(symbols.shim_lib_open() ?? 0) !== 1) {
 			const detail = String(symbols.shim_lib_error_text() ?? "GTK could not load");
@@ -71,8 +83,10 @@ export function createGtkBackend(symbolsFor: () => LinuxShim = () => shim().symb
 		},
 
 		iterate() {
-			if (!opened) return;
-			symbolsFor().shim_pump();
+			if (!opened) return false;
+			// `shim_pump` now answers whether a native iteration actually ran, so
+			// the platform can count GTK slices rather than JS timer firings.
+			return Number(symbolsFor().shim_pump() ?? 0) === 1;
 		},
 
 		createWindow(options, url) {

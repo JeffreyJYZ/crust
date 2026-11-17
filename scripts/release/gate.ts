@@ -2,7 +2,7 @@
  * The fast half of the gate. e2e suites need a desktop session and minutes; they
  * are run by hand before a release, and CI runs them on every PR.
  */
-import { fail, sh, step } from "./git.ts";
+import { fail, shAll, step } from "./git.ts";
 
 /**
  * The summary matters more than the last line: a test that prints to stdout
@@ -33,7 +33,8 @@ const SUMMARIES = [
 export async function gate(): Promise<void> {
 	for (const [label, cmd, summarise] of SUMMARIES) {
 		try {
-			const out = await sh([...cmd]);
+			// `bun test` writes its totals to stderr, so stdout alone leaves `? passed`.
+			const out = await shAll([...cmd]);
 			step(label, summarise(out));
 		} catch (error) {
 			fail(label, error instanceof Error ? error.message : String(error));

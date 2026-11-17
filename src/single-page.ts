@@ -1,10 +1,11 @@
 /**
- * Single-file mode's page half: the generated module that mounts a React component, the HTML document beside it, and the rule that decides which. A source containing `export default` is a component mounted into `#root` from its own `node_modules`; anything else is loaded for its side effects. `single-build.ts` runs the bundle.
+ * Single-file mode's page half: the generated module that mounts a React component and the HTML document beside it. The shape rule lives in `single-export.ts` and the React checks in `single-react.ts`; both are re-exported here and by `single.ts`. A source containing `export default` mounts into `#root` from its own `node_modules`; anything else loads for side effects. `single-build.ts` runs the bundle.
  */
 
-import { basename, dirname, join, resolve } from "node:path";
 import type { SingleApp } from "./single-detect.ts";
-import { isFile } from "./single-detect.ts";
+
+export { hasDefaultExport } from "./single-export.ts";
+export { requireReact, resolveFromProject } from "./single-react.ts";
 
 /** The page module's name inside the bundle directory. */
 export const PAGE_ENTRY = "page.js";
@@ -22,57 +23,6 @@ export interface PageBuild {
 	dir: string;
 	/** The module's filename inside `dir`. */
 	entry: string;
-}
-
-/**
- * Textual, and documented as such: `export default` anywhere at the start of a
- * line, or an alias export of `default`. A `.tsx` file that renders itself and
- * has no default export is loaded as-is, which is how React stays optional.
- */
-export function hasDefaultExport(source: string): boolean {
-	return (
-		/^\s*export\s+default\b/m.test(source) ||
-		/\bexport\s*\{[^}]*\bas\s+default\b[^}]*\}/.test(source)
-	);
-}
-
-/** Whether a package is physically installed at or above `dir`. */
-async function installed(name: string, dir: string): Promise<boolean> {
-	let current = resolve(dir);
-	for (;;) {
-		if (await isFile(join(current, "node_modules", name, "package.json"))) return true;
-		const parent = dirname(current);
-		if (parent === current) return false;
-		current = parent;
-	}
-}
-
-/**
- * Fail before `Bun.build` if the mount would need packages the project lacks. Bun's resolver also consults its global install cache, and a half-populated cache resolves `react` while failing on `react-dom`'s own dependency — so this is a real `node_modules/<pkg>/package.json` walk, which is what "installed here" means to a user.
- */
-export async function requireReact(dir: string, file: string): Promise<void> {
-	if ((await installed("react", dir)) && (await installed("react-dom", dir))) return;
-	throw new Error(
-		`${basename(file)} has a default export, so crust mounts it with React, but react and ` +
-			`react-dom are not installed above ${dir} — run "bun add react react-dom" there, or ` +
-			"drop the default export and render the page yourself",
-	);
-}
-
-/** Resolve `react`/`react-dom` from the user's project, not from the wrapper's directory. */
-export function resolveFromProject(dir: string): Bun.BunPlugin {
-	return {
-		name: "crust-single-project",
-		setup(build) {
-			build.onResolve({ filter: /^(react|react-dom)(\/.*)?$/ }, (args) => {
-				try {
-					return { path: Bun.resolveSync(args.path, dir) };
-				} catch {
-					return undefined;
-				}
-			});
-		},
-	};
 }
 
 /** The generated module that mounts a default-exported React component. */

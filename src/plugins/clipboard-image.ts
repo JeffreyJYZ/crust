@@ -37,10 +37,10 @@ export function imageCommands(adapter?: ClipboardAdapter): ClipboardImageCommand
 				return handlerFailure(error);
 			}
 			if (png === null) return missingCommand("readImage");
-			// Zero bytes is the empty pasteboard, the image twin of "".
-			if (png.length === 0) return { ok: true, png: null };
 			// A non-byte answer would be encoded as garbage by the bridge, so it is
-			// a typed failure rather than a coerced buffer.
+			// a typed failure rather than a coerced buffer. Checked before the length
+			// test: "" and [] are zero-length too, and reading them as an empty
+			// pasteboard would hide the adapter mistake.
 			if (!(png instanceof Uint8Array)) {
 				return {
 					ok: false,
@@ -48,6 +48,8 @@ export function imageCommands(adapter?: ClipboardAdapter): ClipboardImageCommand
 					message: "crust: clipboard adapter did not return image bytes",
 				};
 			}
+			// Zero bytes is the empty pasteboard, the image twin of "".
+			if (png.length === 0) return { ok: true, png: null };
 			return { ok: true, png };
 		},
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isNotImplemented } from "@/plugins/define.ts";
-import { createDialogPlugin } from "@/plugins/dialog.ts";
+import { createDialogPlugin, dialogPlugin } from "@/plugins/dialog.ts";
 import {
 	busyRefusal,
 	darwinDialogAdapter,
@@ -140,9 +140,14 @@ describe("dialog adapter", () => {
 		if (isNotImplemented(result)) expect(result.requires).toBe("NSOpenPanel");
 	});
 
-	test("the default dialogPlugin stays the adapter-less one", () => {
+	test("the default dialogPlugin stays the adapter-less one", async () => {
 		// runtime.ts builds the adapted plugin with createDialogPlugin(adapter);
 		// the exported default must not smuggle AppKit into a headless process.
-		expect(createDialogPlugin).toBeDefined();
+		// Importing it at module load already fails if it touches AppKit there;
+		// answering not-implemented proves it holds no native adapter either.
+		expect(dialogPlugin.name).toBe("dialog");
+		const result = await dialogPlugin.commands.openPanel({});
+		expect(isNotImplemented(result)).toBe(true);
+		if (isNotImplemented(result)) expect(result.requires).toBe("NSOpenPanel");
 	});
 });

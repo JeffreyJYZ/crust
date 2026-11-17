@@ -25,8 +25,10 @@ int shim_gtk_resolve(void) {
 }
 
 // A closed window's widget is freed by GTK, so liveness must never read it: the
-// destroy signal flips a flag here and that flag is what `window(label)` reads.
-// 32 slots is the ceiling on simultaneously tracked windows.
+// destroy signal clears its slot here, and `window(label)` reads the table.
+// 32 slots is the ceiling on *simultaneously* tracked windows — a slot is reused
+// as soon as its window dies, so opening and closing more than 32 over a process
+// lifetime cannot leave a live window untracked.
 typedef struct {
 	void *win;
 	int alive;
@@ -35,10 +37,20 @@ typedef struct {
 static shim_slot shim_slots[32];
 static int shim_slot_count;
 
-static void shim_on_destroy(void *widget, void *data) {
+static void shim_slot_release(void *win) {
+	if (!win) return;
 	for (int i = 0; i < shim_slot_count; i++) {
-		if (shim_slots[i].win == widget) shim_slots[i].alive = 0;
+		if (shim_slots[i].win == win) {
+			shim_slots[i].win = 0;
+			shim_slots[i].alive = 0;
+			return;
+		}
 	}
+}
+
+static void shim_on_destroy(void *widget, void *data) {
+	(void)data;
+	shim_slot_release(widget);
 }
 
 int shim_window_alive(void *win) {
@@ -60,10 +72,19 @@ void *shim_window_new(const char *title, int w, int h, int min_w) {
 	// stops a drag narrower than the config allows.
 	if (min_w > 0) shim_set_size_request(win, min_w, h);
 	if (shim_connect) shim_connect(win, "destroy", shim_on_destroy, 0, 0, 0);
-	if (shim_slot_count < 32) {
-		shim_slots[shim_slot_count].win = win;
-		shim_slots[shim_slot_count].alive = 1;
-		shim_slot_count++;
+	// Reuse a released slot first; grow only while every slot is taken. A stale
+	// pointer no longer matches any slot, so `shim_window_alive` answers 0 for it.
+	int slot = -1;
+	for (int i = 0; i < shim_slot_count; i++) {
+		if (!shim_slots[i].win) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0 && shim_slot_count < 32) slot = shim_slot_count++;
+	if (slot >= 0) {
+		shim_slots[slot].win = win;
+		shim_slots[slot].alive = 1;
 	}
 	return win;
 }
@@ -84,7 +105,7 @@ void shim_window_show(void *win) {
 void shim_window_destroy(void *win) {
 	if (!win || !shim_destroy) return;
 	shim_destroy(win);
-	for (int i = 0; i < shim_slot_count; i++) {
-		if (shim_slots[i].win == win) shim_slots[i].alive = 0;
-	}
+	// `shim_destroy` emits the destroy signal, but release explicitly too: a
+	// handler that was never connected must not leave the slot occupied.
+	shim_slot_release(win);
 }

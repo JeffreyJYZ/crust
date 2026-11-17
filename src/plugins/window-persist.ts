@@ -7,7 +7,7 @@
 import { join } from "node:path";
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
-import { failure, invalidLabel, readLabel, unknownWindow } from "./window-args.ts";
+import { failure, invalidLabel, knownWindow, readLabel } from "./window-args.ts";
 import { type WindowStateAllCommands, windowStateAllCommands } from "./window-persist-all.ts";
 import {
 	defaultStateRoot,
@@ -33,6 +33,8 @@ export * from "./window-persist-all.ts";
  */
 export interface WindowFrameNative {
 	list(): string[];
+	/** The liveness oracle; a closed window is pruned from `list()` on macOS but still known here. */
+	isOpen?(label: string): boolean;
 	getSize?(label: string): WindowSize;
 	getPosition?(label: string): WindowPoint;
 	setSize?(label: string, size: WindowSize): void;
@@ -102,7 +104,8 @@ export function createWindowStatePlugin(
 		if (adapter === undefined) return missingState(command);
 		const label = readLabel(args);
 		if (label === undefined) return invalidLabel(args);
-		if (!adapter.list().includes(label)) return unknownWindow(label);
+		const unknown = knownWindow(adapter, label);
+		if (unknown) return unknown;
 		try {
 			return await run(adapter, label);
 		} catch (error) {

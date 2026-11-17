@@ -54,6 +54,7 @@ export interface Shim {
 		shim_window_is_released_when_closed: LooseSymbol;
 		shim_window_is_key: LooseSymbol;
 		shim_window_is_miniaturized: LooseSymbol;
+		shim_window_in_app_windows: LooseSymbol;
 		shim_window_set_frame: LooseSymbol;
 		shim_window_frame_num: LooseSymbol;
 		shim_window_set_level: LooseSymbol;

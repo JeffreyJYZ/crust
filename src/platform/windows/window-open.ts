@@ -35,6 +35,11 @@ export function openWindow(
 	}
 	const url = absoluteUrl(options.url ?? "/");
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
+		// The bind inside shim_webview_new runs before Navigate, so a Navigate failure leaves a
+		// controller recorded in the shim's slot table. Close it first: only close clears that slot
+		// and releases the controller; destroy alone leaks both and bricks window creation after
+		// eight retries. A failure before bind makes close a no-op, so the order is always safe.
+		shim.shim_webview_close(hwnd);
 		shim.shim_window_destroy(hwnd);
 		// 126 is ERROR_MOD_NOT_FOUND: LoadLibraryW("WebView2Loader.dll") did not find the loader.
 		// Anything else is named by the HRESULTs and by what the controller pointer turned out to be:

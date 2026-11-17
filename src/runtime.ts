@@ -2,7 +2,7 @@
  * The shared runtime: what `crust dev` spawns and what a built app runs. One `startApp` loads and validates the config, attaches the platform and config to the `app` singleton, imports the user's `main.ts`, creates the bridge on its first `run()` (core plugins, mounted ones, one `app` namespace) and serves the page with the injected token and `invoke` shim.
  * An invoke that matches no handler is the bridge's structured error, never a crash. Pieces: `runtime-shim.ts`, `runtime-plugins.ts`, `runtime-host.ts`. Run directly it IS the backend: `bun run src/runtime.ts --config <path> --entry <path>`.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { app, type App, type CommandHandler, type Platform } from "@/app.ts";
 import { loadDarwinPlatform, loadPlatform } from "./app-loop.ts";
@@ -124,10 +124,15 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			try {
 				const handshakeDir = join(projectDir, ".crust");
 				mkdirSync(handshakeDir, { recursive: true });
-				writeFileSync(
-					join(handshakeDir, "dev.json"),
-					JSON.stringify({ url: bridge.url, token: bridge.token }),
-				);
+				// 0600: the file carries the bearer token, and without an explicit mode it inherits
+				// the process umask (commonly 0644), so every local account on a shared machine
+				// could read it and drive every bridge command. The mode applies only on creation,
+				// so an existing file from an earlier run is tightened by the `chmod`.
+				const handshake = join(handshakeDir, "dev.json");
+				writeFileSync(handshake, JSON.stringify({ url: bridge.url, token: bridge.token }), {
+					mode: 0o600,
+				});
+				chmodSync(handshake, 0o600);
 				process.env[BRIDGE_URL_VAR] = bridge.url;
 				process.env[BRIDGE_TOKEN_VAR] = bridge.token;
 			} catch (error) {

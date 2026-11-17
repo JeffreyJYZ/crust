@@ -12,6 +12,7 @@ import {
 	type ExtensionSeams,
 	type ExtensionTool,
 	KIND,
+	dylibSuffix,
 	findTool,
 } from "./extension-tools";
 import { run } from "./exec";
@@ -23,12 +24,28 @@ export type ExtensionBuilt = { ok: true; file: string; output: string; tool: Ext
 export type ExtensionFailed = { ok: false; file: string; reason: string; requires: string[] };
 
 export type CompileExtensionResult = ExtensionBuilt | ExtensionFailed;
-export type CompileExtensionOptions = { file: string; outDir: string } & ExtensionSeams;
 
-/** `rustc` names a cdylib `lib<stem>`; zig and clang take the emitted name as given. */
-export function dylibName(file: string, kind: ExtensionKind): string {
+/** `platform` is injected so a test can assert a Linux or Windows command line without one. */
+export type CompileExtensionOptions = {
+	file: string;
+	outDir: string;
+	platform?: string;
+} & ExtensionSeams;
+
+/**
+ * `dylibSuffix` lives in `extension-tools` so the compiler, the bindings generator and the e2e agree on
+ * the file name; the barrel re-exports it from there, not from here.
+ */
+
+/** `rustc` names a cdylib `lib<stem>` on unix; zig, clang and every Windows emitter take the stem. */
+export function dylibName(
+	file: string,
+	kind: ExtensionKind,
+	platform: string = process.platform,
+): string {
 	const stem = basename(file, extname(file));
-	return kind === "rust" ? `lib${stem}.dylib` : `${stem}.dylib`;
+	const base = kind === "rust" && platform !== "win32" ? `lib${stem}` : stem;
+	return `${base}${dylibSuffix(platform)}`;
 }
 
 /** The exact argv for one file, so a caller can print the command without running it. */
@@ -36,10 +53,11 @@ export function extensionCommand(
 	file: string,
 	kind: ExtensionKind,
 	outDir: string,
+	platform: string = process.platform,
 ): { tool: ExtensionTool; argv: string[] } {
-	const out = join(outDir, dylibName(file, kind));
+	const out = join(outDir, dylibName(file, kind, platform));
 	if (kind === "zig") {
-		// `-femit-bin` carries the `.dylib` suffix on purpose: zig does not add one on macOS.
+		// `-femit-bin` carries the suffix on purpose: zig adds none on macOS or Linux.
 		return {
 			tool: "zig",
 			argv: ["zig", "build-lib", file, "-dynamic", `-femit-bin=${out}`, "-O", "ReleaseSafe"],
@@ -48,7 +66,9 @@ export function extensionCommand(
 	if (kind === "rust") {
 		return { tool: "rustc", argv: ["rustc", "--crate-type", "cdylib", "-O", "-o", out, file] };
 	}
-	return { tool: "clang", argv: ["clang", "-dynamiclib", "-o", out, file] };
+	// `-dynamiclib` exists only in Apple's clang; the shared-object flag is `-shared` elsewhere.
+	const shared = platform === "darwin" ? "-dynamiclib" : "-shared";
+	return { tool: "clang", argv: ["clang", shared, "-o", out, file] };
 }
 
 /** Compile one source file to a dylib. A missing toolchain is a verdict, not a thrown error. */
@@ -60,8 +80,9 @@ export async function compileExtension(
 	const stem = basename(file);
 	if (!kind) return { ok: false, file, reason: `${stem} is not .zig, .rs or .c`, requires: [] };
 
+	const platform = options.platform ?? process.platform;
 	const outDir = resolve(options.outDir);
-	const { tool, argv } = extensionCommand(file, kind, outDir);
+	const { tool, argv } = extensionCommand(file, kind, outDir, platform);
 	if ((options.findTool ?? findTool)(tool) === undefined) {
 		const reason = `${tool} is not on PATH, so ${stem} cannot be built`;
 		return { ok: false, file, reason, requires: [tool] };
@@ -76,5 +97,5 @@ export async function compileExtension(
 		const reason = `${tool} failed (exit ${result.code}): ${detail}`;
 		return { ok: false, file, reason, requires: [] };
 	}
-	return { ok: true, file, output: join(outDir, dylibName(file, kind)), tool };
+	return { ok: true, file, output: join(outDir, dylibName(file, kind, platform)), tool };
 }

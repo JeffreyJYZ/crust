@@ -123,7 +123,11 @@ export function buildNotarizePlan(options: NotarizeOptions, zipPath?: string): N
 			{ name: "submit", command: [...submit, "--wait", "--output-format", "json"] },
 			{ name: "staple", command: ["xcrun", "stapler", "staple", appPath] },
 			{ name: "validate", command: ["xcrun", "stapler", "validate", appPath] },
-			{ name: "spctl", command: ["spctl", "-a", "-vvv", "-t", "install", appPath] },
+			// No `-t install`: that form asks Gatekeeper to assess *installing* a package,
+			// and it rejects every `.app` with exit 3 even when the ticket is stapled and
+			// valid. The default (`-t execute`) is the question a user actually has — does
+			// this bundle launch — and it is the form `verify.ts` already uses.
+			{ name: "spctl", command: ["spctl", "-a", "-vvv", appPath] },
 		],
 	};
 }

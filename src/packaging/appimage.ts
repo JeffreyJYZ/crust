@@ -115,6 +115,14 @@ export async function buildAppImage(options: AppImageOptions): Promise<AppImageR
 	await symlink(join("usr", "share", "applications", desktop), join(appDir, desktop));
 
 	await cp(options.iconPath, join(iconDir, `${options.id}.png`));
+	// The AppDir spec lists `.DirIcon` and a root `<Icon>.png` among the entries that
+	// MUST be present, and `appimagetool` registers both as critical: it looks for
+	// `<source>/<icon_name>.png` at the AppDir root (appimagetool.c:1093-1095) and
+	// warns that "`.DirIcon` does not exist, and no <id>.png … was found in the top
+	// level" (:398-401). Without them the image ships with no thumbnail, and a future
+	// appimagetool refuses the build outright.
+	await cp(options.iconPath, join(appDir, `${options.id}.png`));
+	await cp(options.iconPath, join(appDir, ".DirIcon"));
 
 	const appRunPath = join(appDir, "AppRun");
 	await writeFile(appRunPath, appRun(options.binaryName), "utf8");

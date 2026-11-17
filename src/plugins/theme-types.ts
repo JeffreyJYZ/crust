@@ -20,6 +20,13 @@ export interface ThemeState {
 	source: AppearanceSource;
 }
 
+/** An AppKit refusal, converted from an adapter throw so a page gets a branchable result. */
+export interface ThemeFailure {
+	ok: false;
+	code: "handler-error";
+	message: string;
+}
+
 /** The native half: `-[NSApplication setAppearance:]` and the effective appearance. */
 export interface ThemeAdapter {
 	/** The appearance the app is drawing in right now, override included. */
@@ -35,8 +42,8 @@ export type ThemePlugin = PluginDefinition<
 		set: (
 			args: { appearance: AppearancePreference },
 			ctx: PluginContext,
-		) => ThemeState | NotImplemented;
-		reset: (args?: unknown, ctx?: PluginContext) => ThemeState | NotImplemented;
+		) => ThemeState | ThemeFailure | NotImplemented;
+		reset: (args?: unknown, ctx?: PluginContext) => ThemeState | ThemeFailure | NotImplemented;
 	}
 >;
 

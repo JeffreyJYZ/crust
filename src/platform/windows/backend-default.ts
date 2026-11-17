@@ -3,12 +3,18 @@
  * with the OS. Split from backend.ts when that file outgrew the line cap — the contract (the two
  * interfaces) is the part a reader needs first, and this is the part that touches the machine.
  */
+import { dlopen } from "bun:ffi";
 import { existsSync, readdirSync } from "node:fs";
 import { release } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import type { WindowsBackend } from "./backend.ts";
 import { compile } from "./ffi.ts";
-import type { WindowsRuntimeReport } from "./preflight.ts";
+import {
+	type SymbolResolver,
+	missingEntryPoints,
+	PREFLIGHT,
+	type WindowsRuntimeReport,
+} from "./preflight.ts";
 /** Whether `WebView2Loader.dll` sits beside the executable or anywhere on `PATH`. */
 function hasLoader(): boolean {
 	const dirs = [dirname(process.execPath), ...(process.env.PATH ?? "").split(delimiter)];
@@ -30,14 +36,33 @@ function coreVersion(): string | undefined {
 	return versions[versions.length - 1];
 }
 
-/** The real backend: probe with the filesystem, compile on demand, exit with the OS. */
-export function defaultBackend(): WindowsBackend {
+/**
+ * Ask the OS loader for one export. `dlopen` throws when a module or a symbol is absent — the fact
+ * preflight wants named — and the handle is closed because only the answer is kept. No Windows
+ * symbols exist off Windows, so a probe there reports none missing rather than a table of guesses.
+ */
+export const osResolves: SymbolResolver = (module, symbol) => {
+	if (process.platform !== "win32") return true;
+	let library: { close(): void } | undefined;
+	try {
+		library = dlopen(module, { [symbol]: { args: [], returns: "i32" } });
+		return true;
+	} catch {
+		return false;
+	} finally {
+		library?.close();
+	}
+};
+
+/** The real backend: probe with the filesystem and loader, compile on demand, exit with the OS. */
+export function defaultBackend(resolves: SymbolResolver = osResolves): WindowsBackend {
 	return {
 		probe(): WindowsRuntimeReport {
 			return {
 				buildNumber: release(),
 				loader: hasLoader(),
 				coreVersion: coreVersion(),
+				missing: missingEntryPoints(PREFLIGHT, resolves),
 			};
 		},
 		load: compile,

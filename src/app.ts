@@ -142,7 +142,15 @@ export class App {
 
 		if (this.#listeners.get("window-all-closed")?.size) {
 			this.#windowCheck = watchWindows(config, platform, () => {
-				void emit(this.#listeners, "window-all-closed").then(() => platform.quit());
+				// A listener that throws must not keep the app alive with every window gone.
+				// `emit` awaits each listener, so a rejection used to skip the quit and leave the
+				// pump running a windowless process; the error is named, then the app quits anyway.
+				void emit(this.#listeners, "window-all-closed")
+					.catch((error: unknown) => {
+						const text = error instanceof Error ? error.message : String(error);
+						console.warn(`  window    a window-all-closed listener threw: ${text}`);
+					})
+					.then(() => platform.quit());
 			});
 		}
 	}

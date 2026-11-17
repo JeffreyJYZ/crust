@@ -23,7 +23,9 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 	if (msg == SHIM_WM_SIZE) {
 		// The client rect is the authority, not LPARAM: a DPI change reports a stale pair there.
 		int rect[4];
-		GetClientRect(hwnd, rect);
+		// A failed call leaves all four ints indeterminate; resizing to that garbage is worse
+		// than skipping the resize. shim_window_client_num checks the same call below.
+		if (!GetClientRect(hwnd, rect)) return 0;
 		shim_webview_put_bounds(hwnd, (double)(rect[2] - rect[0]), (double)(rect[3] - rect[1]));
 		return 0;
 	}

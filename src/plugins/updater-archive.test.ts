@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { rm } from "node:fs/promises";
 
 import { archiveRoot, isZip, readArchive } from "@/plugins/updater-archive";
+import { plugin, scratch, shipping, UPDATE_URL } from "@/plugins/updater-fake";
+import type { UpdaterFailure } from "@/plugins/updater";
+import { ArchiveError } from "@/plugins/updater-slip";
 import { buildZip, bundleZip } from "@/plugins/updater-zip-fixture";
 
 const encoder = new TextEncoder();
@@ -84,5 +89,57 @@ describe("updater's zip reader", () => {
 		expect(() => readArchive(encoder.encode("bundle-bytes"))).toThrow(
 			/is not a zip archive: no end-of-central-directory record/,
 		);
+	});
+
+	test("finding 2: a truncated archive refuses as invalid-archive, never a raw RangeError", () => {
+		const bytes = buildZip([
+			{ name: "Notes.app/", mode: 0o755 },
+			{ name: "Notes.app/Contents/marker.txt", body: "new" },
+		]);
+		// A download cut short mid central directory: the record is gone from the tail, so the
+		// scan either misses it or finds one whose lengths point past the bytes on hand.
+		const truncated = bytes.slice(0, bytes.length - 40);
+		expect(() => readArchive(truncated)).toThrow(ArchiveError);
+		const shorter = bytes.slice(0, 8);
+		expect(() => readArchive(shorter)).toThrow(ArchiveError);
+	});
+
+	test("finding 2: a central directory naming a header past the bytes is refused by name", () => {
+		const bytes = buildZip([
+			{ name: "Notes.app/", mode: 0o755 },
+			{ name: "Notes.app/Contents/marker.txt", body: "new" },
+		]);
+		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+		const central = view.getUint32(bytes.length - 22 + 16, true);
+		// An attacker-controlled name length of 0xffff with no bytes behind it: the read would be
+		// a DataView offset RangeError, and the contract promises invalid-archive instead.
+		const hostile = bytes.slice();
+		new DataView(hostile.buffer, hostile.byteOffset, hostile.byteLength).setUint16(
+			central + 28,
+			0xffff,
+			true,
+		);
+		expect(() => readArchive(hostile)).toThrow(ArchiveError);
+		expect(() => readArchive(hostile)).toThrow(/is truncated: a central directory entry/);
+	});
+
+	test("finding 2: the refusal names the archive, and never reaches the engine", async () => {
+		const dir = await scratch();
+		try {
+			const bytes = buildZip([
+				{ name: "Notes.app/", mode: 0o755 },
+				{ name: "Notes.app/Contents/marker.txt", body: "new" },
+			]).slice(0, 60);
+			const commands = plugin(shipping(bytes), {});
+			const result = (await commands.download({
+				url: UPDATE_URL,
+				sha256: createHash("sha256").update(bytes).digest("hex"),
+			})) as UpdaterFailure;
+			expect(result).toMatchObject({ ok: false, code: "invalid-archive" });
+			expect(result.message).toContain("Notes.app.zip");
+			expect(result.message).not.toContain("Offset is outside the bounds");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });

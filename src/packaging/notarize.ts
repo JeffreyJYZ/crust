@@ -118,6 +118,26 @@ export async function notarize(options: NotarizeOptions): Promise<NotarizeResult
 			if (step.name === "submit") {
 				const submitted = parseSubmission(result);
 				submissionId = submitted.submissionId;
+				// The exit code outranks stdout: notarytool can print a JSON verdict and
+				// still fail (a credential or transport error after the body was written),
+				// and stapling a bundle whose submission died installs no ticket at all.
+				if (result.code !== 0) {
+					const collected = await collectIssues(
+						exec,
+						route,
+						submitted,
+						(result.stderr || result.stdout).trim(),
+					);
+					return {
+						ok: false,
+						status: submitted.status ?? "rejected",
+						appPath: options.appPath,
+						reason: `submit failed (exit ${result.code})`,
+						submissionId,
+						log: collected.log,
+						issues: collected.issues,
+					};
+				}
 				if (submitted.status === "accepted") continue;
 				const collected = await collectIssues(
 					exec,

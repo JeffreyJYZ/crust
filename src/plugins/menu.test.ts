@@ -58,7 +58,7 @@ function recorder(): { ctx: PluginContext; events: [string, unknown][] } {
 }
 
 describe("menu plugin shape", () => {
-	test("is named menu, declares three commands and is frozen", () => {
+	test("is named menu, declares all five commands and is frozen", () => {
 		const plugin = createMenuPlugin(fake());
 		expect(plugin.name).toBe("menu");
 		const names = Object.keys(plugin.commands).sort();

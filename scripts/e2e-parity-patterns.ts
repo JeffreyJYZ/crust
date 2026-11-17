@@ -1,15 +1,15 @@
 /**
  * One pattern per probe proof, kept apart from the harness so the run reads as a run.
  *
- * Each accepts the honest "not available in this tree" form as well as the proved
- * form, because the probe must still pass the surfaces that exist; the exit code
- * carries the verdict, so a green line here never overstates what ran.
+ * A line proves its surface or it proves nothing. A "not available" form is never
+ * a passing proof: the probe marks that surface false, so a green line here never
+ * overstates what ran. A surface that cannot run fails the parity e2e by design.
  */
-export const MENU = /^menu\s+(titles: .*"Probe item".*|read unavailable.*)$/m;
+export const MENU = /^menu\s+titles: .*"Probe item".*$/m;
 export const CLIPBOARD = /^clipboard png \d+ bytes, first 8 89 50 4e 47 0d 0a 1a 0a$/m;
 export const RESTORED = /^clipboard restored: true$/m;
 export const CHROME = /^chrome\s+opacity 0\.75, decorations false$/m;
-export const SHORTCUT = /^shortcut\s+(emitted: command\+shift\+k|seam unavailable.*)$/m;
+export const SHORTCUT = /^shortcut\s+emitted: command\+shift\+k$/m;
 /** A posted chord is answered by the window server or it is not; both are honest. */
 export const KEYPRESS = /^shortcut-press (delivered: .+|not delivered: .+)$/m;
 /** Only the verified path passes: a signed download, a swap it authorised, and the receipt refusal. */

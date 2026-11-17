@@ -23,6 +23,22 @@ const PAGE_WINDOW =
 	"return v && v.trim() ? v.trim() : undefined; })(location.search)";
 
 /**
+ * Serialise a config for a `<script>` body.
+ *
+ * `JSON.stringify` leaves `<`, `>` and `/` alone, so a `window` label containing `</script>`
+ * closes the element and the rest of the label parses as HTML — then any `<script>` it carries
+ * runs. Every `<` and `>` becomes its JSON escape, and U+2028/U+2029 are escaped because they are
+ * line terminators inside a script. The result still parses as the same JSON value.
+ */
+function jsonForScript(value: unknown): string {
+	return JSON.stringify(value)
+		.replace(/</g, "\\u003c")
+		.replace(/>/g, "\\u003e")
+		.replace(/\u2028/g, "\\u2028")
+		.replace(/\u2029/g, "\\u2029");
+}
+
+/**
  * The source the served document carries.
  *
  * `installCrust.toString()` is not pretty, but it is the same function the
@@ -35,7 +51,7 @@ const PAGE_WINDOW =
  * names a window wins over the URL.
  */
 export function bootstrapSource(config: CrustConfig): string {
-	const served = `Object.assign({ window: ${PAGE_WINDOW} }, ${JSON.stringify(config)})`;
+	const served = `Object.assign({ window: ${PAGE_WINDOW} }, ${jsonForScript(config)})`;
 	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()});`;
 }
 

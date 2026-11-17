@@ -62,14 +62,23 @@ With `dev.url` set, `crust dev` waits up to 30 s for a TCP connect on that port 
 | `beforeBuildCommand`   | string | unset      | run to completion before the asset directory is read; a non-zero exit aborts the build naming the command and its exit code |
 | `assets`               | string | `"public"` | directory `crust build` embeds, relative to `--dir`; must hold `index.html`, and may not resolve to `dist/`                 |
 | `minimumSystemVersion` | string | `"13.0"`   | `LSMinimumSystemVersion`                                                                                                    |
+| `urlScheme`            | string | unset      | custom URL scheme claimed in `Info.plist` as `CFBundleURLTypes`, so macOS hands `scheme://…` URLs to this app               |
 
 ## `plugins`
 
-| key       | type         | default  | what it does                                           |
-| --------- | ------------ | -------- | ------------------------------------------------------ |
-| `plugins` | string array | all five | built-ins to register; the `crust:` prefix is optional |
+| key       | type         | default      | what it does                                           |
+| --------- | ------------ | ------------ | ------------------------------------------------------ |
+| `plugins` | string array | all built-ins | built-ins to register; the `crust:` prefix is optional |
 
-Absent or `[]` registers `fs`, `dialog`, `notification`, `tray` and `window`. Naming any restricts registration to exactly those, so every other name answers `unknown-command`. An unknown name fails startup with `crust: unknown plugin "nope" — v1 ships fs, dialog, notification, tray, window`. The `app` namespace and any plugin mounted with `app.use` are always registered — this key selects built-ins only.
+Absent or `[]` registers **every** built-in plugin the runtime assembles — the core set (`fs`, `dialog`, `notification`, `tray`, `autostart`, `logging`, `stronghold`) plus `window`, `store`, `shell`, `updater` when its section exists, and all the platform's native plugins. Naming any restricts registration to exactly those, so every other name answers `unknown-command`. An unknown name fails startup with `crust: unknown plugin "nope" — v1 ships …`, where the tail is the full list of registered built-in names for this platform, built at runtime rather than a fixed five. The `app` namespace and any plugin mounted with `app.use` are always registered — this key selects built-ins only.
+
+## `extensions`
+
+| key          | type         | default                  | what it does                                                                                          |
+| ------------ | ------------ | ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `extensions` | string array | unset — discover `*.ts`  | extension files to load, relative to the project; a relative entry that climbs out of it is refused  |
+
+Absent, the loader discovers `extensions/*.ts`; present, it loads exactly those files. Each is a flat non-empty string path, resolved against the project. See [Extensions](/docs/guides/extensions).
 
 ## `security`
 
@@ -78,6 +87,34 @@ Absent or `[]` registers `fs`, `dialog`, `notification`, `tray` and `window`. Na
 | `csp` | string | `DEFAULT_CSP` | Content-Security-Policy served with every document |
 
 `DEFAULT_CSP` is `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. Any replacement must keep `connect-src 'self'`, or every invoke is a CSP violation.
+
+## `fs`
+
+| key     | type         | default              | what it does                                                                       |
+| ------- | ------------ | -------------------- | ---------------------------------------------------------------------------------- |
+| `scope` | string array | unset — no boundary  | absolute path prefixes every `fs` command must stay inside; relative paths refused |
+
+Absent, `fs` has no scope and reaches any path the process can. A non-absolute entry is a config error, because a relative root would resolve against the process cwd and draw a different boundary in dev and in a built app. See [Files](/docs/guides/files).
+
+## `shell`
+
+| key       | type         | default            | what it does                                                                                                            |
+| --------- | ------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `allow`   | string array | unset — deny all   | programs a page may spawn: bare names or absolute paths; a relative path or an interpreter is respectively refused/warned |
+| `cwdRoot` | string       | unset — process cwd | absolute directory every `cwd` and relative program path must stay inside; name it absolutely                            |
+
+`allow` is deny-by-default: with no section every `spawn` is refused. `cwdRoot` must be absolute, because the consumer resolves it against the process cwd — the project under `crust dev`, but `/` in a built app. Allowing an interpreter (`sh`, `node`, `python*`, …) only warns; it stops the allow list bounding what runs. See [Shell](/docs/guides/shell).
+
+## `updater`
+
+| key            | type    | default | what it does                                                                     |
+| -------------- | ------- | ------- | -------------------------------------------------------------------------------- |
+| `endpoint`     | string  | unset   | manifest URL `check` falls back to when the page passes none                     |
+| `pubkey`       | string  | unset   | base64 of 32 raw bytes: the only signing key this app accepts                    |
+| `autoCheck`    | boolean | unset   | whether the app wants a startup check; `updater.config` reports it               |
+| `allowFileUrl` | boolean | unset   | permit a `file:` artifact URL in `updater.download` — for a test, not a shipped app |
+
+The section existing is what registers `crust:updater`; with no `updater` section the runtime carries no download-and-replace surface. `pubkey` is checked by shape at startup, so a wrong-size key fails a launch rather than every signature. See [Updater](/docs/guides/updater).
 
 ## What `app.id` decides
 

@@ -99,6 +99,8 @@ describe("darwin shim", () => {
 			expect(typeof symbols[name]).toBe("function");
 			expect(Number(symbols[name](0) ?? -1)).toBe(0);
 		}
+		// The membership read takes (app, win); both null must be null-safe.
+		expect(Number(symbols.shim_window_in_app_windows(0, 0) ?? -1)).toBe(0);
 	});
 
 	/**

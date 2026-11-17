@@ -112,6 +112,27 @@ describe("notarize", () => {
 		expect(stapled(fake.calls)).toBe(false);
 	});
 
+	test("an accepted verdict on a failed submit is still a failed notarization", async () => {
+		// The exit code outranks stdout: a transport or credential error after the
+		// body was written must never staple a bundle that got no real ticket.
+		const fake = recorder({
+			"notarytool submit": {
+				code: 2,
+				stdout: JSON.stringify({ id: "sub-failed", status: "Accepted" }),
+			},
+		});
+		const result = await notarize({
+			appPath: APP,
+			identity: IDENTITY,
+			profile: PROFILE,
+			exec: fake.exec,
+		});
+		expect(result.ok).toBe(false);
+		expect(result.reason).toBe("submit failed (exit 2)");
+		expect(result.submissionId).toBe("sub-failed");
+		expect(stapled(fake.calls)).toBe(false);
+	});
+
 	test("reads a rejected verdict as rejected, not accepted", async () => {
 		const fake = recorder({
 			"notarytool submit": { stdout: JSON.stringify({ id: "sub-2", status: "Rejected" }) },

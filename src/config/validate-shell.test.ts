@@ -42,6 +42,12 @@ describe("shell config", () => {
 		expect(() => validateConfig(withShell({ cwdRoot: 5 }))).toThrow(/shell\.cwdRoot/);
 	});
 
+	test("refuses a relative cwdRoot, which would resolve against process cwd", () => {
+		for (const root of ["data", "./data", "..", "../data"]) {
+			expect(() => validateConfig(withShell({ cwdRoot: root }))).toThrow(/shell\.cwdRoot/);
+		}
+	});
+
 	test("refuses an unknown key, like every other section", () => {
 		expect(() => validateConfig(withShell({ allow: ["echo"], nope: true }))).toThrow(
 			ConfigError,

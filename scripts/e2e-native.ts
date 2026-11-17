@@ -9,6 +9,8 @@
 
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { pgrepLiteral } from "../src/packaging/extension-pattern.ts";
+import { dylibSuffix } from "../src/packaging/extension-tools.ts";
 import {
 	clearSurvivors,
 	probe,
@@ -32,7 +34,12 @@ const ZIG_ANSWER = /zigclock\.now \{[^}]*"flavor":"zig"\}/;
 /** The runtime child and WebKit's web process, generously bounded. */
 const DEV_TIMEOUT_MS = 45_000;
 
-const SURVIVOR_PATTERNS = [CONFIG, "dev --dir examples/native"];
+/**
+ * `pgrep -f` takes an extended regular expression, so a repo path carrying `.`, `(`, `[` or `+` either
+ * over-matches unrelated processes or misses the one it was given. `CONFIG` is absolute and already
+ * contains dots, so every pattern goes through `pgrepLiteral` before it reaches the harness.
+ */
+const SURVIVOR_PATTERNS = [pgrepLiteral(CONFIG), pgrepLiteral("dev --dir examples/native")];
 
 function lastLine(text: string): string {
 	return (
@@ -65,7 +72,7 @@ async function main(): Promise<number> {
 			? "scripts/native-extensions.ts exited 0"
 			: `exit ${build.code} — ${lastLine(build.stderr) || lastLine(build.stdout) || "no output"}`,
 	);
-	for (const dylib of ["clock.dylib", "libclock.dylib"]) {
+	for (const dylib of [`clock${dylibSuffix()}`, `libclock${dylibSuffix()}`]) {
 		const info = await stat(join(GENERATED, dylib)).catch(() => undefined);
 		verdict.check(
 			dylib,
@@ -94,10 +101,19 @@ async function main(): Promise<number> {
 		ZIG_ANSWER.test(run.stdout),
 		ZIG_ANSWER.test(run.stdout) ? "zigclock answered first" : "no zigclock answer in the log",
 	);
+	// Nothing here measures ordering: the page logs both epochs, and the window is opened by
+	// the runtime before any page script runs. Only the two printed epochs are asserted.
+	const directZig = /direct zig\s+1\d{12}/.test(run.stdout);
+	const directRust = /direct rust\s+1\d{12}/.test(run.stdout);
+	const missingDirect = [!directZig && "zig", !directRust && "rust"].filter(
+		(name): name is string => typeof name === "string",
+	);
 	verdict.check(
 		"direct ffi",
-		/direct zig\s+1\d{12}/.test(run.stdout) && /direct rust\s+1\d{12}/.test(run.stdout),
-		"main.ts read the epoch from both dylibs before the window opened",
+		directZig && directRust,
+		directZig && directRust
+			? "main.ts printed a direct epoch from both dylibs"
+			: `main.ts printed no direct epoch from ${missingDirect.join(" or ")}`,
 	);
 	verdict.check(
 		"loaded",

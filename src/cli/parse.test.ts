@@ -26,3 +26,44 @@ describe("--format", () => {
 		expect(parse(["package", "--format"]).error).toBe("--format needs a value");
 	});
 });
+
+describe("value-taking flags", () => {
+	test("a following flag is not eaten as the value", () => {
+		const parsed = parse(["init", "--dir", "--react"]);
+		expect(parsed.error).toBe("--dir needs a value");
+		expect(parsed.options.dir).not.toBe("--react");
+	});
+
+	test("--help after a value flag still prints help", () => {
+		const parsed = parse(["init", "--dir", "--help"]);
+		expect(parsed.help).toBe(true);
+		expect(parsed.error).toBeUndefined();
+		expect(parsed.options.dir).not.toBe("--help");
+	});
+
+	test("--version after --format is not a format value", () => {
+		const parsed = parse(["package", "--format", "--version"]);
+		expect(parsed.version).toBe(true);
+		expect(parsed.error).toBeUndefined();
+	});
+});
+
+describe("global help and version", () => {
+	test("--help short-circuits --react validation", () => {
+		const parsed = parse(["--help", "--react"]);
+		expect(parsed.help).toBe(true);
+		expect(parsed.error).toBeUndefined();
+	});
+
+	test("--version short-circuits --format validation", () => {
+		const parsed = parse(["--version", "--format", "dmg"]);
+		expect(parsed.version).toBe(true);
+		expect(parsed.error).toBeUndefined();
+	});
+
+	test("--help with an unknown option still prints help", () => {
+		const parsed = parse(["--help", "--bogus"]);
+		expect(parsed.help).toBe(true);
+		expect(parsed.error).toBeUndefined();
+	});
+});

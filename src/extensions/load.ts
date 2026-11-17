@@ -1,8 +1,8 @@
 /**
  * Extension discovery: every `*.ts` under the project's extension directory becomes a plugin.
  * A broken file is collected, never thrown — one typo must not take a running app down — and two
- * extensions claiming one name are refused together, because the second would silently shadow the
- * first.
+ * extensions claiming one name are refused together, because a name is a namespace and serving one of
+ * two colliding files is the silent shadowing this loader exists to prevent.
  */
 
 import { readdir, stat } from "node:fs/promises";
@@ -45,27 +45,41 @@ export async function loadExtensions(
 	options: LoadExtensionsOptions = {},
 ): Promise<LoadedExtensions> {
 	const files = await resolveExtensionFiles(options);
-	const extensions: PluginDefinition[] = [];
-	const loaded: string[] = [];
 	const errors: ExtensionError[] = [];
-	const owners = new Map<string, string>();
+	const outcomes: { file: string; extension: PluginDefinition }[] = [];
 
 	for (const file of files) {
-		const outcome = await loadFile(file);
-		if ("reason" in outcome) {
-			errors.push({ file, reason: outcome.reason });
+		const loaded = await loadFile(file);
+		if ("reason" in loaded) {
+			errors.push({ file, reason: loaded.reason });
 			continue;
 		}
-		const owner = owners.get(outcome.name);
-		if (owner !== undefined) {
+		outcomes.push({ file, extension: loaded });
+	}
+
+	// A name is a namespace, so a collision refuses every file that claims it: keeping the first is the
+	// silent shadowing the module doc promises this loader prevents. Order is preserved, so the
+	// extensions that do load stay in filename order.
+	const claims = new Map<string, string[]>();
+	for (const { file, extension } of outcomes) {
+		claims.set(extension.name, [...(claims.get(extension.name) ?? []), file]);
+	}
+
+	const extensions: PluginDefinition[] = [];
+	const loaded: string[] = [];
+	for (const { file, extension } of outcomes) {
+		const owners = claims.get(extension.name) ?? [];
+		if (owners.length > 1) {
+			const others = owners.filter((other) => other !== file);
 			errors.push({
 				file,
-				reason: `duplicate extension name "${outcome.name}" — ${owner} already declares it`,
+				reason:
+					`duplicate extension name "${extension.name}" — ` +
+					`${others.join(", ")} declares it too`,
 			});
 			continue;
 		}
-		owners.set(outcome.name, file);
-		extensions.push(outcome);
+		extensions.push(extension);
 		loaded.push(file);
 	}
 

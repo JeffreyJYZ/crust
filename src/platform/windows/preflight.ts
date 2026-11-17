@@ -37,6 +37,10 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 	["kernel32.dll", "GetModuleHandleW", "CreateWindowExW has no instance to register against"],
 	["kernel32.dll", "GetLastError", "a failure reports no reason"],
 	["kernel32.dll", "MultiByteToWideChar", "no string reaches Win32, so no title and no URL"],
+	["kernel32.dll", "GetCurrentThreadId", "no step can be attributed to a thread"],
+	["kernel32.dll", "GetTickCount64", "the WebView2 wait has no timeout"],
+	["kernel32.dll", "VirtualQuery", "a bad vtable slot cannot be refused safely"],
+	["kernel32.dll", "LoadLibraryW", "the WebView2 loader cannot be loaded by name"],
 	["kernel32.dll", "Sleep", "the WebView2 wait spins without yielding"],
 	["ole32.dll", "CoInitializeEx", "WebView2 cannot create its controller"],
 	["ole32.dll", "CoGetApartmentType", "the apartment a WebView2 call runs in cannot be read"],
@@ -54,6 +58,19 @@ export const PREFLIGHT: readonly PreflightEntry[] = win32.map(([module, symbol, 
 	symbol,
 	breaks,
 }));
+
+/** Answers whether one export resolves on this machine. Injected so the scan is testable off Windows. */
+export type SymbolResolver = (module: string, symbol: string) => boolean;
+
+/** `module!symbol` for each entry the resolver could not find, in table order. */
+export function missingEntryPoints(
+	entries: readonly PreflightEntry[],
+	resolves: SymbolResolver,
+): string[] {
+	return entries
+		.filter(({ module, symbol }) => !resolves(module, symbol))
+		.map(({ module, symbol }) => `${module}!${symbol}`);
+}
 
 /**
  * What a probe found. `loader` and `coreVersion` are two separate facts because the loader can ship

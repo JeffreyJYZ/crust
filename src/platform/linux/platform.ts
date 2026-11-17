@@ -51,8 +51,9 @@ export class LinuxPlatform implements Platform {
 		this.#pumping = true;
 		const tick = () => {
 			if (!this.#pumping) return;
-			this.#backend.iterate();
-			this.#ticks++;
+			// A JS timer firing is not proof GTK ran. Count only the iterations the
+			// native pump reports, so `ticks` means what the smoke's detail says.
+			if (this.#backend.iterate()) this.#ticks++;
 			this.#pumpTimer = setTimeout(tick, intervalMs);
 		};
 		tick();
@@ -98,11 +99,38 @@ export class LinuxPlatform implements Platform {
 		return entry.handle;
 	}
 
-	/** Stop the pump, then end the process once. A second call is a no-op. */
+	/**
+	 * Every label whose window is still open, pruned the same way `window()` prunes: the all-closed
+	 * check reads this, so a page-created window keeps the app alive on Linux exactly as it does on
+	 * macOS and Windows.
+	 */
+	windowLabels(): string[] {
+		const live: string[] = [];
+		for (const [label, entry] of this.#windows) {
+			if (this.#backend.isOpen(entry.win)) live.push(label);
+			else this.#windows.delete(label);
+		}
+		return live.sort();
+	}
+
+	/** Close one tracked window through GTK and forget its label. Unknown labels are a no-op. */
+	destroy(label: string): void {
+		const entry = this.#windows.get(label);
+		if (!entry) return;
+		this.#backend.destroy(entry.win);
+		this.#windows.delete(label);
+	}
+
+	/**
+	 * Stop the pump, close every window through `destroy` — the production caller
+	 * for the native `shim_window_destroy` — then end the process once. A second
+	 * call is a no-op.
+	 */
 	quit(): void {
 		if (this.#quit) return;
 		this.#quit = true;
 		this.stopPump();
+		for (const label of [...this.#windows.keys()]) this.destroy(label);
 		this.#backend.quit();
 	}
 }

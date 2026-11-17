@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 
 import { isZip, readArchive, type Archive } from "./updater-archive";
 import { fileNameFor, UpdaterAdapterError } from "./updater-args";
+import { readBounded, redirectFailure } from "./updater-fetch";
 import type { UpdaterAdapter } from "./updater-types";
 
 /**
@@ -33,8 +34,12 @@ async function digestTree(hash: Hash, path: string, name: string): Promise<void>
 	const info = await stat(path);
 	if (info.isDirectory()) {
 		hash.update(`d ${name}\n`);
+		// The name is the path relative to the bundle root, never the basename: `X/a.txt` and
+		// `Y/a.txt` are different files, and hashing only `a.txt` let one tree digest stand for
+		// both, so a verified bundle could be rearranged between directories undetected.
 		for (const entry of (await readdir(path)).sort()) {
-			await digestTree(hash, join(path, entry), entry);
+			const relative = name === "" ? entry : `${name}/${entry}`;
+			await digestTree(hash, join(path, entry), relative);
 		}
 		return;
 	}
@@ -42,26 +47,39 @@ async function digestTree(hash: Hash, path: string, name: string): Promise<void>
 	hash.update(await readFile(path));
 }
 
+/**
+ * How many bytes one artifact may be, and the redirect refusal: both live in `updater-fetch` so the
+ * adapter stays a thin seam.
+ */
+
 export function nodeUpdaterAdapter(): UpdaterAdapter {
 	return {
 		async fetchJson(url) {
-			const response = await fetch(url, { headers: { accept: "application/json" } });
+			const response = await fetch(url, {
+				headers: { accept: "application/json" },
+				redirect: "manual",
+			});
+			const redirect = redirectFailure(url, response);
+			if (redirect !== undefined) throw redirect;
 			if (!response.ok) {
 				throw new UpdaterAdapterError("check-failed", `updater: ${url} ${response.status}`);
 			}
 			return await response.json();
 		},
 		async download(url, directory) {
-			const response = await fetch(url);
+			const response = await fetch(url, { redirect: "manual" });
+			const redirect = redirectFailure(url, response);
+			if (redirect !== undefined) throw redirect;
 			if (!response.ok) {
 				throw new UpdaterAdapterError(
 					"download-failed",
 					`updater: ${url} ${response.status}`,
 				);
 			}
+			const bytes = await readBounded(response, url);
 			const path = join(directory, fileNameFor(url));
-			await Bun.write(path, response);
-			return { path, bytes: (await stat(path)).size };
+			await writeFile(path, bytes);
+			return { path, bytes: bytes.byteLength };
 		},
 		async sha256(path) {
 			const hash = createHash("sha256");

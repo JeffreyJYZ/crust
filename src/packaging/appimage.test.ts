@@ -93,6 +93,10 @@ describe("buildAppImage", () => {
 
 			const icon = join(appDir, "usr", "share", "icons", "hicolor", "512x512", "apps");
 			expect((await stat(join(icon, `${ID}.png`))).size).toBe(PNG.length);
+			// appimagetool treats the root `<Icon>.png` and `.DirIcon` as critical:
+			// without them the image has no thumbnail and a future tool refuses it.
+			expect((await stat(join(appDir, `${ID}.png`))).size).toBe(PNG.length);
+			expect((await stat(join(appDir, ".DirIcon"))).size).toBe(PNG.length);
 
 			expect(
 				calls.some(

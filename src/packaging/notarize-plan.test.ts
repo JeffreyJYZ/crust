@@ -13,7 +13,7 @@ const NAMES: NotarizeStepName[] = ["zip", "submit", "staple", "validate", "spctl
 const AFTER_SUBMIT = [
 	["xcrun", "stapler", "staple", APP],
 	["xcrun", "stapler", "validate", APP],
-	["spctl", "-a", "-vvv", "-t", "install", APP],
+	["spctl", "-a", "-vvv", APP],
 ];
 const ISSUES = [
 	"The binary is not signed with a valid Developer ID certificate.",
@@ -65,6 +65,15 @@ describe("buildNotarizePlan", () => {
 			[...SUBMIT, "--keychain-profile", PROFILE, ...TAIL],
 			...AFTER_SUBMIT,
 		]);
+	});
+
+	test("asks Gatekeeper to execute the .app, never to install a package", () => {
+		// `-t install` assesses an installer package and rejects every valid .app
+		// with exit 3; the default `-t execute` is the launch question users mean.
+		const plan = buildNotarizePlan({ appPath: APP, identity: IDENTITY, profile: PROFILE }, ZIP);
+		const spctl = plan.steps.find((step) => step.name === "spctl");
+		expect(spctl?.command).toEqual(["spctl", "-a", "-vvv", APP]);
+		expect(spctl?.command).not.toContain("install");
 	});
 
 	test("swaps the profile for the one-shot appleId flags", () => {

@@ -41,6 +41,17 @@ Route handlers, middleware, ISR, `next/image` optimisation, Server Actions and r
 
 The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS ships. A platform WebKit bug is not something crust can patch, and a page cannot rely on a browser crust pinned. The honest size claim is "no bundled Chromium", never "as small as Tauri": the ~85 MiB floor is the Bun runtime inside the binary, and Tauri's floor is smaller because it ships no JavaScript engine at all.
 
+## Security
+
+| limit                                          | detail                                                                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| the bridge trusts the local user                | it binds loopback and the bearer token gates `/_crust/*`, but the document route carries that token to whoever fetches `/`, |
+| so another local process can drive the app     | anything running as your user can read the token and invoke every command — the boundary is the account, not the process    |
+| `Origin` is not the credential                 | an absent `Origin` is allowed on purpose, and a present foreign one is `403`; the token is what decides                    |
+
+A page from another origin cannot reach the bridge, and a stray process cannot reach it without
+fetching the document first. Neither is a sandbox against code already running as you.
+
 ## Notifications
 
 `notification.notify()` returns `{ delivered, reason }`, and `delivered` is true only when the OS reported success. Four measured rules decide it:

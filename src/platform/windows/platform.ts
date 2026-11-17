@@ -24,6 +24,8 @@ export class WindowsPlatform implements Platform {
 	#pumping = false;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 	#ticks = 0;
+	/** Messages `shim_pump` actually dispatched; a JS timer alone cannot move this. */
+	#nativeMessages = 0;
 	#quit = false;
 	#unavailable: string | undefined;
 
@@ -48,9 +50,14 @@ export class WindowsPlatform implements Platform {
 		return this.#pumping;
 	}
 
-	/** How many slices this pump has run. Used by the timer test. */
+	/** How many timer slices this pump has run. Used by the timer test. */
 	get ticks(): number {
 		return this.#ticks;
+	}
+
+	/** How many queued Win32 messages the native pump dispatched, summed across slices. */
+	get nativeMessages(): number {
+		return this.#nativeMessages;
 	}
 
 	/**
@@ -108,7 +115,9 @@ export class WindowsPlatform implements Platform {
 			if (!this.#pumping) return;
 			// A pump before `start()` has nothing to drain, but the counter still moves so the
 			// shape is the same with or without a window.
-			this.#shim?.shim_pump();
+			// The timer proves Bun ran, not Win32. Keep both: `ticks` is the cadence, and
+			// `nativeMessages` is the only one a real-pump assertion may trust.
+			this.#nativeMessages += Number(this.#shim?.shim_pump() ?? 0);
 			this.#ticks++;
 			this.#timer = setTimeout(tick, intervalMs);
 		};

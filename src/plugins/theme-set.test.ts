@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { CrustError } from "@/bridge/errors";
-import { call, fake, recorder } from "@/plugins/theme-fake";
+import { call, fake, recorder, refusing } from "@/plugins/theme-fake";
 import { createThemePlugin, THEME_CHANGED } from "@/plugins/theme";
 
 describe("theme.set", () => {
@@ -53,6 +53,20 @@ describe("theme.set", () => {
 		expect(applied).toEqual([]);
 	});
 
+	test("an AppKit refusal is a typed handler-error, with no event and no override", () => {
+		const { adapter, applied } = refusing("dark");
+		const plugin = createThemePlugin(adapter);
+		const sink = recorder();
+		expect(call(plugin, "set", { appearance: "light" }, sink.ctx)).toEqual({
+			ok: false,
+			code: "handler-error",
+			message: "NSApplication refused the appearance",
+		});
+		expect(applied).toEqual(["light"]);
+		expect(sink.events).toEqual([]);
+		expect(call(plugin, "current")).toEqual({ ok: true, appearance: "dark", source: "system" });
+	});
+
 	test("no adapter is not-implemented and emits nothing", () => {
 		const sink = recorder();
 		expect(call(createThemePlugin(), "set", { appearance: "light" }, sink.ctx)).toMatchObject({
@@ -80,6 +94,17 @@ describe("theme.reset", () => {
 			event: THEME_CHANGED,
 			data: { appearance: "light", source: "system" },
 		});
+	});
+
+	test("an AppKit refusal on reset is a typed handler-error", () => {
+		const { adapter } = refusing("light", "NSApplication refused the reset");
+		const sink = recorder();
+		expect(call(createThemePlugin(adapter), "reset", undefined, sink.ctx)).toEqual({
+			ok: false,
+			code: "handler-error",
+			message: "NSApplication refused the reset",
+		});
+		expect(sink.events).toEqual([]);
 	});
 
 	test("no adapter is not-implemented", () => {

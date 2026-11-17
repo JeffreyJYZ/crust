@@ -79,7 +79,10 @@ export interface InstallResult {
 }
 
 export interface UninstallResult {
-	armed: false;
+	/** True when handlers are still installed: the native disarm did not take effect. */
+	armed: boolean;
+	/** The native status, so a refused disarm names the step that said no. */
+	status: number;
 	reason: string;
 }
 
@@ -147,7 +150,7 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 				if (!guardRunning()) return noGuard();
 				if (!native) return noNative("uninstall");
 				const arm = native.disarm();
-				return { armed: false, reason: arm.reason };
+				return { armed: arm.armed, status: arm.status, reason: arm.reason };
 			},
 		},
 	});

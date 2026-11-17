@@ -27,7 +27,7 @@ const REQUIRED = [
 	"Page directory",
 	"Page instfiles",
 	'Section "Install"',
-	'File /r "',
+	'File "',
 	'CreateShortcut "$SMPROGRAMS\\${APP_NAME}.lnk"',
 	'WriteUninstaller "$INSTDIR\\Uninstall.exe"',
 	'WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_ID}" "DisplayName"',
@@ -71,19 +71,23 @@ describe("buildNsis", () => {
 			expect(result.requires).toBe("makensis");
 			expect(describeNsis(result)).toContain("install makensis");
 
-			const scriptPath = join(root, "dist", `${ID}.nsi`);
+			// The script and the exe default beside the binary, inside `appPath`,
+			// instead of one directory above it in the project root.
+			const appPath = join(root, "dist", "app");
+			const scriptPath = join(appPath, `${ID}.nsi`);
 			expect(result.scriptPath).toBe(scriptPath);
-			// Never inside `appPath`: `File /r` copies that directory, so the script
-			// would be shipped inside the installer it defines.
-			expect(result.scriptPath.startsWith(join(root, "dist", "app"))).toBe(false);
 			const script = await readFile(scriptPath, "utf8");
 			for (const directive of REQUIRED) expect(script).toContain(directive);
-			expect(script).toContain(`"${join(root, "dist", "app")}\\*.*"`);
+			// Only the Windows binary is installed. `File /r` shipped the macOS
+			// .app and every other format left in dist alongside it.
+			expect(script).not.toContain("File /r");
+			expect(script).not.toContain("\\\\*.*");
+			expect(script).toContain(`File "${join(appPath, BINARY)}"`);
 			expect(script.endsWith("SectionEnd\n")).toBe(true);
 
-			expect(
-				await stat(join(root, "dist", `${ID}-0.1.0-setup.exe`)).catch(() => undefined),
-			).toBe(undefined);
+			expect(await stat(join(appPath, `${ID}-0.1.0-setup.exe`)).catch(() => undefined)).toBe(
+				undefined,
+			);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

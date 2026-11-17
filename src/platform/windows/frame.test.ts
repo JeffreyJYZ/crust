@@ -53,6 +53,29 @@ describe("frame size", () => {
 		expect(offences(localArrays("x.c", unknownBound)).length).toBe(1);
 	});
 
+	test("a pointer, second bound, initialiser or second declarator is not skipped", () => {
+		const scan = (decl: string) =>
+			localArrays("x.c", `int f(void) {\n\t${decl};\n\treturn 0;\n}\n`);
+		for (const decl of [
+			"void *p[512]",
+			"shim_wchar *p[2048]",
+			"char *p[4096]",
+			"const shim_wchar *p[2048]",
+			"shim_wchar buf[64][64]",
+			"unsigned char buf[4096] = {0}",
+		]) {
+			expect(offences(scan(decl)).length, decl).toBe(1);
+		}
+		const two = scan("shim_wchar a[2048], b[2048]");
+		expect(two.map((entry) => entry.bytes)).toEqual([4096, 4096]);
+		expect(offences(two).length).toBe(2);
+	});
+
+	test("an array-element assignment is not read as a declaration", () => {
+		const source = "int f(void) {\n\tdst[n - 1] = 0;\n\treturn 0;\n}\n";
+		expect(localArrays("x.c", source)).toEqual([]);
+	});
+
 	test("the probe that must crash is gone, and the positive control stays", () => {
 		const probe = readShimPart("36_probe.c");
 		expect(probe).toContain("int shim_frame_probe_small(void)");

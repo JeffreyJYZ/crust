@@ -44,8 +44,13 @@ export function createWindowCommand(
 	// configured one — but only for the app's own document. An absolute URL is the app's to define
 	// in full (it may carry a signature, or a `window` of its own), so it is handed through
 	// untouched; a page that wants an identity on one appends `?window=` itself.
+	// A scheme OR two leading slash/backslash characters make a URL authority-absolute: the
+	// adapter's `new URL(url, documentBase())` resolves `//evil.example/x` (and `\\...`) to a
+	// foreign origin, so those must pass through untouched too. One leading backslash is only a
+	// path and stays our own document.
 	const url = parsed.options.url;
-	const own = url === undefined || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
+	const own =
+		url === undefined || (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) && !/^[\\/][\\/]/.test(url));
 	// Absent still means the app's own document, `/`: a relative reference the adapter resolves
 	// against the window's document. A query on it changes neither the origin nor the path.
 	const options: WindowCreateOptions = own

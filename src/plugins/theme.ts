@@ -9,6 +9,7 @@ import type {
 	Appearance,
 	AppearancePreference,
 	ThemeAdapter,
+	ThemeFailure,
 	ThemePlugin,
 	ThemeState,
 } from "./theme-types";
@@ -20,12 +21,22 @@ export type {
 	AppearancePreference,
 	AppearanceSource,
 	ThemeAdapter,
+	ThemeFailure,
 	ThemePlugin,
 	ThemeState,
 } from "./theme-types";
 
 function isPreference(value: unknown): value is AppearancePreference {
 	return value === "light" || value === "dark" || value === "system";
+}
+
+/** A refused AppKit call is a typed failure, not a rejected invoke. */
+function failureOf(error: unknown): ThemeFailure {
+	return {
+		ok: false,
+		code: "handler-error",
+		message: error instanceof Error ? error.message : String(error),
+	};
 }
 
 export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
@@ -50,6 +61,21 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 		return next;
 	};
 
+	/** Apply through the adapter and read the state back; a refusal becomes a typed failure. */
+	const apply = (
+		target: ThemeAdapter,
+		appearance: AppearancePreference,
+		ctx: PluginContext | undefined,
+	): ThemeState | ThemeFailure => {
+		try {
+			target.set(appearance);
+			override = appearance === "system" ? undefined : appearance;
+			return publish(ctx, state(target));
+		} catch (error) {
+			return failureOf(error);
+		}
+	};
+
 	return definePlugin({
 		name: "theme",
 		commands: {
@@ -60,7 +86,7 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 			set: (
 				args: { appearance: AppearancePreference },
 				ctx: PluginContext,
-			): ThemeState | NotImplemented => {
+			): ThemeState | ThemeFailure | NotImplemented => {
 				if (!native) return missing("set");
 				const appearance = args?.appearance;
 				if (!isPreference(appearance)) {
@@ -69,16 +95,15 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 						'theme.set: "appearance" must be "light", "dark" or "system"',
 					);
 				}
-				native.set(appearance);
-				override = appearance === "system" ? undefined : appearance;
-				return publish(ctx, state(native));
+				return apply(native, appearance, ctx);
 			},
 			/** Hand the choice back to the system, which is what `set({ appearance: "system" })` does. */
-			reset: (_args?: unknown, ctx?: PluginContext): ThemeState | NotImplemented => {
+			reset: (
+				_args?: unknown,
+				ctx?: PluginContext,
+			): ThemeState | ThemeFailure | NotImplemented => {
 				if (!native) return missing("reset");
-				native.set("system");
-				override = undefined;
-				return publish(ctx, state(native));
+				return apply(native, "system", ctx);
 			},
 		},
 	});

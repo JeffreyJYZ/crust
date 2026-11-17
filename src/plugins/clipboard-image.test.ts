@@ -72,6 +72,19 @@ describe("clipboard readImage", () => {
 			message: "crust: clipboard adapter did not return image bytes",
 		});
 	});
+
+	test("a zero-length non-byte answer is refused, not read as an empty pasteboard", async () => {
+		// "" and [] are zero-length too, so a length-first test would report the empty clipboard and hide
+		// the adapter's mistake. Only real zero-length bytes mean "nothing on the pasteboard".
+		for (const answer of ["", [] as never]) {
+			const plugin = createClipboardPlugin(fake({ readImage: () => answer as never }));
+			expect(await plugin.commands.readImage()).toEqual({
+				ok: false,
+				code: "handler-error",
+				message: "crust: clipboard adapter did not return image bytes",
+			});
+		}
+	});
 });
 
 describe("clipboard writeImage", () => {

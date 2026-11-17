@@ -11,6 +11,7 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
   config sets no `model`, so an unpinned call inherits the session's own paid lane.
 - **One writer per file.** Give lanes disjoint file sets; two agents on one file is how a merge
   silently keeps one of them.
+- **Merging and tagging here need no permission** — the owner waived the approval step for crust on 2026-11-17, so land PRs and cut tags directly; a tag push is still one tag at a time (user, 2026-11-17).
 
 ## The gate
 

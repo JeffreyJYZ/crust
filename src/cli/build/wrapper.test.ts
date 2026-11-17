@@ -61,8 +61,9 @@ describe("wrapperSource", () => {
 
 		expect(source).toContain("async function extensionPlugins() {");
 		expect(source).toContain(
-			`\tconst extension0 = (await import(${JSON.stringify("/p/extensions/clock.ts")})).default;`,
+			`\t\textensions.push((await import(${JSON.stringify("/p/extensions/clock.ts")})).default);`,
 		);
+		expect(source).toContain("} catch (error0) {");
 		expect(source).toContain(
 			`const { extensionRegistry } = await import(${JSON.stringify("/crust/src/extensions/registry.ts")});`,
 		);
@@ -80,12 +81,16 @@ describe("wrapperSource", () => {
 		const lines = source.split("\n");
 
 		const blockAt = lines.indexOf("async function extensionPlugins() {");
-		expect(lines.slice(blockAt, blockAt + 4)).toEqual([
+		expect(lines.slice(blockAt, blockAt + 3)).toEqual([
 			"async function extensionPlugins() {",
-			`\tconst extension0 = (await import(${JSON.stringify("/p/extensions/clock.ts")})).default;`,
-			`\tconst extension1 = (await import(${JSON.stringify("/p/extensions/ping.ts")})).default;`,
-			"\treturn [extension0, extension1];",
+			"\tconst extensions = [];",
+			`\ttry {`,
 		]);
+		// Order is preserved, which the first-wins name rule depends on.
+		expect(source.indexOf("clock.ts")).toBeLessThan(source.indexOf("ping.ts"));
+		expect(source).toContain("} catch (error0) {");
+		expect(source).toContain("} catch (error1) {");
+		expect(source).toContain("\treturn extensions;");
 		expect(source).toContain("registry.register(...(await extensionPlugins()));");
 
 		// The block is declared after the guard check, so nothing in it runs on a guard launch.
@@ -104,7 +109,7 @@ describe("wrapperSource", () => {
 	test("an absolute file is imported as given, not re-rooted", () => {
 		const source = wrapperSource({ ...base, extensionFiles: ["/opt/shared/clock.ts"] });
 		expect(source).toContain(
-			`(await import(${JSON.stringify("/opt/shared/clock.ts")})).default;`,
+			`(await import(${JSON.stringify("/opt/shared/clock.ts")})).default`,
 		);
 	});
 

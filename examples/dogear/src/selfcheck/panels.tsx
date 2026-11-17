@@ -1,9 +1,9 @@
 /**
- * Steps 9–10: the two file panels, and the one panel answer a scripted run can
+ * Steps 10–11: the two file panels, and the one panel answer a scripted run can
  * produce.
  *
  * `dialog.openPanel` and `dialog.savePanel` each start an AppKit sheet, and only
- * a human can complete a *pick*. Step 10 cancels the folder sheet step 9 left up
+ * a human can complete a *pick*. Step 11 cancels the folder sheet step 10 left up
  * — the page's own Cancel button is the one answer a scripted run can give — and
  * the save panel is left up, because there is no such way to answer it. Nothing
  * here writes a path the save panel answered with.
@@ -17,9 +17,9 @@ import type { ListEntry } from "./steps";
 export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<void> {
 	const { pass, fail } = checks;
 
-	// 9. The folder picker. A pick needs a human, so a sheet that is still up
+	// 10. The folder picker. A pick needs a human, so a sheet that is still up
 	//    after a second and a half is the pass. The invoke is kept rather than
-	//    dropped: step 10 cancels it, and that cancel has to be what answers it,
+	//    dropped: step 11 cancels it, and that cancel has to be what answers it,
 	//    so a non-null value here means "this run left a sheet up".
 	let folderRun: Promise<{ paths: string[] }> | null = null;
 	try {
@@ -44,13 +44,13 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 		fail("dialog sheet", describe(error));
 	}
 
-	// 10. The page's own cancel, then the save panel.
+	// 11. The page's own cancel, then the save panel.
 	//
 	//     `dialog.cancel` is the way out of a sheet no human answered, and its
-	//     own answer is not the evidence: the folder pick step 9 started has to
+	//     own answer is not the evidence: the folder pick step 10 started has to
 	//     resolve as cancelled, with no path, so a cancel that reported success
 	//     while leaving the invoke pending fails here — and so does one that
-	//     reports nothing pending while step 9's sheet is still up. Nothing is
+	//     reports nothing pending while step 10's sheet is still up. Nothing is
 	//     written either way. Then the save panel, asked the way the Save as…
 	//     button asks it — one sheet at a time, so the folder one is gone first —
 	//     and it stays up like the folder sheet did, because a pick needs a human.
@@ -61,7 +61,7 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 		if (folderRun !== null) {
 			if (!cleared.cancelled) {
 				throw new Error(
-					"dialog.cancel reported nothing pending while the folder sheet from step 9 was up",
+					"dialog.cancel reported nothing pending while the folder sheet from step 10 was up",
 				);
 			}
 			const answered = await settle(folderRun, 1500);

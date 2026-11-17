@@ -20,8 +20,12 @@ int shim_gtk_init(void) {
 }
 
 // One slice: g_main_context_iteration(NULL, FALSE) never blocks, because a
-// blocking iterate would stop the timer that called it.
+// blocking iterate would stop the timer that called it. The return answers
+// "did a native iteration run", not "were events dispatched" — an idle context
+// legitimately dispatches nothing, and that is still a pump slice. The caller
+// uses this to count GTK work rather than JS timer firings.
 int shim_pump(void) {
 	if (!shim_context_iterate) return 0;
-	return shim_context_iterate(0, 0) ? 1 : 0;
+	shim_context_iterate(0, 0);
+	return 1;
 }

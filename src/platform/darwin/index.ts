@@ -95,6 +95,7 @@ function compile() {
 			shim_window_is_released_when_closed: { args: [P], returns: I32 },
 			shim_window_is_key: { args: [P], returns: I32 },
 			shim_window_is_miniaturized: { args: [P], returns: I32 },
+			shim_window_in_app_windows: { args: [P, P], returns: I32 },
 
 			// The state commands: the frame in and out (one component at a time,
 			// because an NSRect return needs a struct prototype bun:ffi has no

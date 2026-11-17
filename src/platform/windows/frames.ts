@@ -86,22 +86,57 @@ function blank(text: string): string {
 	return out;
 }
 
+/** Drop an initialiser, then split at top-level commas, so `a[2], b[2]` and `= {0}` both parse. */
+function declarators(text: string): string[] {
+	let depth = 0;
+	let cut = text.length;
+	const commas: number[] = [];
+	for (let index = 0; index < text.length; index++) {
+		const char = text[index];
+		if (char === "[" || char === "(" || char === "{") depth++;
+		else if (char === "]" || char === ")" || char === "}") depth--;
+		else if (char === "=" && depth === 0 && text[index + 1] !== "=") {
+			cut = index;
+			break;
+		} else if (char === "," && depth === 0) commas.push(index);
+	}
+	const clean = text.slice(0, cut);
+	const parts: string[] = [];
+	let start = 0;
+	for (const comma of commas) {
+		parts.push(clean.slice(start, comma));
+		start = comma + 1;
+	}
+	parts.push(clean.slice(start));
+	return parts;
+}
+
 /** One declaration, when it is a local array. `static` storage lives in the image and costs no frame. */
-function declaration(file: string, line: number, raw: string): LocalArray | undefined {
+function declaration(file: string, line: number, raw: string): LocalArray[] {
 	const text = raw.trim();
-	if (!text || /^static\b/.test(text)) return undefined;
-	const shape =
-		/^(?:volatile\s+|const\s+|register\s+|unsigned\s+|signed\s+)*([A-Za-z_][\w *]*?)\s+([A-Za-z_]\w*)\s*\[\s*([^[\]]+?)\s*\]$/.exec(
-			text,
-		);
-	if (!shape) return undefined;
-	const type = (shape[1] ?? "").replace(/\s+/g, " ").trim();
-	if (STATEMENTS.has(type)) return undefined;
-	const bound = shape[3] ?? "";
-	const size = type.includes("*") ? POINTER : SIZES[type];
-	const elements = /^\d+$/.test(bound) ? Number(bound) : undefined;
+	if (!text || /^static\b/.test(text)) return [];
+	const parts = declarators(text);
+	const shape = /^([A-Za-z_][\w\s]*?\*?)\s+(\*+\s*)?([A-Za-z_]\w*)\s*((?:\[[^\]]*\])+)$/.exec(
+		(parts[0] ?? "").trim(),
+	);
+	if (!shape) return [];
+	const type = (shape[1] ?? "").replace(/\b(?:volatile|const|register|signed)\b\s*/g, "").trim();
+	if (STATEMENTS.has(type)) return [];
+	const pointer = Boolean(shape[2]) || type.includes("*");
+	const size = pointer ? POINTER : SIZES[type];
+	const bounds = [...(shape[4] ?? "").matchAll(/\[\s*([^\]]*?)\s*\]/g)].map((m) =>
+		(m[1] ?? "").trim(),
+	);
+	const elements = bounds.every((bound) => /^\d+$/.test(bound))
+		? bounds.reduce((total, bound) => total * Number(bound), 1)
+		: undefined;
 	const bytes = elements === undefined || size === undefined ? undefined : elements * size;
-	return { file, line, text, bytes };
+	return parts.map((part, index) => ({
+		file,
+		line,
+		text: index === 0 ? part.trim() : `${type} ${part.trim()}`,
+		bytes,
+	}));
 }
 
 /**
@@ -115,22 +150,33 @@ export function localArrays(file: string, source: string): LocalArray[] {
 	let segment = "";
 	let segmentLine = 1;
 	let line = 1;
+	let initializer = 0;
 	for (const char of text) {
 		if (char === "\n") {
 			line++;
 			segment += char;
 		} else if (char === "{") {
-			structish.push(/\b(struct|union|enum)\b/.test(segment));
-			segment = "";
-			segmentLine = line;
+			// `buf[4096] = {0}` is a declaration, not a nested block to skip.
+			if (initializer > 0 || /\]\s*=/.test(segment)) {
+				initializer++;
+				segment += char;
+			} else {
+				structish.push(/\b(struct|union|enum)\b/.test(segment));
+				segment = "";
+				segmentLine = line;
+			}
 		} else if (char === "}") {
-			structish.pop();
-			segment = "";
-			segmentLine = line;
+			if (initializer > 0) {
+				initializer--;
+				segment += char;
+			} else {
+				structish.pop();
+				segment = "";
+				segmentLine = line;
+			}
 		} else if (char === ";") {
 			if (structish.length > 0 && !structish.includes(true)) {
-				const entry = declaration(file, segmentLine, segment);
-				if (entry) found.push(entry);
+				found.push(...declaration(file, segmentLine, segment));
 			}
 			segment = "";
 			segmentLine = line;

@@ -38,18 +38,29 @@ export function readFrame(value: unknown): WindowFrame | undefined {
 	return width > 0 && height > 0 ? { x, y, width, height } : undefined;
 }
 
+/**
+ * A state map with no inherited keys. A window label is any non-empty string, so
+ * `"__proto__"` is legal; on a plain `{}` that assignment invokes the inherited
+ * setter instead of storing a frame, and a later read answers `Object.prototype`.
+ * A null prototype makes every label an ordinary own property, in `save` as well
+ * as here — every writer starts from `readState`.
+ */
+function emptyState(): Record<string, WindowFrame> {
+	return Object.create(null) as Record<string, WindowFrame>;
+}
+
 /** Every entry that survives validation; a missing, unreadable or corrupt file is an empty state. */
 export async function readState(file: string): Promise<Record<string, WindowFrame>> {
 	const text = await readFile(file, "utf8").catch(() => undefined);
-	if (text === undefined) return {};
+	if (text === undefined) return emptyState();
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(text);
 	} catch {
-		return {};
+		return emptyState();
 	}
-	if (typeof parsed !== "object" || parsed === null) return {};
-	const state: Record<string, WindowFrame> = {};
+	if (typeof parsed !== "object" || parsed === null) return emptyState();
+	const state = emptyState();
 	for (const [label, value] of Object.entries(parsed)) {
 		const frame = readFrame(value);
 		if (frame !== undefined) state[label] = frame;

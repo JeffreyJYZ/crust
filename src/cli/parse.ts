@@ -23,9 +23,14 @@ export function parse(argv: string[]): Parsed {
 	let dirExplicit = false;
 	let react = false;
 	let next = false;
-	let help = false;
-	let version = false;
+	// Global flags are decided before the loop: a flag-looking token after a
+	// value-taking flag must never be eaten as that value, and help/version
+	// answer the invocation even when an unrelated flag would fail validation.
+	const help = argv.some((arg) => arg === "--help" || arg === "-h");
+	const version = argv.some((arg) => arg === "--version" || arg === "-v");
+	const globalFlag = help || version;
 	const formatValues: string[] = [];
+	let missingValue: string | undefined;
 
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index];
@@ -33,11 +38,8 @@ export function parse(argv: string[]): Parsed {
 		switch (arg) {
 			case "--help":
 			case "-h":
-				help = true;
-				break;
 			case "--version":
 			case "-v":
-				version = true;
 				break;
 			case "--react":
 				react = true;
@@ -49,9 +51,15 @@ export function parse(argv: string[]): Parsed {
 			case "--config":
 			case "--entry":
 			case "--format": {
-				const value = argv[++index];
-				if (value === undefined)
-					return { options, help, version, error: `${arg} needs a value` };
+				const candidate = argv[index + 1];
+				if (candidate === undefined || candidate.startsWith("-")) {
+					// Leave a following flag for the loop; report the missing
+					// value only when help/version are not answering this call.
+					missingValue ??= `${arg} needs a value`;
+					break;
+				}
+				index++;
+				const value = candidate;
 				if (arg === "--dir") {
 					options.dir = value;
 					dirExplicit = true;
@@ -62,8 +70,10 @@ export function parse(argv: string[]): Parsed {
 				break;
 			}
 			default:
-				if (arg.startsWith("-"))
+				if (arg.startsWith("-")) {
+					if (globalFlag) break;
 					return { options, help, version, error: `unknown option ${arg}` };
+				}
 				if (command === undefined) {
 					command = arg;
 					break;
@@ -75,9 +85,13 @@ export function parse(argv: string[]): Parsed {
 					positional = arg;
 					break;
 				}
+				if (globalFlag) break;
 				return { options, help, version, error: `unexpected argument ${arg}` };
 		}
 	}
+
+	if (globalFlag) return { command, positional, options, help, version };
+	if (missingValue !== undefined) return { options, help, version, error: missingValue };
 
 	if (positional !== undefined) {
 		if (command === "dev" || command === "build") {

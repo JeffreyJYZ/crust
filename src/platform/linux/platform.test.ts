@@ -3,7 +3,13 @@ import { type LinuxBackend, LinuxPlatform } from "./index.ts";
 
 /** A backend that records every call and keeps its own open-window set. */
 function fakeBackend(overrides: Partial<LinuxBackend> = {}) {
-	const calls = { load: 0, iterate: 0, quit: 0, urls: [] as string[] };
+	const calls = {
+		load: 0,
+		iterate: 0,
+		quit: 0,
+		urls: [] as string[],
+		destroyed: [] as bigint[],
+	};
 	const open = new Set<bigint>();
 	let next = 100n;
 	const backend: LinuxBackend = {
@@ -12,6 +18,7 @@ function fakeBackend(overrides: Partial<LinuxBackend> = {}) {
 		},
 		iterate() {
 			calls.iterate++;
+			return true;
 		},
 		createWindow(_options, url) {
 			calls.urls.push(url);
@@ -23,6 +30,7 @@ function fakeBackend(overrides: Partial<LinuxBackend> = {}) {
 			return open.has(win);
 		},
 		destroy(win) {
+			calls.destroyed.push(win);
 			open.delete(win);
 		},
 		quit() {
@@ -104,6 +112,24 @@ describe("createWindow and window", () => {
 });
 
 describe("pump", () => {
+	test("counts only native iterations the backend says it ran", async () => {
+		let attempts = 0;
+		const { backend } = fakeBackend({
+			iterate() {
+				// The JS timer keeps firing, but GTK never actually iterates.
+				attempts++;
+				return attempts > 2;
+			},
+		});
+		const platform = new LinuxPlatform(backend);
+		platform.pump(5);
+		expect(platform.ticks).toBe(0);
+		await Bun.sleep(40);
+		platform.stopPump();
+		expect(attempts).toBeGreaterThan(2);
+		expect(platform.ticks).toBe(attempts - 2);
+	});
+
 	test("iterates the backend on the interval it was given", async () => {
 		const { backend, calls } = fakeBackend();
 		const platform = new LinuxPlatform(backend);
@@ -128,6 +154,31 @@ describe("pump", () => {
 		expect(() => platform.pump(0)).toThrow();
 		expect(() => platform.pump(-1)).toThrow();
 		expect(() => platform.pump(Number.NaN)).toThrow();
+	});
+});
+
+describe("destroy", () => {
+	test("closes a tracked window through the native backend and forgets it", () => {
+		const { backend, calls } = fakeBackend();
+		const platform = new LinuxPlatform(backend);
+		platform.createWindow({ label: "main", url: "http://127.0.0.1:1234/" });
+		platform.destroy("main");
+		expect(platform.window("main")).toBeUndefined();
+		expect(calls.destroyed).toEqual([100n]);
+		// A second call is a no-op: no second native destroy, no throw.
+		platform.destroy("main");
+		expect(calls.destroyed).toEqual([100n]);
+	});
+
+	test("quit closes every open window before ending the process", () => {
+		const { backend, calls } = fakeBackend();
+		const platform = new LinuxPlatform(backend);
+		platform.createWindow({ label: "one", url: "http://127.0.0.1:1234/" });
+		platform.createWindow({ label: "two", url: "http://127.0.0.1:1234/" });
+		platform.quit();
+		expect(calls.destroyed).toEqual([100n, 101n]);
+		expect(platform.window("one")).toBeUndefined();
+		expect(platform.window("two")).toBeUndefined();
 	});
 });
 

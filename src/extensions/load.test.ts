@@ -74,16 +74,33 @@ describe("loadExtensions", () => {
 		});
 	});
 
-	test("two files claiming one name are reported with both files", async () => {
+	test("two files claiming one name are refused together, with both files named", async () => {
 		await withDir(async (dir) => {
 			const first = await write(dir, "a.ts", extensionSource("clock"));
 			const second = await write(dir, "b.ts", extensionSource("clock"));
+			const { extensions, errors, loaded } = await loadExtensions({ dir });
+			// A name is a namespace: serving the first would be the silent shadowing the module doc says
+			// is prevented, so neither loads and each file gets its own error naming the other.
+			expect(extensions).toEqual([]);
+			expect(loaded).toEqual([]);
+			expect(errors.map((error) => error.file)).toEqual([first, second]);
+			expect(errors[0]?.reason).toContain(second);
+			expect(errors[1]?.reason).toContain(first);
+			for (const error of errors)
+				expect(error.reason).toContain('duplicate extension name "clock"');
+		});
+	});
+
+	test("a third claimant is refused too, and a distinct name beside them still loads", async () => {
+		await withDir(async (dir) => {
+			await write(dir, "a.ts", extensionSource("clock"));
+			await write(dir, "b.ts", extensionSource("clock"));
+			await write(dir, "c.ts", extensionSource("clock"));
+			await write(dir, "d.ts", extensionSource("thermo"));
 			const { extensions, errors } = await loadExtensions({ dir });
-			expect(extensions.map((extension) => extension.name)).toEqual(["clock"]);
-			expect(errors).toHaveLength(1);
-			expect(errors[0]?.file).toBe(second);
-			expect(errors[0]?.reason).toContain(first);
-			expect(errors[0]?.reason).toContain("clock");
+			expect(extensions.map((extension) => extension.name)).toEqual(["thermo"]);
+			expect(errors).toHaveLength(3);
+			expect(errors.every((error) => error.reason.includes("clock"))).toBe(true);
 		});
 	});
 

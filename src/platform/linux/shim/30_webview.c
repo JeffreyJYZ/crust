@@ -19,6 +19,7 @@ typedef void *(*ShimEvalFinishFn)(WebKitWebView *, void *, void **);
 typedef char *(*ShimToStringFn)(void *);
 typedef void (*ShimUnrefFn)(void *);
 typedef void (*ShimFreeFn)(void *);
+typedef void (*ShimErrorFreeFn)(void *);
 typedef unsigned long (*ShimSignalFn)(void *, const char *, void *, void *, void *, int);
 
 static ShimTitleFn shim_view_title;
@@ -27,6 +28,7 @@ static ShimEvalFinishFn shim_view_eval_finish;
 static ShimToStringFn shim_jsc_to_string;
 static ShimUnrefFn shim_object_unref;
 static ShimFreeFn shim_g_free;
+static ShimErrorFreeFn shim_g_error_free;
 static ShimSignalFn shim_view_connect;
 
 // WEBKIT_LOAD_FINISHED is 3 and travels as the signal's own value; 4 is ours,
@@ -100,6 +102,11 @@ static void shim_on_eval_done(void *source, void *result, void *data) {
 	if (error) {
 		ShimGError *gerror = (ShimGError *)error;
 		shim_copy_text(shim_eval_text, 1024, gerror->message ? gerror->message : "evaluate failed");
+		// The GError is caller-owned and a failed finish may also hand back a
+		// value. Free both here, the same way the success path does, or a page
+		// that keeps throwing scripts leaks one GLib allocation per evaluation.
+		if (value && shim_object_unref) shim_object_unref(value);
+		if (shim_g_error_free) shim_g_error_free(error);
 		shim_eval_state = 2;
 		return;
 	}
@@ -125,6 +132,7 @@ int shim_webkit_resolve(void) {
 	shim_jsc_to_string = (ShimToStringFn)shim_sym_or_null(h, "jsc_value_to_string");
 	shim_object_unref = (ShimUnrefFn)shim_sym_or_null(h, "g_object_unref");
 	shim_g_free = (ShimFreeFn)shim_sym_or_null(h, "g_free");
+	shim_g_error_free = (ShimErrorFreeFn)shim_sym_or_null(h, "g_error_free");
 	shim_view_connect = (ShimSignalFn)shim_sym_or_null(h, "g_signal_connect_data");
 	return core;
 }

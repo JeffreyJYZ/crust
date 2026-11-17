@@ -7,7 +7,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 const CAP = 200;
-const ROOTS = ["src", "scripts", "examples", "site"];
+const ROOTS = ["src", "scripts", "examples", "site", "templates"];
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".c", ".css", ".mjs", ".mdx"]);
 
 /** Directories that are generated, vendored or not ours to read. */

@@ -143,10 +143,27 @@ export function parseCreate(
 }
 
 /**
- * A label the adapter does not list is unknown before any selector is sent.
- * Liveness is the adapter's call; existence is answered here so the typed
- * error does not depend on every adapter remembering to throw.
+ * A label the adapter does not list is not necessarily unknown: macOS drops a
+ * closed window from `list()` while the adapter still tracks it, so `isOpen`
+ * must answer `false` (and close stay idempotent) rather than `unknown-window`.
+ * `isOpen` is the adapter's own oracle — it returns a boolean for a label it
+ * holds and throws `unknown-window` for one it never held. A probe is caught
+ * here so it can never throw past the gate; any other failure is left for the
+ * command itself to surface.
  */
-export function knownWindow(native: WindowNative, label: string): WindowFailure | undefined {
-	return native.list().includes(label) ? undefined : unknownWindow(label);
+export function knownWindow(
+	native: Pick<WindowNative, "list"> & Partial<Pick<WindowNative, "isOpen">>,
+	label: string,
+): WindowFailure | undefined {
+	if (native.list().includes(label)) return undefined;
+	if (native.isOpen === undefined) return unknownWindow(label);
+	try {
+		native.isOpen(label);
+		return undefined;
+	} catch (error) {
+		if (error instanceof WindowAdapterError && error.code === "unknown-window") {
+			return unknownWindow(label);
+		}
+		return undefined;
+	}
 }

@@ -129,8 +129,26 @@ describe("crash-reporter plugin", () => {
 			record: crashRecordPath(root),
 			root,
 		});
-		expect(plugin.commands.uninstall()).toEqual({ armed: false, reason: "disarmed" });
+		expect(plugin.commands.uninstall()).toEqual({
+			armed: false,
+			status: 0,
+			reason: "disarmed",
+		});
 		expect(calls).toEqual([`arm ${crashRecordPath(root)}`, "disarm"]);
+	});
+
+	test("a failed disarm reports the native armed flag and status, not a restored default", async () => {
+		const root = await tempDir();
+		const native: CrashNative = {
+			arm: () => ({ armed: true, status: 0, reason: "armed" }),
+			disarm: () => ({ armed: true, status: 3, reason: "sigaction refused the default" }),
+		};
+		const plugin = createCrashReporterPlugin({ root, guard: RUNNING, native });
+		expect(plugin.commands.uninstall()).toEqual({
+			armed: true,
+			status: 3,
+			reason: "sigaction refused the default",
+		});
 	});
 
 	test("a running guard without the native half refuses install, naming the handler", async () => {

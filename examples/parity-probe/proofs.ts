@@ -66,8 +66,9 @@ export function proveMenu(): boolean {
 		const applied = (commands.setAppMenu?.({ items: MENU }) as { ok?: boolean })?.ok === true;
 		const read = commands.read;
 		if (typeof read !== "function") {
+			// Setting the bar is not reading it. Without a readback this surface is unproven.
 			console.log("menu      read unavailable — menu.read is not in this tree yet");
-			return mark("menu", applied);
+			return mark("menu", false);
 		}
 		const answer = read() as { ok?: boolean; items?: unknown[] };
 		if (answer?.ok !== true || !Array.isArray(answer.items)) {

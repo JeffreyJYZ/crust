@@ -45,6 +45,13 @@ export interface PromptResult {
 	prompted: true;
 }
 
+/** A native refusal (e.g. the AX unit did not compile), converted from an adapter throw. */
+export interface PromptFailure {
+	ok: false;
+	code: "handler-error";
+	message: string;
+}
+
 export interface ElementCountResult {
 	ok: true;
 	/** Children of the app's first window. Zero is a real answer here: a window with no children. */
@@ -58,7 +65,7 @@ export function createAccessibilityPlugin(adapter?: AccessibilityAdapter): Plugi
 	"accessibility",
 	{
 		trusted: () => Promise<TrustedResult | NotImplemented>;
-		prompt: () => Promise<PromptResult | NotImplemented>;
+		prompt: () => Promise<PromptResult | PromptFailure | NotImplemented>;
 		elementCount: () => Promise<ElementCountResult | NotImplemented>;
 	}
 > {
@@ -79,10 +86,18 @@ export function createAccessibilityPlugin(adapter?: AccessibilityAdapter): Plugi
 			},
 
 			/** Raise the one system prompt that grants trust, and report the state after it. */
-			prompt: async (): Promise<PromptResult | NotImplemented> => {
+			prompt: async (): Promise<PromptResult | PromptFailure | NotImplemented> => {
 				if (!adapter) return missing("prompt");
-				const trusted = await adapter.prompt();
-				return { ok: true, trusted, prompted: true };
+				try {
+					const trusted = await adapter.prompt();
+					return { ok: true, trusted, prompted: true };
+				} catch (error) {
+					return {
+						ok: false,
+						code: "handler-error",
+						message: error instanceof Error ? error.message : String(error),
+					};
+				}
 			},
 
 			/**

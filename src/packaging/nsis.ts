@@ -12,7 +12,7 @@ import { run } from "./exec";
 export type Exec = typeof run;
 
 export interface NsisOptions {
-	/** Directory of the built app, copied wholesale by `File /r`. */
+	/** Directory holding the built Windows binary; only that binary is installed. */
 	appPath: string;
 	/** Installed executable filename, and the shortcut's target. */
 	binaryName: string;
@@ -24,7 +24,7 @@ export interface NsisOptions {
 	version: string;
 	/** Publisher shown in the uninstall list. Defaults to the app name. */
 	publisher?: string;
-	/** Destination `.exe`. Defaults to `<appPath>/../<id>-<version>-setup.exe`. */
+	/** Destination `.exe`. Defaults to `<appPath>/<id>-<version>-setup.exe`. */
 	out?: string;
 	exec?: Exec;
 }
@@ -86,7 +86,9 @@ UninstPage instfiles
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File /r "${options.appPath}\\*.*"
+  ; Install only the built binary. Copying every file in dist shipped the macOS
+  ; .app, stray AppImages and AppDirs, and earlier installers alongside it.
+  File "${join(options.appPath, options.binaryName)}"
   CreateShortcut "$SMPROGRAMS\\\${APP_NAME}.lnk" "$INSTDIR\\\${BINARY}"
   WriteUninstaller "$INSTDIR\\Uninstall.exe"
   WriteRegStr HKLM "${uninstall}" "DisplayName" "\${APP_NAME}"
@@ -130,8 +132,10 @@ export async function buildNsis(options: NsisOptions): Promise<NsisResult> {
 		);
 	}
 
+	// Beside the binary, inside `appPath`, like dmg and AppImage: a default in the
+	// project root scatters one artefact away from every other release output.
 	const outPath = resolve(
-		options.out ?? join(options.appPath, "..", `${options.id}-${options.version}-setup.exe`),
+		options.out ?? join(options.appPath, `${options.id}-${options.version}-setup.exe`),
 	);
 	const scriptPath = join(resolve(outPath, ".."), `${options.id}.nsi`);
 	await mkdir(resolve(scriptPath, ".."), { recursive: true });

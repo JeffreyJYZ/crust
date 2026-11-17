@@ -155,6 +155,14 @@ void shim_webview_close(shim_h hwnd) {
 	int i = find_window(hwnd);
 	if (i < 0) return;
 	wv2_controller_close(g_ctrl[i]);
-	g_ctrl[i] = 0;
-	g_hwnd[i] = 0;
+	// Give the slot back. g_windows is both the count and the index bind appends at, so a
+	// failed create that already bound a controller would otherwise burn a permanent slot;
+	// after eight retries bind refuses every create in the process.
+	for (; i < g_windows - 1; i++) {
+		g_hwnd[i] = g_hwnd[i + 1];
+		g_ctrl[i] = g_ctrl[i + 1];
+	}
+	g_windows--;
+	g_hwnd[g_windows] = 0;
+	g_ctrl[g_windows] = 0;
 }

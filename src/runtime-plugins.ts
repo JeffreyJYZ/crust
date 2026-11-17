@@ -4,7 +4,10 @@
 
 import { APP_NAMESPACE, app } from "@/app.ts";
 import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
+import { crashRecordPath } from "@/platform/darwin/crash-record";
 import { createWindowPlugin, definePlugin, type PluginDefinition } from "@/plugins";
+import { defaultStateRoot } from "@/plugins/window-persist-store";
+import { startCrashPart } from "@/runtime-crash-start";
 
 /**
  * The `app` namespace: what a two-argument `invoke(name, args)` reaches. It is the same object for every launch, so commands registered by main.ts after the bridge starts stay reachable — the handler closes over `app` rather than snapshotting its command table.
@@ -27,14 +30,13 @@ export function createAppNamespacePlugin(): PluginDefinition {
 		},
 	});
 }
-
 /** The config sections that change which plugin an app gets. */
 export interface NativePluginOptions {
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
 	/** Filesystem scope: when set, every `fs` command must resolve inside it. */
 	fs?: FsConfig;
-	/** The app's id, which names its data directory: crash records and downloads live there. */
+	/** The app's id, which names its data directory: crash records, store and downloads live there. */
 	app?: string;
 }
 
@@ -56,6 +58,8 @@ export async function nativePlugins(
 	options: NativePluginOptions | ShellConfig = {},
 ): Promise<PluginDefinition[]> {
 	const { shell, updater, fs, app: appId } = optionsOf(options);
+	// One data directory per app id; a static import, because the store is built before any platform.
+	const appRoot = defaultStateRoot(appId ?? "crust");
 	// `fs` carries the config's scope when one exists; with no scope the plugin
 	// behaves exactly as before, which is what keeps existing apps working.
 	const scoped = (plugin: PluginDefinition): PluginDefinition =>
@@ -72,8 +76,9 @@ export async function nativePlugins(
 	} = await import("@/plugins");
 	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
 	const updaterPlugins = updater === undefined ? [] : [createUpdaterPlugin(undefined, updater)];
-	// `store` has no native half and needs no adapter, so it is the same plugin on every platform.
-	const storePlugin = createStorePlugin();
+	// `store` has no native half, but its file is per-app: with no adapter it answered
+	// `~/Library/Application Support/crust/store.json` for every crust app.
+	const storePlugin = createStorePlugin({ root: appRoot });
 	if (!platform || process.platform !== "darwin") {
 		return [
 			...core.filter((plugin) => plugin.name !== "window").map(scoped),
@@ -102,7 +107,6 @@ export async function nativePlugins(
 	const crash = await import("@/platform/darwin/crash");
 	const locale = await import("@/platform/darwin/locale");
 	const { startCrashGuard } = await import("@/runtime-crash-guard");
-	const { defaultStateRoot } = await import("@/plugins/window-persist-store");
 	const { createNavigationPlugin } = await import("@/plugins/navigation");
 	const { createFindInPagePlugin } = await import("@/plugins/findinpage");
 	const {
@@ -134,23 +138,17 @@ export async function nativePlugins(
 	 * `bad-request` rather than silently acting on that first window.
 	 */
 	const webviewFor = webviewResolver(platform);
-	const appRoot = defaultStateRoot(appId ?? "crust");
-	/**
-	 * A guard that cannot be spawned is caught here so the plugin answers its own named
-	 * `not-implemented` instead of the launch dying before a window exists. It is a compiled app
-	 * that used to land here; the guard is now the app's own executable in guard mode, so what
-	 * still throws is a bad argument.
-	 */
-	let guard: { running(): boolean } | undefined;
-	try {
-		guard = startCrashGuard({ appDataDir: appRoot });
-	} catch {
-		guard = undefined;
-	}
 	const crashNative = {
 		arm: (recordPath: string) => crash.armCrashHandlers(recordPath),
 		disarm: () => crash.disarmCrashHandlers(),
 	};
+	const crashPart = startCrashPart({
+		root: appRoot,
+		record: crashRecordPath(appRoot),
+		start: (input) => startCrashGuard(input),
+		native: crashNative,
+	});
+	const guard = crashPart.guard;
 	return [
 		...core.map(scoped).map((plugin) => {
 			switch (plugin.name) {

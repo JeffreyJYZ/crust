@@ -9,18 +9,62 @@ describe("window liveness", () => {
 	 * stayed 517, and 518 for a second window that got `-orderOut:` before `-close`.
 	 */
 	test("a closed window is gone even though AppKit keeps its device number", () => {
-		expect(windowLiveness({ visible: false, miniaturized: false, appHidden: false })).toBe(
-			false,
-		);
+		expect(
+			windowLiveness({
+				visible: false,
+				miniaturized: false,
+				appHidden: false,
+				inAppWindows: true,
+			}),
+		).toBe(false);
 	});
 
 	test("a minimised window and a hidden app are both still open", () => {
-		expect(windowLiveness({ visible: false, miniaturized: true, appHidden: false })).toBe(true);
-		expect(windowLiveness({ visible: false, miniaturized: false, appHidden: true })).toBe(true);
+		expect(
+			windowLiveness({
+				visible: false,
+				miniaturized: true,
+				appHidden: false,
+				inAppWindows: true,
+			}),
+		).toBe(true);
+		expect(
+			windowLiveness({
+				visible: false,
+				miniaturized: false,
+				appHidden: true,
+				inAppWindows: true,
+			}),
+		).toBe(true);
 	});
 
 	test("an ordinary on-screen window is open", () => {
-		expect(windowLiveness({ visible: true, miniaturized: false, appHidden: false })).toBe(true);
+		expect(
+			windowLiveness({
+				visible: true,
+				miniaturized: false,
+				appHidden: false,
+				inAppWindows: true,
+			}),
+		).toBe(true);
+	});
+
+	/**
+	 * The regression this gate now carries: a closed window has isVisible=0 and
+	 * isMiniaturized=0. Cmd+H sets appHidden=1, so the old OR resurrected it as
+	 * open — it stayed in list(), isOpen() returned true and create() refused the
+	 * label as a duplicate. -close removes the window from -[NSApplication windows],
+	 * so inAppWindows=0 is the authoritative "gone" fact and must win.
+	 */
+	test("a closed window stays closed when the app is hidden", () => {
+		expect(
+			windowLiveness({
+				visible: false,
+				miniaturized: false,
+				appHidden: true,
+				inAppWindows: false,
+			}),
+		).toBe(false);
 	});
 });
 

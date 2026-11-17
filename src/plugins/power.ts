@@ -16,6 +16,16 @@ export interface PowerState {
 	/** 0–100, or null when the machine has no battery (a desktop is on wall power). */
 	batteryPercent: number | null;
 	lowPowerMode: boolean;
+	/** False when the native read never reached the OS; the fields above are then placeholders. */
+	available?: boolean;
+	/** Why the read failed, present when `available` is false. */
+	reason?: string;
+}
+
+/** A refused native read, so a fabricated reading never reaches a page as `ok: true`. */
+export interface PowerReadFailure {
+	available: false;
+	reason: string;
 }
 
 /** One assertion attempt: the id it holds, or the step that refused it. */
@@ -35,7 +45,8 @@ export interface SleepRelease {
 /** The native half of `crust:power`; `platform/darwin/power.ts` implements it. */
 export interface PowerAdapter {
 	state(): PowerState | Promise<PowerState>;
-	idleSeconds(): number | Promise<number>;
+	/** Seconds, or a refusal when the native clock read never reached the OS. */
+	idleSeconds(): number | PowerReadFailure | Promise<number | PowerReadFailure>;
 	preventSleep(reason: string): SleepAssertion | Promise<SleepAssertion>;
 	allowSleep(): SleepRelease | Promise<SleepRelease>;
 }
@@ -79,12 +90,12 @@ export const POWER_COMMANDS = ["state", "idleSeconds", "sleepPrevent", "sleepAll
 export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 	"power",
 	{
-		state: () => Promise<PowerStateResult | NotImplemented>;
-		idleSeconds: () => Promise<IdleResult | NotImplemented>;
+		state: () => Promise<PowerStateResult | PowerFailure | NotImplemented>;
+		idleSeconds: () => Promise<IdleResult | PowerFailure | NotImplemented>;
 		sleepPrevent: (
 			args: SleepPreventArgs,
 		) => Promise<SleepPreventResult | PowerFailure | NotImplemented>;
-		sleepAllow: () => Promise<SleepAllowResult | NotImplemented>;
+		sleepAllow: () => Promise<SleepAllowResult | PowerFailure | NotImplemented>;
 	}
 > {
 	const missing = (command: string) =>
@@ -98,9 +109,16 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 		name: "power",
 		commands: {
 			/** Battery, wall power and the low-power flag, in one read. */
-			state: async (): Promise<PowerStateResult | NotImplemented> => {
+			state: async (): Promise<PowerStateResult | PowerFailure | NotImplemented> => {
 				if (!adapter) return missing("state");
 				const answer = await adapter.state();
+				if (answer.available === false) {
+					return {
+						ok: false,
+						code: "handler-error",
+						message: answer.reason ?? "power.state: the native read did not happen",
+					};
+				}
 				return {
 					ok: true,
 					onAc: answer.onAc,
@@ -110,9 +128,12 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 			},
 
 			/** Seconds since the last input event, from the combined session state. */
-			idleSeconds: async (): Promise<IdleResult | NotImplemented> => {
+			idleSeconds: async (): Promise<IdleResult | PowerFailure | NotImplemented> => {
 				if (!adapter) return missing("idleSeconds");
 				const seconds = await adapter.idleSeconds();
+				if (typeof seconds !== "number") {
+					return { ok: false, code: "handler-error", message: seconds.reason };
+				}
 				return { ok: true, seconds: Number.isFinite(seconds) ? seconds : 0 };
 			},
 
@@ -133,10 +154,11 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 				return { ok: true, id: answer.id };
 			},
 
-			/** Release the assertion; `released: false` means none was held. */
-			sleepAllow: async (): Promise<SleepAllowResult | NotImplemented> => {
+			/** Release the assertion; `released: false` means none was held, not that the OS refused. */
+			sleepAllow: async (): Promise<SleepAllowResult | PowerFailure | NotImplemented> => {
 				if (!adapter) return missing("sleepAllow");
 				const answer = await adapter.allowSleep();
+				if (!answer.ok) return { ok: false, code: "handler-error", message: answer.reason };
 				return { ok: true, released: answer.released };
 			},
 		},

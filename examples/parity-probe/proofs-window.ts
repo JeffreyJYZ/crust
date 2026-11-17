@@ -85,8 +85,9 @@ export function proveShortcut(): boolean {
 		}
 		const seam = seamOf(adapter, plugin.commands);
 		if (seam === undefined) {
+			// Registration alone never emitted a shortcut; an unfirable seam is a fail.
 			console.log("shortcut  seam unavailable — registered, but nothing can fire it here");
-			return mark("shortcut", true);
+			return mark("shortcut", false);
 		}
 		seam(registered.accelerator);
 		const heard = emitted.at(-1);

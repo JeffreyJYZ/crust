@@ -162,10 +162,13 @@ export default {
 						: `the OS refused: ${reported || "no answer"}`,
 		);
 
+		const survivors = await survivorsOf(builtBinary);
 		verdict.check(
 			"no survivors",
-			(await survivorsOf(builtBinary)).length === 0,
-			"no process matches the binary path",
+			survivors.length === 0,
+			survivors.length === 0
+				? "no process matches the binary path"
+				: `pid ${survivors.join(", ")} still running`,
 		);
 
 		return verdict.report("e2e-notify");

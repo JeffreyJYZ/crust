@@ -50,6 +50,34 @@ afterEach(async () => {
 	root = undefined;
 });
 
+describe("store registration", () => {
+	/**
+	 * `store.json` used to be built with no adapter, so every crust app read and wrote
+	 * `~/Library/Application Support/crust/store.json`: a key set by one app appeared in another
+	 * and a `clear` in one erased the other's data. `app.id` is the documented per-app identity.
+	 */
+	test("the store file lives under the app's own id, not the literal crust", async () => {
+		const saved = process.env.CRUST_DATA_DIR;
+		delete process.env.CRUST_DATA_DIR;
+		try {
+			const plugins = await nativePlugins([], undefined, { app: "land.jyz.store-alpha" });
+			const store = plugins.find((plugin) => plugin.name === "store");
+			if (store === undefined) throw new Error("nativePlugins did not register store");
+			// `keys` is a read: an absent file is an empty store, so nothing is created here.
+			const commands = store.commands as unknown as Record<
+				string,
+				(input: unknown) => Promise<unknown>
+			>;
+			const answer = (await commands.keys?.({})) as { path: string };
+			expect(answer.path).toContain("land.jyz.store-alpha");
+			expect(answer.path).toContain("store.json");
+			expect(answer.path).not.toContain(`Application Support/crust/store.json`);
+		} finally {
+			if (saved !== undefined) process.env.CRUST_DATA_DIR = saved;
+		}
+	});
+});
+
 describe("shell registration", () => {
 	test("no shell section registers the plugin and refuses every program", async () => {
 		const plugin = await shellPlugin();

@@ -61,6 +61,19 @@ function findEnd(view: DataView): number {
 	throw new ArchiveError("is not a zip archive: no end-of-central-directory record");
 }
 
+/**
+ * Every offset in a header comes from the archive itself, so it is checked against the bytes on
+ * hand before it is read: a truncated download is an ordinary failure and must refuse as
+ * `invalid-archive`, not surface a `DataView` offset `RangeError` with no entry named.
+ */
+function assertRange(view: DataView, at: number, length: number, what: string): void {
+	if (!Number.isInteger(at) || at < 0 || length < 0 || at + length > view.byteLength) {
+		throw new ArchiveError(
+			`is truncated: ${what} needs bytes ${at}..${at + length}, and the archive holds ${view.byteLength}`,
+		);
+	}
+}
+
 function kindOf(name: string, mode: number): ArchiveEntryKind {
 	const type = mode & TYPE_MASK;
 	if (type === SYMLINK) return "symlink";
@@ -76,12 +89,14 @@ function dataOf(
 	size: number,
 	method: number,
 ): Uint8Array {
+	assertRange(view, at, 30, "a local header");
 	if (view.getUint32(at, true) !== LOCAL) {
 		throw new ArchiveError("has a damaged local header");
 	}
 	const nameLength = view.getUint16(at + 26, true);
 	const extraLength = view.getUint16(at + 28, true);
 	const start = at + 30 + nameLength + extraLength;
+	assertRange(view, start, size, "an entry's data");
 	const raw = bytes.subarray(start, start + size);
 	if (method === 0) return raw;
 	if (method === 8) return Bun.inflateSync(new Uint8Array(raw), { windowBits: -15 });
@@ -91,6 +106,7 @@ function dataOf(
 }
 
 function readCentral(bytes: Uint8Array, view: DataView, at: number, out: ArchiveEntry[]): number {
+	assertRange(view, at, 46, "a central directory header");
 	if (view.getUint32(at, true) !== CENTRAL) {
 		throw new ArchiveError("has a damaged central directory");
 	}
@@ -106,24 +122,38 @@ function readCentral(bytes: Uint8Array, view: DataView, at: number, out: Archive
 	// masking to the permission bits here would make every symlink read as a file.
 	const unix = view.getUint32(at + 38, true) >>> 16;
 	const local = view.getUint32(at + 42, true);
+	assertRange(view, at + 46, nameLength, "a central directory entry name");
 	const name = text.decode(bytes.subarray(at + 46, at + 46 + nameLength));
+	const next = at + 46 + nameLength + extraLength + commentLength;
+	assertRange(
+		view,
+		at + 46,
+		nameLength + extraLength + commentLength,
+		"a central directory entry",
+	);
 	const kind = kindOf(name, unix);
 	const mode = unix & 0o777;
 	const data = dataOf(bytes, view, local, size, method);
 	if (kind === "symlink") out.push({ name, kind, mode, target: text.decode(data) });
 	else if (kind === "directory") out.push({ name, kind, mode });
 	else out.push({ name, kind, mode, bytes: data });
-	return at + 46 + nameLength + extraLength + commentLength;
+	return next;
 }
 
 /** Read and check every entry, or throw the one refusal that names what is wrong with it. */
 export function readArchive(bytes: Uint8Array): Archive {
 	const view = viewOf(bytes);
 	const end = findEnd(view);
+	assertRange(view, end, END_BYTES, "an end-of-central-directory record");
 	const count = view.getUint16(end + 10, true);
 	const offset = view.getUint32(end + 16, true);
 	if (count === 0xffff || offset === 0xffffffff) {
 		throw new ArchiveError("is a zip64 archive, which updater does not read");
+	}
+	if (offset > view.byteLength) {
+		throw new ArchiveError(
+			`is truncated: its central directory starts at ${offset}, past the ${view.byteLength} bytes it has`,
+		);
 	}
 	const entries: ArchiveEntry[] = [];
 	let at = offset;

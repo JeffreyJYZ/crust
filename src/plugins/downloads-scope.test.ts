@@ -56,6 +56,26 @@ describe("downloads destination", () => {
 		}
 	});
 
+	test("a dangling symlink inside the root is refused before anything creates its target", async () => {
+		const { base, root, outside } = await scratch();
+		try {
+			const link = join(root, "dllink");
+			const absent = join(outside, "dl.txt");
+			await symlink(absent, link);
+			expect(() => destination(root, link)).toThrow(/outside the app's data root/);
+			expect(() => destination(root, join(link, "deeper"))).toThrow(
+				/outside the app's data root/,
+			);
+			// A dangling link that points back inside stays usable, so a page is not broken by its own tree.
+			const inner = join(root, "future");
+			const innerLink = join(root, "inner-link");
+			await symlink(inner, innerLink);
+			expect(destination(root, innerLink)).toBe(innerLink);
+		} finally {
+			await rm(base, { recursive: true, force: true });
+		}
+	});
+
 	test("a relative path, a walk out, and a sibling that starts the root are refused", async () => {
 		const { base, root } = await scratch();
 		try {

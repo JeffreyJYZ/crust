@@ -116,23 +116,29 @@ export class WindowRegistry {
 
 	/** Whether AppKit still holds this window open, read the measured way. */
 	#isOpen(win: number): boolean {
-		// Hiding the app (Cmd+H) orders every window out without closing one, so
-		// it must not read as "all windows gone". A failure here fails safe: no
-		// false quit, only a delayed one.
-		let appHidden = false;
+		const symbols = shim().symbols;
 		const app = this.#app();
+		// Hiding the app (Cmd+H) orders every window out without closing one, so
+		// it must not read as "all windows gone". Before start() there is no app
+		// to read -isHidden or -windows from; fail open until there is one.
+		let appHidden = false;
+		let inAppWindows = !app;
 		if (app) {
 			try {
 				appHidden = S.b0(app, "isHidden");
 			} catch {
 				appHidden = false;
 			}
+			// -close removes the window from -[NSApplication windows] at once, so
+			// membership is the one read that separates a closed window from one
+			// Cmd+H merely ordered out. Without it a closed window reads open.
+			inAppWindows = Number(symbols.shim_window_in_app_windows(app, win) ?? 0) === 1;
 		}
-		const symbols = shim().symbols;
 		return windowLiveness({
 			visible: Number(symbols.shim_window_is_visible(win) ?? 0) === 1,
 			miniaturized: Number(symbols.shim_window_is_miniaturized(win) ?? 0) === 1,
 			appHidden,
+			inAppWindows,
 		});
 	}
 }

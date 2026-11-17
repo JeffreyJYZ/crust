@@ -69,7 +69,10 @@ const URL = "http://127.0.0.1:4123/";
 describe("FFI argument encoding", () => {
 	test("the title is a NUL-terminated buffer, never a JavaScript string", () => {
 		const { symbols, args } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		backend.load();
 		backend.createWindow({ label: "main", title: "crust café" }, URL);
 		const title = args.window_new?.[0];
@@ -83,7 +86,10 @@ describe("FFI argument encoding", () => {
 
 	test("the URL reaches the webview as the URL the window was created with", () => {
 		const { symbols, args } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		backend.load();
 		const created = backend.createWindow({ label: "main", url: URL }, URL);
 		const url = args.webview_load?.[1];
@@ -97,7 +103,10 @@ describe("FFI argument encoding", () => {
 
 	test("an absent title is one NUL byte, not an empty string", () => {
 		const { symbols, args } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		backend.load();
 		backend.createWindow({ label: "main" }, URL);
 		const title = args.window_new?.[0];
@@ -108,7 +117,10 @@ describe("FFI argument encoding", () => {
 
 	test("the C entry points run in the order that builds a usable window", () => {
 		const { symbols, calls } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		backend.load();
 		backend.createWindow({ label: "main", title: "main" }, URL);
 		expect(calls).toEqual([
@@ -126,14 +138,20 @@ describe("FFI argument encoding", () => {
 describe("guards", () => {
 	test("createWindow before load throws instead of calling a null entry point", () => {
 		const { symbols, calls } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		expect(() => backend.createWindow({ label: "main" }, URL)).toThrow("before load");
 		expect(calls).toEqual([]);
 	});
 
 	test("isOpen is false before load and after a destroy", () => {
 		const { symbols } = fakeShim();
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		expect(backend.isOpen(100n)).toBe(false);
 		backend.load();
 		const created = backend.createWindow({ label: "main" }, URL);
@@ -146,7 +164,10 @@ describe("guards", () => {
 		const { symbols } = fakeShim();
 		symbols.shim_lib_open = () => 0;
 		symbols.shim_lib_error_text = () => "cannot load libgtk-3.so.0";
-		const backend = createGtkBackend(() => symbols);
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
 		expect(() => backend.load()).toThrow("cannot load libgtk-3.so.0");
 		expect(() => backend.load()).toThrow("apt install");
 	});

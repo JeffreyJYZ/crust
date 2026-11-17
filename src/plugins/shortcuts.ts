@@ -74,7 +74,7 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 		isRegistered: (args: ShortcutArgs) => boolean;
 		list: () => string[];
 	}
-> {
+> & { dispose(): void } {
 	const live = new Map<string, ParsedAccelerator>();
 	const missing = (command: string) =>
 		notImplemented(
@@ -86,7 +86,8 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 	// one, so the most recent context is the channel it has. A hot key cannot exist
 	// before `register` ran, which is what makes that channel already set.
 	let sink: PluginContext["emit"] | undefined;
-	adapter?.onTrigger((accelerator) => sink?.("shortcut", { accelerator }));
+	/** The adapter's unsubscribe, retained so a caller can detach the press channel. */
+	const detachTrigger = adapter?.onTrigger((accelerator) => sink?.("shortcut", { accelerator }));
 
 	const parse = (args: ShortcutArgs): ParsedAccelerator | ShortcutFailure => {
 		try {
@@ -99,7 +100,7 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 		}
 	};
 
-	return definePlugin({
+	const plugin = definePlugin({
 		name: "shortcut",
 		commands: {
 			register: (args: ShortcutArgs, ctx: PluginContext) => {
@@ -130,9 +131,17 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 						parsed.accelerator,
 					);
 				}
-				adapter.unregister(parsed);
+				if (!adapter.unregister(parsed)) {
+					// The OS still has the hot key: keep it in the registry so a retry reaches the OS
+					// again instead of silently losing track of a key that keeps firing.
+					return refusal(
+						"native-failed",
+						`shortcut.unregister: the OS refused to remove ${parsed.accelerator}`,
+						parsed.accelerator,
+					);
+				}
 				live.delete(parsed.accelerator);
-				return { ok: true, accelerator: parsed.accelerator };
+				return { ok: true, accelerator: parsed.accelerator } as const;
 			},
 			unregisterAll: (_args?: unknown, ctx?: PluginContext) => {
 				if (!adapter) return missing("unregisterAll");
@@ -149,6 +158,16 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 				}
 			},
 			list: () => [...live.keys()],
+		},
+	});
+	let disposed = false;
+	return Object.freeze({
+		...plugin,
+		/** Detach the native press handler; idempotent, so repeated teardown is safe. */
+		dispose: () => {
+			if (disposed) return;
+			disposed = true;
+			detachTrigger?.();
 		},
 	});
 }

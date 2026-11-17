@@ -82,7 +82,9 @@ export async function invokeRequest(
 		}
 
 		const text = await request.text();
-		if (text.length > MAX_BODY_BYTES) {
+		// Bytes, not UTF-16 units: `text.length` counts code units, so ~2 M CJK characters
+		// (~6 MB on the wire) measure ~2 M and slip through the cap the binary branch enforces.
+		if (Buffer.byteLength(text) > MAX_BODY_BYTES) {
 			throw new CrustError("too-large", "payload too large");
 		}
 		let parsed: { plugin?: unknown; command?: unknown; args?: unknown; window?: unknown };

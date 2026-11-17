@@ -5,7 +5,7 @@
 import { readdir } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import { findConfig, loadConfig, type CrustConfig } from "@/config";
-import { detectSingle, type SingleApp, type SingleDetection } from "@/single";
+import { detectSingle, type SingleApp, type SingleDetection, SINGLE_EXTENSIONS } from "@/single";
 import { resolveBackendEntry, type CliOptions } from "../util.ts";
 import { type Check, inline, shellOutput, type Status, versionAtLeast } from "./check.ts";
 
@@ -15,17 +15,17 @@ export interface Environment {
 	single?: SingleApp;
 }
 
-const PAGE_EXTENSIONS = new Set([".tsx", ".jsx"]);
-
 function isPageFile(value: string | undefined): boolean {
-	return value !== undefined && PAGE_EXTENSIONS.has(extname(value).toLowerCase());
+	return value !== undefined && SINGLE_EXTENSIONS.has(extname(value).toLowerCase());
 }
 
-/** The one top-level `.tsx`/`.jsx` a configless directory holds, if exactly one. */
+/** The one top-level single-file page a configless directory holds, if exactly one. */
 async function solePageFile(dir: string): Promise<string | undefined> {
 	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
 	const pages = entries
-		.filter((entry) => entry.isFile() && PAGE_EXTENSIONS.has(extname(entry.name).toLowerCase()))
+		.filter(
+			(entry) => entry.isFile() && SINGLE_EXTENSIONS.has(extname(entry.name).toLowerCase()),
+		)
 		.map((entry) => entry.name);
 	return pages.length === 1 ? pages[0] : undefined;
 }
@@ -95,7 +95,7 @@ export async function checkEnvironment(options: CliOptions): Promise<Environment
 				"config",
 				"fail",
 				`${inline(text)}${singleProblem ? ` (${singleProblem})` : ""} — fix the key named above, run \`crust init\` for a new project, ` +
-					"or use single-file mode (`crust dev <file.tsx>`, which needs no config)",
+					"or use single-file mode (`crust dev <file>`, which needs no config)",
 			);
 		}
 	}

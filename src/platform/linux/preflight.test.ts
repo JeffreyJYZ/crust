@@ -15,7 +15,7 @@ if (!gtk || !webkit) throw new Error("PREFLIGHT must name both libraries");
 
 describe("PREFLIGHT", () => {
 	test("names the GTK3 and WebKitGTK 4.1 runtime objects", () => {
-		expect(PREFLIGHT.map((entry) => entry.library)).toEqual([
+		expect([...new Set(PREFLIGHT.map((entry) => entry.library))]).toEqual([
 			"libgtk-3.so.0",
 			"libwebkit2gtk-4.1.so.0",
 		]);
@@ -24,6 +24,44 @@ describe("PREFLIGHT", () => {
 	test("probes a symbol that proves the library, not only its file", () => {
 		expect(gtk.symbol).toBe("gtk_init_check");
 		expect(webkit.symbol).toBe("webkit_web_view_new");
+	});
+
+	// Each of these is resolved with `shim_sym` — mandatory at launch. A library
+	// that exports the first two but not these used to pass the probe and fail
+	// later with a bare "missing symbol" from C.
+	test("covers every symbol the shim requires, not only the two library proofs", () => {
+		const symbols = PREFLIGHT.map((entry) => entry.symbol);
+		for (const required of [
+			"gtk_init_check",
+			"g_main_context_iteration",
+			"webkit_web_view_new",
+			"webkit_web_view_load_uri",
+			"gtk_window_new",
+			"gtk_window_set_title",
+			"gtk_window_set_default_size",
+			"gtk_widget_set_size_request",
+			"gtk_container_add",
+			"gtk_widget_show_all",
+			"gtk_widget_destroy",
+			"g_signal_connect_data",
+		]) {
+			expect(symbols).toContain(required);
+		}
+		// Optional proof entries stay optional: launching an app must not require
+		// `evaluate_javascript`, which arrived only in WebKitGTK 2.40.
+		expect(symbols).not.toContain("webkit_web_view_evaluate_javascript");
+	});
+
+	test("a library with a partial symbol set fails preflight by that symbol's name", () => {
+		const seen: string[] = [];
+		const errors = preflightErrors((entry) => {
+			seen.push(entry.symbol);
+			return entry.symbol !== "g_main_context_iteration";
+		});
+		expect(seen).toContain("g_main_context_iteration");
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toContain("g_main_context_iteration");
+		expect(errors[0]).toContain("libgtk-3.so.0");
 	});
 
 	test("the install line names both package families", () => {

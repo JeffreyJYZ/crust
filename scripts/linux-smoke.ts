@@ -20,6 +20,7 @@ import {
 	createPlatform,
 	type NativeWindow,
 	preflightErrors,
+	PREFLIGHT,
 	shim,
 } from "../src/platform/linux/index.ts";
 import { Verdict } from "./e2e-harness.ts";
@@ -53,13 +54,14 @@ async function main(): Promise<number> {
 		return 1;
 	}
 
-	// 1. The libraries, through the same dlopen probe the platform runs at launch.
+	// 1. The libraries, through the same dlopen probe `backend.load()` runs at
+	//    launch — one implementation, so this line and a failed launch agree.
 	const missing = preflightErrors();
 	verdict.check(
 		"preflight",
 		missing.length === 0,
 		missing.length === 0
-			? "libgtk-3.so.0 and libwebkit2gtk-4.1.so.0 load, with the symbols the shim resolves"
+			? `libgtk-3.so.0 and libwebkit2gtk-4.1.so.0 load with all ${PREFLIGHT.length} required symbols the shim resolves`
 			: missing.join(" · "),
 	);
 	if (missing.length > 0) return verdict.report("linux:smoke");
@@ -121,6 +123,8 @@ async function main(): Promise<number> {
 	);
 
 	// 5. Two slices of the real main context, which is the pump a running app depends on.
+	//    `ticks` advances only when `shim_pump` reports a native iteration, so a
+	//    JS timer keep-alive alone cannot make this line pass.
 	platform.pump(16);
 	await Bun.sleep(120);
 	const ticks = platform.ticks;

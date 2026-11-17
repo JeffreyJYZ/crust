@@ -9,6 +9,7 @@ import type { DarwinPlatform } from "@/platform/darwin";
 import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
 import { APP_NAMESPACE, type AppEvent, type AppListener, type Platform } from "./app-types.ts";
 import { corePlugins, windowPlugin } from "./plugins/index.ts";
+import { defaultStateRoot } from "./plugins/window-persist-store.ts";
 
 /** How often `run` checks whether every window has closed, when someone listens. */
 const WINDOW_CHECK_INTERVAL_MS = 250;
@@ -74,8 +75,16 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 			// `WindowsPlatformConfig` is `{ appName, userDataDir }`, so the whole config
 			// rides along and the name their window class reads is added beside it —
 			// passing the bare config would register every app as "crust".
+			// `userDataDir` is derived, not configured: WebView2 keeps cookies and profile state
+			// there, and two crust apps launched from one machine would otherwise share one folder
+			// when they happened to be built under the same executable name. It is the same
+			// per-app root the store, crash records and window state already use.
 			const windows = await import("@/platform/windows");
-			return windows.createPlatform({ ...config, appName: config.app.name });
+			return windows.createPlatform({
+				...config,
+				appName: config.app.name,
+				userDataDir: defaultStateRoot(config.app.id),
+			});
 		}
 		default:
 			throw new Error(
@@ -152,9 +161,12 @@ export function mountable(
 }
 
 /**
- * Watch for every configured window closing, once. The returned handle is the
- * timer the app clears on `quit()`, and it never keeps the process alive by
- * itself.
+ * Watch for every window closing, once. The returned handle is the timer the
+ * app clears on `quit()`, and it never keeps the process alive by itself.
+ *
+ * The check reads the platform's live label set when it has one: `window.create`
+ * opens windows under labels the config never names, so counting config entries
+ * reported "all closed" while a page-created window was still on screen.
  */
 export function watchWindows(
 	config: CrustConfig,
@@ -162,10 +174,16 @@ export function watchWindows(
 	onAllClosed: () => void,
 ): ReturnType<typeof setInterval> {
 	let notified = false;
+	/** Anything still open: the platform's own set, else the config windows it was started with. */
+	const stillOpen = (): boolean => {
+		const labels = platform.windowLabels?.();
+		if (labels !== undefined)
+			return labels.some((label) => platform.window(label) !== undefined);
+		return config.windows.some((window: WindowConfig) => platform.window(window.label));
+	};
 	const handle = setInterval(() => {
 		if (notified) return;
-		const open = config.windows.some((window: WindowConfig) => platform.window(window.label));
-		if (open) return;
+		if (stillOpen()) return;
 		notified = true;
 		onAllClosed();
 	}, WINDOW_CHECK_INTERVAL_MS);

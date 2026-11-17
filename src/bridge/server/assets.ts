@@ -5,7 +5,7 @@
  * the token protects IPC, not the HTML, JS and CSS the page is made of.
  */
 
-import { join } from "node:path";
+import { resolve, sep } from "node:path";
 import { bootstrapSource, type CrustConfig } from "../client";
 import { CrustError } from "../errors";
 import { headersFor } from "./http.ts";
@@ -29,7 +29,9 @@ export async function assetBody(
 	options: StartBridgeOptions,
 ): Promise<string | Uint8Array | ArrayBuffer | Blob | null> {
 	const key = decodeURIComponent(pathname);
-	if (key.includes("\0") || key.split("/").some((part) => part === "..")) {
+	// Both separators, because `join` on Windows treats `\` as one: a `%5c` segment decodes
+	// after the URL parser has run, so splitting on `/` alone lets `..\..\secret` through.
+	if (key.includes("\0") || key.split(/[\\/]/).some((part) => part === "..")) {
 		throw new CrustError("bad-request", `bad asset path: ${pathname}`);
 	}
 	const relative = key.replace(/^\/+/, "");
@@ -39,8 +41,16 @@ export async function assetBody(
 		}
 	}
 	if (options.root !== undefined && relative.length > 0) {
-		const file = Bun.file(join(options.root, relative));
-		if (await file.exists()) return file;
+		// Defence in depth: even with the separator fix, a candidate that resolves outside the
+		// root is refused rather than served. `resolve` normalises both sides and the trailing
+		// separator keeps `/root-evil` from matching a `/root` prefix.
+		const root = resolve(options.root);
+		const file = resolve(root, relative);
+		if (file !== root && !file.startsWith(`${root}${sep}`)) {
+			throw new CrustError("bad-request", `asset path escapes the root: ${pathname}`);
+		}
+		const candidate = Bun.file(file);
+		if (await candidate.exists()) return candidate;
 	}
 	return null;
 }

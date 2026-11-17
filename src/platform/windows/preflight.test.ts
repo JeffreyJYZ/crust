@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { PREFLIGHT, preflightError, WEBVIEW2_BOOTSTRAPPER_URL } from "./preflight.ts";
+import { defaultBackend } from "./backend-default.ts";
+import {
+	missingEntryPoints,
+	PREFLIGHT,
+	preflightError,
+	WEBVIEW2_BOOTSTRAPPER_URL,
+} from "./preflight.ts";
+import { readShimSource } from "./shim-source.ts";
 
 const READY = { buildNumber: "10.0.22631", loader: true, coreVersion: "120.0.2210.91" };
 
@@ -58,27 +65,37 @@ describe("preflightError", () => {
 });
 
 describe("PREFLIGHT", () => {
-	const names = PREFLIGHT.map((entry) => `${entry.module}!${entry.symbol}`);
+	// Derive the set from the shim itself: a hard-coded list goes stale the moment a bind is added.
+	const source = readShimSource();
+	const bound = [...source.matchAll(/SHIM_BIND\(g_\w+,\s*([A-Za-z_]\w*)\)/g)].map(
+		(match) => match[1] ?? "",
+	);
+	const loader = /GetProcAddress\(loader,\s*"([A-Za-z_]\w*)"\)/.exec(source)?.[1];
+	const expected = [...bound, ...(loader ? [loader] : [])].sort();
 
 	// Guards the list itself: a shim call added without a preflight entry is a crash with no error.
 	test("covers every entry point the shim calls", () => {
-		for (const symbol of [
-			"user32.dll!RegisterClassExW",
-			"user32.dll!CreateWindowExW",
-			"user32.dll!DestroyWindow",
-			"user32.dll!PeekMessageW",
-			"user32.dll!TranslateMessage",
-			"user32.dll!DispatchMessageW",
-			"user32.dll!GetClientRect",
-			"kernel32.dll!MultiByteToWideChar",
-			"ole32.dll!CoInitializeEx",
-			"WebView2Loader.dll!CreateCoreWebView2EnvironmentWithOptions",
-		]) {
-			expect(names).toContain(symbol);
-		}
+		expect(expected.length).toBeGreaterThanOrEqual(26);
+		expect(PREFLIGHT.map((entry) => entry.symbol).sort()).toEqual(expected);
 	});
 
 	test("every entry says what breaks without it", () => {
 		for (const entry of PREFLIGHT) expect(entry.breaks.length).toBeGreaterThan(0);
+	});
+});
+
+describe("probing entry points", () => {
+	test("names every unresolved entry in table order", () => {
+		const bad = new Set(["user32.dll!PeekMessageW", "kernel32.dll!VirtualQuery"]);
+		const names = missingEntryPoints(
+			PREFLIGHT,
+			(module, symbol) => !bad.has(`${module}!${symbol}`),
+		);
+		expect(names).toEqual(["user32.dll!PeekMessageW", "kernel32.dll!VirtualQuery"]);
+	});
+
+	test("the real backend runs the table, not an empty report", () => {
+		expect(defaultBackend(() => false).probe().missing?.length).toBe(PREFLIGHT.length);
+		expect(defaultBackend(() => true).probe().missing).toEqual([]);
 	});
 });

@@ -9,8 +9,8 @@ usage:
                               --next:  Next.js, static export only)
   crust dev [file] [options]
                            watch the backend, restart it on change, follow the
-                           frontend URL; with a .tsx/.jsx/.ts/.js file, run that
-                           one file as the app (no config needed)
+                           frontend URL; with a .tsx/.jsx/.ts/.js/.html file,
+                           run that one file as the app (no config needed)
   crust build [file] [options]
                            compile the binary and assemble X.app (ad-hoc
                            signed); with a file, build the single-file app
@@ -29,7 +29,8 @@ usage:
 options:
   --dir <path>       project directory (default: current directory)
   --config <path>    config file, relative to --dir
-  --entry <path>     backend entry, relative to --dir (default: src/main.ts)
+  --entry <path>     backend entry, relative to --dir
+                     (default: src/main.ts, then main.ts)
   --format <fmt>     package only: dmg, appimage or nsis; repeat for several
   --react            init only: copy the React + Vite template
   --next             init only: copy the Next.js template (static export);

@@ -1,23 +1,23 @@
 /**
  * The TypeScript half of a native extension: a generated module that `dlopen`s the compiled dylib and
  * re-exports each symbol as a typed function, so an app imports `add(a, b)` and never touches
- * `ffi.symbols`. `i64`/`u64` are declared `bigint` because that is what `bun:ffi` returns for them
- * (`i64_fast` is the number-returning variant, and this generator does not emit it); `cstring` returns
- * `string | null`, since a NULL pointer arrives as null rather than "".
+ * `ffi.symbols`.
+ *
+ * Two properties the module keeps, both measured rather than assumed:
+ * - `i64`/`u64` are declared `bigint` because that is what `bun:ffi` returns for them; `cstring` returns
+ *   `string | null`, since a NULL pointer arrives as null rather than "".
+ * - The exports call through a handle, not a symbol captured at module evaluation. A value captured once
+ *   keeps answering from the build it opened even after the dylib is replaced, and `reload()` re-opens
+ *   it, so a rebuilt extension answers without a restart.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import { ARGS, FFI, RETURNS, type SymbolSpec } from "./extension-ffi.ts";
+import { checkName } from "./extension-names.ts";
+import { dylibSuffix } from "./extension-tools.ts";
 
-export type FfiType = "ptr" | "i32" | "i64" | "u32" | "u64" | "f64" | "cstring";
-export type FfiReturn = FfiType | "void";
-
-export interface SymbolSpec {
-	/** The C symbol name, also the name of the generated export. */
-	name: string;
-	args: FfiType[];
-	returns: FfiReturn;
-}
+export type { FfiReturn, FfiType, SymbolSpec } from "./extension-ffi.ts";
 
 export interface RenderBindingsOptions {
 	/** Extension name, e.g. `math`; the module and its default dylib are named after it. */
@@ -25,6 +25,12 @@ export interface RenderBindingsOptions {
 	symbols: SymbolSpec[];
 	/** Dylib path relative to the generated module. Defaults to `<name>.dylib`. */
 	dylib?: string;
+	/**
+	 * The ABI number this module was generated for. When set, the dylib must export `ABI_SYMBOL` and
+	 * answer this number, checked when it opens — so a stale build fails at import instead of binding a
+	 * changed signature to a declaration that no longer matches it.
+	 */
+	abiVersion?: number;
 }
 
 export interface BindingsResult {
@@ -36,121 +42,66 @@ export interface WriteBindingsOptions extends RenderBindingsOptions {
 	outDir: string;
 }
 
-const FFI: Record<FfiReturn, string> = {
-	ptr: "FFIType.ptr",
-	i32: "FFIType.i32",
-	i64: "FFIType.i64",
-	u32: "FFIType.u32",
-	u64: "FFIType.u64",
-	f64: "FFIType.f64",
-	cstring: "FFIType.cstring",
-	void: "FFIType.void",
-};
+/**
+ * The marker symbol a native extension exports to be version-checked: a function taking no arguments and
+ * returning its ABI as an `i32`. A dylib that does not export it still binds, so every existing source
+ * keeps working; a project that wants the protection adds one line and passes `abiVersion`.
+ */
+export const ABI_SYMBOL = "crust_extension_abi";
 
-const RETURNS: Record<FfiReturn, string> = {
-	ptr: "number",
-	i32: "number",
-	i64: "bigint",
-	u32: "number",
-	u64: "bigint",
-	f64: "number",
-	cstring: "string | null",
-	void: "void",
-};
-
-/** Argument position: a cstring argument takes the JS string bun converts for you. */
-const ARGS: Record<FfiType, string> = {
-	ptr: "number",
-	i32: "number",
-	i64: "bigint",
-	u32: "number",
-	u64: "bigint",
-	f64: "number",
-	cstring: "string",
-};
-
-/** Reserved words cannot be an `export const`, so a symbol with one is refused rather than emitted. */
-const RESERVED = new Set([
-	"await",
-	"break",
-	"case",
-	"catch",
-	"class",
-	"const",
-	"continue",
-	"debugger",
-	"default",
-	"delete",
-	"do",
-	"else",
-	"enum",
-	"eval",
-	"export",
-	"extends",
-	"false",
-	"finally",
-	"for",
-	"function",
-	"if",
-	"implements",
-	"import",
-	"in",
-	"instanceof",
-	"interface",
-	"let",
-	"new",
-	"null",
-	"package",
-	"private",
-	"protected",
-	"public",
-	"return",
-	"static",
-	"super",
-	"switch",
-	"this",
-	"throw",
-	"true",
-	"try",
-	"typeof",
-	"var",
-	"void",
-	"while",
-	"with",
-	"yield",
-]);
-
-function checkName(name: string): void {
-	if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) || RESERVED.has(name)) {
-		throw new Error(`symbol ${JSON.stringify(name)} is not a usable TypeScript export name`);
+function declaration(symbols: SymbolSpec[], abi?: number): string[] {
+	const lines = [`\tconst ffi = dlopen(DYLIB, {`];
+	// Declaring the marker is what makes a stale dylib fail loudly: bun resolves every declared symbol
+	// when it opens the file, so a missing or renamed one is an error rather than a null call.
+	if (abi !== undefined) lines.push(`\t\t${ABI_SYMBOL}: { args: [], returns: FFIType.i32 },`);
+	for (const symbol of symbols) {
+		const args = symbol.args.map((arg) => FFI[arg]).join(", ");
+		lines.push(`\t\t${symbol.name}: { args: [${args}], returns: ${FFI[symbol.returns]} },`);
 	}
+	lines.push(`\t});`);
+	return lines;
 }
 
 /** The exact module text. Pure: no filesystem, so a caller can print it or diff it. */
 export function renderBindings(options: RenderBindingsOptions): string {
-	const dylib = options.dylib ?? `${options.name}.dylib`;
+	const dylib = options.dylib ?? `${options.name}${dylibSuffix()}`;
 	if (isAbsolute(dylib)) {
 		throw new Error(`dylib must be relative to the generated module, got ${dylib}`);
 	}
 	for (const symbol of options.symbols) checkName(symbol.name);
+	const abi = options.abiVersion;
 
 	const lines = [
 		`// Generated by crust for the "${options.name}" native extension. Edit the source, not this file.`,
 		`import { dlopen, FFIType } from "bun:ffi";`,
 		`import { join } from "node:path";`,
 		``,
-		`const ffi = dlopen(join(import.meta.dir, ${JSON.stringify(dylib)}), {`,
+		`const DYLIB = join(import.meta.dir, ${JSON.stringify(dylib)});`,
 	];
-	for (const symbol of options.symbols) {
-		const args = symbol.args.map((arg) => FFI[arg]).join(", ");
-		lines.push(`\t${symbol.name}: { args: [${args}], returns: ${FFI[symbol.returns]} },`);
+	if (abi !== undefined) lines.push(`const ABI = ${abi};`);
+	lines.push(
+		"",
+		`function open(): ReturnType<typeof dlopen> {`,
+		...declaration(options.symbols, abi),
+	);
+	if (abi !== undefined) {
+		lines.push(`\tconst abi = ffi.symbols.${ABI_SYMBOL}();`);
+		lines.push(
+			`\tif (abi !== ABI) throw new Error(\`\${DYLIB} is ABI \${abi}, this module was generated ` +
+				`for \${ABI} — rebuild the extension\`);`,
+		);
 	}
-	lines.push("});", "");
+	lines.push(`\treturn ffi;`, `}`, "", `let ffi = open();`, "");
+	lines.push(
+		`/** Re-open the dylib, so a rebuilt extension answers instead of a cached symbol. */`,
+	);
+	lines.push(`export function reload(): void {`, `\tffi.close();`, `\tffi = open();`, `}`, "");
 	for (const symbol of options.symbols) {
 		const params = symbol.args.map((arg, index) => `a${index}: ${ARGS[arg]}`).join(", ");
+		const passed = symbol.args.map((_, index) => `a${index}`).join(", ");
 		lines.push(
-			`export const ${symbol.name} = ffi.symbols.${symbol.name} as ` +
-				`(${params}) => ${RETURNS[symbol.returns]};`,
+			`export const ${symbol.name} = (${params}): ${RETURNS[symbol.returns]} => ` +
+				`ffi.symbols.${symbol.name}(${passed});`,
 		);
 	}
 	return `${lines.join("\n")}\n`;

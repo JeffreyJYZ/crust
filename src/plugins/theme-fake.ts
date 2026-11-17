@@ -24,6 +24,22 @@ export function fake(system: Appearance = "dark"): FakeTheme {
 	return { adapter, applied };
 }
 
+/** An adapter that refuses every set, the way AppKit does when it cannot apply an appearance. */
+export function refusing(
+	system: Appearance = "dark",
+	message = "NSApplication refused the appearance",
+): FakeTheme {
+	const applied: AppearancePreference[] = [];
+	const adapter: ThemeAdapter = {
+		current: () => system,
+		set: (appearance) => {
+			applied.push(appearance);
+			throw new Error(message);
+		},
+	};
+	return { adapter, applied };
+}
+
 export interface Recorder {
 	ctx: { emit(event: string, data: unknown): void };
 	events: Array<{ event: string; data: unknown }>;

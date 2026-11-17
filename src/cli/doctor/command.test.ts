@@ -69,6 +69,26 @@ describe("crust doctor", () => {
 		expect(run.stdout).toContain("all checks passed");
 	});
 
+	test("configless single files of every accepted extension pass doctor", async () => {
+		for (const name of ["app.html", "app.ts", "app.js"]) {
+			const dir = await project();
+			await writeFile(
+				join(dir, name),
+				name.endsWith(".html")
+					? "<!doctype html><h1>hi</h1>\n"
+					: 'document.body.textContent = "hi";\n',
+				"utf8",
+			);
+
+			const run = await runDoctor(dir);
+
+			expect(run.code).toBe(0);
+			expect(run.stdout).toContain("single");
+			expect(run.stdout).not.toContain("config    [fail]");
+			expect(run.stdout).toContain("all checks passed");
+		}
+	});
+
 	test("a single file that does not bundle exits 1 with the compiler's error", async () => {
 		const dir = await project();
 		await writeFile(

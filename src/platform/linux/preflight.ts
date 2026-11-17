@@ -14,13 +14,35 @@ export interface PreflightEntry {
 	pkg: string;
 }
 
+const GTK = "libgtk-3.so.0";
+const WEBKIT = "libwebkit2gtk-4.1.so.0";
+const GTK_PKG = "libgtk-3-0";
+const WEBKIT_PKG = "libwebkit2gtk-4.1-0";
+
+/**
+ * Every symbol the shim resolves with `shim_sym` — the mandatory ones, not the
+ * optional proof entries (`evaluate_javascript` and friends are deliberately
+ * optional so an older WebKitGTK can still launch an app). A partial library that
+ * exports only `gtk_init_check` and `webkit_web_view_new` fails here by name
+ * instead of later at `shim_lib_open` with "missing symbol".
+ *
+ * GLib/GObject symbols are probed on the same handle the shim uses: `dlsym` on a
+ * `dlopen`ed library also searches its dependencies, which is exactly how the
+ * C shim resolves them from its two handles.
+ */
 export const PREFLIGHT: readonly PreflightEntry[] = [
-	{ library: "libgtk-3.so.0", symbol: "gtk_init_check", pkg: "libgtk-3-0" },
-	{
-		library: "libwebkit2gtk-4.1.so.0",
-		symbol: "webkit_web_view_new",
-		pkg: "libwebkit2gtk-4.1-0",
-	},
+	{ library: GTK, symbol: "gtk_init_check", pkg: GTK_PKG },
+	{ library: WEBKIT, symbol: "webkit_web_view_new", pkg: WEBKIT_PKG },
+	{ library: GTK, symbol: "g_main_context_iteration", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_window_new", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_window_set_title", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_window_set_default_size", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_size_request", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_container_add", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_show_all", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_destroy", pkg: GTK_PKG },
+	{ library: GTK, symbol: "g_signal_connect_data", pkg: GTK_PKG },
+	{ library: WEBKIT, symbol: "webkit_web_view_load_uri", pkg: WEBKIT_PKG },
 ];
 
 /** The one line a person needs when a probe fails, on both families crust documents. */

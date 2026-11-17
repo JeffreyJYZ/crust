@@ -12,6 +12,7 @@ typedef void WebKitWebView;
 
 extern void *dlopen(const char *file, int mode);
 extern void *dlsym(void *handle, const char *name);
+extern int dlclose(void *handle);
 // Bun links mimalloc and exports its own malloc/free, so these two are Bun's
 // allocator rather than libc's. Never hand either one a block GLib allocated:
 // its header belongs to a foreign heap. GLib memory goes back through the g_free
@@ -86,6 +87,21 @@ int shim_webkit_resolve(void);
 int shim_gtk_resolve(void);
 int shim_pump_resolve(void);
 
+// A failed open leaves no live handles: the user retries after installing the
+// package named in `shim_error`, and keeping the old references would leak one
+// dlopen per attempt. Every resolve is re-run on the next attempt, so no cached
+// pointer from a closed library can be called before `shim_ready` is set.
+static void shim_close_libraries(void) {
+	if (shim_webkit) {
+		dlclose(shim_webkit);
+		shim_webkit = 0;
+	}
+	if (shim_gtk) {
+		dlclose(shim_gtk);
+		shim_gtk = 0;
+	}
+}
+
 int shim_lib_open(void) {
 	// `shim_ready`, not the handles: a failed resolve leaves both handles set, so
 	// checking them alone would report success on a retry that resolved nothing.
@@ -96,10 +112,14 @@ int shim_lib_open(void) {
 	// WebKit is opened second because it pulls GTK in itself; both handles are
 	// kept, and each part resolves its symbols from its own library.
 	shim_webkit = shim_open("libwebkit2gtk-4.1.so.0");
-	if (!shim_webkit) return 0;
-	if (!shim_webkit_resolve()) return 0;
-	if (!shim_gtk_resolve()) return 0;
-	if (!shim_pump_resolve()) return 0;
+	if (!shim_webkit) {
+		shim_close_libraries();
+		return 0;
+	}
+	if (!shim_webkit_resolve() || !shim_gtk_resolve() || !shim_pump_resolve()) {
+		shim_close_libraries();
+		return 0;
+	}
 	shim_ready = 1;
 	return 1;
 }

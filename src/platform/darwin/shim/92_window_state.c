@@ -52,9 +52,15 @@ int shim_window_is_fullscreen(obj_t win) {
 	return (mask & (1LL << 14)) ? 1 : 0;
 }
 
+// -toggleFullScreen:, -zoom:, -miniaturize: and -deminiaturize: all take one
+// `id sender`. The IMP reads x2 as that argument, so the msgSend prototype must
+// carry three parameters and pass an explicit nil sender — a two-parameter cast
+// leaves x2 undefined (undefined behaviour, currently masked because AppKit
+// ignores sender). Preflight verifies the colon form of all four selectors.
 void shim_window_toggle_fullscreen(obj_t win) {
 	if (!win) return;
-	((void (*)(void *, void *))objc_msgSend)(win, sel_registerName("toggleFullScreen:"));
+	((void (*)(void *, void *, void *))objc_msgSend)(win, sel_registerName("toggleFullScreen:"),
+	                                                0);
 }
 
 // -zoom: is the green button: it maximises to the screen's visible frame, and a
@@ -66,15 +72,15 @@ int shim_window_is_zoomed(obj_t win) {
 
 void shim_window_zoom(obj_t win) {
 	if (!win) return;
-	((void (*)(void *, void *))objc_msgSend)(win, sel_registerName("zoom:"));
+	((void (*)(void *, void *, void *))objc_msgSend)(win, sel_registerName("zoom:"), 0);
 }
 
 void shim_window_miniaturize(obj_t win) {
 	if (!win) return;
-	((void (*)(void *, void *))objc_msgSend)(win, sel_registerName("miniaturize:"));
+	((void (*)(void *, void *, void *))objc_msgSend)(win, sel_registerName("miniaturize:"), 0);
 }
 
 void shim_window_deminiaturize(obj_t win) {
 	if (!win) return;
-	((void (*)(void *, void *))objc_msgSend)(win, sel_registerName("deminiaturize:"));
+	((void (*)(void *, void *, void *))objc_msgSend)(win, sel_registerName("deminiaturize:"), 0);
 }

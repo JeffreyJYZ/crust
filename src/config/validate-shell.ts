@@ -31,7 +31,12 @@ export function validateShell(v: Validator, value: unknown): void {
 	const shell = v.object("shell", value);
 	if (!shell) return;
 	v.only(shell, "shell", SHELL_KEYS);
-	v.string(shell, "cwdRoot", "shell", false);
+	const cwdRoot = v.string(shell, "cwdRoot", "shell", false);
+	// The consumer resolves cwdRoot against process.cwd(), which is the project under `crust dev` but `/` in a
+	// built app — so a relative root draws a different boundary in each. Refuse it here, as fs.scope does.
+	if (cwdRoot !== undefined && !isAbsolute(cwdRoot)) {
+		v.fail("shell.cwdRoot", "an absolute path", cwdRoot);
+	}
 
 	const allow = shell.allow;
 	if (allow === undefined) return;

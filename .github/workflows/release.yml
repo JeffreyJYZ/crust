@@ -27,7 +27,9 @@ permissions:
 jobs:
     # One release per tag, created before any asset exists. Five build jobs uploading to a
     # release that may not exist yet is five chances to race on `gh release create`, and a
-    # second creator fails on the duplicate.
+    # second creator fails on the duplicate. It is a DRAFT until every leg and the verifier
+    # pass: a failed matrix leg must never leave a public "Latest" holding a subset of the
+    # binaries (measured once already — a win32-x64 target error shipped four assets).
     create-release:
         name: create release
         runs-on: ubuntu-latest
@@ -53,9 +55,13 @@ jobs:
               run: |
                   if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
                     echo "release $GITHUB_REF_NAME already exists; the build jobs attach to it"
+                    # A retried tag may still carry the FAILED BUILD title from an earlier
+                    # run; put it back before the legs start again.
+                    gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+                      --title "crust $GITHUB_REF_NAME"
                   else
                     gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-                      --title "crust $GITHUB_REF_NAME" --generate-notes
+                      --title "crust $GITHUB_REF_NAME" --generate-notes --draft
                   fi
 
     build:
@@ -113,13 +119,16 @@ jobs:
                   echo "uploading ${assets[0]} to release ${GITHUB_REF_NAME}"
                   gh release upload "$GITHUB_REF_NAME" "${assets[0]}" --repo "$GITHUB_REPOSITORY" --clobber
 
-    # Reads the published release, not this checkout: every expected asset must be attached,
+    # Reads the release, not this checkout: every expected asset must be attached,
     # non-trivial in size, and the right container for its OS, and the runner's own platform's
     # asset must execute and print the tag's version. `scripts/release/verify-assets.ts` is the
     # committed verifier; `scripts/verify-release.ts` is a different one for a macOS `.app`.
+    # `always()` keeps this verifier on the hook even when a build leg failed — that is exactly
+    # the run where users need to hear which assets are missing, not a silent skip.
     verify:
         name: verify assets
-        needs: build
+        needs: [create-release, build]
+        if: ${{ always() && needs.create-release.result == 'success' }}
         runs-on: ubuntu-latest
         timeout-minutes: 20
         steps:
@@ -132,3 +141,36 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: bun run scripts/release/verify-assets.ts "${{ github.ref_name }}"
+
+    # The only step allowed to make the release public. It has no `if`: GitHub skips a job
+    # whose `needs` did not all succeed, so a red leg or a red verifier leaves the draft alone.
+    publish:
+        name: publish verified release
+        needs: [create-release, build, verify]
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: publish the verified release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+                  echo "published $GITHUB_REF_NAME after every build leg and the verifier passed"
+
+    # A failed run still says so on the release itself, and the draft is explicit about why it
+    # was never published. `always()` is scoped to build/verify failure: if the tag disagreed
+    # with package.json there is no release to annotate.
+    flag-failed:
+        name: flag failed release
+        needs: [create-release, build, verify]
+        if: ${{ always() && needs.create-release.result == 'success' && (needs.build.result != 'success' || needs.verify.result != 'success') }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: mark the draft as a failed release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+                    --title "crust $GITHUB_REF_NAME — FAILED BUILD"
+                  echo "left $GITHUB_REF_NAME as a flagged draft"

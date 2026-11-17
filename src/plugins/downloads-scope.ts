@@ -6,7 +6,7 @@
  * it — so the containment test runs on the canonical form of both ends.
  */
 
-import { realpathSync } from "node:fs";
+import { readlinkSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
 
 import { CrustError } from "../bridge/errors";
@@ -32,15 +32,30 @@ export function inside(root: string, target: string): boolean {
  * The path with every existing ancestor replaced by its `realpath`; a tail that does not exist yet
  * is kept as written, so a destination the app is about to create still resolves. Recursing on the
  * parent is what lets a missing leaf inherit the canonical form of the directory it will land in.
+ *
+ * A **dangling** symlink must not take that fallback: `realpath` fails because nothing is at the
+ * target yet, the link's own path is inside the root, and the write then lands wherever the link
+ * points. The link is read and its target resolved instead. `seen` stops a link cycle.
  */
-function canonical(path: string): string {
+function canonical(path: string, seen: Set<string> = new Set()): string {
 	const absolute = resolve(path);
 	try {
 		return realpathSync(absolute);
 	} catch {
 		const parent = dirname(absolute);
 		if (parent === absolute) return absolute;
-		return resolve(canonical(parent), basename(absolute));
+		if (seen.has(absolute)) return absolute;
+		let link: string | undefined;
+		try {
+			link = readlinkSync(absolute);
+		} catch {
+			link = undefined;
+		}
+		if (link !== undefined) {
+			seen.add(absolute);
+			return canonical(resolve(parent, link), seen);
+		}
+		return resolve(canonical(parent, seen), basename(absolute));
 	}
 }
 

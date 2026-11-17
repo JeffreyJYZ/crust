@@ -155,18 +155,26 @@ async function main(): Promise<number> {
 		`smoke: HWND ${hwnd} with a WebView2 controller, navigated to about:blank`,
 	);
 
-	// 3. Two slices of the real message loop, which is the pump a running app depends on.
+	// 3. The real message loop, not Bun's timer: nativeMessages moves only when shim_pump
+	//    dispatches a queued Win32 message, so a stubbed PeekMessageW cannot pass this line.
 	platform.pump(16);
 	await Bun.sleep(120);
 	const ticks = platform.ticks;
+	const messages = platform.nativeMessages;
 	platform.stopPump();
-	verdict.check("pump", ticks >= 2, `${ticks} PeekMessageW slices in 120 ms at a 16 ms interval`);
+	verdict.check(
+		"pump",
+		ticks >= 2 && messages >= 1,
+		`${messages} PeekMessageW messages dispatched over ${ticks} pump slices in 120 ms`,
+	);
 
-	// 4. Liveness is `IsWindow`, read from user32 rather than from a freed handle.
+	// 4. Liveness is `IsWindow`: platform.window() prunes through WindowsRegistry.get,
+	//    which calls shim_window_is_open before it answers.
+	const stillOpen = platform.window("smoke") !== undefined;
 	verdict.check(
 		"still open",
-		platform.window("smoke") !== undefined,
-		"shim_window_is_open still answers 1 after the pump",
+		stillOpen && platform.nativeWindow("smoke") === hwnd,
+		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
 	);
 
 	console.log(

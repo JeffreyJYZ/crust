@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { startBridge } from "./server.ts";
+import { Events, sseFrame } from "./server/events.ts";
 import {
 	headers,
 	invoke,
@@ -78,6 +79,24 @@ describe("events", () => {
 		expect(response.status).toBe(401);
 		const body = await readJson(response);
 		expect(body.error.code).toBe("unauthorized");
+	});
+
+	test("a disconnect drops its cleanup, so a reloading page does not leak one per stream", async () => {
+		const events = new Events();
+		for (let i = 0; i < 3; i++) {
+			const response = events.stream(1);
+			const reader = new SseReader(response.body as ReadableStream<Uint8Array>);
+			await reader.next();
+			expect(events.retainedCleanups).toBe(1);
+			await reader.close();
+			expect(events.retainedCleanups).toBe(0);
+		}
+	});
+
+	test("sseFrame keeps an event name with a newline on one line", () => {
+		const frame = sseFrame("tick\ndata: forged\n\nevent: other", { n: 1 });
+		expect(frame.split("\n\n")).toHaveLength(2);
+		expect(frame).toContain("event: tick data: forged  event: other\n");
 	});
 });
 

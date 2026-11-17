@@ -9,6 +9,11 @@ interface Subscriber {
 	enqueue(frame: string): void;
 }
 
+/**
+ * One SSE frame. `data` is JSON, so it can never carry a line break; `event` is a name the
+ * emitter chose, and a raw `\n` in it would end the frame and let the rest forge `data:`/`event:`
+ * lines for every other subscriber — so a name is forced onto one line here rather than trusted.
+ */
 export function sseFrame(event: string, data: unknown): string {
 	let payload: string;
 	try {
@@ -16,7 +21,8 @@ export function sseFrame(event: string, data: unknown): string {
 	} catch {
 		payload = JSON.stringify(String(data));
 	}
-	return `event: ${event}\ndata: ${payload}\n\n`;
+	const name = String(event).replace(/[\r\n]/g, " ");
+	return `event: ${name}\ndata: ${payload}\n\n`;
 }
 
 export class Events {
@@ -48,6 +54,11 @@ export class Events {
 				this.subscribers.add(subscriber);
 				subscriber.enqueue(sseFrame("crust:ready", { port, protocol: 1 }));
 				detached = () => {
+					// The closure is in `cleanups` too, so it must leave the set as well: a page
+					// reload or an EventSource reconnect makes one per stream, and without the
+					// delete every disconnect retains its controller and subscriber for the
+					// process lifetime (and `stop()` re-runs each stale one).
+					this.cleanups.delete(detached);
 					this.subscribers.delete(subscriber);
 					try {
 						controller.close();
@@ -76,5 +87,13 @@ export class Events {
 		for (const cleanup of this.cleanups) cleanup();
 		this.cleanups.clear();
 		this.subscribers.clear();
+	}
+
+	/**
+	 * How many teardown closures are retained. Test-visible only: every disconnect must remove its
+	 * own, or a page that reloads leaks one per stream for the process lifetime.
+	 */
+	get retainedCleanups(): number {
+		return this.cleanups.size;
 	}
 }

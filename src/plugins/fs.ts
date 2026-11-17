@@ -3,6 +3,7 @@
  * `list`, `stat`, `remove` and `rename` exist because a real app asked: notes on disk need a listing and a delete, and without them every app reimplements path handling.
  */
 
+import type { Dirent } from "node:fs";
 import { readdir, rename as renamePath, rm, stat as statPath } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -102,6 +103,23 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 		return value;
 	};
 
+	/**
+	 * The size of one listing entry. A symlink's size is its **target's**, so the target passes the scope
+	 * before it is read: without that, a link inside the scope reports the exact size of any file it points
+	 * at, which `fs.stat` on that same file correctly refuses. An out-of-scope target is reported as 0.
+	 */
+	const entrySize = async (entry: Dirent, full: string): Promise<number> => {
+		if (entry.isSymbolicLink()) {
+			try {
+				await scope.check(full);
+			} catch {
+				return 0;
+			}
+		}
+		const info = await statPath(full).catch(() => undefined);
+		return info?.size ?? 0;
+	};
+
 	return definePlugin({
 		name: "fs",
 		commands: {
@@ -133,14 +151,11 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 				const listed: ListEntry[] = [];
 				for (const entry of entries) {
 					const full = resolve(dir, entry.name);
-					const info = entry.isDirectory()
-						? undefined
-						: await statPath(full).catch(() => undefined);
 					listed.push({
 						name: entry.name,
 						path: full,
 						directory: entry.isDirectory(),
-						size: info?.size ?? 0,
+						size: entry.isDirectory() ? 0 : await entrySize(entry, full),
 					});
 				}
 				return {

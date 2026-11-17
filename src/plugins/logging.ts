@@ -13,7 +13,7 @@ import { definePlugin } from "./define";
 export type LogLevel = "trace" | "error" | "warn" | "info" | "debug";
 
 /** Higher is chattier, so "below the configured level" is one numeric comparison. */
-const SEVERITY: Record<LogLevel, number> = { trace: 0, error: 1, warn: 2, info: 3, debug: 4 };
+const SEVERITY: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 
 /** Lines kept in memory for `tail`; the file itself is bounded by rotation instead. */
 export const RING_SIZE = 200;

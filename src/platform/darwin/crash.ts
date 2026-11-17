@@ -147,8 +147,17 @@ export function disarmCrashHandlers(): CrashArm {
 			reason: `the crash C unit did not compile: ${message(error)}`,
 		};
 	}
-	compiled.symbols.crust_crash_disarm();
-	return { armed: false, status: 0, reason: reasonOf(compiled, "disarmed") };
+	// The C unit answers the signal it could not clear, so a partial disarm is visible here
+	// instead of reported as "fully restored" — the caller is told which handler still lives.
+	const status = Number(compiled.symbols.crust_crash_disarm() ?? 0);
+	return {
+		armed: crashArmed(),
+		status,
+		reason: reasonOf(
+			compiled,
+			status === 0 ? "disarmed" : `crust_crash_disarm answered ${status}`,
+		),
+	};
 }
 
 /** Whether this process currently has handlers installed. */

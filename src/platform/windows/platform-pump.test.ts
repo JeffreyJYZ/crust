@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeBackend } from "./fake-backend.ts";
+import { fakeShim } from "./fake-shim.ts";
 import { createPlatform } from "./platform.ts";
 
 const CONFIG = { appName: "crust-test" };
@@ -43,6 +44,25 @@ describe("pump", () => {
 		expect(() => platform.pump(0)).toThrow();
 		expect(() => platform.pump(-1)).toThrow();
 		expect(() => platform.pump(Number.NaN)).toThrow();
+	});
+
+	// The real-pump proof must not come from the JS timer: a shim whose PeekMessageW
+	// drains nothing leaves nativeMessages at zero while ticks keeps climbing.
+	test("nativeMessages moves only when the shim reports a dispatch", async () => {
+		let attempts = 0;
+		const backend = fakeBackend();
+		backend.load = () => ({
+			...fakeShim(),
+			shim_pump: () => (attempts++ >= 2 ? 3 : 0),
+		});
+		const platform = createPlatform(CONFIG, backend);
+		await platform.start();
+		platform.pump(5);
+		expect(platform.nativeMessages).toBe(0);
+		await Bun.sleep(40);
+		platform.stopPump();
+		expect(attempts).toBeGreaterThan(2);
+		expect(platform.nativeMessages).toBe((attempts - 2) * 3);
 	});
 
 	// A pump before start() has no queue to drain, but the cadence still belongs to Bun's timer.
