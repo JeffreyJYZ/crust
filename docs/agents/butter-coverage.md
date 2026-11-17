@@ -174,18 +174,22 @@ decision with a reason rather than an unnoticed hole.
 
 ## Re-checking this table
 
-The table is a document, and two `same` rows in this file turned out to be wrong — a native setter
-that did not exist, and a hand-written name list that re-tested its own assumptions. So the claim is
-now backed by a command, not by reading:
+The table is a document, and `same` rows in this file have been wrong three times — a native setter
+that did not exist, a hand-written name list that re-tested its own assumptions, and a keychain `get`
+that had **never worked** because its query named no class. So the claim is now backed by a command:
 
 ```sh
 bun test scripts/butter-sweep.test.ts
 ```
 
-That sweep brings up the **real** darwin platform with a live window, drives the commands this file
-names, and fails on `not-implemented` — the exact answer a hollow row produces. Its expectation comes
-from the plugin objects at run time, and its `SKIP` list requires a written reason per command (a
-skip whose reason says "not implemented" fails the test).
+That sweep brings up the **real** darwin platform, takes the plugins the runtime actually registers,
+and drives 95 of the 110 commands this file names — failing on `not-implemented`, which is the answer
+a hollow row produces. The remaining 15 carry a written reason in `scripts/butter-sweep-commands.ts`
+that a headless runner cannot act (a permission prompt, a modal menu, a bundle swap, a real network
+download, the runner's own single-instance lock), and the test fails if a reason is missing or says
+"not implemented".
+
+It found the keychain defect the table had been calling `same` since the row was written.
 
 For the full command sets, both sides can be printed:
 
