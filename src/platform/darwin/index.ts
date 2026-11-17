@@ -84,6 +84,14 @@ function compile() {
 			shim_webview_load: { args: [P, P], returns: I32 },
 			shim_webview_set_draws_background: { args: [P, I32], returns: V },
 			shim_webview_enable_devtools: { args: [P], returns: V },
+			// The content world the bridge token lives in: the page cannot read or patch its
+			// globals, which is what stops page script scraping the credential or replacing the
+			// invoke transport. 0 when WebKit has no content world (macOS before 11).
+			shim_content_world: { args: [], returns: P },
+			// 0 = the page's own world, 1 = the isolated one this process keeps.
+			shim_content_world_named: { args: [I32], returns: P },
+			// web, world (0 = the page's own), source, forMainFrameOnly.
+			shim_webview_add_user_script: { args: [P, P, P, I32], returns: I32 },
 			shim_window_set_material: { args: [P], returns: I32 },
 
 			shim_constraint: { args: [P, I64, I64, P, I64, F64, F64], returns: P },

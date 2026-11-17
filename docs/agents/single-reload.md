@@ -1,0 +1,7 @@
+# single-reload lane memory
+
+- **Root cause of `e2e:single` "save answer" failure**: the darwin content-world bridge (`src/platform/darwin/content-world-source.ts`) scrubs `?token=` from the document URL at document start. The single-file dev poller used `location.reload()`, which re-requests the token-gated document (`src/bridge/server/handler.ts:52`) with no credential → 401 JSON instead of the page. Proven by loading a bridge page in headless Chrome, scrubbing the URL with `history.replaceState`, then changing `__crust_reload.txt`: the page became the 401 body and no second `info` was logged.
+- **Fix**: `documentSource` dev poller re-runs the rebuilt module with a cache-busted dynamic `import(entry + "?t=" + Date.now())` instead of re-navigating. The module is served token-free, so no credential is needed and the observable edit is identical. The entry `src` is captured once at script start because the page module may replace `document.body` on its first run; the `setInterval` closure survives DOM removal.
+- **Do not revert this to `location.reload()`** — it will pass a plain headless browser but fail the native WebKit window that runs the content-world shim.
+- **Test**: `src/single-page.test.ts` "documentSource dev reload" asserts no `location.reload()` and the cache-busted import.
+- **Proof**: `bun run e2e:single` 27/27, `bun test src/single-page.test.ts` 15 pass, `bun check` clean, `bun fmt --check` clean.

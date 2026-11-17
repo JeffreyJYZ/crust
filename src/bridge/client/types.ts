@@ -60,7 +60,7 @@ export interface LooseInvoke {
 
 export interface CrustApi<Schema extends CommandSchema = CommandSchema> {
 	readonly baseUrl: string;
-	readonly token: string;
+	readonly token?: string;
 	/** Resolves after the first handshake: the SSE stream opened, or an invoke answered. */
 	readonly ready: Promise<void>;
 	invoke: TypedInvoke<Schema> & LooseInvoke;

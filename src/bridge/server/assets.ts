@@ -11,6 +11,7 @@ import { resolve, sep } from "node:path";
 import { bootstrapSource, type CrustConfig } from "../client";
 import { CrustError } from "../errors";
 import { RELOAD_ENV } from "./events.ts";
+import { defaultCsp, nonceSource, stampInlineScripts } from "./csp.ts";
 import { headersFor } from "./http.ts";
 import type { StartBridgeOptions } from "./types.ts";
 
@@ -64,12 +65,20 @@ export async function hasDocument(options: StartBridgeOptions): Promise<boolean>
 	return (await assetBody("/index.html", options)) !== null;
 }
 
-export function injectBootstrap(html: string, snippet: string): string {
+/**
+ * Put `snippet` where the parser reaches it before any page script.
+ *
+ * `nonce` is the response's own value, and a snippet that carries it is the only inline script a
+ * served document may run: `script-src` names that nonce and nothing else, so an injected `<script>`
+ * without it is refused by the engine.
+ */
+export function injectBootstrap(html: string, snippet: string, nonce: string): string {
+	const tag = `<script nonce="${nonce}">${snippet}</script>`;
 	const headClose = /<\/head\s*>/i;
-	if (headClose.test(html)) return html.replace(headClose, () => `${snippet}</head>`);
+	if (headClose.test(html)) return html.replace(headClose, () => `${tag}</head>`);
 	const bodyOpen = /<body[^>]*>/i;
-	if (bodyOpen.test(html)) return html.replace(bodyOpen, (tag) => `${tag}${snippet}`);
-	return `${snippet}${html}`;
+	if (bodyOpen.test(html)) return html.replace(bodyOpen, (match) => `${match}${tag}`);
+	return `${tag}${html}`;
 }
 
 const EMPTY_DOCUMENT = [
@@ -82,7 +91,8 @@ const EMPTY_DOCUMENT = [
 
 export async function documentResponse(handle: {
 	options: StartBridgeOptions;
-	csp: string;
+	/** An app's own policy; absent means the default policy plus this response's nonce. */
+	csp: string | undefined;
 	port: number;
 	/** The window this document is for, read from the request URL by `handler.ts`. */
 	windowLabel?: string;
@@ -110,6 +120,23 @@ export async function documentResponse(handle: {
 		port,
 		...(windowLabel ? { window: windowLabel } : {}),
 	};
-	const injected = injectBootstrap(html, `<script>${bootstrapSource(config)}</script>`);
-	return new Response(injected, { headers: headersFor(csp) });
+	// One nonce per response, never cached: the value the CSP admits and the value the bootstrap
+	// carries are the same string, so two documents never share an inline script's permission.
+	const nonce = nonceSource();
+	// The document's own inline scripts — the runtime's `invoke` shim chief among them — are
+	// authored markup, so they are stamped here. A tag a *later* injection adds carries no nonce
+	// and `script-src 'self' 'nonce-…'` refuses it; that is the door this closes.
+	// The snippet is the bootstrap's *source*, not a `<script>` element: `injectBootstrap` builds
+	// the element around it. Passing an element nests one script inside another, and the parser
+	// ends the outer script at the inner `</script>`, so the page receives a truncated body that
+	// throws on its first `<` and `window.crust` never installs.
+	const injected = injectBootstrap(
+		stampInlineScripts(html, nonce),
+		bootstrapSource(config),
+		nonce,
+	);
+	// An app's `security.csp` wins whole. The nonce is still computed for the bootstrap above, and a
+	// caller who replaces `script-src` owns the consequence — rewriting their string would silently
+	// change a policy they wrote deliberately.
+	return new Response(injected, { headers: headersFor(csp ?? defaultCsp(nonce)) });
 }

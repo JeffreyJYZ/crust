@@ -49,10 +49,19 @@ The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS
 | the document needs its own token               | the navigation URL carries `?token=`, and a request without it answers `401`, so fetching `/` yields no credential          |
 | so another local process can drive the app     | only by reading the token from the app's own launch URL or its `0600` `.crust/dev.json` — anything running as your user can  |
 | `Origin` is not the credential                 | an absent `Origin` is allowed on purpose, and a present foreign one is `403`; the token is what decides                     |
+| inline scripts need the response's nonce       | `script-src` names a per-response nonce, so a `<script>` injected after parse is refused by the engine                      |
 
 A page from another origin cannot reach the bridge, and a stray process cannot learn the token from the
 document, the assets or an invoke error. Neither is a sandbox against code already running as you, and
 a token that reaches the page is in the page's own URL and history.
+
+`script-src` is `'self'` plus one nonce per document, and `'unsafe-inline'` is gone: the bootstrap
+carries `nonce="…"`, and a tag the page's own markup authored is stamped with the same value before
+the parser sees it. That closes script injection into the document, not a payload already running in
+it. `style-src` keeps `'unsafe-inline'` — inline styles are everywhere in real templates and a style
+is not a script door. A `security.csp` of your own replaces the policy whole; the nonce is still
+generated for the bootstrap, so a policy whose `script-src` omits it refuses that script too, and
+that consequence is yours.
 
 ## Notifications
 

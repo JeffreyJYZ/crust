@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 import { buildPage } from "./single-build.ts";
 import { detectSingle, type SingleApp } from "./single-detect.ts";
-import { hasDefaultExport, mountSource, requireReact } from "./single-page.ts";
+import { documentSource, hasDefaultExport, mountSource, requireReact } from "./single-page.ts";
 
 async function withDir(run: (dir: string) => Promise<void>): Promise<void> {
 	const dir = await mkdtemp(join(tmpdir(), "crust-single-react-"));
@@ -66,6 +66,26 @@ describe("mountSource", () => {
 		expect(source).toContain(JSON.stringify(app.file));
 		expect(source).toContain('import("react-dom/client")');
 		expect(source).toContain("createRoot(mount)");
+	});
+});
+
+describe("documentSource dev reload", () => {
+	const app = { name: "app", file: "/tmp/project/app.tsx" } as SingleApp;
+
+	test("re-runs the module instead of reloading the token-gated document", () => {
+		const html = documentSource(app, "page.js", true);
+		// A native window scrubs ?token= from the document URL, so location.reload() gets a 401.
+		expect(html).not.toContain("location.reload()");
+		expect(html).toContain('import(entry + "?t=" + Date.now())');
+		// The entry is captured before the module can replace the body it lives in.
+		expect(html.indexOf("document.querySelector")).toBeLessThan(html.indexOf("function tick"));
+		expect(html).toContain("setInterval(tick, 400)");
+	});
+
+	test("a built document carries no dev poller", () => {
+		const html = documentSource(app, "page.js", false);
+		expect(html).not.toContain("setInterval(tick");
+		expect(html).not.toContain("__crust_reload");
 	});
 });
 

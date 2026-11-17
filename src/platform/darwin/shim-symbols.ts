@@ -43,6 +43,9 @@ export interface Shim {
 		shim_webview_load: LooseSymbol;
 		shim_webview_set_draws_background: LooseSymbol;
 		shim_webview_enable_devtools: LooseSymbol;
+		shim_content_world: LooseSymbol;
+		shim_content_world_named: LooseSymbol;
+		shim_webview_add_user_script: LooseSymbol;
 		shim_window_set_material: LooseSymbol;
 
 		shim_constraint: LooseSymbol;

@@ -20,17 +20,12 @@ export type { AssetTable, BridgeHandle, BridgeTarget, StartBridgeOptions } from 
  * The measured policy, verbatim. `connect-src 'self'` is the line that lets the
  * page call the bridge and hold the event stream open; without it every invoke
  * is a CSP violation in the console rather than a network error.
+ *
+ * The document route does not use this string as-is: `documentResponse` builds
+ * `defaultCsp(nonce)` so the injected bootstrap is the only inline script the
+ * page may run. See `server/csp.ts`.
  */
-export const DEFAULT_CSP = [
-	"default-src 'self'",
-	"script-src 'self' 'unsafe-inline'",
-	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data:",
-	"connect-src 'self'",
-	"base-uri 'none'",
-	"form-action 'none'",
-	"frame-ancestors 'none'",
-].join("; ");
+export { DEFAULT_CSP, defaultCsp } from "./server/csp.ts";
 
 /**
  * Start the bridge. `port: 0` lets the OS choose, so two instances cannot collide, and the returned `port` is the real one. `stop()` closes every event stream and releases the port immediately (measured rebind 0.45 ms); a stopped bridge does not keep the process alive.
@@ -41,7 +36,6 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 		throw new CrustError("bad-request", "startBridge needs at least one handler");
 	}
 	const token = crypto.randomUUID();
-	const csp = options.csp ?? DEFAULT_CSP;
 	const devOrigins = normalizeDevOrigins(options.devOrigin);
 	const events = new Events();
 	let port = options.port ?? 0;
@@ -54,7 +48,9 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 	const capabilities = compileCapabilities(options.security);
 	const state = {
 		options,
-		csp,
+		// Only the app's own override: the document route builds the default policy per response so
+		// it can carry a nonce the bootstrap shares.
+		csp: options.csp,
 		token,
 		devOrigins,
 		events,

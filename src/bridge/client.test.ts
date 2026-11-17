@@ -48,9 +48,11 @@ describe("bootstrap", () => {
 		const bridge = start();
 		const { api } = installPage(bridge);
 		expect(api.baseUrl).toBe(bridge.url);
-		// The page is given two serialised halves; the route lives in the invoke half.
+		// The page is given two serialised halves; both the route and the stream live in the invoke
+		// half, because which transport carries the credential is the invoke half's business.
 		expect(installInvoke.toString()).toContain("/_crust/invoke");
-		expect(installCrust.toString()).toContain("EventSource");
+		expect(installInvoke.toString()).toContain("EventSource");
+		expect(installCrust.toString()).toContain("crustInvoke");
 		expect(bootstrapSource({ baseUrl: "", token: "t" })).toContain("/_crust/invoke");
 	});
 });

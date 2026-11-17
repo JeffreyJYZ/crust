@@ -16,6 +16,7 @@ import sheetResult from "./shim/85_sheet_result.c" with { type: "text" };
 import windowState from "./shim/92_window_state.c" with { type: "text" };
 import windowChrome from "./shim/100_window_chrome.c" with { type: "text" };
 import windowMaterial from "./shim/115_window_material.c" with { type: "text" };
+import contentWorld from "./shim/121_content_world.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
@@ -33,6 +34,7 @@ export const SHIM_PARTS = [
 	windowState,
 	windowChrome,
 	windowMaterial,
+	contentWorld,
 ] as const;
 
 /**
@@ -57,6 +59,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/darwin/shim/92_window_state.c",
 	"src/platform/darwin/shim/100_window_chrome.c",
 	"src/platform/darwin/shim/115_window_material.c",
+	"src/platform/darwin/shim/121_content_world.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

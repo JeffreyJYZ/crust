@@ -5,6 +5,7 @@
 import type { WindowOptions } from "@/app.ts";
 import type { WindowMaterial } from "@/config";
 import { type Activation, activateForWindow } from "./activation.ts";
+import { installContentWorldBridge } from "./content-world.ts";
 import { devInspectEnabled } from "./devtools.ts";
 import { shim } from "./index.ts";
 import { cls, cstr, ptrValue, S } from "./objc.ts";
@@ -162,6 +163,12 @@ export function createNativeWindow(
 	// only an absolute URL can be handed to NSURL as-is.
 	const raw = options.url ?? "/";
 	const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : "about:blank";
+	// The bridge token lives in a `WKContentWorld` the page cannot read or patch, and the page's
+	// world only gets `window.crustInvoke`. WebKit copies the controller's script list when the
+	// webview is created and the load below is the last step, so both scripts are registered before
+	// any page script can run. A `crust dev` page carries no token in its URL — it gets
+	// `window.__CRUST__` from Vite — so the install refuses there and the fetch path stays in use.
+	installContentWorldBridge(web, url);
 	const loaded = Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0);
 	if (!loaded) throw new Error(`shim_webview_load failed for ${url}`);
 

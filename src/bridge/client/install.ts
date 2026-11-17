@@ -1,5 +1,9 @@
 /**
  * The client body: `installCrust`. Everything it needs is inside the function, because the served bootstrap is `installCrust.toString()` and a module-scope reference would arrive undefined in the page; only types live outside, as `T.`, plus the invoke half which `bootstrap.ts` passes in the same way. Called with a config it uses that; called with none (`crust/vite`) it installs from the pre-set `window.__CRUST__`.
+ *
+ * The transport — the POST, the event stream and which of the two carries the credential — lives in
+ * the invoke half beside this one. This half owns the page's API surface and nothing else, so a
+ * page whose token sits in a JavaScript world it cannot read installs the same client unchanged.
  */
 import type * as T from "./types";
 import type { installInvoke } from "./invoke.ts";
@@ -14,7 +18,11 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	// second event stream and leave the first one's listeners orphaned.
 	if (scope.crust) return scope.crust as T.CrustApi<Schema>;
 	const resolved = config ?? scope.__CRUST__;
-	if (!resolved || typeof resolved.token !== "string") {
+	// A darwin window installs a content-world bridge, which owns the token and scrubs it from the
+	// page's URL before this runs; everywhere else the token is the page's own and is required.
+	const realm = scope.crustInvoke;
+	const hasRealm = typeof realm === "function";
+	if (!resolved || (!hasRealm && typeof resolved.token !== "string")) {
 		throw new Error("crust: no bridge config — window.__CRUST__ was never injected");
 	}
 	// The other half of the client is composed beside this one, because neither may reach module
@@ -26,8 +34,6 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	const token = resolved.token;
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
 	const waiters = new Map<string, Array<(payload: unknown) => void>>();
-	const attached = new Set<string>();
-	let stream: any = null;
 	let handshaken = false;
 	let resolveReady: (() => void) | undefined;
 	const ready = new Promise<void>((resolve) => {
@@ -40,6 +46,8 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		resolveReady?.();
 	};
 
+	// A frame's `data` is JSON on the wire and a string in a `CustomEvent`, so both transports hand
+	// this half text and it is parsed once, here.
 	const decode = (raw: unknown): unknown => {
 		if (typeof raw !== "string") return raw;
 		try {
@@ -69,18 +77,26 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		}
 	};
 
-	const attach = (event: string) => {
-		if (!stream || attached.has(event)) return;
-		attached.add(event);
-		stream.addEventListener(event, (message: any) => dispatch(event, decode(message?.data)));
-	};
+	// `resolved.window` is the identity the bridge observed on the document request, or the page's
+	// own URL when a dev server served it; the invoke half sends it with every call.
+	const call = invokeFactory(
+		scope,
+		base,
+		token,
+		resolved.window,
+		markHandshake,
+		(event: string, payload: unknown) => {
+			if (event === "crust:ready") markHandshake();
+			dispatch(event, decode(payload));
+		},
+	);
 
 	const listen = <T = unknown>(event: string, fn: (payload: T) => void): (() => void) => {
 		const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();
 		listeners.set(event, set);
 		const handler = fn as (payload: unknown) => void;
 		set.add(handler);
-		attach(event);
+		call.attach(event);
 		return () => {
 			set.delete(handler);
 			if (set.size === 0) listeners.delete(event);
@@ -92,12 +108,8 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 			const pending = waiters.get(event) ?? [];
 			if (!waiters.has(event)) waiters.set(event, pending);
 			pending.push(resolve as (payload: unknown) => void);
-			attach(event);
+			call.attach(event);
 		});
-
-	// `resolved.window` is the identity the bridge observed on the document request, or the page's
-	// own URL when a dev server served it; `invoke.ts` sends it with every call.
-	const call = invokeFactory(scope, base, token, resolved.window, markHandshake);
 
 	// Two call forms on one entry point, and the same code on every serving
 	// path: `invoke(plugin, command, args)` is the plugin form, and a second
@@ -120,41 +132,20 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		page?.reload?.();
 	});
 
-	const connect = () => {
-		const EventSourceImpl = scope.EventSource ?? (globalThis as any).EventSource;
-		if (typeof EventSourceImpl !== "function") return;
-		let source: any;
-		try {
-			// EventSource cannot set headers, so the token goes in the query string.
-			source = new EventSourceImpl(
-				`${base}/_crust/events?token=${encodeURIComponent(token)}`,
-			);
-		} catch {
-			return;
-		}
-		stream = source;
-		attached.add("crust:ready");
-		source.addEventListener("crust:ready", (message: any) => {
-			markHandshake();
-			dispatch("crust:ready", decode(message?.data));
-		});
-		for (const event of listeners.keys()) attach(event);
-		for (const event of waiters.keys()) attach(event);
-		// EventSource reconnects by itself. `ready` stays pending until a frame
-		// arrives, which is the honest signal: the stream is not open until it is.
-		source.onerror = () => {};
-	};
-
 	const api = {
 		baseUrl: base,
-		token,
+		// The content-world path keeps the credential in a world the page cannot read, so it must
+		// not hand it back here as well: `window.crust.token` is exactly the scrape this closes.
+		...(hasRealm ? {} : { token }),
 		ready,
 		invoke: invoke as T.TypedInvoke<Schema> & T.LooseInvoke,
 		listen,
 		once,
 	};
 	scope.crust = api;
-	scope.__CRUST__ = resolved;
-	connect();
+	// The token is not handed back to this world on the content-world path — not on the client,
+	// and not on `window.__CRUST__` either, which is the other place a scrape would look.
+	scope.__CRUST__ = hasRealm ? { ...resolved, token: undefined } : resolved;
+	call.connect();
 	return api as T.CrustApi<Schema>;
 }

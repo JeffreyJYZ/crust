@@ -17,7 +17,7 @@ export interface BridgeTarget {
 export interface StartBridgeOptions {
 	/** Plugins, a registry, or a flat `"plugin.command"` handler table. */
 	handlers: HandlerSource;
-	/** Override the policy. Defaults to `DEFAULT_CSP`. */
+	/** Override the policy. Defaults to `DEFAULT_CSP` plus the response's own script nonce. */
 	csp?: string;
 	/** Origins allowed to call from another origin (`crust dev` / Vite). */
 	devOrigin?: string | readonly string[] | null;

@@ -48,19 +48,28 @@ export function mountSource(app: SingleApp): string {
 /** The HTML document: `#root` for the mount, the module, and the dev poller. */
 export function documentSource(app: SingleApp, entry: string, dev: boolean): string {
 	const title = app.name.replaceAll("&", "&amp;").replaceAll("<", "&lt;");
-	// Full reload only. The bridge serves every asset with `cache-control:
-	// no-store`, so `location.reload()` re-reads the freshly written module.
+	// Re-run the rebuilt module, not the document. The bridge serves every asset with `cache-control:
+	// no-store`, so a cache-busted import re-reads the freshly written bytes. A plain
+	// `location.reload()` cannot work here: on darwin the content-world bridge holds the document
+	// token in an isolated world and scrubs `?token=` from the shared URL before page script runs,
+	// so reloading re-requests the token-gated document with no credential and gets a 401. The
+	// module is token-free, so importing it again gives the same observable edit with no navigation.
 	const reload = dev
 		? [
 				"<script>(function () {",
 				'\tvar marker = "";',
+				// Read the entry once: the page module may replace the body on its first run.
+				"\tvar el = document.querySelector('script[type=\"module\"][src]');",
+				'\tvar entry = el ? el.getAttribute("src") : "";',
 				"\tfunction tick() {",
 				`\t\tfetch("/${RELOAD_FILE}", { cache: "no-store" })`,
 				"\t\t\t.then(function (response) { return response.ok ? response.text() : null; })",
 				"\t\t\t.then(function (next) {",
 				"\t\t\t\tif (next === null) return;",
 				'\t\t\t\tif (marker === "") { marker = next; return; }',
-				"\t\t\t\tif (next !== marker) location.reload();",
+				"\t\t\t\tif (next === marker) return;",
+				"\t\t\t\tmarker = next;",
+				'\t\t\t\tif (entry) import(entry + "?t=" + Date.now());',
 				"\t\t\t})",
 				"\t\t\t.catch(function () {});",
 				"\t}",

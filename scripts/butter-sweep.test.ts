@@ -1,16 +1,11 @@
 /**
  * The live Butter sweep: every mapped plugin command, driven against the **real** darwin platform.
+ * A row's evidence is "the command ran here and did not refuse", which is what a hollow row cannot
+ * produce — the coverage table has been wrong twice, so the table is not the proof.
  *
- * The coverage table is a document, and a document can be wrong. This wave proved it twice — a
- * `same` row whose native setter did not exist, and a hand-written name list that compared Butter's
- * names against a Set written by the same hand. So a row's evidence is now "the command ran on this
- * machine and answered something other than not-implemented", which is the one answer a hollow row
- * cannot produce.
- *
- * **The sweep runs in a child process**, for a measured reason: starting AppKit installs the main
- * menu and marks the process as having an app, and `menu.test.ts` / `shim.test.ts` both assert the
- * opposite. In-process, a full-suite run made `shim.test.ts` fail while it passed alone — a leak
- * between test files.
+ * The sweep runs in a child process: starting AppKit installs the main menu, and `menu.test.ts` /
+ * `shim.test.ts` both assert a process without one. In-process, a full-suite run made `shim.test.ts`
+ * fail while it passed alone — a leak between test files.
  */
 import { afterAll, describe, expect, test } from "bun:test";
 
@@ -42,7 +37,10 @@ const isRefusal = (answer) => {
   return answer.code === undefined && typeof answer.message === "string" && answer.requires !== undefined;
 };
 
-const platform = new DarwinPlatform({ appName: "crust-butter-sweep", activate: "never" });
+// activate "always", because AppKit answers AXWindows only for a window on the active Space:
+// with "never" the app stays inactive, AX lists no windows, and elementCount correctly
+// refuses — a real answer, but it would read as a gap in the sweep.
+const platform = new DarwinPlatform({ appName: "crust-butter-sweep", activate: "always" });
 await platform.start();
 platform.createWindow({ label: "main", title: "sweep", url: "about:blank", width: 480, height: 320 });
 platform.pump(16);

@@ -26,7 +26,8 @@ export const EVENTS_PATH = "/_crust/events";
 
 export interface BridgeState {
 	options: StartBridgeOptions;
-	csp: string;
+	/** A config-supplied policy; absent means `defaultCsp(nonce)` is built per document. */
+	csp: string | undefined;
 	token: string;
 	devOrigins: readonly string[];
 	events: Events;
