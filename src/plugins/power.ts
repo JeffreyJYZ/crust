@@ -1,34 +1,27 @@
 /**
  * `crust:power` — what the machine's power state is, how long the user has been idle, a sleep
- * assertion a long task can hold, and the two notifications a page can subscribe to. IOKit,
+ * assertion a long task can hold, and the six notifications a page can subscribe to. IOKit,
  * CoreGraphics and the notification centers are not here: macOS supplies `darwinPowerAdapter()`,
  * and a platform without them keeps answering a typed `NotImplemented`.
  * The pair that must never leak is `sleepPrevent` / `sleepAllow`: the plugin answers the assertion id
  * so a caller can release exactly what it took, `sleepAllow` reports `released: false` rather than an
  * error when nothing was held, and the darwin adapter also releases on process exit.
- * `onSleep` / `onLock` are the push half: one command each registers a native observer, and every
- * later notification reaches the page as `power:sleep` / `power:lock` through `ctx.emit`.
+ * The `on*` commands are the push half: one command each registers a native observer, and every later
+ * notification reaches the page as `power:<kind>` through `ctx.emit`.
  */
 
 import { CrustError } from "../bridge/errors";
-import {
-	definePlugin,
-	notImplemented,
-	type NotImplemented,
-	type PluginContext,
-	type PluginDefinition,
-} from "./define";
+import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
 import {
 	type IdleResult,
 	type PowerAdapter,
 	type PowerFailure,
 	type PowerStateResult,
-	type PowerSubscribeResult,
 	type SleepAllowResult,
 	type SleepPreventArgs,
 	type SleepPreventResult,
 } from "./power-types";
-import { subscribe } from "./power-subscribe.ts";
+import { powerSubscribeHandlers, type PowerSubscribeHandlers } from "./power-subscriptions.ts";
 
 export {
 	POWER_EVENTS,
@@ -57,6 +50,10 @@ export const POWER_COMMANDS = [
 	"sleepAllow",
 	"onSleep",
 	"onLock",
+	"onWake",
+	"onScreenSleep",
+	"onScreenWake",
+	"onUnlock",
 ] as const;
 
 /**
@@ -72,15 +69,7 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 			args: SleepPreventArgs,
 		) => Promise<SleepPreventResult | PowerFailure | NotImplemented>;
 		sleepAllow: () => Promise<SleepAllowResult | PowerFailure | NotImplemented>;
-		onSleep: (
-			args: unknown,
-			ctx: PluginContext,
-		) => Promise<PowerSubscribeResult | PowerFailure | NotImplemented>;
-		onLock: (
-			args: unknown,
-			ctx: PluginContext,
-		) => Promise<PowerSubscribeResult | PowerFailure | NotImplemented>;
-	}
+	} & PowerSubscribeHandlers
 > {
 	const missing = (command: string) =>
 		notImplemented(
@@ -145,13 +134,8 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 				return { ok: true, released: answer.released };
 			},
 
-			/** Arm sleep notifications; later reports reach the page as `power:sleep`. */
-			onSleep: (_args, ctx) =>
-				subscribe(adapter, "onSleep", "sleep", "NSWorkspaceWillSleepNotification", ctx),
-
-			/** Arm screen-lock notifications; later reports reach the page as `power:lock`. */
-			onLock: (_args, ctx) =>
-				subscribe(adapter, "onLock", "lock", "com.apple.screenIsLocked", ctx),
+			// The six push commands, built from one table in `power-subscriptions.ts`.
+			...powerSubscribeHandlers(adapter),
 		},
 	});
 }

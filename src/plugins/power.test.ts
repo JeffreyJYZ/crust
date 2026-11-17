@@ -101,7 +101,7 @@ describe("105_power.c", () => {
 });
 
 describe("power plugin shape", () => {
-	test("is named power and declares exactly the six commands", () => {
+	test("is named power and declares exactly the commands POWER_COMMANDS lists", () => {
 		const plugin = createPowerPlugin(fake().adapter);
 		expect(plugin.name).toBe("power");
 		expect(Object.keys(plugin.commands).sort()).toEqual([...POWER_COMMANDS].sort());

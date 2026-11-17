@@ -1,7 +1,7 @@
 /**
  * The types behind `crust:power`, split out so the plugin stays a thin command map. The pull half
- * (battery, idle, assertion) is unchanged; the push half adds two notifications a page can subscribe
- * to. A platform with no such notification omits the adapter method, and the plugin answers
+ * (battery, idle, assertion) is unchanged; the push half adds the six OS notifications a page can
+ * subscribe to. A platform with no such notification omits the adapter method, and the plugin answers
  * `not-implemented` rather than installing a listener that would never fire.
  */
 
@@ -51,6 +51,10 @@ export interface PowerAdapter {
 	 */
 	onSleep?(listener: () => void): boolean | Promise<boolean>;
 	onLock?(listener: () => void): boolean | Promise<boolean>;
+	onWake?(listener: () => void): boolean | Promise<boolean>;
+	onScreenSleep?(listener: () => void): boolean | Promise<boolean>;
+	onScreenWake?(listener: () => void): boolean | Promise<boolean>;
+	onUnlock?(listener: () => void): boolean | Promise<boolean>;
 }
 
 export interface SleepPreventArgs {
@@ -86,10 +90,14 @@ export interface PowerFailure {
 	message: string;
 }
 
-/** The two push events, keyed by the name a page listens for. */
+/** The push events, keyed by the name a page listens for. Butter's six, in the same order. */
 export const POWER_EVENTS = {
 	sleep: "power:sleep",
 	lock: "power:lock",
+	wake: "power:wake",
+	screensleep: "power:screensleep",
+	screenwake: "power:screenwake",
+	unlock: "power:unlock",
 } as const;
 
 export type PowerEventKind = keyof typeof POWER_EVENTS;
@@ -99,6 +107,10 @@ export type PowerEventName = (typeof POWER_EVENTS)[PowerEventKind];
 export interface PowerEventPayload {
 	kind: PowerEventKind;
 }
+
+/** The six subscribe commands; each names the adapter method and the event it arms. */
+export type PowerSubscribeCommand =
+	"onSleep" | "onLock" | "onWake" | "onScreenSleep" | "onScreenWake" | "onUnlock";
 
 /** What a successful subscribe command answers, so the page knows which event was armed. */
 export interface PowerSubscribeResult {

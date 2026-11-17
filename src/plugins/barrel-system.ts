@@ -111,6 +111,8 @@ export {
 	createCrashReporterPlugin,
 	crashReporterPlugin,
 	type ClearCrashesResult,
+	type ConfigureCrashArgs,
+	type ConfigureCrashResult,
 	type CrashArmResult,
 	type CrashGuardState,
 	type CrashNative,
@@ -119,5 +121,8 @@ export {
 	type LastCrashResult,
 	type ListCrashesArgs,
 	type ListCrashesResult,
+	type ReportCrashArgs,
+	type ReportCrashResult,
 	type UninstallResult,
 } from "./crash-reporter";
+export type { StoredCrash } from "@/runtime-crash-write";

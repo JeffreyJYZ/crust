@@ -1,10 +1,10 @@
 /**
  * `crust:crash-reporter` proofs that never install a real handler. Every test injects a fake native half and a fake guard state, so nothing here can fault or leave a signal handler behind in the test process.
- * What is proven is the contract: a guard that was never started is named rather than answered with an empty list, the readers report what the guard wrote, and clearing is refused from the page so it cannot erase its own evidence.
+ * What is proven is the contract: a guard that was never started is named rather than answered with an empty list, the readers report what the guard wrote, a guard-less page cannot report either, and clearing is refused from the page so it cannot erase its own evidence. The page's own reporting half is proven in `crash-reporter-page.test.ts`.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crashLogPath, crashRecordPath, lastCrashPath } from "@/platform/darwin/crash-record";
@@ -48,7 +48,9 @@ function fakeNative(): { native: CrashNative; calls: string[] } {
 	};
 }
 
+/** A guard-written record: the guard's own five fields, plus the half that wrote it. */
 const crash = {
+	type: "signal" as const,
 	signal: "SIGSEGV",
 	code: 1,
 	address: "0x0",
@@ -63,6 +65,7 @@ describe("crash-reporter plugin", () => {
 		const results = [
 			crashReporterPlugin.commands.last(),
 			crashReporterPlugin.commands.list(),
+			crashReporterPlugin.commands.report({ message: "boom" }),
 			crashReporterPlugin.commands.clear(),
 			crashReporterPlugin.commands.install(),
 			crashReporterPlugin.commands.uninstall(),
@@ -101,6 +104,17 @@ describe("crash-reporter plugin", () => {
 			crashes: [{ ...crash, signal: "SIGBUS" }],
 			root,
 		});
+	});
+
+	test("a record written before `type` existed reads as the guard's own", async () => {
+		const root = await tempDir();
+		const plugin = createCrashReporterPlugin({ root, guard: RUNNING });
+		const { type: _dropped, ...legacy } = crash;
+		await writeFile(lastCrashPath(root), JSON.stringify(legacy), "utf8");
+		await writeFile(crashLogPath(root), `${JSON.stringify(legacy)}\n`, "utf8");
+		// The page half wrote nothing before this field existed, so the guard gets the credit.
+		expect(plugin.commands.last()).toEqual({ crash, root });
+		expect(plugin.commands.list()).toEqual({ crashes: [crash], root });
 	});
 
 	test("clear is refused from the page, and the evidence stays readable", async () => {
@@ -160,10 +174,23 @@ describe("crash-reporter plugin", () => {
 		}
 	});
 
+	test("install still arms the record in the data root after configure repoints the log", async () => {
+		const root = await tempDir();
+		const sub = join(root, "reports");
+		await mkdir(sub, { recursive: true });
+		const { native, calls } = fakeNative();
+		const plugin = createCrashReporterPlugin({ root, guard: RUNNING, native });
+		plugin.commands.configure({ dir: sub });
+		plugin.commands.install();
+		// The guard reads `crash-record.bin` from the data root, so a moved log must not move it.
+		expect(calls).toEqual([`arm ${crashRecordPath(root)}`]);
+	});
+
 	test("a guard that stopped running is refused again, not answered stale", async () => {
 		const root = await tempDir();
 		const guard = { running: () => false };
 		const plugin = createCrashReporterPlugin({ root, guard });
 		expect(isNotImplemented(plugin.commands.last())).toBe(true);
+		expect(isNotImplemented(plugin.commands.report({ message: "boom" }))).toBe(true);
 	});
 });

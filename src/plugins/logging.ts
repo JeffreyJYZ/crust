@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { definePlugin } from "./define";
+import { type ConfigureArgs, type ConfigureResult, resolveLogFile } from "./logging-configure";
 
 export type LogLevel = "trace" | "error" | "warn" | "info" | "debug";
 
@@ -106,8 +107,8 @@ export function logDirs(adapter: LoggingAdapter = {}): LogDirs {
 
 export function createLoggingPlugin(adapter: LoggingAdapter = {}) {
 	const dirs = logDirs(adapter);
-	const file = dirs.file;
-	const archive = join(dirs.logs, ROTATED_NAME);
+	// The live file moves when `configure` repoints it; the archive is always its sibling.
+	let file = dirs.file;
 	const now = adapter.now ?? (() => Date.now());
 	let current: LogLevel = isLogLevel(adapter.level) ? adapter.level : "info";
 	const ring: string[] = [];
@@ -117,6 +118,7 @@ export function createLoggingPlugin(adapter: LoggingAdapter = {}) {
 	 * split across the rotation. POSIX `rename` replaces an older archive in one step.
 	 */
 	async function rotateIfLarge(): Promise<string | undefined> {
+		const archive = join(dirname(file), ROTATED_NAME);
 		let size = 0;
 		try {
 			size = (await stat(file)).size;
@@ -138,6 +140,24 @@ export function createLoggingPlugin(adapter: LoggingAdapter = {}) {
 				return { level: current, changed };
 			},
 			level: (): LogLevel => current,
+			configure: ({ file: next, level }: ConfigureArgs = {}): ConfigureResult => {
+				let target: string | undefined;
+				if (next !== undefined) {
+					try {
+						target = resolveLogFile(dirs.root, next);
+					} catch (error) {
+						return { ok: false, error: reasonOf(error) };
+					}
+				}
+				if (level !== undefined) {
+					if (!isLogLevel(level)) {
+						return { ok: false, error: `logging.configure: "${level}" is not a level` };
+					}
+					current = level;
+				}
+				if (target !== undefined) file = target;
+				return { ok: true, file, level: current };
+			},
 			write: async ({ level, message }: WriteArgs): Promise<WriteResult> => {
 				if (!isLogLevel(level)) return { written: false, reason: "bad-level" };
 				if (SEVERITY[level] > SEVERITY[current]) {

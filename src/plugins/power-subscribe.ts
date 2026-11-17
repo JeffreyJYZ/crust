@@ -1,5 +1,5 @@
 /**
- * The push half of `crust:power`: one path for both subscribe commands. Kept out of the command map
+ * The push half of `crust:power`: one path for every subscribe command. Kept out of the command map
  * so the plugin stays a thin declaration, and so a platform with no notification refuses by name
  * rather than installing a listener that would never fire.
  */
@@ -10,6 +10,7 @@ import {
 	type PowerAdapter,
 	type PowerEventPayload,
 	type PowerFailure,
+	type PowerSubscribeCommand,
 	type PowerSubscribeResult,
 } from "./power-types";
 
@@ -30,7 +31,7 @@ const noNotification = (command: string, requires: string): NotImplemented =>
  */
 export async function subscribe(
 	adapter: PowerAdapter | undefined,
-	command: "onSleep" | "onLock",
+	command: PowerSubscribeCommand,
 	kind: keyof typeof POWER_EVENTS,
 	requires: string,
 	ctx: PluginContext,

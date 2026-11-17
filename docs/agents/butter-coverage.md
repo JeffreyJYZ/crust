@@ -24,7 +24,7 @@ silently dropping a row to make the count match.
 | `autolaunch`      | `enable`, `disable`, `status`                                                                | `autostart`        | `enable`, `disable`, `isEnabled`                                                                                             | same               |
 | `autoupdater`     | `check`, `download`, `install`, `restart`                                                    | `updater`          | `config`, `check`, `download`, `install`, `relaunch`                                                                         | same               |
 | `clipboard`       | `read`, `write`                                                                              | `clipboard`        | `read`, `write`, `readImage`, `writeImage`                                                                                   | same               |
-| `crashreporter`   | `crash:configure`, `crash:report`, `crash:list`                                              | `crash-reporter`   | `last`, `list`, `clear`, `install`, `uninstall`                                                                              | **partial** (F8)   |
+| `crashreporter`   | `crash:configure`, `crash:report`, `crash:list`                                              | `crash-reporter`   | `last`, `list`, `report`, `configure`, `clear`, `install`, `uninstall`; a page report records `type: "webview"`, the guard records `"signal"` | same               |
 | `database`        | `open`, `close`, `exec`, `query`, `get`                                                      | `database`         | `open`, `close`, `exec`, `query`, `get`                                                                                      | same               |
 | `dialog`          | `open`, `save`                                                                               | `dialog`           | `openPanel`, `savePanel`, `cancel`                                                                                           | same               |
 | `dock`            | `setbadge`, `bounce`, `setprogress`                                                          | `dock`             | `badge`, `badgeLabel`, `bounce`, `progress`                                                                                  | same               |
@@ -34,14 +34,14 @@ silently dropping a row to make the count match.
 | `globalshortcuts` | `shortcut:register`, `:unregister`, `:triggered`                                             | `shortcut`         | `register`, `unregister`, `unregisterAll`, `isRegistered`, `list`; event `shortcut`                                          | same               |
 | `i18n`            | `init`, `t`, `locale`, `all`                                                                 | `i18n`             | `locale`, `setLocale`, `messages`, `translate`, `load`                                                                       | same               |
 | `lifecycle`       | `getinfo`, `activate`, `reopen`; pushes `beforequit`, `willquit`                             | `app` (namespace)  | `app.info()`, `app.invoke`; `app.on(...)` backend plus page events `app:activate`, `app:before-quit`, `app:will-quit`, `app:reopen` | same        |
-| `logging`         | `log:write`, `log:configure`                                                                 | `logging`          | `setLevel`, `level`, `write`, `tail`                                                                                         | partial (F2)       |
+| `logging`         | `log:write`, `log:configure`                                                                 | `logging`          | `setLevel`, `level`, `write`, `tail`, `configure({ file?, level? })`                                                         | same               |
 | `navigation`      | `back`, `forward`, `reload`, `loadurl`                                                       | `navigation`       | `start`, `stop`, `state`, `reload`, `goBack`, `goForward`, `loadUrl`                                                        | same               |
 | `network`         | `network:status`; pushes `network:change` (online probe)                                     | `network`          | `status`, `onChange` (`SCNetworkReachability` path + `network:change`); `rules`, `setRules`, `log`, `clearLog` (`WKURLSchemeHandler` interception) | same               |
 | `notifications`   | `notify:send`                                                                                | `notification`     | `requestPermission`, `notify`                                                                                                | same               |
-| `power`           | `power:idle`, `screen:list`; pushes sleep/wake/screensleep/screenwake/lock/unlock            | `power` + `screen` | `state`, `idleSeconds`, `sleepPrevent`, `sleepAllow`, `onSleep`, `onLock`; `screen.list`, `screen.primary`                   | **partial** (F4)   |
+| `power`           | `power:idle`, `screen:list`; pushes sleep/wake/screensleep/screenwake/lock/unlock            | `power` + `screen` | `state`, `idleSeconds`, `sleepPrevent`, `sleepAllow`, `onSleep`, `onLock`, `onWake`, `onScreenSleep`, `onScreenWake`, `onUnlock`; `screen.list`, `screen.primary` | same               |
 | `securestorage`   | `set`, `get`, `delete`                                                                       | `keychain`         | `set`, `get`, `delete`, `list`                                                                                               | same               |
 | `shell`           | `openurl`, `openpath`, `showinfolder`                                                        | `opener`           | `openUrl`, `openPath`, `revealItem`                                                                                          | same               |
-| `sidecar`         | `list`, `spawn`, `write`, `kill`; pushes `stdout`/`stderr`/`exit`                            | `sidecar`          | `spawn`; events `sidecar-stdout`, `sidecar-exit`                                                                             | **partial** (F5)   |
+| `sidecar`         | `list`, `spawn`, `write`, `kill`; pushes `stdout`/`stderr`/`exit`                            | `sidecar`          | `spawn`, `write`, `list`, `kill`; events `sidecar-stdout`, `sidecar-exit` (one exit event, where Butter has separate stdout/stderr closes) | same               |
 | `singleinstance`  | `singleinstance:isleader`                                                                    | `single-instance`  | `acquire`, `release`, `activate`                                                                                             | same               |
 | `store`           | `get`, `set`, `delete`, `keys`, `clear`, `flush`, plus named stores                          | `store`            | `get`, `set`, `delete`, `keys`, `clear`, `save`, each with optional `{ name }` → one `store.<name>.json` per store + default `store.json` | same               |
 | `theme`           | `theme:get`; pushes `theme:changed`                                                          | `theme`            | `current`, `set`, `reset`; pushes `theme:changed`                                                                            | same               |
@@ -75,10 +75,13 @@ now `subscribePageEvents`: `watchLifecycle` publishes `app:activate`/`app:before
 drift. The `app` namespace gained an `info` command beside `invoke`, and either one arms the sink —
 `app.info()` is a command, not an `app:info` event, because it has no moment to happen.
 
-**F2 — `logging`:** the level filter is equivalent, but Butter's `log:configure` also picks the file
-path at runtime. crust fixes the sink to `<app data>/logs/app.log` with rotation (`logDirs`), and
-`setLevel` is the only knob. Not a regression, just a narrower surface — an app wanting its own path
-has to move the whole data root.
+**F2 — `logging`: closed by Butter-parity Lane X.** Butter's `log:configure` repoints the file and
+moves the level in one call. crust now has `configure({ file?, level? })`: `level` validates and moves
+the threshold exactly as `setLevel` does; `file` repoints the live sink (archive becomes its sibling,
+so rotation follows) after a symlink-safe containment check against the app data root — relative,
+`..`, sibling-prefix and symlink-escape paths are refused as `ok: false`. `log:write` is `write`. The
+row is `same`. Files: `src/plugins/logging.ts`, `logging-configure.ts`, `logging-configure.test.ts`;
+lane report `docs/agents/logging-configure.md`.
 
 **F3 — `navigation`:** no `loadUrl`. Butter's `nav:loadurl` drives the webview to an arbitrary URL;
 crust's `window.create` accepts `url` but no open window can be pointed somewhere new, so reload of
@@ -108,11 +111,13 @@ traversal-style names refused before they become a path (one scope per name, cac
 The darwin native setters (`status_bar/*.c` `setToolTip:`, `shim/109_navigation_state.c`
 `loadRequest:`) are a separate platform task — the plugin answers by name until they land.
 
-**F8 — `crashreporter`:** two different models. Butter's `crash:report` takes a message and stack the
-_page_ caught (`window.onerror` is wired in its webview script) and `crash:configure` points at a
-directory or a report URL; crust records faults from a separate guard process and reads them back, so a
-page-thrown error is not recorded at all and there is no upload endpoint. `clear` and `uninstall` are
-crust-only, and `crash:report`'s page half is the gap.
+**F8 — `crashreporter`: closed.** Butter's `crash:report` takes a message and stack the _page_ caught
+and `crash:configure` points at a directory. crust now has both: `report` writes one record through
+the same store the guard uses, tagged `type: "webview"` so it is distinguishable from a guard-written
+`"signal"`, over-long fields truncated inside the cap rather than refused, and `configure` repoints the
+directory but is refused outside the app data root. Butter's `crash:configure` also accepts a `url` to
+POST reports; crust deliberately does not — a crash reporter that uploads is the app's privacy decision,
+not a plugin's.
 
 **F9 — `accessibility` was a namesake in the opposite direction.** Butter's plugin is a _page_ helper:
 ARIA live regions, `document.title`, and focusing a selector, all executed inside the webview. crust's

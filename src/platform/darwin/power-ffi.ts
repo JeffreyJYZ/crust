@@ -55,9 +55,10 @@ export interface PowerUnit {
 		crust_power_allow_sleep: () => number;
 		/** Register the one JS trampoline the two native notification callbacks share. */
 		crust_power_set_sink: (sink: number) => void;
-		/** 1 when the observer for that kind (1 sleep, 2 lock) is registered, else 0. */
+		/** 1 when the observer for that kind (1 sleep, 2 lock, 3 wake, 4 screensleep, 5 screenwake,
+		 * 6 unlock) is registered, else 0. */
 		crust_power_watch: (kind: number) => number;
-		/** 1 when the runtime observer class carries both callbacks, else 0. */
+		/** 1 when the runtime observer class carries every notification callback, else 0. */
 		crust_power_event_class_ready: () => number;
 	};
 }

@@ -1,7 +1,7 @@
 /**
- * The macOS push half of `crust:power`: the two `NSNotificationCenter` observers and the single
+ * The macOS push half of `crust:power`: the six `NSNotificationCenter` observers and the single
  * `JSCallback` they report through. The C unit (`116_power_events.c`, joined with the battery unit)
- * builds one runtime `NSObject` subclass whose two selectors call one function pointer carrying a
+ * builds one runtime `NSObject` subclass whose six selectors call one function pointer carrying a
  * scalar kind, so no object and no block ever crosses `bun:ffi`.
  * One trampoline per process: C holds a single sink pointer, so a second `JSCallback` would never be
  * reached. Re-subscribing a kind replaces its listener rather than stacking duplicates.
@@ -10,12 +10,26 @@
 import { FFIType, JSCallback } from "bun:ffi";
 import { powerUnit, type PowerUnit } from "./power-ffi.ts";
 
-/** The kinds the C unit reports; keep in step with PW_SLEEP / PW_LOCK in the shim. */
-export const POWER_EVENT_KIND = { sleep: 1, lock: 2 } as const;
+/**
+ * The kinds the C unit reports; keep in step with the PW_* defines and the `pw_watches` table in the
+ * shim, which is the only place a kind is paired with its notification name.
+ */
+export const POWER_EVENT_KIND = {
+	sleep: 1,
+	lock: 2,
+	wake: 3,
+	screensleep: 4,
+	screenwake: 5,
+	unlock: 6,
+} as const;
 
 export interface DarwinPowerEvents {
 	onSleep(listener: () => void): boolean;
 	onLock(listener: () => void): boolean;
+	onWake(listener: () => void): boolean;
+	onScreenSleep(listener: () => void): boolean;
+	onScreenWake(listener: () => void): boolean;
+	onUnlock(listener: () => void): boolean;
 }
 
 function pointerOf(callback: JSCallback): number {
@@ -65,6 +79,10 @@ export function darwinPowerEvents(
 	return {
 		onSleep: (listener) => arm(POWER_EVENT_KIND.sleep, listener),
 		onLock: (listener) => arm(POWER_EVENT_KIND.lock, listener),
+		onWake: (listener) => arm(POWER_EVENT_KIND.wake, listener),
+		onScreenSleep: (listener) => arm(POWER_EVENT_KIND.screensleep, listener),
+		onScreenWake: (listener) => arm(POWER_EVENT_KIND.screenwake, listener),
+		onUnlock: (listener) => arm(POWER_EVENT_KIND.unlock, listener),
 		/** Test seam: drive the same dispatch the trampoline uses, without a real notification. */
 		fire: (kind) => {
 			dispatch(kind);

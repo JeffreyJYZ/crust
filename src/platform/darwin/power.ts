@@ -51,9 +51,13 @@ export interface DarwinPowerAdapter {
 	idleSeconds(): number | { available: false; reason: string };
 	preventSleep(reason: string): SleepAssertion;
 	allowSleep(): SleepRelease;
-	/** Register the OS sleep / screen-lock observers; false means the notification is unavailable. */
+	/** Register the OS observers; false means the notification is unavailable on this OS. */
 	onSleep(listener: () => void): boolean;
 	onLock(listener: () => void): boolean;
+	onWake(listener: () => void): boolean;
+	onScreenSleep(listener: () => void): boolean;
+	onScreenWake(listener: () => void): boolean;
+	onUnlock(listener: () => void): boolean;
 }
 
 const message = (error: unknown): string =>
@@ -114,6 +118,10 @@ export function darwinPowerAdapter(): DarwinPowerAdapter {
 	return {
 		onSleep: events.onSleep,
 		onLock: events.onLock,
+		onWake: events.onWake,
+		onScreenSleep: events.onScreenSleep,
+		onScreenWake: events.onScreenWake,
+		onUnlock: events.onUnlock,
 		state: () => {
 			const unit = compiled();
 			if (typeof unit === "string") {

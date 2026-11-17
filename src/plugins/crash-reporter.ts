@@ -1,90 +1,30 @@
 /**
- * `crust:crash-reporter` — what the app knows about its own last crash. The reporting itself happens in a second process (`runtime-crash-guard.ts`), so every command here reads a file or arms a handler; none of them can run inside a process that is already faulting.
+ * `crust:crash-reporter` — what the app knows about its own last crash. The reporting itself happens in a second process (`runtime-crash-guard.ts`), so `last`, `list` and `clear` read or arm; none of them can run inside a process that is already faulting.
  * The rule this file enforces: **a guard that was never started is named, not papered over.** Without it nothing ever writes a record, so `last`, `list` and `clear` answer a typed `NotImplemented` naming `startCrashGuard()` instead of an empty list that reads like "no crashes".
+ * The page also reports, because the ordinary crash is an `onerror` in a render loop that never faults the process. `report` is that half; `configure` repoints where its records land.
  */
 
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { crashRecordPath, type CrashRecord } from "../platform/darwin/crash-record";
-import { listCrashes, readLastCrash } from "../runtime-crash-store";
+import { isAbsolute, join, resolve, sep } from "node:path";
+import { crashRecordPath } from "../platform/darwin/crash-record";
+import { listCrashes, readLastCrash, recordPageCrash } from "../runtime-crash-store";
+import {
+	type ClearRefused,
+	type ConfigureCrashArgs,
+	type CrashReporterOptions,
+	type ConfigureCrashResult,
+	type ConfigureRefused,
+	type InstallResult,
+	type LastCrashResult,
+	type ListCrashesArgs,
+	type ListCrashesResult,
+	type ReportCrashArgs,
+	type ReportCrashResult,
+	type UninstallResult,
+} from "./crash-reporter-types";
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
 
-/** What the native half reports for one arm or disarm; `platform/darwin/crash.ts` owns the status set. */
-export interface CrashArmResult {
-	armed: boolean;
-	status: number;
-	reason: string;
-}
-
-/** The signal half, injected so a test never installs a real handler in its own process. */
-export interface CrashNative {
-	arm(recordPath: string): CrashArmResult;
-	disarm(): CrashArmResult;
-}
-
-/** The guard, as the plugin needs it: present only once `startCrashGuard()` returned. */
-export interface CrashGuardState {
-	running(): boolean;
-}
-
-export interface CrashReporterOptions {
-	/** The app's data directory; defaults to `~/Library/Application Support/<appId ?? "crust">`. */
-	root?: string;
-	appId?: string;
-	home?: string;
-	guard?: CrashGuardState;
-	native?: CrashNative;
-}
-
-export interface LastCrashResult {
-	/** Null when the guard is running and nothing has crashed. */
-	crash: CrashRecord | null;
-	root: string;
-}
-
-export interface ListCrashesArgs {
-	/** Keep only the most recent entries. */
-	limit?: number;
-}
-
-export interface ListCrashesResult {
-	/** Oldest first, the order they were appended. */
-	crashes: CrashRecord[];
-	root: string;
-}
-
-export interface ClearCrashesResult {
-	/** The paths that existed and are now gone. */
-	cleared: string[];
-	root: string;
-}
-
-/**
- * What a page gets from `clear`: a named refusal, not a silent no-op. The page is the process whose
- * bug produced the crash, so it is the last caller that may delete the record of it.
- */
-export interface ClearRefused {
-	ok: false;
-	code: "page-cannot-clear";
-	message: string;
-	root: string;
-}
-
-export interface InstallResult {
-	armed: boolean;
-	reason: string;
-	/** The record the handlers write. */
-	record: string;
-	root: string;
-}
-
-export interface UninstallResult {
-	/** True when handlers are still installed: the native disarm did not take effect. */
-	armed: boolean;
-	/** The native status, so a refused disarm names the step that said no. */
-	status: number;
-	reason: string;
-}
+export type * from "./crash-reporter-types";
 
 /** The one message every guard-less command answers, so the missing half is named once. */
 const NO_GUARD = "crash-reporter: the helper process is not running";
@@ -94,15 +34,18 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 	{
 		last: () => LastCrashResult | NotImplemented;
 		list: (args?: ListCrashesArgs) => ListCrashesResult | NotImplemented;
+		report: (args: ReportCrashArgs) => ReportCrashResult | NotImplemented;
+		configure: (args: ConfigureCrashArgs) => ConfigureCrashResult | ConfigureRefused;
 		clear: () => ClearRefused | NotImplemented;
 		install: () => InstallResult | NotImplemented;
 		uninstall: () => UninstallResult | NotImplemented;
 	}
 > {
-	const root =
+	const dataRoot =
 		options.root ??
 		join(options.home ?? homedir(), "Library", "Application Support", options.appId ?? "crust");
-	const native = options.native;
+	// `configure` repoints this; the data root stays the fence a new directory is measured against.
+	let root = dataRoot;
 	const guardRunning = (): boolean => options.guard?.running() === true;
 	const noGuard = (): NotImplemented => notImplemented(NO_GUARD, "startCrashGuard()");
 	const noNative = (command: string): NotImplemented =>
@@ -111,10 +54,18 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 			"armCrashHandlers()",
 		);
 
+	/** Inside the data root, by prefix on a resolved path: a sibling whose name starts the same is out. */
+	const insideRoot = (dir: string): boolean => {
+		const target = resolve(dir);
+		const fence = resolve(dataRoot);
+		if (target === fence) return true;
+		return target.startsWith(fence.endsWith(sep) ? fence : `${fence}${sep}`);
+	};
+
 	return definePlugin({
 		name: "crash-reporter",
 		commands: {
-			/** The newest crash the guard recorded. */
+			/** The newest crash the guard recorded, or the newest a page reported. */
 			last: (): LastCrashResult | NotImplemented => {
 				if (!guardRunning()) return noGuard();
 				return { crash: readLastCrash(root), root };
@@ -123,6 +74,35 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 			list: (args?: ListCrashesArgs): ListCrashesResult | NotImplemented => {
 				if (!guardRunning()) return noGuard();
 				return { crashes: listCrashes(root, args?.limit), root };
+			},
+			/**
+			 * One record from the page — what an `onerror` in a render loop reports, and the case no
+			 * guard can see. Same store, same layout, same `0600`: `type: "webview"` is what separates
+			 * it from the guard's `"signal"`, and an over-long field is truncated, never refused.
+			 */
+			report: (args: ReportCrashArgs): ReportCrashResult | NotImplemented => {
+				if (!guardRunning()) return noGuard();
+				return { ok: true, crash: recordPageCrash(root, args), root };
+			},
+			/**
+			 * Where records land. Refused outside the app's data root: a record carries the app's paths,
+			 * so writing one wherever a page names is a containment hole. No `url` is accepted —
+			 * uploading is a privacy decision the app makes, not one a plugin makes for it.
+			 */
+			configure: (args: ConfigureCrashArgs): ConfigureCrashResult | ConfigureRefused => {
+				const dir = args?.dir;
+				if (typeof dir !== "string" || dir.length === 0)
+					return { ok: true, dir: root, root };
+				if (!isAbsolute(dir) || !insideRoot(dir)) {
+					return {
+						ok: false,
+						code: "outside-data-root",
+						message: `crash-reporter.configure: ${dir} is outside the app's data root ${dataRoot}`,
+						root,
+					};
+				}
+				root = resolve(dir);
+				return { ok: true, dir: root, root };
 			},
 			/**
 			 * Refused from the page. Deleting the evidence is a runtime decision: the runtime calls
@@ -140,16 +120,17 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 			/** Arm the handlers, so the next fault writes a record the guard can read. */
 			install: (): InstallResult | NotImplemented => {
 				if (!guardRunning()) return noGuard();
-				if (!native) return noNative("install");
-				const record = crashRecordPath(root);
-				const arm = native.arm(record);
+				if (!options.native) return noNative("install");
+				// The guard reads the record from the data root, so `configure` must not move it.
+				const record = crashRecordPath(dataRoot);
+				const arm = options.native.arm(record);
 				return { armed: arm.armed, reason: arm.reason, record, root };
 			},
 			/** Restore the default disposition, so a fault is a plain fault again. */
 			uninstall: (): UninstallResult | NotImplemented => {
 				if (!guardRunning()) return noGuard();
-				if (!native) return noNative("uninstall");
-				const arm = native.disarm();
+				if (!options.native) return noNative("uninstall");
+				const arm = options.native.disarm();
 				return { armed: arm.armed, status: arm.status, reason: arm.reason };
 			},
 		},

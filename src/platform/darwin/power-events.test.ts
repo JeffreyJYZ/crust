@@ -22,19 +22,24 @@ describe("power events C unit", () => {
 		expect(Object.keys(compiled.symbols).sort()).toEqual([...POWER_SYMBOL_NAMES].sort());
 	});
 
-	test("the runtime observer class carries both notification callbacks", () => {
+	test("the runtime observer class carries every notification callback", () => {
 		expect(Number(powerUnit().symbols.crust_power_event_class_ready() ?? 0)).toBe(1);
 	});
 
 	test("an unknown notification kind is refused, not silently watched", () => {
 		expect(Number(powerUnit().symbols.crust_power_watch(0) ?? -1)).toBe(0);
+		expect(Number(powerUnit().symbols.crust_power_watch(7) ?? -1)).toBe(0);
+		expect(Number(powerUnit().symbols.crust_power_watch(-1) ?? -1)).toBe(0);
 	});
 
-	test("each supported kind registers an observer and a repeat reuses it", () => {
+	test("all six kinds register an observer and a repeat reuses it", () => {
 		const symbols = powerUnit().symbols;
-		expect(Number(symbols.crust_power_watch(POWER_EVENT_KIND.sleep) ?? 0)).toBe(1);
-		expect(Number(symbols.crust_power_watch(POWER_EVENT_KIND.sleep) ?? 0)).toBe(1);
-		expect(Number(symbols.crust_power_watch(POWER_EVENT_KIND.lock) ?? 0)).toBe(1);
+		const kinds = Object.values(POWER_EVENT_KIND);
+		expect(kinds).toEqual([1, 2, 3, 4, 5, 6]);
+		for (const kind of kinds) {
+			expect(Number(symbols.crust_power_watch(kind) ?? 0)).toBe(1);
+			expect(Number(symbols.crust_power_watch(kind) ?? 0)).toBe(1);
+		}
 	});
 });
 
@@ -56,14 +61,25 @@ function fakeUnit(watch: number): () => PowerUnit {
 }
 
 describe("darwin power event channel", () => {
-	test("onSleep and onLock register the right kinds and keep a single sink", () => {
+	test("every push command registers its own kind and keeps a single sink", () => {
 		const unit = fakeUnit(1);
 		const events = darwinPowerEvents(unit);
 		expect(events.onSleep(() => {})).toBe(true);
 		expect(events.onLock(() => {})).toBe(true);
+		expect(events.onWake(() => {})).toBe(true);
+		expect(events.onScreenSleep(() => {})).toBe(true);
+		expect(events.onScreenWake(() => {})).toBe(true);
+		expect(events.onUnlock(() => {})).toBe(true);
 		const probe = (unit() as unknown as { probe: { sinks: number[]; watched: number[] } })
 			.probe;
-		expect(probe.watched).toEqual([POWER_EVENT_KIND.sleep, POWER_EVENT_KIND.lock]);
+		expect(probe.watched).toEqual([
+			POWER_EVENT_KIND.sleep,
+			POWER_EVENT_KIND.lock,
+			POWER_EVENT_KIND.wake,
+			POWER_EVENT_KIND.screensleep,
+			POWER_EVENT_KIND.screenwake,
+			POWER_EVENT_KIND.unlock,
+		]);
 		expect(probe.sinks).toHaveLength(1);
 	});
 
@@ -71,17 +87,26 @@ describe("darwin power event channel", () => {
 		const events = darwinPowerEvents(fakeUnit(0));
 		expect(events.onSleep(() => {})).toBe(false);
 		expect(events.onLock(() => {})).toBe(false);
+		expect(events.onWake(() => {})).toBe(false);
+		expect(events.onScreenSleep(() => {})).toBe(false);
+		expect(events.onScreenWake(() => {})).toBe(false);
+		expect(events.onUnlock(() => {})).toBe(false);
 	});
 
 	test("each kind dispatches only its own listener, and a re-arm replaces it", () => {
 		const events = darwinPowerEvents(fakeUnit(1));
 		const seen: string[] = [];
 		events.onSleep(() => seen.push("first"));
+		events.onWake(() => seen.push("wake"));
+		events.onUnlock(() => seen.push("unlock"));
 		events.fire(POWER_EVENT_KIND.sleep);
 		events.onSleep(() => seen.push("second"));
 		events.fire(POWER_EVENT_KIND.sleep);
 		events.fire(POWER_EVENT_KIND.lock);
-		expect(seen).toEqual(["first", "second"]);
+		events.fire(POWER_EVENT_KIND.wake);
+		events.fire(POWER_EVENT_KIND.screensleep);
+		events.fire(POWER_EVENT_KIND.unlock);
+		expect(seen).toEqual(["first", "second", "wake", "unlock"]);
 	});
 
 	test("a throwing listener does not escape into the native callback", () => {

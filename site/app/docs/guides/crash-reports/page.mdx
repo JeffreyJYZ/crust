@@ -35,15 +35,38 @@ What that second process _is_ depends on how the app runs. In a source checkout 
 
 ## Commands
 
-| command     | arguments    | answer                                                                       |
-| ----------- | ------------ | ---------------------------------------------------------------------------- |
-| `last`      | none         | `{ crash, root }` — `crash` is `null` when nothing crashed                   |
-| `list`      | `{ limit? }` | `{ crashes, root }`, oldest first                                            |
-| `clear`     | none         | `{ ok: false, code: "page-cannot-clear", message, root }` — always a refusal |
-| `install`   | none         | `{ armed, reason, record, root }`                                            |
-| `uninstall` | none         | `{ armed: false, reason }`                                                   |
+| command     | arguments          | answer                                                                       |
+| ----------- | ------------------ | ---------------------------------------------------------------------------- |
+| `last`      | none               | `{ crash, root }` — `crash` is `null` when nothing crashed                   |
+| `list`      | `{ limit? }`       | `{ crashes, root }`, oldest first                                            |
+| `report`    | `{ message, stack? }` | `{ ok: true, crash, root }` — one record, written now                     |
+| `configure` | `{ dir? }`         | `{ ok: true, dir, root }`, or `{ ok: false, code: "outside-data-root" }`     |
+| `clear`     | none               | `{ ok: false, code: "page-cannot-clear", message, root }` — always a refusal |
+| `install`   | none               | `{ armed, reason, record, root }`                                            |
+| `uninstall` | none               | `{ armed: false, reason }`                                                   |
 
-A record is `{ signal, code, address, at, handler, exitCode }`. `signal` is a name such as `SIGSEGV`, `null` when the record named a signal this build does not map; `code` is `si_code`, where `1` (`SEGV_MAPERR`) and `2` (`SEGV_ACERR`) are the two a real fault produces; `address` is hex, `0x0` when the kernel supplied none.
+A record is `{ type, signal, code, address, at, handler, exitCode }`. `type` is `"signal"` for a fault the guard watched die and `"webview"` for an error the page caught and reported, and it is how the two halves are told apart. `signal` is a name such as `SIGSEGV`, `null` when the record named a signal this build does not map; `code` is `si_code`, where `1` (`SEGV_MAPERR`) and `2` (`SEGV_ACERR`) are the two a real fault produces; `address` is hex, `0x0` when the kernel supplied none. A `"webview"` record carries `message` and, when the page supplied one, `stack`, and its `signal`/`code`/`address`/`exitCode` are `null` because nothing faulted.
+
+## The page's own reports
+
+`report` is the other half, and the ordinary case: an `onerror` in a render loop never faults the process, so no guard can ever see it. The page caught the error itself, so it says so:
+
+```js
+window.addEventListener("error", (event) => {
+	window.crust.invoke("crash-reporter", "report", {
+		message: event.message || "Unknown error",
+		stack: event.error?.stack,
+	});
+});
+```
+
+One record lands in the same `crashes.log` and `last-crash.json` the guard writes, with the same layout, the same rotation and the same `0600`, so `last` and `list` answer it with no second reader. `type: "webview"` is what separates it from the guard's `"signal"`.
+
+An over-long `message` or `stack` is **truncated, never refused** — losing a crash because its stack was long is the worst behaviour available. The value keeps its head and ends with `… [truncated <n> chars]`, and the whole value still fits the cap, so a report cannot grow the record it lands in. The log keeps the newest `MAX_CRASH_RECORDS` (200) and drops the oldest, because a log that only grows is a leak.
+
+`configure({ dir })` repoints where records land, refused outside the app's data root — a record carries the app's own paths, so writing one wherever a page names is a containment hole, not a feature. It takes **no `url`**: Butter's plugin POSTs every crash to an endpoint, and that is a privacy decision the app makes, not one a plugin makes for it. An app that wants its reports uploaded reads them with `list` and sends them itself.
+
+`report` and `configure` both need the guard, like the rest: without it they answer `not-implemented` naming `startCrashGuard()`, because a record nothing reads is not worth writing.
 
 `install` arms the handlers so the next fault writes a record. `uninstall` restores the default disposition, so a fault is a plain fault again.
 
