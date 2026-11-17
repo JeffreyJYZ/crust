@@ -4,6 +4,40 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.24] — 2026-11-17
+
+### Fixed
+
+- **Asset route traversal on Windows** — the guard split on `/` only, so a `%5c` segment decoded after the URL parser ran and `join(root, "..\\secret")` read outside the frontend root with no token. Both separators are now refused, and the resolved path is bounded against the root.
+- **Script injection through a window label** — the injected bootstrap passed the label through `JSON.stringify`, which leaves `</script>` intact, so `?window=</script><script>…` ran in the bridge origin. `<`, `>`, U+2028 and U+2029 are escaped before the script body.
+- **`crust.ready` never settled after a failed first invoke** — the handshake resolved only on success, so a wrong token, an unknown command or a non-JSON reply left `await crust.ready` pending forever.
+- **Reserved JSON keys corrupted results** — a handler returning `__crustBytes` as data was turned into a `Uint8Array`, and a `__proto__` field changed the object's prototype instead of surviving as a field.
+- **Every SSE disconnect leaked a cleanup** — `detached()` never removed itself, retaining a controller and subscriber per reload for the process lifetime.
+- **The Windows frame scanner skipped the arrays it exists to catch** — pointer elements, 2-D bounds, initialisers and multiple declarators all returned no offence, each of them the 4096-byte `__chkstk` frame that crashes at 0xFFFF…F.
+- **A failed window create burned a WebView2 slot permanently** — the error path never called `shim_webview_close`, so eight retries bricked window creation for the process.
+- **The Windows and Linux pumps counted JS timer ticks as native iterations**, so a smoke that never pumped printed PASS.
+- **A closed window resurrected as open after Cmd+H** — `appHidden` was ORed into liveness, and `-windowNumber` never clears after `-close`.
+- **Four NSWindow action selectors were sent without their sender argument.**
+- **A dangling symlink escaped both path scopes** — `realpath` failed on the missing target, the fallback re-appended the link's own name, and `Bun.write` followed it outside the sandbox.
+- **A refused native call was reported as success** — `sleepAllow`, `shortcut.unregister`, `crash-reporter.uninstall`, `theme.set`, `power.state` and `accessibility.prompt` each had a working failure channel and ignored it.
+- **Log levels were inverted** — `trace` was the lowest severity, so at `info` the chattiest line was written and `debug` was dropped.
+- **A value flag consumed a following `--help` as its value** — `crust init --dir --help` created a directory named `--help`; help and version now short-circuit before validation.
+- **`crust doctor` false-failed `.html`/`.ts`/`.js` single-file apps.**
+- **Single-file React mounting accepted React 17** and then called the React 18 API.
+- **A throwing `window-all-closed` listener left the app running with every window gone.**
+- **Crash handlers never armed at launch**, so an app that did not call `crash-reporter.install` recorded nothing.
+- **`store.json` ignored `app.id`** — every crust app shared one file.
+- **`spctl -t install` assessed an `.app`** and reported a stapled, notarized bundle as failed.
+- **NSIS shipped all of `dist`** — the macOS `.app`, stray AppImages and earlier installers went into a Windows install.
+- **A failed release build left a public, partial release** — now a draft until every leg builds and `verify` passes.
+- **The updater hashed only basenames**, so two different bundles could share one tree digest; the zip reader trusted attacker-controlled lengths; `download` followed redirects and never bounded the body.
+- **Native extensions hardcoded macOS** — `.dylib` naming and `clang -dynamiclib` on all three platforms, `findTool` blind to `.exe`, and no ABI check before binding a dylib.
+- **`shell.cwdRoot` accepted a relative path** and `app.id` accepted separators, each resolved against a different base by different consumers.
+
+### Added
+
+- `bun run test` covers the release tooling and the docs-reference truth tests, which were unreachable from the gate before.
+
 ## [0.1.23] — 2026-11-17
 
 ### Added
