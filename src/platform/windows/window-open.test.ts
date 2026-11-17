@@ -53,4 +53,26 @@ describe("the create size is clamped to the configured minimum", () => {
 		);
 		expect(calls).toContain("window_new:main:1000x700:crust");
 	});
+
+	// The bug this pins: the shim records the *create* size as the drag floor when nothing tells it
+	// otherwise, so a 1000x700 window with `minWidth: 800` could never be shrunk to 800. The floor is
+	// the configured minimum, and a window with none gets 0 on both axes rather than its own size.
+	test("the drag floor is the configured minimum, not the create size", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(
+			shim,
+			{ label: "main", width: 1000, height: 700, minWidth: 800, minHeight: 600 },
+			"crust",
+			"",
+		);
+		expect(calls).toContain("min:800x600");
+	});
+
+	test("a window with no minimum tells the shim to constrain nothing", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(shim, { label: "main", width: 900, height: 600 }, "crust", "");
+		expect(calls).toContain("min:0x0");
+	});
 });
