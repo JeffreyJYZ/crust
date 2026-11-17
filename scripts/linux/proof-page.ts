@@ -5,6 +5,7 @@
  * because the two halves of the bridge are proven separately.
  */
 import { type BridgeHandle, startBridge } from "../../src/bridge/server.ts";
+import { withToken } from "../../src/bridge/window-identity.ts";
 import type { PluginContext } from "../../src/plugins/define.ts";
 import { definePlugin } from "../../src/plugins/define.ts";
 
@@ -134,5 +135,13 @@ export function startProofPage(): ProofPage {
 		handlers: [SMOKE_PLUGIN],
 		indexHtml: PAGE_HTML,
 	});
-	return { url: bridge.url, port: bridge.port, stop: () => bridge.stop() };
+	// The document route refuses a request that cannot present the token, so the URL a window is
+	// given must carry it — the same rule `app-loop.ts` applies to an app's own windows. Without
+	// this the smoke loaded a URL that answered 401 and every document assertion failed on a page
+	// that never parsed.
+	return {
+		url: withToken(bridge.url, bridge.token),
+		port: bridge.port,
+		stop: () => bridge.stop(),
+	};
 }

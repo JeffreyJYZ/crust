@@ -78,19 +78,27 @@ export async function servePhase(verdict: Verdict, dev: LiveRun, scratch: string
 		// The counter-evidence: the bridge's own document is not the page. Without
 		// this, "the window loaded the dev server" would rest on the greet line
 		// alone, and a bridge-served page could account for it.
+		//
+		// Since the token moved onto the navigation URL, an unauthenticated `GET /` answers 401 —
+		// which is stronger evidence than the 200 this used to assert: the bridge refuses to serve
+		// its document at all without the credential, so the window's page can only have come from
+		// Vite. A 200 is still accepted when it is the bridge's own HTML rather than the Vite client,
+		// because that is the same fact in the one case where the token is not required.
 		const own = await get(`${pair.url}/`);
-		const notVite = own !== null && own.status === 200 && !own.body.includes("/@vite/client");
+		const refused = own !== null && own.status === 401;
+		const ourDocument =
+			own !== null && own.status === 200 && !own.body.includes("/@vite/client");
 		verdict.check(
 			"bridge document",
-			notVite,
+			refused || ourDocument,
 			own === null
 				? `${pair.url}/ refused the connection`
-				: own.status !== 200
-					? `${pair.url}/ answered ${own.status}`
-					: notVite
+				: refused
+					? `${pair.url}/ answered 401 without the token, so it cannot be the window's page`
+					: ourDocument
 						? `${pair.url}/ serves its own document, not the Vite client — ` +
 							"the window's page can only be the dev server's"
-						: "the bridge served the Vite document, so a greet line would prove nothing",
+						: `the bridge answered ${own.status}, so a greet line would prove nothing`,
 		);
 
 		// The same round trip from the dev origin with the launch bearer token, so
