@@ -40,7 +40,7 @@ the [platforms page](/docs/reference/platforms).
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.1.24
+crust --version                 # 0.1.25
 ```
 
 A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
@@ -78,7 +78,7 @@ One file with the framework sources embedded — `src/`, `templates/`, `tsconfig
 ## A tag, without cloning
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.24 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.25 init my-app
 cd my-app && bun install
 bun run dev
 ```
@@ -95,7 +95,7 @@ crust: unknown option --next
 run "crust --help" for usage
 ```
 
-Name a tag. `#v0.1.24` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
+Name a tag. `#v0.1.25` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
 
 ```sh
 rm -rf ~/.bun/install/cache/.bunx-501/crust@github@*

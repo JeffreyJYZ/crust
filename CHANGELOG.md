@@ -4,6 +4,22 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.25] — 2026-11-17
+
+### Added
+
+- **A permission model.** `security.capabilities` names a set of actions (`fs:*`, `dialog:openPanel`, `shell:spawn`), `security.grants` gives those capabilities to window labels, and the bridge checks before a handler runs — so a plugin cannot forget the gate and a third-party extension inherits it. Absent config allows every command, which is the one compatibility guarantee; present config denies by default, and a window label with no grant holds nothing. A refusal is a new `forbidden` (403) naming the action, the window, and the capability that would have allowed it. This is authorisation, not a sandbox: a label holding `fs:*` may reach every path the `fs` plugin can.
+- New guide at `/docs/guides/permissions`, and the parity page gains six framework-guarantee rows.
+
+### Changed
+
+- **The bridge token is no longer served in the document.** It used to sit in the inline bootstrap of a token-free route, so any local process could `GET /` and read the credential the token exists to protect. It now rides the navigation URL the platform hands to the webview, the page reads it from `location.search` the way it already read its window label, and the document route answers `401` without it. The served HTML contains no token at all, which `server-document.test.ts` asserts directly.
+- A page-created window naming an absolute URL on the app's own bridge now receives the token too — a page that builds one from `location.origin` names a path, not a different app, and the document route refuses it without the credential. A foreign origin is untouched, so the token never leaves the app's own origin.
+
+### Fixed
+
+- `minWidth`/`minHeight` constrain the window on every platform: `minHeight` was not a config key at all, and Windows ignored both because `WM_GETMINMAXINFO` was unhandled. The drag floor is the configured minimum, not the create size.
+
 ## [0.1.24] — 2026-11-17
 
 ### Fixed
