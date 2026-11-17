@@ -1,6 +1,7 @@
 # Build output
 node_modules/
 dist/
+.sweep-tmp/
 scripts/out/
 *.dmg
 *.app

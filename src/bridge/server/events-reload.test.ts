@@ -16,10 +16,11 @@ afterEach(() => {
 
 /**
  * The wait is generous on purpose: this asserts a frame arrives, and under a full-suite run the event
- * loop is shared with every other test, so a tight bound measures the machine's load rather than the
- * watcher. A real failure still fails — it just takes longer to say so.
+ * loop is shared with every other test — including a child process that boots AppKit — so a tight
+ * bound measures the machine's load rather than the watcher. A real failure still fails; it just
+ * takes longer to say so.
  */
-async function next(reader: SseReader, ms = 5000) {
+async function next(reader: SseReader, ms = 15_000) {
 	return await Promise.race([reader.next(), Bun.sleep(ms).then(() => null)]);
 }
 

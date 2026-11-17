@@ -35,6 +35,7 @@ extern void *kSecAttrService;
 extern void *kSecAttrAccount;
 extern void *kSecValueData;
 extern void *kSecReturnData;
+extern void *kSecReturnAttributes;
 extern void *kSecMatchLimit;
 extern void *kSecMatchLimitAll;
 extern void *kCFTypeDictionaryKeyCallBacks;

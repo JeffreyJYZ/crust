@@ -4,7 +4,7 @@
 // translation unit under `platform/darwin/keychain.ts`, so `kc_cfstring`, `kc_dict`
 // and `kc_query` are shared rather than repeated.
 
-extern void *CFArrayGetCount(void *array);
+extern long CFArrayGetCount(void *array);
 extern void *CFArrayGetValueAtIndex(void *array, long index);
 extern void *kSecMatchLimitOne;
 extern void *kCFBooleanTrue;
@@ -16,22 +16,27 @@ long long shim_keychain_get(const char *service, long long slen, const char *acc
                             long long alen, char *dst, long long cap) {
 	if (!shim_keychain_available()) return -1;
 	if (!service || !account || slen <= 0 || alen <= 0 || !dst || cap <= 0) return -2;
-	void *svc = 0;
-	void *acct = 0;
-	void *query = kc_query(service, slen, account, alen, &svc, &acct);
-	if (!query) return -3;
-	// Return the data rather than the attributes, so one match is one byte copy.
-	// A CFDictionary value must be a CFTypeRef, so `kCFBooleanTrue` is the exported
-	// symbol and never a cast from 1 — a cast compiles and hands CF a pointer to
-	// address 1, which faults inside the framework.
-	const void *mk[2] = {kSecReturnData, kSecMatchLimit};
-	const void *mv[2] = {kCFBooleanTrue, kSecMatchLimitOne};
-	void *match = mv[0] && mv[1] ? kc_dict(mk, mv, 2) : 0;
+	void *svc = kc_cfstring(service, slen);
+	void *acct = kc_cfstring(account, alen);
+	if (!svc || !acct) {
+		if (svc) CFRelease(svc);
+		if (acct) CFRelease(acct);
+		return -3;
+	}
+	// **One** dictionary, five keys. An earlier version built the class/service/account query and a
+	// second dictionary holding only `kSecReturnData`/`kSecMatchLimit`, then searched with the
+	// second — a query that names no class says nothing about what to look for, so every read
+	// answered -3 and a stored credential could never be read back. A CFDictionary value must be a
+	// CFTypeRef, so `kCFBooleanTrue` is the exported symbol and never a cast from 1.
+	const void *keys[5] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnData,
+	                       kSecMatchLimit};
+	const void *values[5] = {kSecClassGenericPassword, svc, acct, kCFBooleanTrue,
+	                         kSecMatchLimitOne};
+	void *query = (values[3] && values[4]) ? kc_dict(keys, values, 5) : 0;
 	long long answer = -3;
-	if (match) {
+	if (query) {
 		void *result = 0;
-		int found = SecItemCopyMatching(match, &result);
-		CFRelease(match);
+		int found = SecItemCopyMatching(query, &result);
 		if (found == 0 && result) {
 			long length = CFDataGetLength(result);
 			const unsigned char *bytes = CFDataGetBytePtr(result);
@@ -46,8 +51,8 @@ long long shim_keychain_get(const char *service, long long slen, const char *acc
 			// errSecItemNotFound: "not stored" is a normal answer, not a failure.
 			answer = -1;
 		}
+		CFRelease(query);
 	}
-	CFRelease(query);
 	CFRelease(svc);
 	CFRelease(acct);
 	return answer;
@@ -79,10 +84,12 @@ long long shim_keychain_list(const char *service, long long slen, char *dst, lon
 	if (!service || slen <= 0 || !dst || cap <= 0) return -2;
 	void *svc = kc_cfstring(service, slen);
 	if (!svc) return -3;
-	// The service-only query: no account key, so every entry under it matches.
-	const void *qk[3] = {kSecClass, kSecAttrService, kSecMatchLimit};
-	const void *qv[3] = {kSecClassGenericPassword, svc, kSecMatchLimitAll};
-	void *query = qv[2] ? kc_dict(qk, qv, 3) : 0;
+	// The service-only query, with `kSecReturnAttributes`: without a return type the result is an
+	// array of item *refs*, and `CFDictionaryGetValue` on a non-dictionary is not an error code —
+	// it is a C++ exception that takes the process down, which this list command did.
+	const void *qk[4] = {kSecClass, kSecAttrService, kSecMatchLimit, kSecReturnAttributes};
+	const void *qv[4] = {kSecClassGenericPassword, svc, kSecMatchLimitAll, kCFBooleanTrue};
+	void *query = (qv[2] && qv[3]) ? kc_dict(qk, qv, 4) : 0;
 	long long total = -3;
 	if (query) {
 		void *result = 0;
