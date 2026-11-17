@@ -90,6 +90,7 @@ export function compile(): WindowsShim {
 				shim_window_is_open: { args: [P], returns: I32 },
 				shim_window_set_title: { args: [P, CS], returns: I32 },
 				shim_window_destroy: { args: [P], returns: I32 },
+				shim_window_set_min: { args: [P, I32, I32], returns: V },
 				shim_window_client_num: { args: [P, I32], returns: I32 },
 
 				shim_webview_new: { args: [P, CS, CS], returns: I32 },

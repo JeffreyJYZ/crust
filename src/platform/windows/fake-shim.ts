@@ -66,6 +66,9 @@ export function fakeShim(
 			open.delete(Number(hwnd));
 			return 1;
 		},
+		shim_window_set_min: (_hwnd, width, height) => {
+			calls.push(`min:${Number(width)}x${Number(height)}`);
+		},
 		shim_window_client_num: (_hwnd, component) => (component === 2 ? 800 : 600),
 		shim_webview_new: (_hwnd, url) => {
 			calls.push(`webview_new:${text(url)}`);

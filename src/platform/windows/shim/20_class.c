@@ -29,6 +29,18 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 		shim_webview_put_bounds(hwnd, (double)(rect[2] - rect[0]), (double)(rect[3] - rect[1]));
 		return 0;
 	}
+	if (msg == SHIM_WM_GETMINMAXINFO) {
+		// MINMAXINFO's ptMinTrackSize is the fifth POINT: offset 24 on x64, two 32-bit LONGs.
+		// Set only configured dimensions, then let DefWindowProcW fill the maximum fields.
+		int minw = 0, minh = 0;
+		int *pt;
+		shim_window_min(hwnd, &minw, &minh);
+		if (minw > 0 || minh > 0) {
+			pt = (int *)lp;
+			if (minw > 0) pt[6] = minw;
+			if (minh > 0) pt[7] = minh;
+		}
+	}
 	if (msg == SHIM_WM_CLOSE) {
 		DestroyWindow(hwnd);
 		return 0;

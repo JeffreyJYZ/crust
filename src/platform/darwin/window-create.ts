@@ -9,20 +9,43 @@ import { cls, cstr, ptrValue, S } from "./objc.ts";
 import { webviewConfiguration } from "./webview-configuration.ts";
 import type { NativeWindowPointers } from "./windows.ts";
 
+/** `minHeight` is validated on the config window but `WindowOptions` has not caught up with it. */
+type MinSizeOptions = WindowOptions & { minHeight?: number };
+
+/**
+ * Effective create size and minimums. Clamping here keeps a window from opening smaller than the
+ * size the user can later drag it back to; zero is AppKit's "no minimum" for either dimension.
+ */
+export function windowSize(
+	options: MinSizeOptions,
+	fallback: { width: number; height: number },
+): { width: number; height: number; minWidth: number; minHeight: number } {
+	const minWidth = options.minWidth ?? 0;
+	const minHeight = options.minHeight ?? 0;
+	return {
+		width: Math.max(options.width ?? fallback.width, minWidth),
+		height: Math.max(options.height ?? fallback.height, minHeight),
+		minWidth,
+		minHeight,
+	};
+}
+
 export function createNativeWindow(
 	label: string,
 	options: WindowOptions,
 	activation: Activation,
 ): NativeWindowPointers {
-	const width = options.width ?? 1100;
-	const height = options.height ?? 760;
+	const { width, height, minWidth, minHeight } = windowSize(options, {
+		width: 1100,
+		height: 760,
+	});
 	// titled(1) | closable(2) | miniaturizable(4) | resizable(8)
 	const win = Number(shim().symbols.shim_window_new(120, 120, width, height, 15n, 2n, 0));
 	if (!win) throw new Error("shim_window_new returned null");
-	// minWidth was validated and carried but read by nobody; it lands here, where
-	// the window exists and the size is still ours to constrain.
-	if (options.minWidth !== undefined) {
-		shim().symbols.shim_window_set_min_size(win, options.minWidth, height);
+	// Both minimums were validated and carried but were read by nobody until this landed. Zero
+	// means "no constraint", so setting it for an unset dimension leaves the old behaviour intact.
+	if (minWidth || minHeight) {
+		shim().symbols.shim_window_set_min_size(win, minWidth, minHeight);
 	}
 
 	// A closed window must stay addressable: `-close` does not release it,

@@ -5,6 +5,7 @@ export interface WindowConfig {
 	width?: number;
 	height?: number;
 	minWidth?: number;
+	minHeight?: number;
 	title?: string;
 }
 

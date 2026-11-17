@@ -1,6 +1,14 @@
 import type { Validator } from "./validator.ts";
 
-export const WINDOW_KEYS = ["label", "url", "width", "height", "minWidth", "title"] as const;
+export const WINDOW_KEYS = [
+	"label",
+	"url",
+	"width",
+	"height",
+	"minWidth",
+	"minHeight",
+	"title",
+] as const;
 
 /** At least one window, and each one names a `label`. */
 export function validateWindows(v: Validator, value: unknown): void {
@@ -23,6 +31,7 @@ export function validateWindows(v: Validator, value: unknown): void {
 		v.positiveInteger(window, "width", path);
 		v.positiveInteger(window, "height", path);
 		v.positiveInteger(window, "minWidth", path);
+		v.positiveInteger(window, "minHeight", path);
 		v.string(window, "title", path, false);
 	});
 }

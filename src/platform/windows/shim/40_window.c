@@ -11,6 +11,8 @@ shim_h shim_window_new(const char *title, int w, int h, const char *cls) {
 	hwnd = CreateWindowExW(0u, clsBuf, titleBuf, SHIM_WS_OVERLAPPEDWINDOW, SHIM_CW_USEDEFAULT,
 	                       SHIM_CW_USEDEFAULT, w, h, 0, 0, GetModuleHandleW(0), 0);
 	if (!hwnd) return 0;
+	// The TS caller clamped the create size to the configured minimum; record it as the drag floor.
+	shim_window_set_min(hwnd, w, h);
 	ShowWindow(hwnd, SHIM_SW_SHOW);
 	UpdateWindow(hwnd);
 	return hwnd;
@@ -28,6 +30,7 @@ int shim_window_set_title(shim_h hwnd, const char *title) {
 
 int shim_window_destroy(shim_h hwnd) {
 	if (!hwnd) return 0;
+	shim_window_set_min(hwnd, 0, 0);
 	return DestroyWindow(hwnd) ? 1 : 0;
 }
 

@@ -67,6 +67,7 @@ int shim_win32_ready(void);
 #define SHIM_WM_DESTROY 2
 #define SHIM_WM_SIZE 5
 #define SHIM_WM_CLOSE 16
+#define SHIM_WM_GETMINMAXINFO 0x0024u
 #define SHIM_PM_REMOVE 1
 #define SHIM_COINIT_APARTMENTTHREADED 2
 #define SHIM_IDC_ARROW ((const shim_wchar *)32512)
@@ -89,6 +90,11 @@ int shim_win32_ready(void);
 
 // Defined in `42_webview.c`; the window procedure's size handler resizes the controller with it.
 int shim_webview_put_bounds(shim_h hwnd, double w, double h);
+
+// The per-HWND minimum, recorded at create and read by WM_GETMINMAXINFO. Both live beside
+// `g_hwnd` in `42_webview.c`, so the drag limit follows the window the procedure is sizing.
+void shim_window_set_min(shim_h hwnd, int w, int h);
+void shim_window_min(shim_h hwnd, int *w, int *h);
 
 // --- thread bookkeeping -----------------------------------------------------
 // `CreateCoreWebView2Controller` answered UI_E_WRONG_THREAD (0x802A000C, "this method can only be

@@ -38,6 +38,8 @@ export interface WindowsShim {
 	shim_window_is_open(hwnd: number): number;
 	shim_window_set_title(hwnd: number, title: Uint8Array): number;
 	shim_window_destroy(hwnd: number): number;
+	/** The drag floor `WM_GETMINMAXINFO` answers with; 0 means no constraint on that axis. */
+	shim_window_set_min(hwnd: number, width: number, height: number): void;
 	shim_window_client_num(hwnd: number, component: number): number;
 
 	shim_webview_new(hwnd: number, url: Uint8Array, userData: Uint8Array): number;

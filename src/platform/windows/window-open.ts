@@ -15,16 +15,23 @@ export interface OpenedWindow {
 	url: string;
 }
 
+/** `minHeight` is validated on the config window but `WindowOptions` has not caught up with it. */
+export type MinSizeOptions = WindowOptions & { minHeight?: number };
+
 /** Create the window, then the controller, then navigate. Throws with the OS error on failure. */
 export function openWindow(
 	shim: WindowsShim,
-	options: WindowOptions,
+	options: MinSizeOptions,
 	appName: string,
 	userDataDir: string,
 ): OpenedWindow {
 	const label = options.label;
-	const width = options.width ?? DEFAULT_WIDTH;
-	const height = options.height ?? DEFAULT_HEIGHT;
+	const minWidth = options.minWidth ?? 0;
+	const minHeight = options.minHeight ?? 0;
+	// Clamp the create size as well as the drag minimum: a window opened below its own minimum
+	// starts in a state the user cannot resize back out of.
+	const width = Math.max(options.width ?? DEFAULT_WIDTH, minWidth);
+	const height = Math.max(options.height ?? DEFAULT_HEIGHT, minHeight);
 	const hwnd = Number(
 		shim.shim_window_new(cstring(options.title ?? label), width, height, cstring(appName)),
 	);
@@ -33,6 +40,10 @@ export function openWindow(
 			`CreateWindowExW failed for "${label}" (GetLastError ${Number(shim.shim_last_error())})`,
 		);
 	}
+	// The floor is the configured minimum, not the create size: a window configured 900×600 with
+	// `minWidth: 400` must still shrink to 400, and the shim's own default would be 900 because the
+	// create size is the only thing it sees. Zero on an axis means that axis is unconstrained.
+	shim.shim_window_set_min(hwnd, minWidth, minHeight);
 	const url = absoluteUrl(options.url ?? "/");
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
 		// The bind inside shim_webview_new runs before Navigate, so a Navigate failure leaves a

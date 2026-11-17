@@ -28,3 +28,29 @@ describe("a failed create gives the controller back", () => {
 		expect(calls).not.toContain("webview_close");
 	});
 });
+
+describe("the create size is clamped to the configured minimum", () => {
+	test("a window smaller than both minimums opens at the minimum", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(
+			shim,
+			{ label: "main", width: 600, height: 400, minWidth: 800, minHeight: 600 },
+			"crust",
+			"",
+		);
+		expect(calls).toContain("window_new:main:800x600:crust");
+	});
+
+	test("a window already at or above its minimum keeps its configured size", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(
+			shim,
+			{ label: "main", width: 1000, height: 700, minWidth: 800, minHeight: 600 },
+			"crust",
+			"",
+		);
+		expect(calls).toContain("window_new:main:1000x700:crust");
+	});
+});
