@@ -65,6 +65,60 @@ A page loads from the **bridge URL** (`http://127.0.0.1:<port>/`), navigated by 
 
 That leaves a new platform one job: implement `Platform` — `start`, `pump`, `createWindow`, `window`, `quit` — and nothing more. A page-serving scheme invented per platform is how two lanes produced two incompatible loaders for one contract.
 
+## Why the page comes over loopback and not a custom scheme
+
+Tauri and Butter both serve the page from a custom URI scheme — `tauri://localhost` and
+`butter://` — so there is no TCP port listening at all. crust serves it from a loopback HTTP
+server, which means a port exists. This section is why, because "everyone else does it" is the
+obvious question and the answer is not "we did not think about it".
+
+### A custom scheme is not a web origin
+
+This is the part that surprises people. `crust://app/` looks like a URL, but to a browser engine it
+is **not an origin** the way `http://…` is. That has consequences nobody expects:
+
+- **No secure context.** `crypto.subtle`, `navigator.clipboard`, service workers and several
+  storage APIs require one. A bare custom scheme does not have it, so those are simply undefined.
+- **Opaque document origin.** Anything that compares `location.origin` sees `null`, and cross-frame
+  scripting, storage partitioning and `postMessage` targeting behave differently.
+- **Each engine treats it differently.** WebKit on macOS handles its scheme properly. WebView2 on
+  Windows needs the scheme explicitly registered as "web-like" or the request handler never fires
+  at all — silently, with no error.
+
+The workaround every framework lands on is to _pretend_ the scheme is a website: Tauri serves
+`tauri://localhost` on macOS but **`http://tauri.localhost` on Windows** (or
+`https://tauri.localhost` behind a flag), precisely so the page gets a real origin and a secure
+context. That is one framework shipping two page addresses, and a config flag to choose between
+two sets of breakage.
+
+### What a loopback URL gets for free
+
+`http://127.0.0.1:<port>/` is a normal origin, and browsers give loopback a **local-trust
+exemption**: it counts as a secure context without a certificate. So `crypto.subtle` works,
+service workers are available, `location.origin` is a real value, and every platform behaves the
+same because every platform's engine already knows what an http origin is.
+
+That is why crust's page is the same shape under `crust dev` and in a built app, and why a new
+platform only implements `Platform` — five methods — instead of also owning a URI scheme.
+
+### The one thing a scheme actually buys
+
+With no socket, there is nothing for another local process to connect to. crust's bearer token
+exists to make up for that: a page that cannot present it is refused `401`. Since the token moved
+onto the navigation URL it is no longer readable from a document fetch, so the practical gap is
+narrow — a local process can no longer _get_ the app's authority, it can only try to guess it.
+
+Weighing that against three platforms needing their own scheme handler, a dev-server/production
+split, and the secure-context workaround above, the socket was kept. The decision was reviewed on
+2026-11-17 and the transport row is marked `accepted difference` in the Tauri parity table.
+
+### If it is ever revisited
+
+The change is contained: `src/bridge/server/` plus one page loader per platform. None of the
+plugins move. The four things a first attempt must prove, because an earlier `crust://` experiment
+in this repo got them wrong: a document renders, one `invoke` round trip completes, an `<img>`
+loads, and `crypto.subtle` is defined.
+
 ## Known shape, stated honestly
 
 - **~85 MB is the floor**, because Bun is embedded. The honest claim is "no bundled Chromium",
