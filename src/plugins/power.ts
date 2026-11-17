@@ -1,92 +1,68 @@
 /**
- * `crust:power` — what the machine's power state is, how long the user has been idle, and a sleep
- * assertion a long task can hold. IOKit and CoreGraphics are not here: macOS supplies
- * `darwinPowerAdapter()`, and a platform without them keeps answering a typed `NotImplemented`.
+ * `crust:power` — what the machine's power state is, how long the user has been idle, a sleep
+ * assertion a long task can hold, and the two notifications a page can subscribe to. IOKit,
+ * CoreGraphics and the notification centers are not here: macOS supplies `darwinPowerAdapter()`,
+ * and a platform without them keeps answering a typed `NotImplemented`.
  * The pair that must never leak is `sleepPrevent` / `sleepAllow`: the plugin answers the assertion id
  * so a caller can release exactly what it took, `sleepAllow` reports `released: false` rather than an
  * error when nothing was held, and the darwin adapter also releases on process exit.
+ * `onSleep` / `onLock` are the push half: one command each registers a native observer, and every
+ * later notification reaches the page as `power:sleep` / `power:lock` through `ctx.emit`.
  */
 
 import { CrustError } from "../bridge/errors";
-import { definePlugin, type NotImplemented, notImplemented, type PluginDefinition } from "./define";
+import {
+	definePlugin,
+	notImplemented,
+	type NotImplemented,
+	type PluginContext,
+	type PluginDefinition,
+} from "./define";
+import {
+	type IdleResult,
+	type PowerAdapter,
+	type PowerFailure,
+	type PowerStateResult,
+	type PowerSubscribeResult,
+	type SleepAllowResult,
+	type SleepPreventArgs,
+	type SleepPreventResult,
+} from "./power-types";
+import { subscribe } from "./power-subscribe.ts";
 
-/** What the machine reports right now. */
-export interface PowerState {
-	onAc: boolean;
-	/** 0–100, or null when the machine has no battery (a desktop is on wall power). */
-	batteryPercent: number | null;
-	lowPowerMode: boolean;
-	/** False when the native read never reached the OS; the fields above are then placeholders. */
-	available?: boolean;
-	/** Why the read failed, present when `available` is false. */
-	reason?: string;
-}
-
-/** A refused native read, so a fabricated reading never reaches a page as `ok: true`. */
-export interface PowerReadFailure {
-	available: false;
-	reason: string;
-}
-
-/** One assertion attempt: the id it holds, or the step that refused it. */
-export interface SleepAssertion {
-	ok: boolean;
-	id: number;
-	reason: string;
-}
-
-/** One release attempt: `released` is false when nothing was held, which is not a failure. */
-export interface SleepRelease {
-	ok: boolean;
-	released: boolean;
-	reason: string;
-}
-
-/** The native half of `crust:power`; `platform/darwin/power.ts` implements it. */
-export interface PowerAdapter {
-	state(): PowerState | Promise<PowerState>;
-	/** Seconds, or a refusal when the native clock read never reached the OS. */
-	idleSeconds(): number | PowerReadFailure | Promise<number | PowerReadFailure>;
-	preventSleep(reason: string): SleepAssertion | Promise<SleepAssertion>;
-	allowSleep(): SleepRelease | Promise<SleepRelease>;
-}
-
-export interface SleepPreventArgs {
-	/** Why sleep is being held off; IOKit shows it in `pmset -g assertions`. */
-	reason: string;
-}
-
-export interface PowerStateResult extends PowerState {
-	ok: true;
-}
-
-export interface IdleResult {
-	ok: true;
-	/** Seconds since the last input event in the combined session, fractional. */
-	seconds: number;
-}
-
-export interface SleepPreventResult {
-	ok: true;
-	/** The assertion id, for a caller that wants to prove which one it holds. */
-	id: number;
-}
-
-export interface SleepAllowResult {
-	ok: true;
-	released: boolean;
-}
-
-/** A refusal that is not a missing platform: the OS said no. */
-export interface PowerFailure {
-	ok: false;
-	code: "handler-error";
-	message: string;
-}
+export {
+	POWER_EVENTS,
+	type IdleResult,
+	type PowerAdapter,
+	type PowerEventKind,
+	type PowerEventName,
+	type PowerEventPayload,
+	type PowerFailure,
+	type PowerReadFailure,
+	type PowerState,
+	type PowerStateResult,
+	type PowerSubscribeResult,
+	type SleepAllowResult,
+	type SleepAssertion,
+	type SleepPreventArgs,
+	type SleepPreventResult,
+	type SleepRelease,
+} from "./power-types";
 
 /** The commands in the order this plugin declares them. */
-export const POWER_COMMANDS = ["state", "idleSeconds", "sleepPrevent", "sleepAllow"] as const;
+export const POWER_COMMANDS = [
+	"state",
+	"idleSeconds",
+	"sleepPrevent",
+	"sleepAllow",
+	"onSleep",
+	"onLock",
+] as const;
 
+/**
+ * Build the plugin. `adapter` may be absent (the default export) or lack the notification methods
+ * (a platform without them); either way the affected commands refuse instead of faking an answer.
+ */
 export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 	"power",
 	{
@@ -96,6 +72,14 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 			args: SleepPreventArgs,
 		) => Promise<SleepPreventResult | PowerFailure | NotImplemented>;
 		sleepAllow: () => Promise<SleepAllowResult | PowerFailure | NotImplemented>;
+		onSleep: (
+			args: unknown,
+			ctx: PluginContext,
+		) => Promise<PowerSubscribeResult | PowerFailure | NotImplemented>;
+		onLock: (
+			args: unknown,
+			ctx: PluginContext,
+		) => Promise<PowerSubscribeResult | PowerFailure | NotImplemented>;
 	}
 > {
 	const missing = (command: string) =>
@@ -104,7 +88,6 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 				"createPowerPlugin on a platform that has no power source.",
 			"IOPSCopyPowerSourcesInfo",
 		);
-
 	return definePlugin({
 		name: "power",
 		commands: {
@@ -161,6 +144,14 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 				if (!answer.ok) return { ok: false, code: "handler-error", message: answer.reason };
 				return { ok: true, released: answer.released };
 			},
+
+			/** Arm sleep notifications; later reports reach the page as `power:sleep`. */
+			onSleep: (_args, ctx) =>
+				subscribe(adapter, "onSleep", "sleep", "NSWorkspaceWillSleepNotification", ctx),
+
+			/** Arm screen-lock notifications; later reports reach the page as `power:lock`. */
+			onLock: (_args, ctx) =>
+				subscribe(adapter, "onLock", "lock", "com.apple.screenIsLocked", ctx),
 		},
 	});
 }

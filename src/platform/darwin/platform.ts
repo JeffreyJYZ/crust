@@ -2,21 +2,22 @@
  * The macOS `Platform`: AppKit's lifecycle and the pump, with window
  * construction and tracking in their own modules.
  */
-import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+import type { LifecycleSource, Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import { type Activation, activateAppOnce } from "./activation.ts";
 import { startAppKit } from "./appkit.ts";
+import { darwinLifecycleSource } from "./lifecycle.ts";
 import { shim } from "./index.ts";
+import { applyDockIcon } from "./dock-icon.ts";
 import { ptrValue, S } from "./objc.ts";
 import { createNativeWindow } from "./window-create.ts";
 import { WindowRegistry } from "./windows.ts";
 
-/**
- * The macOS `Platform`. Construct through `createPlatform()`; the class is
- * exported because the pump and its timer are testable without a window.
- */
+/** The macOS `Platform`: the pump and its timer are testable without a window. */
 export class DarwinPlatform implements Platform {
 	readonly #appName: string;
 	#app = 0;
+	/** `app.icon`, applied to the dock so a dev launch and a built app look the same. */
+	readonly #icon: string | undefined;
 	/** `app.activate`: when a window create may bring the app forward. */
 	#activateMode: Activation["mode"];
 	#mode = 0;
@@ -26,9 +27,12 @@ export class DarwinPlatform implements Platform {
 	#ticks = 0;
 	readonly #registry: WindowRegistry;
 
-	constructor(options: { appName?: string; activate?: Activation["mode"] } = {}) {
+	constructor(
+		options: { appName?: string; activate?: Activation["mode"]; icon?: string } = {},
+	) {
 		this.#appName = options.appName ?? "crust";
 		this.#activateMode = options.activate ?? "always";
+		this.#icon = options.icon;
 		this.#registry = new WindowRegistry(() => this.#app);
 	}
 
@@ -42,6 +46,9 @@ export class DarwinPlatform implements Platform {
 		this.#app = startAppKit(this.#appName);
 		this.ensureRunLoopMode();
 		this.#started = true;
+		// The packaged `.app` carries `app.icon` in its plist; `crust dev` had nothing, so the same app
+		// showed the generic dock icon. Applied here, after AppKit is up and the tile is live.
+		applyDockIcon(this.#icon);
 		// Recorded because an inactive app is one macOS will not let you click into, and an
 		// unbundled `crust dev` runtime is exactly the case where activation is refused.
 		try {
@@ -54,10 +61,7 @@ export class DarwinPlatform implements Platform {
 		}
 	}
 
-	/**
-	 * Pump Cocoa from a self-rearming `setTimeout` chain. A repeating interval is
-	 * more likely to be coalesced under power saving (`site/app/docs/design/page.mdx`).
-	 */
+	/** Pump Cocoa from a self-rearming `setTimeout` chain; a repeating interval coalesces under power saving. */
 	pump(intervalMs: number): void {
 		if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
 			throw new Error(`pump: intervalMs must be a positive number, got ${intervalMs}`);
@@ -91,10 +95,7 @@ export class DarwinPlatform implements Platform {
 		return this.#ticks;
 	}
 
-	/**
-	 * Validate the label, build the native window, then track it. The build
-	 * itself is `createNativeWindow`, which owns the AppKit ordering traps.
-	 */
+	/** Validate the label, build the native window, then track it; `createNativeWindow` owns the AppKit ordering traps. */
 	createWindow(options: WindowOptions): WindowHandle {
 		const label = options.label;
 		if (!label) throw new Error("createWindow: label must not be empty");
@@ -129,6 +130,11 @@ export class DarwinPlatform implements Platform {
 	/** The labels this platform still tracks, in creation order. */
 	windowLabels(): string[] {
 		return this.#registry.labels();
+	}
+
+	/** Lifecycle events recorded by the app delegate deep-link already installs. */
+	lifecycle(): LifecycleSource {
+		return darwinLifecycleSource();
 	}
 
 	/** The native `NSWindow *` behind a tracked label; undefined when never created. */
@@ -179,14 +185,14 @@ export class DarwinPlatform implements Platform {
 }
 
 /**
- * Build the macOS platform. `appName` names failures, nothing in AppKit reads it; `activate` is
- * `app.activate`, and omitting it means `always`, the behaviour that puts a window in the
- * accessibility tree.
+ * Build the macOS platform. `appName` names failures; `activate` is `app.activate` (`always` when
+ * omitted — that is what puts a window in the accessibility tree); `icon` is `app.icon`.
  */
 export function createPlatform(
 	options: {
 		appName?: string;
 		activate?: Activation["mode"];
+		icon?: string;
 	} = {},
 ): DarwinPlatform {
 	return new DarwinPlatform(options);

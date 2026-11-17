@@ -41,6 +41,16 @@ export interface WindowsShim {
 	/** The drag floor `WM_GETMINMAXINFO` answers with; 0 means no constraint on that axis. */
 	shim_window_set_min(hwnd: number, width: number, height: number): void;
 	shim_window_client_num(hwnd: number, component: number): number;
+	/** HRESULT of DwmSetWindowAttribute(38); negative sentinels mean dwmapi could not be used. */
+	shim_window_set_material(hwnd: number, kind: number): number;
+
+	/** How many displays the machine has; 0 when Win32 could not be asked. */
+	shim_screen_count(): number;
+	/**
+	 * Ten doubles for one display, in top-left pixels: frame x/y/w/h, work area x/y/w/h, scale,
+	 * then 1 when it is the primary. 1 written, 0 when the index names nothing.
+	 */
+	shim_screen_info(index: number, out: Float64Array): number;
 
 	shim_webview_new(hwnd: number, url: Uint8Array, userData: Uint8Array): number;
 	shim_webview_put_bounds(hwnd: number, width: number, height: number): number;

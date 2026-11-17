@@ -49,6 +49,8 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 		"GetWindowThreadProcessId",
 		"the window's own thread cannot be compared with the caller's",
 	],
+	["user32.dll", "EnumDisplayMonitors", "the display list cannot be enumerated"],
+	["user32.dll", "GetMonitorInfoW", "a display is enumerated with no bounds"],
 	["WebView2Loader.dll", "CreateCoreWebView2EnvironmentWithOptions", "no WebView2 environment"],
 ];
 

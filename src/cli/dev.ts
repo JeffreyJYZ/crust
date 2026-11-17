@@ -2,8 +2,10 @@
  * `crust dev` — the backend owns the app process, the frontend stays with its own dev server. A backend edit restarts the runtime; a frontend edit never touches it, so UI state survives. The backend runs in a child process (`dev/runtime.ts`) because the platform's `quit()` calls `process.exit` and a closing window must not take the watcher down.
  */
 
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { DEV_INSPECT_ENV } from "@/platform/darwin/devtools.ts";
+import { publishReload, RELOAD_ENV, RELOAD_FILE, watchPublic } from "./dev/reload.ts";
 import { extensionErrorLines, loadProjectExtensions } from "@/extensions/project.ts";
 import { detectSingle } from "@/single";
 import { bridgeEnv, waitForDevServer } from "./dev/frontend.ts";
@@ -14,6 +16,10 @@ import { fail, line, missingInstall, resolveBackendEntry, type CliOptions } from
 export async function dev(options: CliOptions): Promise<number> {
 	const detected = await detectSingle(options);
 	if (detected.kind === "error") return fail("dev", detected.message);
+	// Every dev path spawns a runtime child that inherits process.env, so this is the same
+	// dev-only signal the reload file uses: darwin window creation turns it into an inspectable
+	// webview. A built app never sets it. Set before the single-file path forks its child too.
+	process.env[DEV_INSPECT_ENV] = "1";
 	if (detected.kind === "app") return devSingle(detected.app);
 
 	const loaded = await loadConfig({ dir: options.dir, configPath: options.config });
@@ -106,8 +112,28 @@ export async function dev(options: CliOptions): Promise<number> {
 		line("frontend", `${devUrl} answered`);
 	}
 
+	// No dev server means nothing reloads the page: watch public/ and advance a token
+	// the bridge turns into one `dev:reload` event. The scratch file sits under .crust/,
+	// which the backend watcher ignores, so a reload never rotates the bridge token.
+	// Under dev.url there is no watcher at all — Vite already owns reload.
+	let reloadWatcher: ReturnType<typeof watchPublic>;
+	if (devUrl === undefined) {
+		const file = join(projectDir, RELOAD_FILE);
+		let token = 0;
+		process.env[RELOAD_ENV] = file;
+		void publishReload(file, String(token));
+		reloadWatcher = watchPublic(projectDir, devUrl, async () => {
+			await publishReload(file, String(++token));
+		});
+	}
+
 	console.log("");
-	const code = await watchRuntime(runtime);
-	frontend?.kill();
-	return code;
+	try {
+		return await watchRuntime(runtime);
+	} finally {
+		reloadWatcher?.close();
+		delete process.env[RELOAD_ENV];
+		delete process.env[DEV_INSPECT_ENV];
+		frontend?.kill();
+	}
 }

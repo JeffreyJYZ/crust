@@ -2,6 +2,40 @@
 
 int shim_app_load(void) { return (int)NSApplicationLoad(); }
 
+/**
+ * Set the dock icon from a file path. Butter does the same at window creation from `BUTTER_ICON`, and
+ * crust had no runtime path at all: `app.icon` reached only the packaged `.app`'s `Info.plist`, so a
+ * built app showed its icon and the same app under `crust dev` showed the generic one.
+ *
+ * Returns 0 when the image could not be loaded, so the caller reports a name rather than a silent
+ * no-op. The `NSImage` is autoreleased by the pool the caller already holds open.
+ */
+int shim_app_set_icon(const char *path) {
+	if (!path) return 0;
+	obj_t cls = objc_getClass("NSImage");
+	if (!cls) return 0;
+	obj_t allocd = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("alloc"));
+	if (!allocd) return 0;
+	obj_t str = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
+	                                                      sel_registerName("alloc"));
+	if (!str) return 0;
+	obj_t file = ((obj_t (*)(void *, void *, const char *, unsigned long,
+	                         long long))objc_msgSend)(
+	    str, sel_registerName("initWithBytes:length:encoding:"), path,
+	    (unsigned long)shim_cstr_len(path), 4LL);
+	if (!file) return 0;
+	obj_t image = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(
+	    allocd, sel_registerName("initWithContentsOfFile:"), file);
+	if (!image) return 0;
+	obj_t application = ((obj_t (*)(void *, void *))objc_msgSend)(
+	    objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
+	if (!application) return 0;
+	((void (*)(void *, void *, obj_t))objc_msgSend)(application,
+	                                                sel_registerName("setApplicationIconImage:"),
+	                                                image);
+	return 1;
+}
+
 obj_t shim_pool_new(void) {
 	obj_t poolCls = objc_getClass("NSAutoreleasePool");
 	if (!poolCls) return 0;

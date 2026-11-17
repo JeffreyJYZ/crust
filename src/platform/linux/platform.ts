@@ -3,6 +3,7 @@
  * UNPROVEN ON REAL GTK: this layer was written on macOS, where neither library exists, so the FFI path has never run against a display server. What is proven is the shape — the five methods, the pump interval, the preflight text and the guarded load.
  */
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+import { unsupportedLifecycle } from "@/app-types.ts";
 import type { CrustConfig } from "@/config";
 import { createGtkBackend, type LinuxBackend, type NativeWindow } from "./backend.ts";
 
@@ -132,6 +133,15 @@ export class LinuxPlatform implements Platform {
 		this.stopPump();
 		for (const label of [...this.#windows.keys()]) this.destroy(label);
 		this.#backend.quit();
+	}
+
+	/**
+	 * GTK focus events are not bridged: no `activate`/quit/reopen listener can be
+	 * woken honestly here. Answer `not-implemented` naming the concept rather than
+	 * emitting a listener that would never fire.
+	 */
+	lifecycle(): ReturnType<typeof unsupportedLifecycle> {
+		return unsupportedLifecycle("GTK window focus and delete-event notifications");
 	}
 }
 

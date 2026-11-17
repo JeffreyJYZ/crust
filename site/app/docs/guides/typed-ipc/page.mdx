@@ -1,0 +1,73 @@
+# Typed IPC
+
+The bridge does not care what a command is called or what shape crosses it, so a typo surfaces as a
+runtime `unknown-command` and a wrong argument surfaces as whatever the handler does with it. One
+declared map fixes that on both sides: the host registers against it, the page calls against it, and
+anything else does not compile.
+
+## The map
+
+```ts
+// shared/ipc.ts — imported by the backend and, as a type only, by the page
+export type Ipc = {
+	"notes.create": { input: { title: string }; output: { id: string } };
+	"notes.count": { input: void; output: number };
+};
+```
+
+A `type` rather than an `interface`, on purpose: only a type alias of an object literal gets the
+implicit index signature that satisfies `InvokeMap`, so an `interface` is rejected at the wrapper.
+
+## Host side
+
+```ts
+// main.ts
+import { typedHost } from "crust";
+import type { Ipc } from "./shared/ipc";
+
+typedHost<Ipc>(app).command("notes.create", async (input) => {
+	return { id: await create(input.title) };
+});
+```
+
+`typedHost` registers through `app.command`, so every existing rule still applies — a duplicate name
+is refused, and a registration after `run()` throws. The wrapper is a type surface, not a second
+registry.
+
+## Page side
+
+```ts
+const ipc = typedClient<Ipc>(window.crust);
+const note = await ipc.invoke("notes.create", { title: "a" });
+// note is { id: string }
+```
+
+`typedClient` calls the client's own two-argument form, `invoke(name, args)`, which routes through the
+always-registered `app` namespace to `app.invoke`. No new wire format and no second protocol: the
+same POST the client already sends.
+
+## What the map catches
+
+- **A misspelled command.** `typedClient<Ipc>(…).invoke("notes.creat", …)` and
+  `typedHost<Ipc>(app).command("notes.creat", …)` are both type errors.
+- **A wrong input.** `invoke("notes.create", { name: "a" })` does not compile when the map says
+  `{ title: string }`.
+- **A wrong answer.** A handler that returns `42` for a `{ id: string }` output does not compile.
+- **The output reaches the caller.** `await ipc.invoke("notes.count", undefined)` is a `number`, with
+  no cast at the call site.
+
+## Which half a command lives in
+
+A command registered on the `App` is reached by name; a command a plugin exposes is reached as
+`invoke(plugin, command, args)` and is already typed by the plugin's own definition (`SchemaOf`,
+`ArgsOf`, `ResultOf`). The map is for the app-level commands the host and page share — use it for
+those, and the plugin schema for the rest. Mixing the two into one map is fine as long as the keys you
+write are the names you actually register: `typedClient` does not rewrite them.
+
+## The test, and why it looks odd
+
+A type error cannot be asserted at runtime, so the negative cases are `@ts-expect-error` directives.
+That makes them real: an unused directive is itself an error, so if one of those cases ever stops
+being a type error, `bun check` fails on the test file. The runtime half asserts the good path — a
+registration and a call — and the readable copy of the failing cases lives in
+`docs/agents/typed-ipc-map-errors.ts`.

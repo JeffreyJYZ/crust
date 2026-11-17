@@ -54,6 +54,8 @@ function fakeShim() {
 			args.webview_load = [web, url];
 			return 1;
 		},
+		shim_screen_count: () => 0,
+		shim_screen_info: () => 0,
 	};
 	return { symbols, calls, args };
 }

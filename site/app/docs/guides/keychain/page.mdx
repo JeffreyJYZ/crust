@@ -1,0 +1,64 @@
+# Secure storage
+
+A secret the operating system protects, as opposed to one a file protects. Registered on macOS and
+Windows under `keychain`, so a page can call it.
+
+```js
+await window.crust.invoke("keychain", "set", {
+	service: "land.jyz.notes",
+	account: "sync-token",
+	secret: "…",
+});
+
+const { found, secret } = await window.crust.invoke("keychain", "get", {
+	service: "land.jyz.notes",
+	account: "sync-token",
+});
+```
+
+`stronghold` is the other half of this story: one AES-256-GCM file under a password the app supplies.
+That protects a file, and a lost password loses the data — a leaked one leaks it. A keychain entry is
+unlocked by the login session, has no app-held password to lose, and appears in Keychain Access or
+Credential Manager, where a user can revoke it. Reach for `keychain` when the OS owns the machine, and
+`stronghold` when the secret must travel with a data file.
+
+## Commands
+
+| command  | arguments                 | answer                                    |
+| -------- | ------------------------- | ----------------------------------------- |
+| `set`    | `service`, `account`, `secret` | `{ ok: true, stored: true }`         |
+| `get`    | `service`, `account`      | `{ ok: true, found: true, secret }` or `{ ok: true, found: false }` |
+| `delete` | `service`, `account`      | `{ ok: true, deleted: boolean }`          |
+| `list`   | `service`                 | `{ ok: true, accounts: string[] }`        |
+
+**A missing credential is `{ found: false }`, never an error.** "You have not stored this" is a normal
+answer, and a refusal a caller must catch would make a first launch look broken.
+
+`delete` answers `deleted: false` when nothing was stored, which is the same success: the entry the
+caller named is gone. An empty `secret` is a real secret, so only a non-string is refused.
+
+Both `service` and `account` must be non-empty and may not contain a NUL — a NUL would truncate the
+name inside the C string the OS is handed, which is how two credentials could collapse onto one entry.
+
+## What each platform uses
+
+- **macOS** — `SecItemUpdate` then `SecItemAdd`, read with `SecItemCopyMatching`. Never
+  `security add-generic-password`: a shell argument puts the secret in the process list for the life of
+  the write, which is the shape this plugin exists to avoid.
+- **Windows** — `CredWriteW`, `CredReadW`, `CredDeleteW` in `advapi32`, resolved at runtime like every
+  other entry point. `list` answers `not-implemented` naming `CredEnumerateW`, which this half does not
+  bind; `set`, `get` and `delete` are the whole surface.
+- **Linux** — `not-implemented`, naming libsecret and a running keyring daemon. There is no OS keychain
+  in this project's scope, and writing a plaintext file and calling it secure is the one answer worse
+  than a refusal.
+
+## Failure codes
+
+| code               | when                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| `bad-request`      | `service` or `account` empty, a NUL in either, or a non-string `secret`  |
+| `not-implemented`  | no adapter on this platform, or `list` on Windows; `requires` names what is missing |
+| `handler-error`    | the OS refused the read, write or delete — a locked keychain, a denied prompt |
+
+A secret is read into a caller-sized buffer and re-read at its exact length when the first buffer was
+too small, so a long private key is never truncated at a guess.

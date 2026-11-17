@@ -8,7 +8,13 @@ import { withToken, withWindowLabel } from "@/bridge/window-identity.ts";
 import { type CrustConfig, type WindowConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
 import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
-import { APP_NAMESPACE, type AppEvent, type AppListener, type Platform } from "./app-types.ts";
+import {
+	APP_NAMESPACE,
+	type AppEvent,
+	type AppListener,
+	type LifecycleSource,
+	type Platform,
+} from "./app-types.ts";
 import { corePlugins, windowPlugin } from "./plugins/index.ts";
 import { defaultStateRoot } from "./plugins/window-persist-store.ts";
 
@@ -68,6 +74,7 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 			return darwin.createPlatform({
 				appName: config.app.name,
 				activate: config.app.activate,
+				icon: config.app.icon,
 			});
 		}
 		case "linux": {
@@ -105,7 +112,11 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
  */
 export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPlatform> {
 	const darwin = await import("@/platform/darwin");
-	return darwin.createPlatform({ appName: config.app.name, activate: config.app.activate });
+	return darwin.createPlatform({
+		appName: config.app.name,
+		activate: config.app.activate,
+		icon: config.app.icon,
+	});
 }
 
 /** Wake every listener of one event, in order, awaiting each. */
@@ -166,32 +177,8 @@ export function mountable(
 }
 
 /**
- * Watch for every window closing, once. The returned handle is the timer the
- * app clears on `quit()`, and it never keeps the process alive by itself.
- *
- * The check reads the platform's live label set when it has one: `window.create`
- * opens windows under labels the config never names, so counting config entries
- * reported "all closed" while a page-created window was still on screen.
+ * `watchWindows` and `watchLifecycle` moved to `app-watch.ts` — this file crossed the 200-line cap
+ * when lifecycle events landed, and the fix for a cap is another file. Re-exported so every caller
+ * and test keeps importing them from here.
  */
-export function watchWindows(
-	config: CrustConfig,
-	platform: Platform,
-	onAllClosed: () => void,
-): ReturnType<typeof setInterval> {
-	let notified = false;
-	/** Anything still open: the platform's own set, else the config windows it was started with. */
-	const stillOpen = (): boolean => {
-		const labels = platform.windowLabels?.();
-		if (labels !== undefined)
-			return labels.some((label) => platform.window(label) !== undefined);
-		return config.windows.some((window: WindowConfig) => platform.window(window.label));
-	};
-	const handle = setInterval(() => {
-		if (notified) return;
-		if (stillOpen()) return;
-		notified = true;
-		onAllClosed();
-	}, WINDOW_CHECK_INTERVAL_MS);
-	handle.unref?.();
-	return handle;
-}
+export { LIFECYCLE_CHECK_INTERVAL_MS, watchLifecycle, watchWindows } from "./app-watch.ts";

@@ -2,14 +2,18 @@
  * `crust:i18n` — the language the app should speak, and the catalogue that answers in it. The only native half is the preferred language read; the catalogue is plain data a caller supplies, so the same plugin works where `NSLocale` is unreachable once messages are loaded.
  * This file is the command surface: it resolves which locale to answer in and hands the text rules to `i18n-messages.ts`. A catalogue is `locale → key → text`, and `translate` resolves `key`, then `key_one`/`key_other` from `vars.count`, then interpolates `{name}` from `vars`.
  * `setLocale` is in-memory on purpose: macOS keeps the language list in System Settings, so an app cannot change it, and pretending otherwise would report a language the system does not use.
+ * `load` reads a directory of `*.json` files into the catalogue at runtime, so an app need not hand-write an import per locale; the on-disk reader lives in `i18n-load.ts` and is injectable for tests.
  */
 
 import { CrustError } from "../bridge/errors";
 import { definePlugin, notImplemented, type NotImplemented } from "./define";
+import { loadCatalogue } from "./i18n-load";
 import { messageFor, resolveCatalogue } from "./i18n-messages";
 import type {
+	CatalogueLoader,
 	I18nOptions,
 	I18nPlugin,
+	LoadResult,
 	LocaleResult,
 	MessagesResult,
 	TranslationResult,
@@ -17,9 +21,11 @@ import type {
 } from "./i18n-types";
 
 export type {
+	CatalogueLoader,
 	I18nAdapter,
 	I18nOptions,
 	I18nPlugin,
+	LoadResult,
 	LocaleResult,
 	MessageCatalogue,
 	MessagesResult,
@@ -33,7 +39,8 @@ const CATALOGUE_HINT = "createI18nPlugin({ messages })";
 
 export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 	const native = options.adapter;
-	const catalogue = options.messages ?? {};
+	const loader: CatalogueLoader = options.loader ?? loadCatalogue;
+	let catalogue = options.messages ?? {};
 	/** The language a page asked for through `setLocale`. */
 	let override: string | undefined;
 
@@ -95,6 +102,16 @@ export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 					locale: found.locale,
 					key,
 					text: messageFor(found.messages, key, vars, found.locale),
+				};
+			},
+			/** Read `locales/*.json` from a directory into the catalogue, so no import is hand-written. */
+			load: (args: { directory: string }): LoadResult => {
+				Object.assign(catalogue, loader(args?.directory));
+				const available = Object.keys(catalogue);
+				return {
+					ok: true,
+					locale: preferred() ?? available[0] ?? options.locale ?? "en",
+					available,
 				};
 			},
 		},

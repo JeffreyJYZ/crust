@@ -43,6 +43,28 @@ export {
 	type SpawnOutcome,
 } from "./shell";
 export { createStorePlugin, defaultStoreRoot, type StoreAdapter, storePlugin } from "./store";
+export {
+	createDatabasePlugin,
+	DATABASE_SUFFIX,
+	databaseFile,
+	databasePlugin,
+	databaseRoot,
+	ensureDatabaseFile,
+	type DatabaseCommands,
+	type DatabasePathOptions,
+} from "./database";
+export type {
+	CloseResult as DatabaseCloseResult,
+	ExecResult as DatabaseExecResult,
+	GetResult as DatabaseGetResult,
+	OpenArgs as DatabaseOpenArgs,
+	OpenResult as DatabaseOpenResult,
+	QueryResult as DatabaseQueryResult,
+	SqlArgs,
+	SqlFailure,
+	SqlOutcome,
+	SqlRow,
+} from "./database-types";
 export { createDownloadsPlugin, downloadsPlugin } from "./downloads";
 export {
 	type DownloadEntry,

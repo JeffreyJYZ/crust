@@ -22,6 +22,8 @@ export interface FakeOptions {
 	win32Ready?: number;
 	/** Make `load()` throw, as a C unit that will not build does. */
 	loadThrows?: boolean;
+	/** HRESULT `shim_window_set_material` answers; negative is a refused backdrop. */
+	materialResult?: number;
 }
 
 export interface FakeBackend extends WindowsBackend {

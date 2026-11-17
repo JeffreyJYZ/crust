@@ -1,9 +1,11 @@
 /**
- * The power unit's C boundary: `shim/105_power.c` compiled by `cc()` with IOKit, CoreGraphics,
- * Foundation and CoreFoundation linked by name — no artifact, no header.
+ * The power unit's C boundary: `shim/105_power.c` (battery, idle, assertion) joined with
+ * `shim/116_power_events.c` (the sleep and lock notification observers) into one translation unit,
+ * compiled by `cc()` with IOKit, CoreGraphics, Foundation, CoreFoundation and AppKit linked by name —
+ * no artifact, no header. AppKit supplies `NSWorkspace`, whose center posts the sleep notification.
  * The shim's four rules hold here: no framework header, no object and no struct across `bun:ffi`,
  * every string arriving as bytes, and one fixed prototype per call. This file knows symbols and
- * buffers only; what a battery means belongs to `power.ts`.
+ * buffers only; what a battery or a notification means belongs to `power.ts`.
  */
 
 import { cc, FFIType, ptr } from "bun:ffi";
@@ -12,16 +14,19 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// A compiled binary has no readable `import.meta.dir`, so the C unit travels inside it as text.
+// A compiled binary has no readable `import.meta.dir`, so the C units travel inside it as text.
 import powerPart from "./shim/105_power.c" with { type: "text" };
+import eventsPart from "./shim/116_power_events.c" with { type: "text" };
 
-export const powerSource = powerPart;
+/** The two halves as one translation unit; the events half uses the battery half's CFString helper. */
+export const powerSource = [powerPart, eventsPart].join("\n");
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
 const F64 = FFIType.f64;
 const CS = FFIType.cstring;
+const V = FFIType.void;
 
 /** Every symbol the unit declares, so a probe can prove the whole set resolved. */
 export const POWER_SYMBOL_NAMES = [
@@ -32,6 +37,9 @@ export const POWER_SYMBOL_NAMES = [
 	"crust_power_held",
 	"crust_power_prevent_sleep",
 	"crust_power_allow_sleep",
+	"crust_power_set_sink",
+	"crust_power_watch",
+	"crust_power_event_class_ready",
 ] as const;
 
 /** The exports, as `bun:ffi` hands them back. */
@@ -45,6 +53,12 @@ export interface PowerUnit {
 		crust_power_held: () => number;
 		crust_power_prevent_sleep: (bytes: number, length: number) => number;
 		crust_power_allow_sleep: () => number;
+		/** Register the one JS trampoline the two native notification callbacks share. */
+		crust_power_set_sink: (sink: number) => void;
+		/** 1 when the observer for that kind (1 sleep, 2 lock) is registered, else 0. */
+		crust_power_watch: (kind: number) => number;
+		/** 1 when the runtime observer class carries both callbacks, else 0. */
+		crust_power_event_class_ready: () => number;
 	};
 }
 
@@ -68,6 +82,8 @@ function compile(): PowerUnit {
 			"Foundation",
 			"-framework",
 			"CoreFoundation",
+			"-framework",
+			"AppKit",
 		],
 		symbols: {
 			crust_power_abi: { args: [], returns: I32 },
@@ -77,6 +93,9 @@ function compile(): PowerUnit {
 			crust_power_held: { args: [], returns: I32 },
 			crust_power_prevent_sleep: { args: [P, I64], returns: I32 },
 			crust_power_allow_sleep: { args: [], returns: I32 },
+			crust_power_set_sink: { args: [P], returns: V },
+			crust_power_watch: { args: [I32], returns: I32 },
+			crust_power_event_class_ready: { args: [], returns: I32 },
 		},
 	}) as unknown as PowerUnit;
 }

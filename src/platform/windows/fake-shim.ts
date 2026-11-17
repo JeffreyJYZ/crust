@@ -70,6 +70,12 @@ export function fakeShim(
 			calls.push(`min:${Number(width)}x${Number(height)}`);
 		},
 		shim_window_client_num: (_hwnd, component) => (component === 2 ? 800 : 600),
+		shim_window_set_material: (hwnd, kind) => {
+			calls.push(`material:${Number(hwnd)}:${kind}`);
+			return options.materialResult ?? 0;
+		},
+		shim_screen_count: () => 0,
+		shim_screen_info: () => 0,
 		shim_webview_new: (_hwnd, url) => {
 			calls.push(`webview_new:${text(url)}`);
 			return options.failWebView ? 0 : 1;

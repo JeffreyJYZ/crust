@@ -102,6 +102,20 @@ describe("tray commands with an adapter", () => {
 		]);
 	});
 
+	test("setMenu called again replaces rows without destroying the item", () => {
+		const adapter = fakeAdapter();
+		const plugin = createTrayPlugin(adapter);
+		const { ctx, events } = recordingContext();
+
+		plugin.commands.setMenu({ items: [{ label: "Old", onClick: () => {} }] }, ctx);
+		plugin.commands.setMenu({ items: [{ label: "New", onClick: () => {} }] }, ctx);
+
+		// The page can change rows at runtime; no destroy/recreate is involved.
+		expect(adapter.calls).toEqual(["setMenu:Old", "setMenu:New"]);
+		adapter.items[0]?.onClick?.();
+		expect(events).toEqual([["tray:click", { index: 0, label: "New" }]]);
+	});
+
 	test("a throwing click handler is contained, and the event still fires", () => {
 		const adapter = fakeAdapter();
 		const plugin = createTrayPlugin(adapter);

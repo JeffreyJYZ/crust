@@ -92,6 +92,10 @@ export function compile(): WindowsShim {
 				shim_window_destroy: { args: [P], returns: I32 },
 				shim_window_set_min: { args: [P, I32, I32], returns: V },
 				shim_window_client_num: { args: [P, I32], returns: I32 },
+				shim_window_set_material: { args: [P, I32], returns: I32 },
+
+				shim_screen_count: { args: [], returns: I32 },
+				shim_screen_info: { args: [I32, P], returns: I32 },
 
 				shim_webview_new: { args: [P, CS, CS], returns: I32 },
 				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },

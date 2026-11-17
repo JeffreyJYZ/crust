@@ -3,86 +3,19 @@
  * **A URL crosses only as bytes.** The delegate copies into a static C buffer, `last` reports the full length so a caller re-reads at the exact size, and nothing but an int or a length returns. The delegate is unretained by AppKit, so the C unit keeps the only reference.
  */
 
-import { cc, FFIType, ptr } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { ptr } from "bun:ffi";
 
-// A compiled binary has no `import.meta.dir`, so the C unit travels inside the
-// binary as text and is materialised before `cc()` sees it.
-import deepLinkSource from "./shim/95_deeplink.c" with { type: "text" };
+// The C unit is compiled and hashed in `deep-link-unit.ts`, split out when this
+// file crossed the 200-line cap. Only the adapter and argv code stays here.
+export { deepLinkUnit } from "./deep-link-unit.ts";
+import { deepLinkUnit } from "./deep-link-unit.ts";
 
-const P = FFIType.ptr;
-const I32 = FFIType.i32;
-const I64 = FFIType.i64;
-const V = FFIType.void;
-
-/** The C unit's install answers; `installed` is the only one a caller accepts. */
-export const DEEPLINK_STATUS = {
-	installed: 0,
-	missing: 1,
-	noApplication: 2,
-	noClass: 3,
-	alreadyInstalled: 4,
-	delegateTaken: 5,
-} as const;
-
-const REASONS: Record<number, string> = {
-	[DEEPLINK_STATUS.installed]: "the delegate is installed and receives application:openURLs:",
-	[DEEPLINK_STATUS.missing]: "AppKit is missing NSApplication or a selector the delegate needs",
-	[DEEPLINK_STATUS.noApplication]:
-		"there is no shared NSApplication yet; install after platform.start()",
-	[DEEPLINK_STATUS.noClass]: "the CrustDeepLinkDelegate class could not be built",
-	[DEEPLINK_STATUS.alreadyInstalled]: "the delegate was already installed",
-	[DEEPLINK_STATUS.delegateTaken]:
-		"another app delegate is already set; refusing to replace it and lose its handlers",
-};
-
-/** Why an install answered what it did, including a status this build does not know. */
-export function installReason(status: number): string {
-	return REASONS[status] ?? `unknown status ${status} while installing the deep-link delegate`;
-}
-
-interface DeepLinkUnit {
-	symbols: {
-		crust_deeplink_install: () => number;
-		crust_deeplink_last: (dst: number, cap: number) => number;
-		crust_deeplink_clear: () => void;
-		crust_deeplink_argv: (argc: number, argv: number) => number;
-	};
-}
-
-function compile(): DeepLinkUnit {
-	/** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
-	function sourcePath(): string {
-		const hash = createHash("sha256").update(deepLinkSource).digest("hex").slice(0, 16);
-		const file = join(tmpdir(), `crust-deeplink-${hash}.c`);
-		if (!existsSync(file)) writeFileSync(file, deepLinkSource);
-		return file;
-	}
-
-	return cc({
-		source: sourcePath(),
-		flags: ["-framework", "AppKit", "-framework", "Foundation"],
-		symbols: {
-			crust_deeplink_install: { args: [], returns: I32 },
-			crust_deeplink_last: { args: [P, I64], returns: I64 },
-			crust_deeplink_clear: { args: [], returns: V },
-			crust_deeplink_argv: { args: [I32, P], returns: I32 },
-		},
-	}) as unknown as DeepLinkUnit;
-}
-
-let unitOnce: DeepLinkUnit | undefined;
-
-/** Compile at most once per process; `cc()` costs 3–30 ms. */
-export function deepLinkUnit(): DeepLinkUnit {
-	if (process.platform !== "darwin") {
-		throw new Error(`crust: deep links need AppKit, and this is ${process.platform}`);
-	}
-	return (unitOnce ??= compile());
-}
+/**
+ * The install statuses and their reasons moved to `deep-link-status.ts` when this file crossed the
+ * 200-line cap. Re-exported so every caller and test keeps importing them from here.
+ */
+export { DEEPLINK_STATUS, installReason } from "./deep-link-status.ts";
+import { DEEPLINK_STATUS, installReason } from "./deep-link-status.ts";
 
 /**
  * One `char **` for C: NUL-terminated, one pointer per argument, and the

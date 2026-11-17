@@ -1,0 +1,71 @@
+# Database
+
+SQLite a page can reach: open a named database, run SQL, read rows, close. The runtime registers it
+under `database`, and `bun:sqlite` is underneath.
+
+```js
+const { handle } = await window.crust.invoke("database", "open", { name: "notes" });
+await window.crust.invoke("database", "exec", {
+	handle,
+	sql: "CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY, body TEXT)",
+});
+await window.crust.invoke("database", "exec", {
+	handle,
+	sql: "INSERT INTO note (body) VALUES (?)",
+	args: ["hello"],
+});
+const { rows } = await window.crust.invoke("database", "query", { handle, sql: "SELECT * FROM note" });
+await window.crust.invoke("database", "close", { handle });
+```
+
+| command  | arguments                            | answers                                          |
+| -------- | ------------------------------------ | ------------------------------------------------ |
+| `open`   | `{ name, readonly? }`                | `{ ok: true, handle, path, readonly }`           |
+| `close`  | `{ handle }`                         | `{ ok: true, handle }`                           |
+| `exec`   | `{ handle, sql, args? }`             | `{ ok: true, changes, lastInsertRowid }`         |
+| `query`  | `{ handle, sql, args? }`             | `{ ok: true, rows }`                             |
+| `get`    | `{ handle, sql, args? }`             | `{ ok: true, row }` — the first row, or `null`   |
+
+## A name is a name, never a path
+
+`name` resolves inside the app's data directory — `~/Library/Application Support/<app id>` — and the
+file is `<name>.sqlite`. A name carries letters, digits, `_`, `-` and one `.`; an absolute path, a
+separator, `..` or a dot-only name is refused by name, so a page cannot describe a way out of the
+directory. A name is not `<name>.sqlite` twice either: `notes` and `notes.sqlite` are one file.
+
+The resolved path is canonicalised before SQLite sees it, so a symlink already sitting in the data
+directory cannot carry the open outside it either. That is the same rule `crust:fs` applies to a
+scope path, from `fs-scope-path.ts`.
+
+## Bound parameters only
+
+`args` is an array, handed to the statement in `?` order. Nothing is interpolated into the SQL, so a
+value containing a quote is data and never syntax; there is no command that takes a name or a string
+and pastes it into a statement.
+
+## `readonly` is a real open
+
+`readonly: true` opens the file through SQLite's own read-only mode, not a promise by the plugin to
+refuse writes. A statement that writes on such a handle fails in the engine and answers `sql-error`.
+The file must already exist: a read-only open of a missing database is an error, because the engine
+would have to create it.
+
+## Failures are values
+
+A statement that throws, a malformed payload and a write on a read-only handle all answer the same
+shape — the invoke resolves, and `ok: false` says what happened:
+
+```js
+{ ok: false, code: "sql-error", message: "no such table: note" }
+{ ok: false, code: "unknown-handle", message: "database: no open handle \"db-3\" — …" }
+```
+
+`sql-error` carries SQLite's own message, so a page can show it or branch on it. `unknown-handle` is
+a handle that was closed, or never opened — never a SQL error, and never a rejected invoke with a
+stack. `open` alone can reject with `bad-request`, which is the name rule refusing a path.
+
+## Scope
+
+Handles are `db-<n>`, unique per plugin instance, and only handles this process opened are
+addressable. A closed handle is gone: the map entry is deleted before the engine closes, so a second
+`close` answers `unknown-handle` rather than throwing from SQLite.

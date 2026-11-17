@@ -33,6 +33,19 @@ export {
 } from "./tray";
 export { createAutostartPlugin, autostartPlugin, type AutostartAdapter } from "./autostart";
 export {
+	createKeychainPlugin,
+	KEYCHAIN_COMMANDS,
+	keychainPlugin,
+	type KeychainAdapter,
+	type KeychainDeleteResult,
+	type KeychainFailure,
+	type KeychainGetResult,
+	type KeychainKeyArgs,
+	type KeychainListResult,
+	type KeychainSetArgs,
+	type KeychainSetResult,
+} from "./keychain";
+export {
 	createUpdaterPlugin,
 	decodeBase64,
 	ED25519_PUBKEY_BYTES,

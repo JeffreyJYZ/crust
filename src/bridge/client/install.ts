@@ -110,6 +110,16 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		return call(APP, "invoke", { name: name, args: command === undefined ? {} : command });
 	};
 
+	// Plain-HTML dev has no bundler: the bridge emits `dev:reload` when public/ changes.
+	// One listener, installed through the client the page already has. A dev-server page
+	// and a built app never see the event, so nothing fights Vite's HMR or reloads a
+	// shipped window. `scope.location` is read at dispatch time, never from module scope,
+	// because this function's own source is the page's copy.
+	listen("dev:reload", () => {
+		const page = scope.location as { reload?: () => void } | undefined;
+		page?.reload?.();
+	});
+
 	const connect = () => {
 		const EventSourceImpl = scope.EventSource ?? (globalThis as any).EventSource;
 		if (typeof EventSourceImpl !== "function") return;

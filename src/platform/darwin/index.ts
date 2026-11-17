@@ -82,6 +82,9 @@ function compile() {
 			shim_webview_configuration: { args: [], returns: P },
 			shim_webview_new: { args: [P, F64, F64], returns: P },
 			shim_webview_load: { args: [P, P], returns: I32 },
+			shim_webview_set_draws_background: { args: [P, I32], returns: V },
+			shim_webview_enable_devtools: { args: [P], returns: V },
+			shim_window_set_material: { args: [P], returns: I32 },
 
 			shim_constraint: { args: [P, I64, I64, P, I64, F64, F64], returns: P },
 			shim_constraint_simple: { args: [P, I64, I64, F64], returns: P },
@@ -122,6 +125,7 @@ function compile() {
 			shim_window_is_on_active_space: { args: [P], returns: I32 },
 
 			shim_app_load: { args: [], returns: I32 },
+			shim_app_set_icon: { args: [P], returns: I32 },
 			shim_pool_new: { args: [], returns: P },
 			shim_pool_init: { args: [P], returns: P },
 			shim_pool_drain: { args: [P], returns: V },

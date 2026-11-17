@@ -10,6 +10,7 @@
 import { resolve, sep } from "node:path";
 import { bootstrapSource, type CrustConfig } from "../client";
 import { CrustError } from "../errors";
+import { RELOAD_ENV } from "./events.ts";
 import { headersFor } from "./http.ts";
 import type { StartBridgeOptions } from "./types.ts";
 
@@ -87,7 +88,16 @@ export async function documentResponse(handle: {
 	windowLabel?: string;
 }): Promise<Response> {
 	const { options, csp, port, windowLabel } = handle;
-	const html = options.indexHtml ?? (await assetText("/index.html", options)) ?? EMPTY_DOCUMENT;
+	// Plain-HTML dev edits public/index.html under a running bridge, but `indexHtml` is the
+	// snapshot read at startup. When the dev reload signal is active, read fresh from disk so
+	// the reload the client performs actually shows the edit. A built app has no root and no
+	// signal, so it keeps the embedded snapshot.
+	const live =
+		options.root !== undefined && process.env[RELOAD_ENV] !== undefined
+			? await assetText("/index.html", options)
+			: null;
+	const html =
+		live ?? options.indexHtml ?? (await assetText("/index.html", options)) ?? EMPTY_DOCUMENT;
 	// The label the bridge itself saw on the document request, not one the page claims: it is
 	// written into the page's config so `window.label` can answer the window that asked for this
 	// document. A request that named none injects none, and the command refuses by name.

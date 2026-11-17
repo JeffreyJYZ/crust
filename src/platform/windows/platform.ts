@@ -6,6 +6,7 @@
  * reason the five methods can be tested at all.
  */
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
+import { unsupportedLifecycle } from "@/app-types.ts";
 import { type WindowsBackend, type WindowsShim, defaultBackend } from "./backend.ts";
 import { cstring } from "./cstring.ts";
 import { type WindowsPlatformConfig, hresult } from "./platform-config.ts";
@@ -182,6 +183,11 @@ export class WindowsPlatform implements Platform {
 		}
 		this.#windows.clear();
 		this.#backend.exit(0);
+	}
+
+	/** No `WM_ACTIVATEAPP` bridge — a listener here would never fire. */
+	lifecycle(): ReturnType<typeof unsupportedLifecycle> {
+		return unsupportedLifecycle("WM_ACTIVATEAPP and WM_QUERYENDSESSION messages");
 	}
 }
 

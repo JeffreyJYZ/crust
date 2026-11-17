@@ -100,6 +100,30 @@ describe("a live status bar", () => {
 		expect(bar.activateRow(0)).toBe(false);
 		expect(hits).toBe(0);
 	});
+
+	test("rows replace in place: new handlers fire, old rows go, title reads back", () => {
+		const bar = createStatusBar();
+		const hits: string[] = [];
+		bar.setMenu([{ label: "Old", onClick: () => hits.push("old") }]);
+
+		// setMenu rebuilds the NSMenu on the SAME NSStatusItem — no destroy/recreate,
+		// so the icon does not flicker and the click trampoline is untouched.
+		bar.setMenu([
+			{ label: "New A", onClick: () => hits.push("new-a") },
+			{ label: "New B", onClick: () => hits.push("new-b") },
+		]);
+		expect(currentStatusBar()).toBe(bar);
+
+		// Two rows now: the old single row is gone, and each new handler still fires.
+		expect(bar.activateRow(0)).toBe(true);
+		expect(bar.activateRow(1)).toBe(true);
+		expect(bar.activateRow(2)).toBe(false);
+		expect(hits).toEqual(["new-a", "new-b"]);
+
+		// A title set after the swap reads back from AppKit on the same item.
+		bar.setTitle("after-row-swap");
+		expect(bar.readback().title).toBe("after-row-swap");
+	});
 });
 
 describe("a destroyed status bar", () => {

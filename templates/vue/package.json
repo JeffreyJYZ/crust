@@ -1,0 +1,19 @@
+{
+	"name": "{{package}}",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "crust dev",
+		"build": "crust build",
+		"frontend": "bun --bun ./node_modules/.bin/vite build"
+	},
+	"dependencies": {
+		"crust": "{{crust_dep}}",
+		"vue": "^3.5.45"
+	},
+	"devDependencies": {
+		"@vitejs/plugin-vue": "^6.0.11",
+		"vite": "^8.3.8"
+	}
+}

@@ -55,12 +55,13 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 | Process            | `process` in the backend                                                                                                                     | via Bun                                                                                                              |
 | HTTP client        | `fetch` in the backend                                                                                                                       | via Bun                                                                                                              |
 | WebSocket          | `WebSocket` in the backend                                                                                                                   | via Bun                                                                                                              |
-| SQL                | `bun:sqlite` in the backend                                                                                                                  | via Bun                                                                                                              |
+| SQL                | `database.open/close/exec/query/get` — `bun:sqlite` under a name that resolves inside the app's data directory, bound parameters only, `readonly` is a real read-only open | same                                                                                                                 |
 | Store              | `store.get/set/delete/keys/clear/save`, atomic 0600 JSON, corrupt file quarantined                                                           | same                                                                                                                 |
 | Upload             | `FormData` with `fetch`                                                                                                                      | via Bun                                                                                                              |
 | Command line (CLI) | `process.argv` in the backend                                                                                                                | via Bun                                                                                                              |
 | Persisted scope    | `fs.scopeList/scopeRevoke` from a page, `fs.scopeAllow` only with `grants: "page"`, `fs.scope` config, grants persisted in `scope.json`      | same — a page cannot widen its own scope by default, and `scopeList` reports `scoped: false` when no boundary exists |
 | Stronghold         | `stronghold.open/set/get/delete/keys/close`, PBKDF2-SHA256 600k + AES-256-GCM, file holds no plaintext                                       | same                                                                                                                 |
+| Secure storage     | `keychain.set/get/delete/list` — the OS credential store: macOS `SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`, Windows `CredWriteW`/`CredReadW`/`CredDeleteW`, no shell and no secret in a process list. A missing credential answers `{ found: false }`. Linux is **not-implemented** (needs libsecret/gnome-keyring) and Windows `list` is not-implemented (needs `CredEnumerateW`) | partial — darwin same, linux not-implemented                                                                          |
 | Logging            | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1`                                                              | same                                                                                                                 |
 | Dock               | `dock.badge/badgeLabel/bounce/progress` — badge text, attention bounce, determinate bar                                                      | same                                                                                                                 |
 | Power              | `power.state/idleSeconds/sleepPrevent/sleepAllow` — battery, AC, low-power flag, idle time, a sleep assertion released on exit               | same                                                                                                                 |
@@ -86,6 +87,13 @@ token boundary were both absent from this page for two revisions while the sweep
 | Isolation pattern              | none — there is no second document between the page and the bridge                                         | absent    |
 | IPC transport                  | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all        | partial   |
 | Command authorisation          | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same      |
+| Typed IPC                      | `typedHost`/`typedClient` over one `InvokeMap`; the names and shapes a host registers are the ones a page may call, checked at compile time | same      |
+| Sidecar binaries               | `build.sidecars` copies each binary beside the app at `0755`; `sidecar.spawn` runs one and streams `sidecar-stdout`/`sidecar-exit`; an undeclared name or a path outside the bundle is refused by name | same |
+| Window material                | `windows[].material`: `vibrancy` on macOS, `mica`/`acrylic`/`tabbed` on Windows 11 22H2+, `none` everywhere; a platform without the backdrop refuses the name rather than opening a grey window | same |
+| Lifecycle events               | `activate`, `before-quit`, `will-quit`, `reopen` as `app.on` events, plus `app.info()` — a platform without the concept answers `not-implemented` naming it | same |
+| Screen listing                 | `screen.list`/`screen.primary` — id, primary flag, scale, bounds and work area per display; darwin `NSScreen`, Windows `EnumDisplayMonitors`, Linux GDK monitors, in page pixels like `positioner` | same |
+| Power events                   | `power.onSleep`/`power.onLock` push `power:sleep`/`power:lock`; a platform without the notification answers `not-implemented` naming it rather than a listener that never fires | same |
+| Devtools in development        | `crust dev` sets `CRUST_DEV_INSPECT`; the window is inspectable only behind that flag, so a built app cannot open one | same |
 | Updater signing                | Ed25519 over the manifest, sha256 over every artefact, a swapped-out key refused                          | same      |
 
 Three of these are worth stating plainly rather than in a cell:
@@ -104,19 +112,20 @@ Three of these are worth stating plainly rather than in a cell:
 
 ## What this means
 
-- **same** — 36 rows
-- **via Bun** — 8 rows
-- **partial** — 3 rows
+- **same** — 44 rows
+- **via Bun** — 7 rows
+- **partial** — 4 rows
 - **absent** — 1 row
 - **module only** — 0 rows
-- **total** — 48 rows, in two tables: 42 callable surfaces and 6 framework guarantees
+- **total** — 56 rows, in three tables: 44 callable surfaces, 6 framework guarantees and the 6 Butter-parity rows
 
-The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
+The four partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, network intercepts only requests under the scheme it registers and its proof runs against a probe-owned webview, and secure storage has no Linux half because libsecret needs a running keyring daemon crust does not bind. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
 
-The ten rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
+The eighteen rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
 
 The Bun rows are not a shortfall: a page reaches them through the backend it already has, and that is
-how Tauri's own macOS column behaves for HTTP, WebSocket, SQL and process information too.
+how Tauri's own macOS column behaves for HTTP, WebSocket and process information too. SQL left that
+group when `database` gave a page its own commands.
 
 ## Runtime proof
 

@@ -3,21 +3,23 @@
  * Kept away from `DarwinPlatform` so construction and tracking read separately; activation is passed in because it is the one platform fact this needs, and it is already decided by `app.activate`.
  */
 import type { WindowOptions } from "@/app.ts";
+import type { WindowMaterial } from "@/config";
 import { type Activation, activateForWindow } from "./activation.ts";
+import { devInspectEnabled } from "./devtools.ts";
 import { shim } from "./index.ts";
 import { cls, cstr, ptrValue, S } from "./objc.ts";
 import { webviewConfiguration } from "./webview-configuration.ts";
 import type { NativeWindowPointers } from "./windows.ts";
 
-/** `minHeight` is validated on the config window but `WindowOptions` has not caught up with it. */
-type MinSizeOptions = WindowOptions & { minHeight?: number };
+/** `minHeight` and `material` are validated on the config window but `WindowOptions` has not caught up. */
+type MaterialOptions = WindowOptions & { minHeight?: number; material?: WindowMaterial };
 
 /**
  * Effective create size and minimums. Clamping here keeps a window from opening smaller than the
  * size the user can later drag it back to; zero is AppKit's "no minimum" for either dimension.
  */
 export function windowSize(
-	options: MinSizeOptions,
+	options: MaterialOptions,
 	fallback: { width: number; height: number },
 ): { width: number; height: number; minWidth: number; minHeight: number } {
 	const minWidth = options.minWidth ?? 0;
@@ -32,15 +34,21 @@ export function windowSize(
 
 export function createNativeWindow(
 	label: string,
-	options: WindowOptions,
+	options: MaterialOptions,
 	activation: Activation,
 ): NativeWindowPointers {
 	const { width, height, minWidth, minHeight } = windowSize(options, {
 		width: 1100,
 		height: 760,
 	});
-	// titled(1) | closable(2) | miniaturizable(4) | resizable(8)
-	const win = Number(shim().symbols.shim_window_new(120, 120, width, height, 15n, 2n, 0));
+	const material = options.material;
+	if (material && material !== "none" && material !== "vibrancy") {
+		throw new Error(`window material "${material}" is not available on macOS`);
+	}
+	// titled(1) | closable(2) | miniaturizable(4) | resizable(8); a material also needs the
+	// full-size content mask (1 << 15) so the effect view reaches under the titlebar.
+	const style = 15n | (material ? 32768n : 0n);
+	const win = Number(shim().symbols.shim_window_new(120, 120, width, height, style, 2n, 0));
 	if (!win) throw new Error("shim_window_new returned null");
 	// Both minimums were validated and carried but were read by nobody until this landed. Zero
 	// means "no constraint", so setting it for an unset dimension leaves the old behaviour intact.
@@ -62,6 +70,13 @@ export function createNativeWindow(
 		"-[WKWebView initWithFrame:configuration:]",
 	);
 	if (!web) throw new Error("-[WKWebView initWithFrame:configuration:] returned null");
+	if (material) {
+		// Without drawsBackground=NO WebKit paints over the effect view, so a material that was
+		// inserted but never shows is worse than no material at all.
+		shim().symbols.shim_webview_set_draws_background(web, 0);
+	}
+	// DevTools is a dev-only surface: the C gate is the env flag, which only `crust dev` sets.
+	if (devInspectEnabled()) shim().symbols.shim_webview_enable_devtools(web);
 
 	const content = S.p0(win, "contentView");
 	if (!content) throw new Error("-[NSWindow contentView] returned null");
@@ -87,6 +102,16 @@ export function createNativeWindow(
 		const constraint = ptrValue(raw, "constraintWithItem:");
 		if (!constraint) throw new Error("constraintWithItem: returned null");
 		S.vb1(constraint, "setActive:", 1);
+	}
+
+	if (material) {
+		// A full-size content view puts the titlebar under the effect. A material owns the
+		// background: it sets opaque=NO and a clear colour, so a `window.setOpacity` call later
+		// still fades the whole window while the material stays behind the page.
+		S.vb1(win, "setTitlebarAppearsTransparent:", 1);
+		if (!Number(shim().symbols.shim_window_set_material(win) ?? 0)) {
+			throw new Error("NSVisualEffectView is unavailable on this macOS version");
+		}
 	}
 
 	// The title is built and applied inside C: a short ASCII NSString is a

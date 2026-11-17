@@ -3,7 +3,7 @@ import { SHIM_PARTS, SHIM_PART_NAMES, SHIM_PART_PATHS, shimSource } from "./inde
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(4);
+		expect(SHIM_PARTS).toHaveLength(5);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -40,6 +40,7 @@ describe("shim assembly", () => {
 			"30_webview.c",
 			"40_window.c",
 			"50_pump.c",
+			"60_screen.c",
 		]);
 	});
 

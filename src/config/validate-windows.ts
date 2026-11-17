@@ -1,3 +1,4 @@
+import type { WindowMaterial } from "./types.ts";
 import type { Validator } from "./validator.ts";
 
 export const WINDOW_KEYS = [
@@ -8,7 +9,15 @@ export const WINDOW_KEYS = [
 	"minWidth",
 	"minHeight",
 	"title",
+	"material",
 ] as const;
+
+/** Which backdrops a platform can apply. Linux has none, so it refuses any named material. */
+export function allowedWindowMaterials(platform: NodeJS.Platform): readonly WindowMaterial[] {
+	if (platform === "darwin") return ["none", "vibrancy"];
+	if (platform === "win32") return ["none", "mica", "acrylic", "tabbed"];
+	return ["none"];
+}
 
 /** At least one window, and each one names a `label`. */
 export function validateWindows(v: Validator, value: unknown): void {
@@ -33,5 +42,16 @@ export function validateWindows(v: Validator, value: unknown): void {
 		v.positiveInteger(window, "minWidth", path);
 		v.positiveInteger(window, "minHeight", path);
 		v.string(window, "title", path, false);
+		const allowed = allowedWindowMaterials(process.platform);
+		const material = window.material;
+		if (material !== undefined) {
+			if (typeof material !== "string" || !allowed.includes(material as WindowMaterial)) {
+				v.fail(
+					`${path}.material`,
+					`one of ${allowed.map((name) => `"${name}"`).join(", ")} on ${process.platform}`,
+					material,
+				);
+			}
+		}
 	});
 }

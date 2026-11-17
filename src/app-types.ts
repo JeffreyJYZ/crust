@@ -4,6 +4,7 @@
 
 import type { CrustConfig } from "@/config";
 import type { BridgeTarget } from "@/bridge/server.ts";
+import { CrustError } from "@/bridge/errors";
 
 /** Where a window points and how it is sized. Mirrors a config window entry. */
 export interface WindowOptions {
@@ -35,11 +36,40 @@ export interface Platform {
 	 * so a platform that omits this is watched by its config windows only.
 	 */
 	windowLabels?(): string[];
+	/**
+	 * Optional source of lifecycle events the native side observes (activate,
+	 * before/will quit, reopen). A platform with no such concept omits this, or
+	 * returns `unsupportedLifecycle(...)`, so no event is ever faked.
+	 */
+	lifecycle?(): LifecycleSource;
 }
 
-export type AppEvent = "ready" | "window-all-closed";
+export type AppEvent =
+	"ready" | "window-all-closed" | "activate" | "before-quit" | "will-quit" | "reopen";
 export type AppListener = () => void | Promise<void>;
 export type CommandHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
+
+/**
+ * A drainable queue of native lifecycle events. `take` returns every event
+ * recorded since the last call; `settle` answers a deferred `before-quit` once
+ * its listeners have run, so the native side can finish terminating.
+ */
+export interface LifecycleSource {
+	take(): AppEvent[];
+	settle?(): void;
+}
+
+/** An honest answer for a platform with no lifecycle notifications to bridge. */
+export function unsupportedLifecycle(requires: string): LifecycleSource {
+	return {
+		take: () => {
+			throw new CrustError(
+				"not-implemented",
+				`crust: lifecycle events need ${requires}, which this platform does not provide`,
+			);
+		},
+	};
+}
 
 /**
  * The namespace a two-argument `window.crust.invoke(name, args)` is rewritten

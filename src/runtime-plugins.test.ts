@@ -78,6 +78,40 @@ describe("store registration", () => {
 	});
 });
 
+describe("database registration", () => {
+	/**
+	 * The capability reached a page only when `nativePlugins` registers it: a plugin the barrel
+	 * exports is invisible to a running app, which is the difference between the old parity row
+	 * ("`bun:sqlite` in the backend") and a page that can actually query. The data root is
+	 * redirected so nothing lands in the real Application Support directory.
+	 */
+	test("the plugin is registered and opens a named database under the app's data root", async () => {
+		const saved = process.env.CRUST_DATA_DIR;
+		root = await mkdtemp(join(tmpdir(), "crust-database-registration-"));
+		process.env.CRUST_DATA_DIR = root;
+		try {
+			const plugins = await nativePlugins([], undefined, { app: "land.jyz.db-alpha" });
+			const database = plugins.find((plugin) => plugin.name === "database");
+			if (database === undefined) throw new Error("nativePlugins did not register database");
+			const commands = database.commands as unknown as Record<
+				string,
+				(input: unknown) => Promise<unknown>
+			>;
+			const answer = (await commands.open?.({ name: "probe" })) as {
+				ok: boolean;
+				handle: string;
+				path: string;
+			};
+			expect(answer.ok).toBe(true);
+			expect(answer.path).toBe(join(root, "probe.sqlite"));
+			await commands.close?.({ handle: answer.handle });
+		} finally {
+			if (saved === undefined) delete process.env.CRUST_DATA_DIR;
+			else process.env.CRUST_DATA_DIR = saved;
+		}
+	});
+});
+
 describe("shell registration", () => {
 	test("no shell section registers the plugin and refuses every program", async () => {
 		const plugin = await shellPlugin();

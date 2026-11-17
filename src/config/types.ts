@@ -1,3 +1,11 @@
+/**
+ * System backdrop behind a window. `vibrancy` is the macOS translucency effect;
+ * `mica`, `acrylic` and `tabbed` are Windows 11 backdrops; `none` is the opaque
+ * default. Validation refuses a value the current platform cannot apply —
+ * `tabbed` is Windows-only and is refused on macOS and Linux by name.
+ */
+export type WindowMaterial = "vibrancy" | "mica" | "acrylic" | "tabbed" | "none";
+
 /** One window the app opens at startup. `label` is the key `app.window(label)` uses. */
 export interface WindowConfig {
 	label: string;
@@ -7,6 +15,8 @@ export interface WindowConfig {
 	minWidth?: number;
 	minHeight?: number;
 	title?: string;
+	/** Backdrop behind the webview. Absent is `none`. */
+	material?: WindowMaterial;
 }
 
 /**
@@ -53,6 +63,12 @@ export interface BuildConfig {
 	 * hand those URLs to this app instead of opening a browser.
 	 */
 	urlScheme?: string;
+	/**
+	 * Executables shipped inside the bundle and reachable through the `sidecar` plugin.
+	 * Each entry is a path relative to the project; `crust build` copies it beside the
+	 * app's binary (0755), and a page may spawn it by that exact relative path.
+	 */
+	sidecars?: string[];
 }
 
 /** One grant a window label can hold. A window names capabilities by `name`. */

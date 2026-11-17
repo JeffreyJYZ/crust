@@ -58,6 +58,8 @@ const SIXTEEN: Record<string, string> = {
 const SIXTY_FOUR: Record<string, string> = {
 	GetTickCount64: "unsigned long long", // ULONGLONG
 	VirtualQuery: "unsigned long long", // SIZE_T
+	EnumDisplayMonitors: "int", // BOOL — the screen plugin enumerates monitors
+	GetMonitorInfoW: "int", // BOOL
 	DispatchMessageW: "shim_i64", // LRESULT
 	DefWindowProcW: "shim_i64", // LRESULT
 	LoadLibraryW: "shim_h", // HMODULE

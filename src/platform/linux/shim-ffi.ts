@@ -30,6 +30,16 @@ export interface LinuxShim {
 	shim_window_alive(win: bigint): number;
 	shim_webview_new(): number;
 	shim_webview_load(web: bigint, url: Uint8Array): number;
+
+	/** 1 when GDK carries every entry point the display list needs; 0 names a GTK too old for it. */
+	shim_screen_ready?(): number;
+	/** How many displays GDK reports; 0 when it cannot be asked. */
+	shim_screen_count(): number;
+	/**
+	 * Ten doubles for one display, in top-left pixels: frame x/y/w/h, work area x/y/w/h, scale,
+	 * then 1 when it is the primary. 1 written, 0 when the index names nothing.
+	 */
+	shim_screen_info(index: number, out: Float64Array): number;
 }
 
 /**
@@ -79,6 +89,10 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 
 			shim_webview_new: { args: [], returns: P },
 			shim_webview_load: { args: [P, CS], returns: I32 },
+
+			shim_screen_ready: { args: [], returns: I32 },
+			shim_screen_count: { args: [], returns: I32 },
+			shim_screen_info: { args: [I32, P], returns: I32 },
 
 			shim_webview_title: { args: [P], returns: CS },
 			shim_webview_load_state: { args: [], returns: I32 },

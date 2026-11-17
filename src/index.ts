@@ -31,6 +31,8 @@ export {
 	notImplemented,
 	NotImplementedError,
 } from "./plugins/index.ts";
+export { typedClient, typedHost } from "./bridge/typed.ts";
+export type { InvokeMap, TypedClient, TypedClientSource, TypedHost } from "./bridge/typed.ts";
 export type {
 	ArgsOf,
 	PluginContext,

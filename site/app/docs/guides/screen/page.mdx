@@ -1,0 +1,75 @@
+# Screen
+
+Every display the machine has: its bounds, the area a window may use, its scale, and which one is
+primary. Registered by the macOS runtime with `listScreens()`, so no config names it.
+
+## Commands
+
+| command   | arguments | answer                            |
+| --------- | --------- | --------------------------------- |
+| `list`    | none      | `{ ok: true, screens: Screen[] }` |
+| `primary` | none      | `{ ok: true, screen }`            |
+
+```ts
+const { screens } = await window.crust.invoke("screen", "list");
+const { screen } = await window.crust.invoke("screen", "primary");
+```
+
+Each `Screen` is `{ id, primary, scale, bounds, workArea }`.
+
+| field      | meaning                                                                   |
+| ---------- | ------------------------------------------------------------------------- |
+| `id`       | the platform's own index as a string, `"0"` being the primary on macOS     |
+| `primary`  | the display the OS treats as the main one                                 |
+| `scale`    | `-[NSScreen backingScaleFactor]`: `2` on Retina, `1` otherwise             |
+| `bounds`   | the whole display                                                         |
+| `workArea` | bounds minus the menu bar and the Dock, which is what a window fits into  |
+
+## One coordinate system
+
+`bounds` and `workArea` are **top-left page pixels**: `x` grows right from the left edge of the
+primary display, `y` grows **down** from its top. A display to the left of or above the primary
+therefore answers a negative `x` or `y`, which is where it really is.
+
+AppKit's own origin is bottom-left with `y` up, so the darwin half flips every rectangle once at the
+seam — the same `y` a page reads from `window.getPosition`. Windows and Linux already report a
+top-left origin, so nothing is flipped there. That is the only difference between platforms.
+
+`workArea` is not `bounds`: a display with a menu bar and a Dock has two rectangles that differ in
+both `y` and `height`. Place a window against `workArea`, not `bounds`, or it sits under the Dock.
+
+## `primary`
+
+The display the platform marks primary — `[NSScreen screens][0]` on macOS, `mi.rcMonitor` at `0,0`
+on Windows, `gdk_display_get_primary_monitor` on Linux. When a platform marks none, the first listed
+display answers instead.
+
+```ts
+// Centre a window on the display a page should open on.
+const { screen } = await window.crust.invoke("screen", "primary");
+```
+
+## Failure shape
+
+| shape                                                                        | when                                     |
+| ---------------------------------------------------------------------------- | ---------------------------------------- |
+| `{ ok: false, code: "not-implemented", requires }`                            | no adapter: the platform cannot enumerate |
+| `{ ok: false, code: "handler-error", message }`                              | `primary` with no usable display listed  |
+
+`list` answering an empty array is a real answer, not a failure: a headless process has no displays
+connected, which is different from the platform being unable to ask. `primary` is the one that has
+to name a screen, so an empty list there is `handler-error`.
+
+A display whose `bounds` or `workArea` is missing or has no area is dropped rather than reported as
+a zero rectangle — a window placed on a `0×0` screen lands off every display and still looks like a
+success.
+
+The refusal names the call that platform would need: `NSScreen screens` on macOS,
+`EnumDisplayMonitors` on Windows, `gdk_display_get_monitor` on Linux.
+
+## What is not proven
+
+The Windows and Linux halves have never been called against a real monitor or display server: what
+their tests prove is the arithmetic — ten doubles in, one record out — and that an enumerator which
+cannot answer yields an empty list rather than a fabricated display. The darwin flip is proved
+against a stated buffer, not a second display.

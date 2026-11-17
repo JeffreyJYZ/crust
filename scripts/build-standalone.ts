@@ -94,14 +94,15 @@ async function prove(outfile: string): Promise<void> {
 		for (const [flag, count] of [
 			["--next", 8],
 			["--react", 6],
+			["--svelte", 7],
+			["--vue", 7],
 			["", 6],
 		] as const) {
 			const name = `app${flag === "" ? "-plain" : flag}`;
 			const target = join(workspace, name);
 			const args = [outfile, "init", target, ...(flag === "" ? [] : [flag])];
 			const init = Bun.spawnSync(args, { cwd: workspace, env: BARE_ENV });
-			// The glob does not see dotfiles, so `.gitignore` is checked separately —
-			// it is the file a scaffold is most likely to lose.
+			// The glob misses dotfiles, so .gitignore is checked separately — the file a scaffold most often loses.
 			const listed = [...new Bun.Glob("**/*").scanSync({ cwd: target, onlyFiles: true })];
 			const ignore = Bun.file(join(target, ".gitignore")).size > 0;
 			if (init.exitCode === 0 && listed.length === count && ignore)
@@ -128,8 +129,7 @@ async function prove(outfile: string): Promise<void> {
 			if (line?.includes("[ok]")) pass(`doctor ${check}`, line.trim().slice(0, 80));
 			else fail(`doctor ${check}`, line?.trim() ?? "no line printed");
 		}
-		// Said out loud, so a green line never implies doctor passed: on a non-macOS host it
-		// exits 1 on those three checks and this binary is not the reason.
+		// Said out loud: on a non-macOS host doctor exits 1 on those checks; the binary is not the reason.
 		const skipped = ["shim", "window", "platform"].filter(
 			(check) => !DOCTOR_CHECKS.includes(check),
 		);

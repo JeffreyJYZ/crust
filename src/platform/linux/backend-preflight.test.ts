@@ -23,6 +23,8 @@ function fakeSymbols() {
 		shim_window_alive: () => 1,
 		shim_webview_new: () => 101,
 		shim_webview_load: () => 1,
+		shim_screen_count: () => 0,
+		shim_screen_info: () => 0,
 	};
 	return { symbols, calls };
 }

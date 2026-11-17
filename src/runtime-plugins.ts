@@ -2,34 +2,20 @@
  * The plugins `startApp` registers: the platform's adapted core four, the window plugin the platform owns, and the runtime's own `app` namespace. Split out of `runtime.ts` because each needs a different instance — AppKit adapters, the running platform, or the `app` singleton.
  */
 
-import { APP_NAMESPACE, app } from "@/app.ts";
 import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
 import { crashRecordPath } from "@/platform/darwin/crash-record";
-import { createWindowPlugin, definePlugin, type PluginDefinition } from "@/plugins";
+import { createSidecarPlugin } from "@/plugins/sidecar";
+import { createWindowPlugin, type PluginDefinition } from "@/plugins";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
+import { platformKeychainPlugin } from "@/runtime-keychain";
 import { startCrashPart } from "@/runtime-crash-start";
 
 /**
- * The `app` namespace: what a two-argument `invoke(name, args)` reaches. It is the same object for every launch, so commands registered by main.ts after the bridge starts stay reachable — the handler closes over `app` rather than snapshotting its command table.
+ * The `app` namespace moved to `runtime-app-namespace.ts` when this file crossed the 200-line cap.
+ * Re-exported so every caller keeps importing it from here.
  */
-export function createAppNamespacePlugin(): PluginDefinition {
-	return definePlugin({
-		name: APP_NAMESPACE,
-		commands: {
-			invoke: async (payload: unknown) => {
-				const { name, args } = (payload ?? {}) as { name?: unknown; args?: unknown };
-				if (typeof name !== "string" || name.length === 0) {
-					throw new Error("crust: app.invoke needs { name, args }");
-				}
-				const commandArgs =
-					typeof args === "object" && args !== null && !Array.isArray(args)
-						? (args as Record<string, unknown>)
-						: {};
-				return await app.invoke(name, commandArgs);
-			},
-		},
-	});
-}
+export { createAppNamespacePlugin } from "./runtime-app-namespace.ts";
+
 /** The config sections that change which plugin an app gets. */
 export interface NativePluginOptions {
 	shell?: ShellConfig;
@@ -67,24 +53,41 @@ export async function nativePlugins(
 			? (createFsPlugin({ allow: fs.scope }) as PluginDefinition)
 			: plugin;
 	const {
+		createDatabasePlugin,
 		createDialogPlugin,
 		createNotificationPlugin,
 		createShellPlugin,
 		createStorePlugin,
 		createTrayPlugin,
 		createUpdaterPlugin,
+		powerPlugin,
+		screenPlugin,
 	} = await import("@/plugins");
 	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
+	// The sidecar plugin reads its declared names from the manifest `crust build` copied
+	// beside the binary. It is always registered: with no manifest it declares no names and
+	// refuses every spawn, which is the same deny-by-default shape as shell with no allowlist.
+	const sidecarPlugin = createSidecarPlugin();
 	const updaterPlugins = updater === undefined ? [] : [createUpdaterPlugin(undefined, updater)];
 	// `store` has no native half, but its file is per-app: with no adapter it answered
 	// `~/Library/Application Support/crust/store.json` for every crust app.
 	const storePlugin = createStorePlugin({ root: appRoot });
+	// Same data root as `store`: the reason is in `database-name.ts`'s doc comment.
+	const databasePlugin = createDatabasePlugin({ root: appRoot });
+	const keychainPlugin = await platformKeychainPlugin();
 	if (!platform || process.platform !== "darwin") {
 		return [
 			...core.filter((plugin) => plugin.name !== "window").map(scoped),
 			createWindowPlugin(),
+			// No notification center: onSleep still gets a typed not-implemented, not unknown-plugin.
+			powerPlugin,
+			// Same for displays: a platform with no enumerator answers not-implemented by name.
+			screenPlugin,
 			storePlugin,
+			databasePlugin,
+			keychainPlugin,
 			shellPlugin,
+			sidecarPlugin,
 			...updaterPlugins,
 		];
 	}
@@ -117,6 +120,7 @@ export async function nativePlugins(
 		createShortcutsPlugin,
 		createWindowStatePlugin,
 		createPositionerPlugin,
+		createScreenPlugin,
 		createMenuPlugin,
 		createThemePlugin,
 		createDockPlugin,
@@ -169,6 +173,7 @@ export async function nativePlugins(
 		createShortcutsPlugin(shortcuts.darwinShortcutsAdapter()),
 		createWindowStatePlugin({ native: windowAdapter }),
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
+		createScreenPlugin({ adapter: { list: screen.listScreens }, requires: "NSScreen screens" }),
 		createMenuPlugin(darwin.darwinMenuAdapter()),
 		createThemePlugin(theme.darwinThemeAdapter()),
 		createDockPlugin(dock.darwinDockAdapter()),
@@ -182,9 +187,12 @@ export async function nativePlugins(
 		createNetworkPlugin(network.darwinNetworkAdapter()),
 		createCrashReporterPlugin({ root: appRoot, guard, native: crashNative }),
 		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
+		keychainPlugin,
 		deepLinkPlugin,
 		storePlugin,
+		databasePlugin,
 		shellPlugin,
+		sidecarPlugin,
 		...updaterPlugins,
 	];
 }

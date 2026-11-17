@@ -31,6 +31,17 @@ export { createOsPlugin, osPlugin, type OsAdapter } from "./os";
 export { createShortcutsPlugin, shortcutsPlugin, type ShortcutAdapter } from "./shortcuts";
 export { createWindowStatePlugin, windowStatePlugin } from "./window-persist";
 export { createPositionerPlugin, positionerPlugin } from "./positioner";
+export {
+	createScreenPlugin,
+	SCREEN_COMMANDS,
+	screenPlugin,
+	type ScreenAdapter,
+	type ScreenBounds,
+	type ScreenFailure,
+	type ScreenListResult,
+	type ScreenPrimaryResult,
+	type ScreenRecord,
+} from "./screen";
 export { createMenuPlugin, menuPlugin, type MenuAdapter } from "./menu";
 export {
 	type Appearance,

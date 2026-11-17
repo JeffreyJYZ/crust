@@ -9,9 +9,23 @@ const TEMPLATES = {
 	vanilla: "templates/default",
 	react: "templates/react",
 	next: "templates/next",
+	svelte: "templates/svelte",
+	vue: "templates/vue",
 } as const;
 
 type TemplateName = keyof typeof TEMPLATES;
+type Framework = Exclude<TemplateName, "vanilla">;
+
+/** The flags init accepts, in the order errors name them. */
+const FRAMEWORKS = ["react", "next", "svelte", "vue"] as const satisfies readonly Framework[];
+
+/** `--react`, `--next`, `--svelte`, `--vue` and the scaffolds they copy. */
+const DESCRIPTION: Record<Framework, string> = {
+	react: "React + Vite",
+	next: "Next.js with a static export",
+	svelte: "Svelte + Vite",
+	vue: "Vue + Vite",
+};
 
 /** `crust init` options: the shared CLI options plus the template flags. */
 export interface InitOptions extends CliOptions {
@@ -19,12 +33,20 @@ export interface InitOptions extends CliOptions {
 	react?: boolean;
 	/** `--next`: copy the Next.js static-export template. */
 	next?: boolean;
+	/** `--svelte`: copy the Svelte + Vite template. */
+	svelte?: boolean;
+	/** `--vue`: copy the Vue + Vite template. */
+	vue?: boolean;
 }
+
+const VITE_HINT = "bun run build          (vite build → dist/web, then crust build → dist/)";
 
 /** The one line that follows a template, printed under `next:`. */
 const BUILD_HINT: Partial<Record<TemplateName, string>> = {
-	react: "bun run build          (vite build → dist/web, then crust build → dist/)",
+	react: VITE_HINT,
 	next: "bun run build          (next build → out/, then crust build → dist/)",
+	svelte: VITE_HINT,
+	vue: VITE_HINT,
 };
 
 /** A directory name become a package name: lowercase, dots and dashes kept. */
@@ -37,20 +59,21 @@ function packageName(raw: string): string {
 }
 
 /**
- * `crust init [dir] [--react | --next]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync; the crust installation running `init` is pinned as `link:`, which makes `bun install && bunx crust dev` work from a checkout.
- * No flag is `templates/default/` (plain HTML, no bundler), `--react` is React + Vite into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Both flags at once is refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
+ * `crust init [dir] [--react | --next | --svelte | --vue]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync; the crust installation running `init` is pinned as `link:`, which makes `bun install && bunx crust dev` work from a checkout.
+ * No flag is `templates/default/` (plain HTML, no bundler); `--react`, `--svelte` and `--vue` are Vite apps into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Two flags at once are refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
  */
 export async function init(options: InitOptions): Promise<number> {
-	if (options.react && options.next) {
+	const chosen = FRAMEWORKS.filter((flag) => options[flag] === true);
+	if (chosen.length > 1) {
 		return fail(
 			"init",
-			"--react and --next choose different scaffolds — pass one: --react is React + " +
-				"Vite, --next is Next.js with a static export",
+			`${chosen.map((flag) => `--${flag}`).join(", ")} choose different scaffolds — pass one: ` +
+				chosen.map((flag) => `--${flag} is ${DESCRIPTION[flag]}`).join(", "),
 		);
 	}
 
 	const target = resolve(options.dir);
-	const templateName: TemplateName = options.next ? "next" : options.react ? "react" : "vanilla";
+	const templateName: TemplateName = chosen[0] ?? "vanilla";
 
 	const info = await stat(target).catch(() => undefined);
 	if (info && !info.isDirectory()) {

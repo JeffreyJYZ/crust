@@ -62,6 +62,44 @@ int shim_webview_load(obj_t web, const char *url) {
 	return 1;
 }
 
+// A material sits behind the webview, so WebKit must not paint its own opaque background:
+// Butter sets `drawsBackground = NO` for a material window (darwin.m:1240, 2140), and without it
+// the webview covers the effect view no matter how the view hierarchy is ordered. `setValue:forKey:`
+// keeps the private property out of the FFI boundary; both the number and the key stay in C.
+void shim_webview_set_draws_background(obj_t web, int draws) {
+	if (!web) return;
+	obj_t key = __CFStringMakeConstantString("drawsBackground");
+	obj_t number = ((obj_t (*)(void *, void *, char))objc_msgSend)(
+	    objc_getClass("NSNumber"), sel_registerName("numberWithBool:"), draws ? 1 : 0);
+	if (!key || !number) return;
+	((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+	    web, sel_registerName("setValue:forKey:"), number, key);
+}
+
+// DevTools inspector. The TS caller gates this on CRUST_DEV_INSPECT, which only `crust dev` sets,
+// so a built app never carries an inspectable webview. Butter's measured setup (darwin.m:2147-2151)
+// sets the private developerExtrasEnabled preference; crust also sends setInspectable: (macOS
+// 13.3+) behind respondsToSelector so the right-click Inspect Element menu appears on new macOS
+// and older versions keep the preference path. Both keys stay in C, off the FFI boundary.
+void shim_webview_enable_devtools(obj_t web) {
+	if (!web) return;
+	obj_t config = ((obj_t (*)(void *, void *))objc_msgSend)(web, sel_registerName("configuration"));
+	if (!config) return;
+	obj_t prefs = ((obj_t (*)(void *, void *))objc_msgSend)(config, sel_registerName("preferences"));
+	if (!prefs) return;
+	obj_t key = __CFStringMakeConstantString("developerExtrasEnabled");
+	obj_t number = ((obj_t (*)(void *, void *, char))objc_msgSend)(
+	    objc_getClass("NSNumber"), sel_registerName("numberWithBool:"), 1);
+	if (key && number)
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    prefs, sel_registerName("setValue:forKey:"), number, key);
+	void *inspectable = (void *)sel_registerName("setInspectable:");
+	int responds = ((int (*)(void *, void *, void *))objc_msgSend)(
+	    web, sel_registerName("respondsToSelector:"), inspectable);
+	if (responds)
+		((void (*)(void *, void *, int))objc_msgSend)(web, inspectable, 1);
+}
+
 // --- Auto Layout ----------------------------------------------------------
 
 // +[NSLayoutConstraint constraintWithItem:attribute:relatedBy:toItem:attribute:multiplier:constant:]

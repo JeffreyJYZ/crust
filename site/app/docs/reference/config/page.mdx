@@ -63,6 +63,7 @@ With `dev.url` set, `crust dev` waits up to 30 s for a TCP connect on that port 
 | `assets`               | string | `"public"` | directory `crust build` embeds, relative to `--dir`; must hold `index.html`, and may not resolve to `dist/`                 |
 | `minimumSystemVersion` | string | `"13.0"`   | `LSMinimumSystemVersion`                                                                                                    |
 | `urlScheme`            | string | unset      | custom URL scheme claimed in `Info.plist` as `CFBundleURLTypes`, so macOS hands `scheme://…` URLs to this app               |
+| `sidecars`             | string array | unset | executables `crust build` copies beside the binary at `0755` and `sidecar.spawn` may run; each must be a relative path inside the project, and the plugin refuses a name that is not in this list |
 
 ## `plugins`
 

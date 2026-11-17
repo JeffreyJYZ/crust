@@ -10,6 +10,7 @@ The language the app should speak, and the catalogue that answers in it. The onl
 | `setLocale` | `{ locale }`     | `{ ok: true, locale }`            |
 | `messages`  | `{ locale? }`    | `{ ok: true, locale, messages }`  |
 | `translate` | `{ key, vars? }` | `{ ok: true, locale, key, text }` |
+| `load`      | `{ directory }`  | `{ ok: true, locale, available }` |
 
 ```ts
 const plugin = createI18nPlugin({
@@ -25,7 +26,7 @@ const plugin = createI18nPlugin({
 });
 ```
 
-A catalogue is `locale → key → text`. The runtime registers the plugin with `darwinLocaleAdapter()` and no catalogue, so a page reads the system language out of the box and the messages are the app's to supply.
+A catalogue is `locale → key → text`. The runtime registers the plugin with `darwinLocaleAdapter()` and no catalogue, so a page reads the system language out of the box and the messages are the app's to supply. `invoke("i18n", "load", { directory })` reads every `*.json` in a directory as a locale named for its basename, so no import per locale is hand-written.
 
 ## Which locale answers
 

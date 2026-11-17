@@ -6,9 +6,10 @@ import prelude from "./shim/10_prelude.c" with { type: "text" };
 import webview from "./shim/30_webview.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import pump from "./shim/50_pump.c" with { type: "text" };
+import screen from "./shim/60_screen.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
-export const SHIM_PARTS = [prelude, webview, window, pump] as const;
+export const SHIM_PARTS = [prelude, webview, window, pump, screen] as const;
 
 /**
  * The whole unit. Joined with a newline because every part ends at a line boundary
@@ -22,6 +23,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/linux/shim/30_webview.c",
 	"src/platform/linux/shim/40_window.c",
 	"src/platform/linux/shim/50_pump.c",
+	"src/platform/linux/shim/60_screen.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

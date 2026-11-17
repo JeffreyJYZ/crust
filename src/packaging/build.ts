@@ -2,8 +2,9 @@
  * Compile the app's entry with Bun, then assemble the bundle around it. Measured (the design page (`site/app/docs/design/page.mdx`), `research/packaging.md` §1): stable 1.4.4 accepts `--trim` and strips nothing (byte-identical output), and 161 KiB of extra entry functions moved it that much — so the honest claim is "no bundled Chromium", not "small": the floor is Bun plus JavaScriptCore, roughly ten times Tauri's.
  */
 
-import { mkdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { chmod, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { resolveSidecar, SIDECAR_MANIFEST } from "@/plugins/sidecar";
 import { assembleApp, type AssembleAppOptions, type AssembledApp } from "./app";
 import { runOrThrow } from "./exec";
 
@@ -16,6 +17,10 @@ export interface BuildOptions {
 	outDir?: string;
 	/** Bundle metadata; `binary` and `outDir` are supplied by this function. */
 	app: Omit<AssembleAppOptions, "binary" | "outDir">;
+	/** Project root that relative `sidecars` paths resolve against. Defaults to cwd. */
+	projectDir?: string;
+	/** Relative paths of binaries to ship beside the app's executable (0755). */
+	sidecars?: readonly string[];
 	/** Print the two size lines as the build runs. Defaults to true. */
 	verbose?: boolean;
 }
@@ -104,6 +109,11 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	}
 	const binaryBytes = (await stat(written)).size;
 	const assembled = await assembleApp({ ...options.app, binary: written, outDir });
+	await copySidecars({
+		names: options.sidecars ?? [],
+		projectDir: options.projectDir ?? process.cwd(),
+		targetDir: dirname(assembled.executablePath),
+	});
 
 	if (options.verbose !== false) {
 		console.log(
@@ -127,4 +137,39 @@ async function compiledBinary(path: string): Promise<string | undefined> {
 		if (info?.isFile() === true && info.size > 0) return candidate;
 	}
 	return undefined;
+}
+
+/**
+ * Copy each declared sidecar into the directory holding the executable, preserving its relative
+ * path (`bin/ffmpeg` lands in `<binary dir>/bin/ffmpeg`, which is the name the plugin resolves).
+ * The file is chmod 0755 so a copy that crossed a medium losing modes still launches.
+ */
+export async function copySidecars(options: {
+	names: readonly string[];
+	projectDir: string;
+	targetDir: string;
+}): Promise<void> {
+	for (const name of options.names) {
+		const source = resolveSidecar(options.projectDir, name);
+		if (source === undefined) {
+			throw new Error(
+				`sidecar ${JSON.stringify(name)} is not a relative path inside the project`,
+			);
+		}
+		const info = await stat(source).catch(() => undefined);
+		if (!info?.isFile()) {
+			throw new Error(`sidecar ${JSON.stringify(name)} does not exist at ${source}`);
+		}
+		const target = resolve(options.targetDir, ...name.split(/[\\/]/));
+		await mkdir(dirname(target), { recursive: true });
+		await copyFile(source, target);
+		await chmod(target, 0o755);
+	}
+	// The runtime plugin reads this manifest to learn which names were declared, so a
+	// page-spawned name that was not copied (or a stale name) is refused by name.
+	await writeFile(
+		join(options.targetDir, SIDECAR_MANIFEST),
+		JSON.stringify(options.names),
+		"utf8",
+	);
 }

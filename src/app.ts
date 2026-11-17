@@ -5,7 +5,15 @@
 import { CrustError } from "@/bridge/errors";
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
-import { emit, loadPlatform, mountable, openWindows, watchWindows } from "./app-loop.ts";
+import {
+	emit,
+	loadPlatform,
+	mountable,
+	openWindows,
+	watchLifecycle,
+	watchWindows,
+} from "./app-loop.ts";
+import { appInfo, type AppInfo } from "./app-info.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
@@ -18,6 +26,7 @@ import {
 import { type PluginDefinition } from "./plugins/define.ts";
 
 export * from "./app-types.ts";
+export type { AppInfo } from "./app-info.ts";
 
 export class App {
 	readonly #commands = new Map<string, CommandHandler>();
@@ -29,6 +38,7 @@ export class App {
 	#bridgeFactory?: BridgeFactory;
 	#started = false;
 	#windowCheck?: ReturnType<typeof setInterval>;
+	#lifecycleCheck?: ReturnType<typeof setInterval>;
 
 	/**
 	 * Wire the native platform and the loaded config into this app instance.
@@ -100,6 +110,11 @@ export class App {
 		return this;
 	}
 
+	/** The app's own identity, the backend half of Butter's `getInfo`. */
+	info(): AppInfo {
+		return appInfo(this.#config);
+	}
+
 	/**
 	 * Resolve a command for the bridge. The bridge passes the page's payload
 	 * through unchanged; an unknown name is an error, never a silent undefined.
@@ -141,6 +156,8 @@ export class App {
 		openWindows(platform, config, this.#bridge);
 		await emit(this.#listeners, "ready");
 		platform.pump(PUMP_INTERVAL_MS);
+		const lifecycle = platform.lifecycle?.();
+		if (lifecycle) this.#lifecycleCheck = watchLifecycle(this.#listeners, lifecycle);
 
 		if (this.#listeners.get("window-all-closed")?.size) {
 			this.#windowCheck = watchWindows(config, platform, () => {
@@ -166,6 +183,8 @@ export class App {
 	#stopWatching(): void {
 		if (this.#windowCheck) clearInterval(this.#windowCheck);
 		this.#windowCheck = undefined;
+		clearInterval(this.#lifecycleCheck);
+		this.#lifecycleCheck = undefined;
 	}
 }
 

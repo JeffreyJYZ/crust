@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+import { resolveSidecar } from "@/plugins/sidecar";
 import type { Validator } from "./validator.ts";
 
 export const BUILD_KEYS = [
@@ -5,6 +7,7 @@ export const BUILD_KEYS = [
 	"assets",
 	"minimumSystemVersion",
 	"urlScheme",
+	"sidecars",
 ] as const;
 
 export function validateBuild(v: Validator, value: unknown): void {
@@ -16,4 +19,15 @@ export function validateBuild(v: Validator, value: unknown): void {
 	v.string(build, "assets", "build", false);
 	v.string(build, "minimumSystemVersion", "build", false);
 	v.string(build, "urlScheme", "build", false);
+	const sidecars = v.stringArray(build, "sidecars", "build");
+	if (!sidecars) return;
+	for (const [index, entry] of sidecars.entries()) {
+		const path = `build.sidecars[${index}]`;
+		// A sidecar must be a relative path inside the project. An absolute path would
+		// ship whatever happened to sit at that location on the build machine.
+		const windowsAbsolute = /^[A-Za-z]:[\\/]/.test(entry) || entry.startsWith("\\\\");
+		if (isAbsolute(entry) || windowsAbsolute || resolveSidecar("", entry) === undefined) {
+			v.fail(path, "a relative path inside the project (no '..' or '.' segments)", entry);
+		}
+	}
 }

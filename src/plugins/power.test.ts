@@ -101,7 +101,7 @@ describe("105_power.c", () => {
 });
 
 describe("power plugin shape", () => {
-	test("is named power and declares exactly the four commands", () => {
+	test("is named power and declares exactly the six commands", () => {
 		const plugin = createPowerPlugin(fake().adapter);
 		expect(plugin.name).toBe("power");
 		expect(Object.keys(plugin.commands).sort()).toEqual([...POWER_COMMANDS].sort());
@@ -167,8 +167,8 @@ describe("power commands with an adapter", () => {
 });
 
 describe("power refusals", () => {
-	test("an absent adapter is not-implemented, naming IOKit", async () => {
-		for (const command of POWER_COMMANDS) {
+	test("an absent adapter is not-implemented, naming IOKit for the pull commands", async () => {
+		for (const command of ["state", "idleSeconds", "sleepPrevent", "sleepAllow"] as const) {
 			const answer = await (powerPlugin.commands[command] as () => Promise<unknown>)();
 			expect(isNotImplemented(answer)).toBe(true);
 			expect(answer).toMatchObject({ requires: "IOPSCopyPowerSourcesInfo" });

@@ -6,6 +6,13 @@ import type { ArgsOf, CommandSchema, ResultOf } from "../../plugins/define";
 
 export type { CommandSchema } from "../../plugins/define";
 
+/**
+ * The typed-IPC map, re-declared here because a page imports its client types from this module and
+ * nothing on that side may reach a runtime module. `bridge/typed.ts` owns the wrappers; the shapes
+ * are only types, so they are erased before the page ever sees the injected source.
+ */
+export type { InvokeMap, TypedClient, TypedClientSource } from "../typed.ts";
+
 export interface CrustConfig {
 	/** Absolute bridge URL in dev (`http://127.0.0.1:54321`); empty for the served page. */
 	baseUrl?: string;

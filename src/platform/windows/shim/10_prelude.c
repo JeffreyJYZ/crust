@@ -53,6 +53,9 @@ static int (*TranslateMessage)(const void *msg);
 static shim_i64 (*DispatchMessageW)(const void *msg);
 static shim_i64 (*DefWindowProcW)(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp);
 static void (*PostQuitMessage)(int code);
+// The monitor enumeration `47_screen.c` calls. Both are user32, resolved like every other pointer.
+static int (*EnumDisplayMonitors)(shim_h dc, const void *rect, void *callback, shim_i64 data);
+static int (*GetMonitorInfoW)(shim_h monitor, void *info);
 // `int`, not `shim_i64`: CoInitializeEx returns a 32-bit HRESULT, and a wider declaration reads an
 // undefined top half of RAX — the same trap as CoGetApartmentType above. `shim_com_init` widens it.
 static int (*CoInitializeEx)(void *reserved, unsigned int coinit);

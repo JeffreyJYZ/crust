@@ -21,8 +21,12 @@ export function parse(argv: string[]): Parsed {
 	let command: string | undefined;
 	let positional: string | undefined;
 	let dirExplicit = false;
-	let react = false;
-	let next = false;
+	const framework: Record<"react" | "next" | "svelte" | "vue", boolean> = {
+		react: false,
+		next: false,
+		svelte: false,
+		vue: false,
+	};
 	// Global flags are decided before the loop: a flag-looking token after a
 	// value-taking flag must never be eaten as that value, and help/version
 	// answer the invocation even when an unrelated flag would fail validation.
@@ -42,10 +46,16 @@ export function parse(argv: string[]): Parsed {
 			case "-v":
 				break;
 			case "--react":
-				react = true;
+				framework.react = true;
 				break;
 			case "--next":
-				next = true;
+				framework.next = true;
+				break;
+			case "--svelte":
+				framework.svelte = true;
+				break;
+			case "--vue":
+				framework.vue = true;
 				break;
 			case "--dir":
 			case "--config":
@@ -110,17 +120,12 @@ export function parse(argv: string[]): Parsed {
 		}
 	}
 
-	if (react) {
+	for (const flag of Object.keys(framework) as (keyof typeof framework)[]) {
+		if (!framework[flag]) continue;
 		if (command !== "init") {
-			return { options, help, version, error: "--react only applies to init" };
+			return { options, help, version, error: `--${flag} only applies to init` };
 		}
-		options.react = true;
-	}
-	if (next) {
-		if (command !== "init") {
-			return { options, help, version, error: "--next only applies to init" };
-		}
-		options.next = true;
+		options[flag] = true;
 	}
 
 	if (formatValues.length > 0) {

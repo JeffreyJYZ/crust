@@ -41,6 +41,9 @@ export interface Shim {
 		shim_webview_configuration: LooseSymbol;
 		shim_webview_new: LooseSymbol;
 		shim_webview_load: LooseSymbol;
+		shim_webview_set_draws_background: LooseSymbol;
+		shim_webview_enable_devtools: LooseSymbol;
+		shim_window_set_material: LooseSymbol;
 
 		shim_constraint: LooseSymbol;
 		shim_constraint_simple: LooseSymbol;
@@ -73,6 +76,7 @@ export interface Shim {
 		shim_window_is_on_active_space: LooseSymbol;
 
 		shim_app_load: LooseSymbol;
+		shim_app_set_icon: LooseSymbol;
 		shim_pool_new: LooseSymbol;
 		shim_pool_init: LooseSymbol;
 		shim_pool_drain: LooseSymbol;

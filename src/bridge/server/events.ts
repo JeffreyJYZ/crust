@@ -5,8 +5,28 @@
  * order at a 20.38 ms median gap in the measurement (research/bridge.md).
  */
 
+import { readFileSync, watch } from "node:fs";
+import { basename, dirname } from "node:path";
+
 interface Subscriber {
 	enqueue(frame: string): void;
+}
+
+/** The one event plain-HTML dev pushes. The page client listens for this literal name. */
+export const DEV_RELOAD_EVENT = "dev:reload";
+/** Set by `crust dev` before it spawns the runtime, so the bridge watches the signal. */
+export const RELOAD_ENV = "CRUST_DEV_RELOAD_FILE";
+/** Where `crust dev` writes the signal, inside the scratch dir the backend watcher ignores. */
+export const RELOAD_FILE = ".crust/dev-reload";
+/** Debounce for the signal file, so a multi-file write is one reload. */
+const RELOAD_DEBOUNCE_MS = 80;
+
+function tokenOf(file: string): string {
+	try {
+		return readFileSync(file, "utf8").trim();
+	} catch {
+		return "";
+	}
 }
 
 /**
@@ -28,6 +48,36 @@ export function sseFrame(event: string, data: unknown): string {
 export class Events {
 	private readonly subscribers = new Set<Subscriber>();
 	private readonly cleanups = new Set<() => void>();
+	private reloadToken: string;
+
+	constructor(reloadFile: string | undefined = process.env[RELOAD_ENV]) {
+		this.reloadToken = reloadFile === undefined ? "" : tokenOf(reloadFile);
+		if (reloadFile !== undefined) this.watchReload(reloadFile);
+	}
+
+	/**
+	 * Turn a dev signal file into one SSE event per change. Only `crust dev` sets the path, and
+	 * only in plain-HTML mode, so a dev-server page (Vite owns reload) and a built app never see it.
+	 * An empty or unreadable token is ignored: a failed rebuild must not reload the window.
+	 */
+	private watchReload(file: string): void {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const name = basename(file);
+		const watcher = watch(dirname(file), (_event, filename) => {
+			if (filename !== null && String(filename) !== name) return;
+			clearTimeout(timer);
+			timer = setTimeout(() => {
+				const next = tokenOf(file);
+				if (next.length === 0 || next === this.reloadToken) return;
+				this.reloadToken = next;
+				this.emit(DEV_RELOAD_EVENT, { at: Date.now() });
+			}, RELOAD_DEBOUNCE_MS);
+		});
+		this.cleanups.add(() => {
+			clearTimeout(timer);
+			watcher.close();
+		});
+	}
 
 	emit(event: string, data: unknown): void {
 		const frame = sseFrame(event, data);

@@ -90,14 +90,15 @@ describe("checkTemplates", () => {
 		expect(outcome.detail).toContain("reinstall crust");
 	});
 
-	test("passes when all three scaffolds are present", async () => {
+	test("passes when every scaffold is present", async () => {
 		const root = await project();
-		for (const name of ["default", "react", "next"]) {
+		const all = ["default", "react", "next", "svelte", "vue"];
+		for (const name of all) {
 			await page(join(root, "templates", name), "package.json");
 		}
 		const outcome = await checkTemplates(root);
 
 		expect(outcome.status).toBe("ok");
-		expect(outcome.detail).toContain("default, react, next");
+		expect(outcome.detail).toContain(all.join(", "));
 	});
 });

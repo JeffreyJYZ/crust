@@ -20,12 +20,17 @@ export interface I18nAdapter {
 	preferredLocale(): string;
 }
 
+/** Reads a directory of `*.json` locale files into a catalogue. Injected so `load` is testable without disk. */
+export type CatalogueLoader = (directory: string) => MessageCatalogue;
+
 export interface I18nOptions {
 	/** locale → key → text. Absent means `messages` and `translate` answer `not-implemented`. */
 	messages?: MessageCatalogue;
 	/** The locale to answer in before `setLocale`, and the one a lookup falls back to. */
 	locale?: string;
 	adapter?: I18nAdapter;
+	/** Loader behind the `load` command. Defaults to the on-disk `loadCatalogue`. */
+	loader?: CatalogueLoader;
 }
 
 export interface LocaleResult {
@@ -45,6 +50,11 @@ export interface TranslationResult extends LocaleResult {
 	text: string;
 }
 
+export interface LoadResult extends LocaleResult {
+	/** Every locale now available, including those supplied before `load`. */
+	available: string[];
+}
+
 export type I18nPlugin = PluginDefinition<
 	"i18n",
 	{
@@ -55,5 +65,6 @@ export type I18nPlugin = PluginDefinition<
 			key: string;
 			vars?: TranslateVars;
 		}) => TranslationResult | NotImplemented;
+		load: (args: { directory: string }) => LoadResult;
 	}
 >;

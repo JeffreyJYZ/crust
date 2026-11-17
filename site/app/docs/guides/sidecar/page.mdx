@@ -1,0 +1,53 @@
+# Sidecar binaries
+
+Ship a helper executable inside the bundle and spawn it from the page by its declared name. A Go daemon, `ffmpeg`, `yt-dlp` — anything that is a separate process rather than a library.
+
+```ts
+// crust.config.ts
+build: {
+	sidecars: ["bin/ffmpeg"],
+},
+```
+
+Each entry is a path **relative to the project**. An absolute path is a config error: it would ship whatever happened to sit at that location on the build machine. `..` and `.` segments are refused for the same reason. The file must exist at build time, or `crust build` fails naming it.
+
+`crust build` copies each binary beside the app's executable — `Contents/MacOS/` on macOS, next to the exe on Linux and Windows — preserving its relative path (`bin/ffmpeg` lands in `<binary dir>/bin/ffmpeg`) and setting mode `0755`. It also writes a `crust-sidecars.json` manifest in that directory listing the declared names. The runtime reads that manifest at startup, so a name that was not shipped is not callable.
+
+## Commands
+
+| command  | arguments                 | answers                          |
+| -------- | ------------------------- | -------------------------------- |
+| `spawn`  | `{ name, args? }`         | `{ ok: true, id, name, pid }`    |
+
+`pid` is the operating-system process id. `id` correlates the events below when more than one process is live. `spawn` refuses with a typed failure — never a shell error or a bare `ENOENT` — when:
+
+- the name is not in `build.sidecars` (`sidecar-not-declared`);
+- the name resolves outside the bundle directory (`sidecar-path-escape`);
+- the declared binary is missing on disk (`sidecar-missing`).
+
+```js
+const { id, pid } = await window.crust.invoke("sidecar", "spawn", {
+	name: "bin/ffmpeg",
+	args: ["--version"],
+});
+
+window.crust.listen("sidecar-stdout", (e) => {
+	if (e.id === id) console.log(e.text);
+});
+window.crust.listen("sidecar-exit", (e) => {
+	if (e.id === id) console.log("exit", e.code, e.signal);
+});
+```
+
+## Events
+
+| event             | payload                                  |
+| ----------------- | ---------------------------------------- |
+| `sidecar-stdout`  | `{ id, name, text }` — stdout and stderr |
+| `sidecar-exit`    | `{ id, name, code, signal }`              |
+
+`stdout` and `stderr` both arrive as `sidecar-stdout`; the event has no stream field, so distinguish by content or by the order the program writes. An exit fires even if the process ends while a stream is still draining, and a signal-killed process reports `code: null` with a non-null `signal`.
+
+`crust dev` has no bundle, so the plugin resolves names against the project directory (cwd). Set `CRUST_SIDECARS_DIR` to point it somewhere else. A dev process with no binaries declares no names and refuses every spawn — the same deny-by-default shape as `shell` with no allowlist.
+
+See [Shell](/docs/guides/shell) for the allowlisted program API when the helper does not need to be shipped.

@@ -7,6 +7,7 @@
  * have — the OS drops it with the process, but an explicit release is the proof.
  */
 
+import { darwinPowerEvents } from "./power-events.ts";
 import { bytesOf, powerUnit, stateOut, type PowerUnit } from "./power-ffi.ts";
 
 export {
@@ -50,6 +51,9 @@ export interface DarwinPowerAdapter {
 	idleSeconds(): number | { available: false; reason: string };
 	preventSleep(reason: string): SleepAssertion;
 	allowSleep(): SleepRelease;
+	/** Register the OS sleep / screen-lock observers; false means the notification is unavailable. */
+	onSleep(listener: () => void): boolean;
+	onLock(listener: () => void): boolean;
 }
 
 const message = (error: unknown): string =>
@@ -106,7 +110,10 @@ function releaseOnExit(): void {
  * rather than an error.
  */
 export function darwinPowerAdapter(): DarwinPowerAdapter {
+	const events = darwinPowerEvents();
 	return {
+		onSleep: events.onSleep,
+		onLock: events.onLock,
 		state: () => {
 			const unit = compiled();
 			if (typeof unit === "string") {

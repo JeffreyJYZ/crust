@@ -2,10 +2,18 @@
  * `window.create`'s happy path and its two conflict cases. The point is that after it answers, every other command finds the new window by the same label — that is what makes a reopen possible without keeping a hidden window alive.
  */
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { setBridgeToken } from "@/bridge/window-identity.ts";
 import { fakeAdapter } from "./window-fake.ts";
 import { WindowAdapterError } from "./window-types.ts";
 import { createWindowPlugin } from "./window.ts";
+
+/**
+ * The bridge token is process-global module state, set once by the runtime and read by `window.create`.
+ * A test file that runs after one which started a real bridge would otherwise inherit its token and
+ * assert a URL it never configured — order-dependent, and it only shows under a full-suite run.
+ */
+beforeEach(() => setBridgeToken(undefined));
 
 describe("window.create", () => {
 	test("creates a window the other commands then find", () => {

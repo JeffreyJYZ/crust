@@ -3,6 +3,7 @@
 // running, and a plain argv element when the binary is launched directly. A bundled app's URL comes as an Apple Event and
 // never as argv, so both paths are needed and the last one recorded wins.
 // Compiled on its own by `platform/darwin/deep-link.ts`, so it carries its own externs; only an int or a byte count crosses.
+// The same delegate also carries the lifecycle callbacks (shim/117_lifecycle.c, concatenated into this unit).
 
 extern void *objc_msgSend(void *self, void *sel, ...);
 extern void *objc_getClass(const char *name);
@@ -10,6 +11,9 @@ extern void *sel_registerName(const char *name);
 extern void *objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
 extern int class_addMethod(void *cls, void *sel, void *imp, const char *types);
+
+// Defined in shim/117_lifecycle.c, concatenated after this part into one unit.
+int crust_lifecycle_add_methods(void *cls);
 
 // macOS caps an Apple Event well below this, and a truncated URL is reported as
 // the shorter length, so a caller re-reads rather than trusting a cut string.
@@ -64,8 +68,9 @@ static void dl_open_urls(void *self, void *cmd, void *urls) {
 
 // 0 installed, 1 AppKit is missing a class or selector, 2 there is no shared
 // NSApplication yet, 3 the delegate class could not be built, 4 already
-// installed, 5 another delegate is already set — refusing beats clobbering it,
-// since a replaced delegate silently loses whatever else it handled.
+// installed, 5 another delegate is already set, 6 a lifecycle method could
+// not be added — refusing beats clobbering it, since a replaced delegate
+// silently loses whatever else it handled.
 int crust_deeplink_install(void) {
 	if (crust_deeplink_delegate) return 4;
 	void *appCls = objc_getClass("NSApplication");
@@ -84,6 +89,7 @@ int crust_deeplink_install(void) {
 	void *cls = objc_allocateClassPair(super, "CrustDeepLinkDelegate", 0);
 	if (!cls) return 3;
 	if (!class_addMethod(cls, openSel, (void *)dl_open_urls, "v@:@")) return 3;
+	if (!crust_lifecycle_add_methods(cls)) return 6;
 	objc_registerClassPair(cls);
 	void *obj = ((void *(*)(void *, void *))objc_msgSend)(cls, sel_registerName("new"));
 	if (!obj) return 3;

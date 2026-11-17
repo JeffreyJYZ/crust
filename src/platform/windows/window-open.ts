@@ -4,10 +4,28 @@
  * caller reads. Both `cstring` arguments are NUL-terminated buffers — bun:ffi throws on a
  * JavaScript string at that argument before C runs.
  */
+import { release } from "node:os";
 import type { WindowOptions } from "@/app.ts";
+import type { WindowMaterial } from "@/config";
+import { CrustError } from "@/bridge/errors";
 import type { WindowsShim } from "./backend.ts";
 import { cstring } from "./cstring.ts";
-import { DEFAULT_HEIGHT, DEFAULT_WIDTH, absoluteUrl, objectStateName } from "./platform-config.ts";
+import {
+	DEFAULT_HEIGHT,
+	DEFAULT_WIDTH,
+	absoluteUrl,
+	hresult,
+	objectStateName,
+} from "./platform-config.ts";
+
+/** DWMWA_SYSTEMBACKDROP_TYPE values Butter's shim uses: 2 mica, 3 acrylic, 4 tabbed. */
+export const BACKDROP: Readonly<Record<"mica" | "acrylic" | "tabbed", number>> = {
+	mica: 2,
+	acrylic: 3,
+	tabbed: 4,
+};
+/** The first Windows build whose DWM accepts attribute 38 (22H2). */
+export const MIN_MATERIAL_BUILD = 22621;
 
 export interface OpenedWindow {
 	hwnd: number;
@@ -15,8 +33,27 @@ export interface OpenedWindow {
 	url: string;
 }
 
-/** `minHeight` is validated on the config window but `WindowOptions` has not caught up with it. */
-export type MinSizeOptions = WindowOptions & { minHeight?: number };
+/** `minHeight` and `material` are validated on the config window but `WindowOptions` has not caught up. */
+export type MinSizeOptions = WindowOptions & { minHeight?: number; material?: WindowMaterial };
+
+/**
+ * A named material on a build too old to apply it is a typed failure, never a silent grey window.
+ * The build number is `os.release()`'s last component ("10.0.22631" → 22621); a value that cannot
+ * be read fails too, because guessing would ship the same silent no-op as a recognised old build.
+ */
+export function materialFailure(
+	material: WindowMaterial | undefined,
+	build: string,
+): CrustError | undefined {
+	if (material === undefined || material === "none") return undefined;
+	const number = Number(build.split(".").at(-1));
+	if (Number.isFinite(number) && number >= MIN_MATERIAL_BUILD) return undefined;
+	return new CrustError(
+		"not-implemented",
+		`window material "${material}" needs Windows build ${MIN_MATERIAL_BUILD} or newer (this build: ${build})`,
+		{ requires: `Windows 11 build ${MIN_MATERIAL_BUILD}` },
+	);
+}
 
 /** Create the window, then the controller, then navigate. Throws with the OS error on failure. */
 export function openWindow(
@@ -24,8 +61,12 @@ export function openWindow(
 	options: MinSizeOptions,
 	appName: string,
 	userDataDir: string,
+	build = release(),
 ): OpenedWindow {
 	const label = options.label;
+	// Refuse an old build before creating anything, so a material config never opens a grey window.
+	const unsupported = materialFailure(options.material, build);
+	if (unsupported) throw unsupported;
 	const minWidth = options.minWidth ?? 0;
 	const minHeight = options.minHeight ?? 0;
 	// Clamp the create size as well as the drag minimum: a window opened below its own minimum
@@ -44,6 +85,19 @@ export function openWindow(
 	// `minWidth: 400` must still shrink to 400, and the shim's own default would be 900 because the
 	// create size is the only thing it sees. Zero on an axis means that axis is unconstrained.
 	shim.shim_window_set_min(hwnd, minWidth, minHeight);
+	if (options.material && options.material !== "none") {
+		const kind = BACKDROP[options.material as "mica" | "acrylic" | "tabbed"];
+		const hr = Number(shim.shim_window_set_material(hwnd, kind));
+		if (hr < 0) {
+			// A refused backdrop must not leave a silently grey window open.
+			shim.shim_window_destroy(hwnd);
+			throw new CrustError(
+				"not-implemented",
+				`window material "${options.material}" was refused by DWM (HRESULT ${hresult(hr)})`,
+				{ requires: `Windows 11 build ${MIN_MATERIAL_BUILD}` },
+			);
+		}
+	}
 	const url = absoluteUrl(options.url ?? "/");
 	if (!Number(shim.shim_webview_new(hwnd, cstring(url), cstring(userDataDir)))) {
 		// The bind inside shim_webview_new runs before Navigate, so a Navigate failure leaves a

@@ -2,11 +2,13 @@
 export const USAGE = `crust — a Bun-native desktop app framework. No Rust. Just crust.
 
 usage:
-  crust init <dir> [--react | --next]
+  crust init <dir> [--react | --next | --svelte | --vue]
                            scaffold an app in an empty directory
                              (no flag: plain HTML and CSS, no bundler
-                              --react: React + Vite
-                              --next:  Next.js, static export only)
+                              --react:  React + Vite
+                              --next:   Next.js, static export only
+                              --svelte: Svelte + Vite
+                              --vue:    Vue + Vite)
   crust dev [file] [options]
                            watch the backend, restart it on change, follow the
                            frontend URL; with a .tsx/.jsx/.ts/.js/.html file,
@@ -33,8 +35,10 @@ options:
                      (default: src/main.ts, then main.ts)
   --format <fmt>     package only: dmg, appimage or nsis; repeat for several
   --react            init only: copy the React + Vite template
-  --next             init only: copy the Next.js template (static export);
-                     --react and --next are different scaffolds, pass one
+  --next             init only: copy the Next.js template (static export)
+  --svelte           init only: copy the Svelte + Vite template
+  --vue              init only: copy the Vue + Vite template
+                     the four flags are different scaffolds, pass one
   --help, -h         this text
   --version, -v      the crust version
 
