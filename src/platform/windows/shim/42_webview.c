@@ -8,11 +8,6 @@
 
 #define SHIM_MAX_WINDOWS 8
 static shim_h g_hwnd[SHIM_MAX_WINDOWS];
-// Configured drag minimum keyed by HWND, read by WM_GETMINMAXINFO; zero means "no constraint".
-static int g_min_w[SHIM_MAX_WINDOWS];
-static int g_min_h[SHIM_MAX_WINDOWS];
-static shim_h g_min_hwnd[SHIM_MAX_WINDOWS];
-static int g_min_count;
 static void *g_ctrl[SHIM_MAX_WINDOWS];
 static void *g_web;
 static int g_windows;
@@ -26,46 +21,6 @@ static int find_window(shim_h hwnd) {
 	for (i = 0; i < g_windows; i++)
 		if (g_hwnd[i] == hwnd) return i;
 	return -1;
-}
-
-void shim_window_set_min(shim_h hwnd, int w, int h) {
-	int i;
-	if (!hwnd) return;
-	for (i = 0; i < g_min_count; i++)
-		if (g_min_hwnd[i] == hwnd) {
-			// Zero on both axes means "no constraint", which is also how a destroy clears the entry.
-			// Compacting here matters: this table is 8 slots and a window created and closed hundreds
-			// of times over a process lifetime would otherwise fill it and silently stop recording.
-			if (w <= 0 && h <= 0) {
-				g_min_hwnd[i] = g_min_hwnd[g_min_count - 1];
-				g_min_w[i] = g_min_w[g_min_count - 1];
-				g_min_h[i] = g_min_h[g_min_count - 1];
-				g_min_count--;
-				return;
-			}
-			g_min_w[i] = w;
-			g_min_h[i] = h;
-			return;
-		}
-	if (w <= 0 && h <= 0) return;
-	if (g_min_count < SHIM_MAX_WINDOWS) {
-		i = g_min_count++;
-		g_min_hwnd[i] = hwnd;
-		g_min_w[i] = w;
-		g_min_h[i] = h;
-	}
-}
-
-void shim_window_min(shim_h hwnd, int *w, int *h) {
-	int i;
-	if (w) *w = 0;
-	if (h) *h = 0;
-	for (i = 0; i < g_min_count; i++)
-		if (g_min_hwnd[i] == hwnd) {
-			if (w) *w = g_min_w[i];
-			if (h) *h = g_min_h[i];
-			return;
-		}
 }
 
 int shim_webview_put_bounds(shim_h hwnd, double w, double h) {

@@ -18,6 +18,7 @@ import slots from "./shim/34_slots.c" with { type: "text" };
 import probe from "./shim/36_probe.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import webview from "./shim/42_webview.c" with { type: "text" };
+import minsize from "./shim/44_minsize.c" with { type: "text" };
 
 /**
  * LF, always. A Windows checkout can hand back CRLF, and the source-scanning assertions in this
@@ -53,6 +54,7 @@ export const SHIM_PARTS = [
 	lf(probe),
 	lf(window),
 	lf(webview),
+	lf(minsize),
 ] as const;
 
 /**
@@ -73,6 +75,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/36_probe.c",
 	"src/platform/windows/shim/40_window.c",
 	"src/platform/windows/shim/42_webview.c",
+	"src/platform/windows/shim/44_minsize.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */
