@@ -3,6 +3,7 @@
  */
 
 import type { CrustConfig } from "@/config";
+import type { BridgeTarget } from "@/bridge/server.ts";
 
 /** Where a window points and how it is sized. Mirrors a config window entry. */
 export interface WindowOptions {
@@ -46,8 +47,12 @@ export type CommandHandler = (args: Record<string, unknown>) => unknown | Promis
  */
 export const APP_NAMESPACE = "app";
 
-/** Builds the bridge on demand and returns the URL its pages load from. */
-export type BridgeFactory = (config: CrustConfig) => string;
+/**
+ * Builds the bridge on demand and returns where its pages load from plus the credential they must
+ * present. A bare URL is not enough: the document route refuses a request that cannot prove it was
+ * sent to a window the app opened, so the caller needs the token as well as the address.
+ */
+export type BridgeFactory = (config: CrustConfig) => BridgeTarget;
 
 /** Cocoa pump tick, from `site/app/docs/design/page.mdx`: a 16 ms tick with a 0.25 ms slice holds. */
 export const PUMP_INTERVAL_MS = 16;

@@ -3,6 +3,7 @@
  * Through `startApp` (dev and built apps) the platform and config are attached before `main.ts` is imported and the bridge is created on the first `run()`, so a plugin mounted there is in the table the bridge snapshots; called bare (`bun src/main.ts`) it loads both itself, importing the platform lazily so macOS is not linked into a process that never opens a window.
  */
 import { CrustError } from "@/bridge/errors";
+import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
 import { emit, loadPlatform, mountable, openWindows, watchWindows } from "./app-loop.ts";
 import {
@@ -24,7 +25,7 @@ export class App {
 	readonly #listeners = new Map<AppEvent, Set<AppListener>>();
 	#platform?: Platform;
 	#config?: CrustConfig;
-	#bridgeUrl?: string;
+	#bridge?: BridgeTarget;
 	#bridgeFactory?: BridgeFactory;
 	#started = false;
 	#windowCheck?: ReturnType<typeof setInterval>;
@@ -32,13 +33,14 @@ export class App {
 	/**
 	 * Wire the native platform and the loaded config into this app instance.
 	 * `startApp` calls this before importing the user's `main.ts`; tests call it
-	 * with a fake platform, and `bridgeUrl` is what a page needs to load.
+	 * with a fake platform, and `bridge` is what a page needs to load — its
+	 * address and the token the document route demands.
 	 */
-	attach(platform: Platform, config: CrustConfig, bridgeUrl?: string): this {
+	attach(platform: Platform, config: CrustConfig, bridge?: BridgeTarget): this {
 		if (this.#started) throw new Error("crust: cannot attach a platform to a running app");
 		this.#platform = platform;
 		this.#config = config;
-		if (bridgeUrl !== undefined) this.#bridgeUrl = bridgeUrl;
+		if (bridge !== undefined) this.#bridge = bridge;
 		return this;
 	}
 
@@ -52,7 +54,7 @@ export class App {
 	}
 
 	/**
-	 * Create the bridge on the first `run()` instead of now: `startApp` calls this before importing the entry, because the bridge snapshots its `"<plugin>.<command>"` table at creation and a plugin mounted there must already be registered. Runs at most once; returns the URL the windows load.
+	 * Create the bridge on the first `run()` instead of now: `startApp` calls this before importing the entry, because the bridge snapshots its `"<plugin>.<command>"` table at creation and a plugin mounted there must already be registered. Runs at most once; returns where the windows load from and the token they must present.
 	 */
 	deferBridge(factory: BridgeFactory): this {
 		if (this.#started) throw new Error("crust: cannot start a bridge for a running app");
@@ -119,8 +121,8 @@ export class App {
 		this.#platform = platform;
 		// A deferred bridge starts here, after the entry's plugins and commands
 		// are registered and before the first window is created.
-		if (this.#bridgeUrl === undefined && this.#bridgeFactory !== undefined) {
-			this.#bridgeUrl = this.#bridgeFactory(config);
+		if (this.#bridge === undefined && this.#bridgeFactory !== undefined) {
+			this.#bridge = this.#bridgeFactory(config);
 		}
 
 		this.#started = true;
@@ -136,7 +138,7 @@ export class App {
 				deepLink.launch(launched);
 			}
 		}
-		openWindows(platform, config, this.#bridgeUrl);
+		openWindows(platform, config, this.#bridge);
 		await emit(this.#listeners, "ready");
 		platform.pump(PUMP_INTERVAL_MS);
 
@@ -168,8 +170,8 @@ export class App {
 }
 
 /** Build an app bound to a platform and config. */
-export function createApp(platform: Platform, config: CrustConfig, bridgeUrl?: string): App {
-	return new App().attach(platform, config, bridgeUrl);
+export function createApp(platform: Platform, config: CrustConfig, bridge?: BridgeTarget): App {
+	return new App().attach(platform, config, bridge);
 }
 
 /**

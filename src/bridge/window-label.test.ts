@@ -24,9 +24,7 @@ function windowBridge(): BridgeHandle {
 
 /** The config the bridge injected into a document, which is what the page client installs from. */
 function servedConfig(html: string): Record<string, unknown> {
-	const match = /\{"baseUrl":"[^"]*","token":"[^"]*","port":\d+(?:,"window":"[^"]*")?\}/.exec(
-		html,
-	);
+	const match = /\{"baseUrl":"[^"]*","port":\d+(?:,"window":"[^"]*")?\}/.exec(html);
 	if (!match) throw new Error("the document carried no injected config");
 	return JSON.parse(match[0]) as Record<string, unknown>;
 }
@@ -34,26 +32,33 @@ function servedConfig(html: string): Record<string, unknown> {
 describe("the document carries the window", () => {
 	test("each window's document names its own label", async () => {
 		const bridge = windowBridge();
-		expect(servedConfig(await (await fetch(`${bridge.url}/?window=main`)).text()).window).toBe(
-			"main",
-		);
 		expect(
-			servedConfig(await (await fetch(`${bridge.url}/?window=inspector`)).text()).window,
+			servedConfig(
+				await (await fetch(`${bridge.url}/?window=main&token=${bridge.token}`)).text(),
+			).window,
+		).toBe("main");
+		expect(
+			servedConfig(
+				await (await fetch(`${bridge.url}/?window=inspector&token=${bridge.token}`)).text(),
+			).window,
 		).toBe("inspector");
 	});
 
 	test("a document requested without one injects none", async () => {
 		const bridge = windowBridge();
-		expect(servedConfig(await (await fetch(`${bridge.url}/`)).text()).window).toBeUndefined();
+		const document = await (await fetch(`${bridge.url}/?token=${bridge.token}`)).text();
+		expect(servedConfig(document).window).toBeUndefined();
 	});
 });
 
 describe("two windows, one bridge", () => {
 	test("each page answers its own label", async () => {
 		const bridge = windowBridge();
-		const main = servedConfig(await (await fetch(`${bridge.url}/?window=main`)).text());
+		const main = servedConfig(
+			await (await fetch(`${bridge.url}/?window=main&token=${bridge.token}`)).text(),
+		);
 		const inspector = servedConfig(
-			await (await fetch(`${bridge.url}/?window=inspector`)).text(),
+			await (await fetch(`${bridge.url}/?window=inspector&token=${bridge.token}`)).text(),
 		);
 
 		const mainPage = installPage(bridge, { config: main });

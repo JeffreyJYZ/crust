@@ -3,7 +3,8 @@
  */
 
 import { CrustError } from "@/bridge/errors";
-import { withWindowLabel } from "@/bridge/window-identity.ts";
+import type { BridgeTarget } from "@/bridge/server.ts";
+import { withToken, withWindowLabel } from "@/bridge/window-identity.ts";
 import { type CrustConfig, type WindowConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
 import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
@@ -32,22 +33,26 @@ export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
  * when the configured URL names no window, so the page reads its own label back
  * from `location.search` and the bridge can inject it into the client. A URL
  * that already names its own `window` is left byte-exact.
+ *
+ * A bridge-served URL also carries `?token=<token>`: the document route refuses a request that
+ * cannot present one, so a page fetched without it is a `401` — and a local process fetching `/`
+ * never receives the credential. A dev-server page is served by Vite, so it needs no token.
  */
 export function windowUrl(
 	window: WindowConfig,
 	devUrl: string | undefined,
-	bridgeUrl: string | undefined,
+	bridge: BridgeTarget | undefined,
 ): string {
 	const path = window.url ?? "/";
 	if (devUrl) return withWindowLabel(devUrl, window.label);
-	if (!bridgeUrl) {
+	if (!bridge) {
 		throw new Error(
 			"crust: no page URL — set dev.url, or start through `crust dev` / a built app " +
 				"so the bridge can serve the page",
 		);
 	}
-	const url = `${bridgeUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-	return withWindowLabel(url, window.label);
+	const url = `${bridge.url.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+	return withToken(withWindowLabel(url, window.label), bridge.token);
 }
 
 /**
@@ -116,12 +121,12 @@ export async function emit(
 /** Create every configured window and say so, so a silent window is visible. */ export function openWindows(
 	platform: Platform,
 	config: CrustConfig,
-	bridgeUrl: string | undefined,
+	bridge: BridgeTarget | undefined,
 ): void {
 	for (const window of config.windows) {
 		platform.createWindow({
 			...window,
-			url: windowUrl(window, config.dev?.url, bridgeUrl),
+			url: windowUrl(window, config.dev?.url, bridge),
 		});
 		// A window that exists but never appears is the worst failure: the page runs, the
 		// bridge answers, and the screen is empty. Say what was created so a silent window

@@ -43,18 +43,12 @@ it had made no edits. At this lane's start the tree contained **unfixed** source
 
 ## 20-security.md
 
-1. Token served by the token-free document route — **narrowed, not closed; the rest is not this
-   lane's file set.** A foreign `Origin` is now refused before the document is served
-   (`src/bridge/server/handler.ts:52-61`), so a hostile web page can no longer read the token out of
-   the HTML — that was the only remotely reachable half. A *local process* sends no `Origin` at all,
-   and the page cannot hold a token it is being served, so closing that half requires the navigation
-   URL to carry the token: `windowUrl` (`src/app-loop.ts:35-50`, owned by lane `runtime`) receives
-   `bridgeUrl` but not the bridge's token, and `src/app.ts`'s `deferBridge` factory returns a bare
-   URL. That is a two-file contract change outside `src/bridge/**` and `src/runtime.ts`. Handing out
-   the token on the document URL was implemented and reverted here precisely because the document
-   tests and the navigation path both live elsewhere; a half-applied version would break every
-   window. `src/bridge/server.ts:3` and `handler.ts:1-15` now state the real posture instead of
-   claiming the document is part of the public frontend.
+1. Token served by the token-free document route — **closed** by `fix-wave2` lane `token`. The
+   document route now requires `?token=<token>` and answers `401` without it
+   (`src/bridge/server/handler.ts`), `windowUrl` appends it (`src/app-loop.ts`), the page reads it out
+   of `location.search` and the injected config no longer contains it
+   (`src/bridge/client/bootstrap.ts:53-77`, `src/bridge/server/assets.ts`), and `window.create`
+   appends the same token through `setBridgeToken` (`src/plugins/window-create.ts`).
 2. Windows backslash traversal — same defect as `01-bridge.md:1`, **fixed** there.
 3. World-readable `.crust/dev.json` — **fixed** `src/runtime.ts:123-140`: `writeFileSync` passes
    `{ mode: 0o600 }` and a following `chmodSync(file, 0o600)` tightens a file an earlier run created
@@ -104,10 +98,10 @@ it had made no edits. At this lane's start the tree contained **unfixed** source
 
 ## Residual for the coordinator
 
-1. **`20-security.md:1`, the local-process half** — needs `src/app-loop.ts` (`windowUrl`) and
-   `src/app.ts` (`deferBridge`) to carry the bridge token so the document route can demand it. Both
-   files belong to lane `runtime`. Do not gate the document on `?token=` before that lands: every
-   window would open on a 401.
-2. **`src/runtime.ts:141` sets `CRUST_BRIDGE_TOKEN` in `process.env`**, and `src/plugins/shell.ts`
-   (lane `plugins-data`/`plugins-system`) passes `process.env` to `Bun.spawn`, so a spawned shell can
-   read the token. `src/cli/dev/frontend.ts` reads that variable, so removing it is not one line.
+1. **`20-security.md:1` is closed** by `fix-wave2` lane `token` — see the entry above. Nothing here
+   needs a follow-up: the document route demands the token, every navigation URL carries it, and the
+   page reads it from its own URL rather than from the HTML.
+2. **`src/runtime.ts` sets `CRUST_BRIDGE_TOKEN` in `process.env`**, and `src/plugins/shell.ts` passes
+   `process.env` to `Bun.spawn`, so a spawned shell can read the token. `src/cli/dev/frontend.ts`
+   reads that variable, so removing it is not one line — and it is only set when `dev.url` exists
+   (`crust dev`), so a built app never publishes it.

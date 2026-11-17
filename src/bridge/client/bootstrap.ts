@@ -23,6 +23,19 @@ const PAGE_WINDOW =
 	"return v && v.trim() ? v.trim() : undefined; })(location.search)";
 
 /**
+ * The token the bridge put on the document URL, read the same way the label is.
+ *
+ * The document route refuses a request that cannot present it, so a page that
+ * loads at all has one in `location.search`. Reading it here rather than
+ * serialising it into the script is what makes the token stop being decorative:
+ * fetching `/` no longer hands the credential to whoever asked, because the
+ * response is a `401` unless the request already had it.
+ */
+const PAGE_TOKEN =
+	'(function (s) { var v = new URLSearchParams(s).get("token"); ' +
+	"return v && v.trim() ? v : undefined; })(location.search)";
+
+/**
  * Serialise a config for a `<script>` body.
  *
  * `JSON.stringify` leaves `<`, `>` and `/` alone, so a `window` label containing `</script>`
@@ -51,7 +64,7 @@ function jsonForScript(value: unknown): string {
  * names a window wins over the URL.
  */
 export function bootstrapSource(config: CrustConfig): string {
-	const served = `Object.assign({ window: ${PAGE_WINDOW} }, ${jsonForScript(config)})`;
+	const served = `Object.assign({ window: ${PAGE_WINDOW}, token: ${PAGE_TOKEN} }, ${jsonForScript(config)})`;
 	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()});`;
 }
 

@@ -4,8 +4,15 @@
  */
 
 import type { HandlerSource } from "../../plugins/registry";
+import type { SecurityConfig } from "../../config/types.ts";
 
 export type AssetTable = Record<string, string | Uint8Array | ArrayBuffer | Blob>;
+
+/** A started bridge's address and its credential together — a page needs both to be served. */
+export interface BridgeTarget {
+	readonly url: string;
+	readonly token: string;
+}
 
 export interface StartBridgeOptions {
 	/** Plugins, a registry, or a flat `"plugin.command"` handler table. */
@@ -14,6 +21,8 @@ export interface StartBridgeOptions {
 	csp?: string;
 	/** Origins allowed to call from another origin (`crust dev` / Vite). */
 	devOrigin?: string | readonly string[] | null;
+	/** `security` from the config: the capability table the invoke path checks. Absent allows everything. */
+	security?: Pick<SecurityConfig, "capabilities" | "grants">;
 	/** Built frontend embedded in the binary: request path -> body. */
 	assets?: AssetTable;
 	/** Built frontend on disk, for development and for `crust build` output. */

@@ -2,7 +2,12 @@
  * `window.create`, the one command whose native half is optional. Split out of `window.ts` because it carries its own ordering rules: ask whether the adapter can create before validating arguments, refuse a label the platform still holds, and read the platform's list back rather than trusting the call just made.
  */
 
-import { withWindowLabel } from "@/bridge/window-identity.ts";
+import {
+	currentBridgeToken,
+	isBridgeOrigin,
+	withToken,
+	withWindowLabel,
+} from "@/bridge/window-identity.ts";
 import type { NotImplemented } from "./define";
 import { duplicateLabel, failure, missingWindow, parseCreate } from "./window-args.ts";
 import type {
@@ -51,11 +56,27 @@ export function createWindowCommand(
 	const url = parsed.options.url;
 	const own =
 		url === undefined || (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) && !/^[\\/][\\/]/.test(url));
+	// An absolute URL is still the app's own document when it points at this bridge: a page that
+	// builds one from `location.origin` names a path, not a different app. Such a URL keeps its
+	// query and hash and gets the token, because the document route refuses a request without one —
+	// which is exactly how a created window ended up blank the first time the token moved out of
+	// the HTML. A genuinely foreign origin is still handed through untouched.
+	const bridgeOwned = url !== undefined && isBridgeOrigin(url);
 	// Absent still means the app's own document, `/`: a relative reference the adapter resolves
 	// against the window's document. A query on it changes neither the origin nor the path.
-	const options: WindowCreateOptions = own
-		? { ...parsed.options, url: withWindowLabel(url ?? "/", parsed.options.label) }
-		: parsed.options;
+	//
+	// The token rides along on the same URL, because the document route refuses a request that
+	// cannot present one — a window opened without it would answer `401` and show an error page.
+	const token = currentBridgeToken();
+	const appDocument = (): string => {
+		// An absolute bridge URL keeps the contract the probe pins: it carries no identity of its
+		// own, because the app built it and may have named a `window` already. Only the credential
+		// is added, and only because the document route refuses a request without one.
+		const labelled = bridgeOwned ? url : withWindowLabel(url ?? "/", parsed.options.label);
+		return token === undefined ? labelled : withToken(labelled, token);
+	};
+	const options: WindowCreateOptions =
+		own || bridgeOwned ? { ...parsed.options, url: appDocument() } : parsed.options;
 	// Only the adapter can tell a closed-but-tracked label from a free
 	// one; this check covers what `list` reports, and the adapter throws
 	// `duplicate-label` for the rest.

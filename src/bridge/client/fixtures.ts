@@ -84,12 +84,28 @@ export function installPage(bridge: BridgeHandle, options: PageOptions = {}): In
 		port: bridge.port,
 		...options.config,
 	};
+	// A bridge-served page is only ever loaded from a URL that carries `?token=` — the document
+	// route refuses a request without it — so the stub's `location.search` carries it too, exactly
+	// as `windowUrl` builds it. Without this the client would install with no credential, which is
+	// the state a real page can never be in.
+	const search =
+		options.source === "dev"
+			? (options.search ?? "")
+			: appendToken(options.search ?? "", bridge.token);
 	const snippet =
 		options.source === "dev" ? pageClientSource() : bootstrapSource(config as CrustConfig);
 	const factory = new Function("window", "location", `return ${snippet};`) as (
 		scope: Record<string, any>,
 		location: { search: string },
 	) => CrustApi;
-	const api = factory(target, { search: options.search ?? "" });
+	const api = factory(target, { search });
 	return { api, source: FakeEventSource.last };
+}
+
+/** Add `token=` to a query unless it already names one, the way the document URL does. */
+function appendToken(search: string, token: string): string {
+	const query = search.replace(/^\?/, "");
+	const kept = query.split("&").filter((pair) => pair.length > 0 && !pair.startsWith("token="));
+	kept.push(`token=${encodeURIComponent(token)}`);
+	return `?${kept.join("&")}`;
 }

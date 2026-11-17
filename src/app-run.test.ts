@@ -54,7 +54,7 @@ describe("app.run()", () => {
 	 */
 	test("a window-all-closed listener that throws still quits the app", async () => {
 		const platform = fakePlatform();
-		const app = createApp(platform, CONFIG, "http://127.0.0.1:1");
+		const app = createApp(platform, CONFIG, { url: "http://127.0.0.1:1", token: "t" });
 		app.on("window-all-closed", () => {
 			throw new Error("listener blew up");
 		});
@@ -69,7 +69,7 @@ describe("app.run()", () => {
 
 	test("a window-all-closed listener that resolves quits the app once", async () => {
 		const platform = fakePlatform();
-		const app = createApp(platform, CONFIG, "http://127.0.0.1:1");
+		const app = createApp(platform, CONFIG, { url: "http://127.0.0.1:1", token: "t" });
 		let heard = 0;
 		app.on("window-all-closed", () => {
 			heard += 1;

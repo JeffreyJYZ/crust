@@ -1,0 +1,78 @@
+# Permissions
+
+Decide which window may call which command. Authenticating a page is not the same question as authorising it: the token says a page is this app's own, and capabilities say what that page is allowed to do with it.
+
+```ts
+// crust.config.ts
+security: {
+	capabilities: [
+		{ name: "fs-read", actions: ["fs:read*"] },
+		{ name: "panels", actions: ["dialog:*"] },
+		{ name: "shell", actions: ["shell:spawn"] },
+	],
+	grants: {
+		settings: ["fs-read", "panels"],
+		chat: ["panels"],
+	},
+},
+```
+
+No `security.capabilities` means **every command is allowed**, which is what every app written before this existed sees. That is the one compatibility guarantee, and nothing here changes what an app that does not opt in gets.
+
+## What the model guarantees
+
+Three rules, all checked at the bridge rather than inside a plugin:
+
+- **Absent or empty `capabilities` allows everything.** Opting in is the only way to be restricted.
+- **Present and non-empty denies by default.** A window label with no entry in `grants` holds no capabilities and may call nothing, and neither may a request that names no label at all.
+- **A grant is per window label.** The label is the only thing the bridge knows about a request, so one window cannot inherit another's authority by asking for it.
+
+The check lives in the invoke path, ahead of the handler, so both payload kinds (JSON and a binary body) and every plugin — built-in, mounted, or a third-party extension — take the same gate. A plugin cannot forget to add it.
+
+## Actions
+
+An action is `plugin:command`. `*` is the only metacharacter and matches any run of characters, including none:
+
+| pattern       | covers                               |
+| ------------- | ------------------------------------ |
+| `dialog:*`    | every command in the `dialog` plugin |
+| `fs:read*`    | `fs:readTextFile`, `fs:readFile`, …  |
+| `shell:spawn` | exactly `shell.spawn`                |
+| `shell:*`     | every `shell` command                |
+
+The colon is part of the match, so `dialog:*` does not cover `dialogx.openPanel`. Names are compared case-sensitively. The dotted spelling (`shell.spawn`) is refused at startup rather than accepted as a second spelling — one action with two spellings is how a grant looks right and covers nothing.
+
+`grants` names capabilities; a name that no capability declares is a config error, and a grant on a label no window uses is simply unused.
+
+## The refusal
+
+A command the label does not hold answers `forbidden` (HTTP 403) and names all three things an author needs at 2am: the action, the window, and the capability that would have allowed it.
+
+```text
+shell:spawn is not granted to window "chat": capability "shell" would allow it — add it to that label's grants
+```
+
+```text
+test:secret is not granted to window "main": no configured capability lists this action
+```
+
+The refusal happens before the handler runs, so nothing was started, read or written.
+
+## What it does not do
+
+This is authorisation, not a sandbox. A label that holds `fs:*` may read and write every path the `fs` plugin itself can reach — capabilities do not narrow an argument, they only pick which commands a page may call at all. Narrow a command's reach with the plugin's own limits ([`fs.scope`](/docs/reference/config#fs), [`shell.allow`](/docs/reference/config#shell)), and treat a capability as "this page is trusted with this plugin", not "this page is trusted with part of it".
+
+Nor is it a boundary against arbitrary code in the page's own window: a page that holds `shell:spawn` can spawn. The point is that a page which holds nothing cannot do anything, which is the difference between an injected script being harmless and it being able to spawn a process.
+
+## In-process calls
+
+`app.invoke` is not gated. It is the app calling itself from `main.ts`, not a page, so it holds every command — the gate is about what the page can ask the app to do.
+
+## Validation
+
+Capabilities are validated at startup, and every failure names the key:
+
+- `security.capabilities[0].actions` — an empty or missing action list.
+- `security.capabilities[1].name` — a capability name used twice, which would make `grants` ambiguous.
+- `security.capabilities[0].actions[0]` — a pattern that is not `plugin:command`, including the dotted form.
+- `security.grants.main[0]` — a grant naming a capability that does not exist.

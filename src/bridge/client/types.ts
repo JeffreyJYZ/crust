@@ -11,12 +11,16 @@ export interface CrustConfig {
 	baseUrl?: string;
 	/**
 	 * The same address under the name a dev server's injected global uses.
-	 * `crust/vite` writes `{ url, token }`, the bridge writes `{ baseUrl, token }`,
-	 * and the client reads either so both paths share one implementation.
+	 * `crust/vite` writes `{ url, token }`, the bridge writes `{ baseUrl }` and leaves `token` out —
+	 * a served page reads its own token out of `location.search`, so the document it was handed
+	 * never contains the credential.
 	 */
 	url?: string;
-	/** Per-launch token. The only credential the bridge accepts. */
-	token: string;
+	/**
+	 * Per-launch token. The only credential the bridge accepts. Absent from a bridge-served
+	 * document's injected config by design: `bootstrap.ts` reads it from the page's own URL.
+	 */
+	token?: string;
 	/** The port the bridge bound, for diagnostics. */
 	port?: number;
 	/**

@@ -23,6 +23,7 @@ import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts"
 import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
+import { setBridgeToken } from "@/bridge/window-identity.ts";
 import type { StartAppOptions } from "./runtime-options.ts";
 
 export type { StartAppOptions } from "./runtime-options.ts";
@@ -105,6 +106,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 					root: frontendRoot,
 					indexHtml: indexHtml ? injectShim(indexHtml) : undefined,
 					csp: runConfig.security?.csp,
+					// The capability table is compiled once inside `startBridge`; the config section
+					// goes in whole so the bridge itself decides what "absent" means.
+					security: runConfig.security,
 					devOrigin: runConfig.dev?.url ? originOf(runConfig.dev.url) : undefined,
 					// Walk upward from the app's stable port; the last attempt lets the
 					// OS pick, so a machine with no free port still starts.
@@ -143,10 +147,19 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		console.log(
 			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
 		);
+		// `window.create` builds a document URL from inside the window plugin, where no bridge handle
+		// is in scope. Recording the token here covers every start path — the deferred factory below
+		// and the fallback for an entry that never calls `run()`. Under `crust dev` a created window
+		// resolves against the Vite page, which injects its own `__CRUST__`, so nothing is recorded
+		// there: publishing the token into a Vite-served URL would only put it in the dev server log.
+		setBridgeToken(runConfig.dev?.url ? undefined : bridge.token, bridge.url);
 		return bridge;
 	};
 
-	app.deferBridge((runConfig) => startBridgeFor(runConfig).url);
+	app.deferBridge((runConfig) => {
+		const started = startBridgeFor(runConfig);
+		return { url: started.url, token: started.token };
+	});
 	if (platform) app.attach(platform, config);
 	else app.configure(config);
 

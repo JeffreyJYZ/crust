@@ -79,16 +79,16 @@ describe("reading a label back", () => {
 const MAIN: WindowConfig = { label: "main", width: 800, height: 600 };
 
 describe("windowUrl", () => {
-	test("a bridge-served window carries its label", () => {
-		expect(windowUrl(MAIN, undefined, "http://127.0.0.1:5000/")).toBe(
-			"http://127.0.0.1:5000/?window=main",
+	test("a bridge-served window carries its label and its token", () => {
+		expect(windowUrl(MAIN, undefined, { url: "http://127.0.0.1:5000/", token: "abc" })).toBe(
+			"http://127.0.0.1:5000/?window=main&token=abc",
 		);
 	});
 
 	test("a configured path and query survive the label", () => {
 		const window: WindowConfig = { ...MAIN, url: "/notes?tab=1" };
-		expect(windowUrl(window, undefined, "http://127.0.0.1:5000")).toBe(
-			"http://127.0.0.1:5000/notes?tab=1&window=main",
+		expect(windowUrl(window, undefined, { url: "http://127.0.0.1:5000", token: "abc" })).toBe(
+			"http://127.0.0.1:5000/notes?tab=1&window=main&token=abc",
 		);
 	});
 
@@ -100,8 +100,8 @@ describe("windowUrl", () => {
 
 	test("a URL that names its own window is left to the app", () => {
 		const window: WindowConfig = { ...MAIN, url: "/?window=mine" };
-		expect(windowUrl(window, undefined, "http://127.0.0.1:5000")).toBe(
-			"http://127.0.0.1:5000/?window=mine",
+		expect(windowUrl(window, undefined, { url: "http://127.0.0.1:5000", token: "abc" })).toBe(
+			"http://127.0.0.1:5000/?window=mine&token=abc",
 		);
 	});
 

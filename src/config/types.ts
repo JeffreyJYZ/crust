@@ -55,8 +55,20 @@ export interface BuildConfig {
 	urlScheme?: string;
 }
 
+/** One grant a window label can hold. A window names capabilities by `name`. */
+export interface CapabilityConfig {
+	/** What this grant is called; a window names capabilities by these. */
+	name: string;
+	/** Command patterns: `dialog:*`, `fs:read*`, or the exact `shell.spawn`. */
+	actions: string[];
+}
+
 export interface SecurityConfig {
 	csp?: string;
+	/** Capabilities. Absent or empty means every command is allowed — the behaviour today. */
+	capabilities?: CapabilityConfig[];
+	/** Which capabilities each window label holds. A label with no entry holds none. */
+	grants?: Record<string, string[]>;
 }
 
 /** What `crust:shell` may run; absent means nothing, because the allowlist is deny-by-default. */

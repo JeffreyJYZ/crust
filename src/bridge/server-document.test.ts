@@ -17,12 +17,12 @@ import {
 afterEach(stopAll);
 
 describe("document", () => {
-	test("the document is served without a token and carries the CSP", async () => {
+	test("the document requires the token it was navigated with and carries the CSP", async () => {
 		const bridge = start({
 			handlers: [testPlugin],
 			indexHtml: "<!doctype html><html><head><title>x</title></head><body></body></html>",
 		});
-		const response = await fetch(`${bridge.url}/`);
+		const response = await fetch(`${bridge.url}/?token=${bridge.token}`);
 		expect(response.status).toBe(200);
 		expect(response.headers.get("content-type")).toContain("text/html");
 		const csp = response.headers.get("content-security-policy") ?? "";
@@ -32,16 +32,41 @@ describe("document", () => {
 		expect(response.headers.get("referrer-policy")).toBe("no-referrer");
 	});
 
-	test("the token is injected into index.html and nowhere else", async () => {
+	test("a fetch with no token gets 401 and never the page", async () => {
+		const bridge = start({
+			handlers: [testPlugin],
+			indexHtml: "<html><head></head><body><h1>app</h1></body></html>",
+		});
+		const response = await fetch(`${bridge.url}/`);
+		expect(response.status).toBe(401);
+		const text = await response.text();
+		expect(text).not.toContain(bridge.token);
+		expect(JSON.parse(text).error.code).toBe("unauthorized");
+	});
+
+	test("a wrong token is refused the same way, and a client-side route too", async () => {
+		const bridge = start({
+			handlers: [testPlugin],
+			indexHtml: "<html><head></head><body><h1>app</h1></body></html>",
+		});
+		for (const path of ["/?token=wrong", "/settings", "/settings?token=wrong"]) {
+			const response = await fetch(`${bridge.url}${path}`);
+			expect(response.status).toBe(401);
+		}
+	});
+
+	test("the page reads its token from the URL, so the HTML carries none", async () => {
 		const bridge = start({
 			handlers: [testPlugin],
 			indexHtml: "<!doctype html><html><head></head><body><h1>app</h1></body></html>",
 			assets: { "/assets/app.js": "export const answer = 42;" },
 		});
-		const document = await (await fetch(`${bridge.url}/`)).text();
+		const document = await (await fetch(`${bridge.url}/?token=${bridge.token}`)).text();
 		expect(document).toContain("__CRUST__");
 		expect(document).toContain("/_crust/invoke");
-		expect(document).toContain(bridge.token);
+		// The credential is the URL's, not the document's: a process that fetches `/` learns nothing.
+		expect(document).not.toContain(bridge.token);
+		expect(document).toContain('get("token")');
 		expect(document).toContain("baseUrl");
 
 		const assetResponse = await fetch(`${bridge.url}/assets/app.js`);
@@ -54,7 +79,7 @@ describe("document", () => {
 
 	test("a custom csp replaces the measured default", async () => {
 		const bridge = start({ handlers: [testPlugin], csp: "default-src 'none'" });
-		const response = await fetch(`${bridge.url}/`);
+		const response = await fetch(`${bridge.url}/?token=${bridge.token}`);
 		expect(response.headers.get("content-security-policy")).toBe("default-src 'none'");
 	});
 

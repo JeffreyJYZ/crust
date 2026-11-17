@@ -1,8 +1,10 @@
 /**
- * The document and asset half of the bridge: everything the page can fetch
- * without a token, because the page cannot hold its own token before it has
- * been served. `site/app/docs/design/page.mdx` is explicit that the built frontend is public —
- * the token protects IPC, not the HTML, JS and CSS the page is made of.
+ * The document and asset half of the bridge: the bytes a page is made of.
+ *
+ * Assets are served without a token because they carry no credential and the page requests them with
+ * bare `<script src>` URLs. The document is not in that class: `handler.ts` demands `?token=` before
+ * it is served, and this module therefore never writes the token into the HTML — the page reads it
+ * back out of its own `location.search`.
  */
 
 import { resolve, sep } from "node:path";
@@ -80,19 +82,21 @@ const EMPTY_DOCUMENT = [
 export async function documentResponse(handle: {
 	options: StartBridgeOptions;
 	csp: string;
-	token: string;
 	port: number;
 	/** The window this document is for, read from the request URL by `handler.ts`. */
 	windowLabel?: string;
 }): Promise<Response> {
-	const { options, csp, token, port, windowLabel } = handle;
+	const { options, csp, port, windowLabel } = handle;
 	const html = options.indexHtml ?? (await assetText("/index.html", options)) ?? EMPTY_DOCUMENT;
 	// The label the bridge itself saw on the document request, not one the page claims: it is
 	// written into the page's config so `window.label` can answer the window that asked for this
 	// document. A request that named none injects none, and the command refuses by name.
+	//
+	// The token is deliberately *not* here: the handler only serves this document to a request
+	// that already presented it, and the page reads it back out of `location.search`. Serialising
+	// it into the HTML is what made it decorative — any local process could fetch `/` and read it.
 	const config: CrustConfig = {
 		baseUrl: "",
-		token,
 		port,
 		...(windowLabel ? { window: windowLabel } : {}),
 	};

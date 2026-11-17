@@ -7,14 +7,64 @@
  * from the invoke request, to hand it to the handler as `ctx.window` — and both use this parser, so
  * the two can never disagree about what a label is.
  *
+ * The same URL also carries `?token=<token>` for a bridge-served document, and *that* is a
+ * credential: the document route refuses a request that does not present it, so a local process
+ * that merely fetches `/` receives a `401` instead of the page's bearer token. A dev-server page is
+ * served by Vite and never went through the bridge, so it carries no token and needs none.
+ *
  * A label is a routing hint, never authority: the page states which window it is, the bridge cannot
  * verify that, and it does not need to. The bearer token is the credential; a label only decides
  * which window a command is addressed to, so a page that claims another label can mislabel itself
- * and nothing else. Nothing here is a security boundary.
+ * and nothing else. Nothing about a label is a security boundary.
  */
 
 /** The query parameter that names a window. */
 export const WINDOW_PARAM = "window";
+
+/**
+ * The query parameter that carries the bridge token on the *document* URL.
+ *
+ * The document is the only route that can hand out a credential, so it hands out nothing: the URL
+ * carries the token, the route demands it, and the page reads it back out of `location.search`.
+ * That keeps a process that merely fetches `/` from receiving a token it never had.
+ */
+export const TOKEN_PARAM = "token";
+
+/**
+ * The running bridge's token, for the one caller that builds a document URL without a bridge
+ * handle in scope: `window.create` runs inside the `window` plugin, whose own construction site
+ * belongs to the runtime rather than to this file set. Set once when the app starts; a process
+ * has exactly one bridge, so this cannot go ambiguous.
+ */
+let bridgeToken: string | undefined;
+let bridgeOrigin: string | undefined;
+
+/** Record the token `window.create` must append. `undefined` clears it (tests, dev). */
+export function setBridgeToken(token: string | undefined, origin?: string): void {
+	bridgeToken = token;
+	bridgeOrigin = token === undefined ? undefined : origin;
+}
+
+/** The recorded token, or `undefined` when no bridge has started. */
+export function currentBridgeToken(): string | undefined {
+	return bridgeToken;
+}
+
+/**
+ * Whether a URL points at this app's own bridge. A page-created window may name an absolute URL —
+ * `/spare/child/absolute` reached through `location.origin` is the usual shape — and the document
+ * route refuses a request with no token, so "absolute" cannot mean "carries no credential". The
+ * comparison is on the origin the bridge recorded, so a genuinely foreign URL still passes through
+ * untouched and the token never leaves the app's own origin.
+ */
+export function isBridgeOrigin(url: string): boolean {
+	if (bridgeOrigin === undefined) return false;
+	try {
+		return new URL(url).origin === bridgeOrigin;
+	} catch {
+		return false;
+	}
+}
 
 /** A request-supplied identity: a non-blank string, or `undefined`. Never a guess. */
 export function asWindowLabel(value: unknown): string | undefined {
@@ -47,4 +97,34 @@ export function withWindowLabel(url: string, label: string): string {
 	if (windowLabelFromSearch(search) !== undefined) return url;
 	const added = `${WINDOW_PARAM}=${encodeURIComponent(label)}`;
 	return `${path}?${search.length > 0 ? `${search}&${added}` : added}${hash}`;
+}
+
+/** Read `?token=` out of a search string, or `undefined` when absent or blank. */
+export function tokenFromSearch(search: string): string | undefined {
+	const value = new URLSearchParams(search.replace(/^\?/, "")).get(TOKEN_PARAM);
+	if (value === null) return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Append `?token=<token>` to a bridge-served URL, keeping any query and hash it already carries.
+ *
+ * An existing `token` is replaced rather than duplicated: the token is the bridge's to define, so a
+ * stale one on an app-configured URL would otherwise shadow the live credential and every page load
+ * would answer `401`. A relative reference stays relative for the same reason `withWindowLabel`'s
+ * does — a query on `child/x` does not move the document.
+ */
+export function withToken(url: string, token: string): string {
+	const hashAt = url.indexOf("#");
+	const head = hashAt === -1 ? url : url.slice(0, hashAt);
+	const hash = hashAt === -1 ? "" : url.slice(hashAt);
+	const queryAt = head.indexOf("?");
+	const path = queryAt === -1 ? head : head.slice(0, queryAt);
+	const search = queryAt === -1 ? "" : head.slice(queryAt + 1);
+	const kept = search
+		.split("&")
+		.filter((pair) => pair.length > 0 && !pair.startsWith(`${TOKEN_PARAM}=`));
+	kept.push(`${TOKEN_PARAM}=${encodeURIComponent(token)}`);
+	return `${path}?${kept.join("&")}${hash}`;
 }

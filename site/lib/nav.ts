@@ -34,6 +34,7 @@ export const NAV: readonly NavGroup[] = [
 			{ label: "Tray", href: "/docs/guides/tray" },
 			{ label: "Notifications", href: "/docs/guides/notifications" },
 			{ label: "Files", href: "/docs/guides/files" },
+			{ label: "Permissions", href: "/docs/guides/permissions" },
 			{ label: "Frontend", href: "/docs/guides/frontend" },
 			{ label: "Dev server", href: "/docs/guides/dev" },
 			{ label: "Updater", href: "/docs/guides/updater" },

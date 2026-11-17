@@ -16,6 +16,7 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 | `handler-error`   | 500  | a handler threw something that was not a `CrustError`                              |
 | `too-large`       | 413  | body over 2 MiB                                                                    |
 | `not-implemented` | 501  | a command returned `notImplemented(...)`                                           |
+| `forbidden`       | 403  | a window label does not hold a capability covering the command                     |
 
 ## Messages
 
@@ -30,6 +31,7 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 | `unknown-plugin`  | `no plugin named "fs"`                                                         | registry lookup only, never over the bridge                    |
 | `not-implemented` | the first argument of `notImplemented(...)`, with `requires` set to the second | a command declined instead of pretending                       |
 | `handler-error`   | the thrown message, unchanged                                                  | a handler threw a plain `Error` or any other value             |
+| `forbidden`       | the action, the window label, and the capability that would have allowed it    | the label holds no capability covering the command             |
 
 `not-implemented` reaches the page as `{ "code": "not-implemented", "message": "…", "requires": "NSPasteboard" }`, so a caller can tell "this platform cannot do it" from "the call was wrong".
 

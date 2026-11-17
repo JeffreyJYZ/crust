@@ -1,6 +1,7 @@
 # extensions — fix wave report
 
-Lane: `extensions` (`17-extensions.md` findings 2, 3, 4, 5, 6). Branch `main`, HEAD `5d7502d`.
+Lane: `extensions` (`17-extensions.md` findings 2, 3, 4, 5, 6). Branch `main`; the coordinator landed
+this lane in `987f0bf` on top of `5d7502d`.
 
 ## Fixed
 

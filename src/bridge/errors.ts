@@ -13,6 +13,7 @@ export type CrustErrorCode =
 	| "handler-error"
 	| "too-large"
 	| "outside-scope"
+	| "forbidden"
 	| "not-implemented";
 
 const STATUS: Record<CrustErrorCode, number> = {
@@ -26,6 +27,7 @@ const STATUS: Record<CrustErrorCode, number> = {
 	"handler-error": 500,
 	"too-large": 413,
 	"outside-scope": 403,
+	forbidden: 403,
 	"not-implemented": 501,
 };
 

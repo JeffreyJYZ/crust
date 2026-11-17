@@ -9,6 +9,12 @@ import { type CommandHandler, isNotImplemented } from "../../plugins/define";
 import { asWindowLabel } from "../window-identity.ts";
 import { CrustError, toCrustError } from "../errors";
 import { encodeResult } from "./bytes.ts";
+import {
+	type CompiledCapabilities,
+	actionOf,
+	compileCapabilities,
+	forbiddenMessage,
+} from "./capabilities.ts";
 import { errorResponse, jsonResponse } from "./http.ts";
 
 /** Bodies over this size are refused before parsing, as the probe measured. */
@@ -21,12 +27,27 @@ export type Run = (
 	window?: string,
 ) => Promise<unknown>;
 
-/** Resolve `plugin.command` against the registry, with structured failures. */
-export function createRunner(handlers: Map<string, CommandHandler>, ctx: PluginContext): Run {
+/**
+ * Resolve `plugin.command` against the registry, with structured failures.
+ *
+ * `capabilities` is checked here, before the handler runs, so both payload kinds and every plugin
+ * share one gate: a plugin that forgets, or a third-party one, cannot open a hole. The in-process
+ * `app.invoke` path does not go through this runner, because that is the app calling itself.
+ */
+export function createRunner(
+	handlers: Map<string, CommandHandler>,
+	ctx: PluginContext,
+	capabilities: CompiledCapabilities = compileCapabilities(undefined),
+): Run {
 	return async function run(plugin, command, args, window) {
-		const handler: CommandHandler | undefined = handlers.get(`${plugin}.${command}`);
+		const key = `${plugin}.${command}`;
+		const handler: CommandHandler | undefined = handlers.get(key);
 		if (!handler) {
-			throw new CrustError("unknown-command", `${plugin}.${command}`);
+			throw new CrustError("unknown-command", key);
+		}
+		const action = actionOf(plugin, command);
+		if (!capabilities.allows(window, action)) {
+			throw new CrustError("forbidden", forbiddenMessage(action, window, capabilities));
 		}
 		// The calling window rides on the request, never in the handler's own arguments: it is a
 		// routing hint `window.label` answers, so no command can mistake it for a label it was given.
