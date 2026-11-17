@@ -85,12 +85,10 @@ export class DarwinPlatform implements Platform {
 		this.#pumpTimer = undefined;
 	}
 
-	/** Whether a pump timer is currently armed. */
 	get pumping(): boolean {
 		return this.#pumping;
 	}
 
-	/** How many slices this pump has run. Used by the timer test. */
 	get ticks(): number {
 		return this.#ticks;
 	}
@@ -161,9 +159,17 @@ export class DarwinPlatform implements Platform {
 		activateAppOnce(this.#app);
 	}
 
-	/** Stop the pump, ask AppKit to terminate, then leave. */
+	/** Stop the pump, mark the quit as deliberate, ask AppKit to terminate, then leave. */
 	quit(): void {
 		this.stopPump();
+		// `-terminate:` runs `applicationShouldTerminate:`, which defers with NSTerminateLater when a
+		// before-quit watcher exists — right for a user's ⌘Q, wrong here: this path IS the decision, and
+		// deferring spins a nested run loop for a reply nothing sends (a windowless process alive 40 s).
+		try {
+			this.lifecycle().immediate?.();
+		} catch {
+			// A platform without the C unit has nothing to tell.
+		}
 		if (this.#app) {
 			try {
 				S.v1(this.#app, "terminate:", 0);
@@ -184,16 +190,6 @@ export class DarwinPlatform implements Platform {
 	}
 }
 
-/**
- * Build the macOS platform. `appName` names failures; `activate` is `app.activate` (`always` when
- * omitted — that is what puts a window in the accessibility tree); `icon` is `app.icon`.
- */
-export function createPlatform(
-	options: {
-		appName?: string;
-		activate?: Activation["mode"];
-		icon?: string;
-	} = {},
-): DarwinPlatform {
-	return new DarwinPlatform(options);
-}
+/** `createPlatform` lives in `platform-factory.ts`; re-exported so every caller keeps its import. */
+export { createPlatform } from "./platform-factory.ts";
+

@@ -124,6 +124,7 @@ describe("honest failures", () => {
 		const registry = coreRegistry();
 		const calls: [string, Record<string, unknown>][] = [
 			["setTitle", { text: "x" }],
+			["setTooltip", { text: "x" }],
 			["setMenu", { items: [] }],
 			["show", {}],
 			["hide", {}],

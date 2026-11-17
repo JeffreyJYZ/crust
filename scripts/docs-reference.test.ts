@@ -40,7 +40,7 @@ describe("parity reference page", () => {
 
 	it("uses the exact fs and dialog command names", () => {
 		expect(parity).toContain("dialog.openPanel/savePanel/cancel");
-		expect(parity).toContain("fs.readTextFile/writeTextFile/list/stat/remove/rename");
+		expect(parity).toContain("fs.readTextFile/writeTextFile/readBinary/writeBinary/list/stat/remove/rename/mkdir");
 		expect(parity).not.toContain("dialog.open,");
 		expect(parity).not.toContain("dialog.save`");
 		expect(parity).not.toContain("fs.read/write");

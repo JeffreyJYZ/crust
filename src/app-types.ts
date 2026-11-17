@@ -57,6 +57,13 @@ export type CommandHandler = (args: Record<string, unknown>) => unknown | Promis
 export interface LifecycleSource {
 	take(): AppEvent[];
 	settle?(): void;
+	/**
+	 * Tell the platform this process is quitting on its own terms, so a terminate it initiates is
+	 * not deferred waiting for a reply. macOS defers `applicationShouldTerminate:` to let a
+	 * `before-quit` listener finish; that is right for a user's ⌘Q and wrong for `platform.quit()`,
+	 * which is already the decision — measured as a windowless process alive for 40 s.
+	 */
+	immediate?(): void;
 }
 
 /** An honest answer for a platform with no lifecycle notifications to bridge. */

@@ -32,6 +32,12 @@ export interface TrayTitleResult {
 	readonly text: string;
 }
 
+/** What `setTooltip` answers. The text is the value the item now shows on hover. */
+export interface TrayTooltipResult {
+	readonly ok: true;
+	readonly text: string;
+}
+
 export interface TrayMenuResult {
 	readonly ok: true;
 	readonly labels: string[];
@@ -45,6 +51,12 @@ export interface TrayDestroyResult {
 /** The native half, supplied by the platform. One live item per adapter. */
 export interface TrayNative {
 	setTitle(text: string): void;
+	/**
+	 * The hover tooltip. Optional: a platform that cannot set one leaves this
+	 * out, and the plugin answers `not-implemented` naming `setToolTip:` rather
+	 * than pretending the text was applied.
+	 */
+	setTooltip?(text: string): void;
 	/** Replace the whole menu. An empty list detaches it. */
 	setMenu(items: readonly TrayMenuItem[]): void;
 	show(): void;
@@ -82,9 +94,20 @@ export interface TraySetTitleArgs {
 	text: string;
 }
 
+export interface TraySetTooltipArgs {
+	text: string;
+}
+
 export interface TraySetMenuArgs {
 	items: readonly TrayMenuItem[];
 }
 
 /** The command names, in the order the plugin declares them. */
-export const TRAY_COMMANDS = ["setTitle", "setMenu", "show", "hide", "destroy"] as const;
+export const TRAY_COMMANDS = [
+	"setTitle",
+	"setMenu",
+	"setTooltip",
+	"show",
+	"hide",
+	"destroy",
+] as const;

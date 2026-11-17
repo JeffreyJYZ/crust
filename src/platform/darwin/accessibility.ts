@@ -8,7 +8,21 @@
  */
 
 import { accessibilityUnit, type AccessibilityUnit } from "./accessibility-ffi.ts";
+import { accessibilityPageUnit, type AccessibilityPageUnit } from "./accessibility-page-ffi.ts";
+import { cstr } from "./objc.ts";
+import type {
+	AnnouncePriority,
+	AnnounceReport,
+	FocusReport,
+	TitleReport,
+} from "@/plugins/accessibility-types";
 
+export {
+	ACCESSIBILITY_PAGE_SYMBOL_NAMES,
+	accessibilityPageSource,
+	accessibilityPageUnit,
+	accessibilityPageUnitStatus,
+} from "./accessibility-page-ffi.ts";
 export {
 	ACCESSIBILITY_SYMBOL_NAMES,
 	accessibilitySource,
@@ -16,6 +30,7 @@ export {
 	accessibilityUnitStatus,
 } from "./accessibility-ffi.ts";
 export type { AccessibilityUnit } from "./accessibility-ffi.ts";
+export type { AccessibilityPageUnit } from "./accessibility-page-ffi.ts";
 
 /**
  * What the walk found. `counted` carries a real number, `noWindowsListed` means the AX window list
@@ -38,6 +53,12 @@ export interface DarwinAccessibilityAdapter {
 	/** Raises the system prompt and answers the state after it: a human answers, so false is common. */
 	prompt(): boolean;
 	elementCount(): AxElementReport;
+	/** Post an announcement; `announced` is the post, not the speech. */
+	announce(text: string, priority: AnnouncePriority): AnnounceReport;
+	/** Set the window's accessible name. No label means the key window. */
+	title(text: string, label?: string): TitleReport;
+	/** Move assistive focus to a window. No label means the key window. */
+	focus(label?: string): FocusReport;
 }
 
 const message = (error: unknown): string =>
@@ -68,6 +89,15 @@ function report(unit: AccessibilityUnit, answer: number): AxElementReport {
 	};
 }
 
+/** The page unit, or the reason it could not be compiled — a refusal, never a throw. */
+function pageCompiled(): AccessibilityPageUnit | string {
+	try {
+		return accessibilityPageUnit();
+	} catch (error) {
+		return `the accessibility page C unit did not compile: ${message(error)}`;
+	}
+}
+
 /** The native half of `crust:accessibility`; see the file comment for the prompt rule. */
 export function darwinAccessibilityAdapter(): DarwinAccessibilityAdapter {
 	return {
@@ -87,6 +117,38 @@ export function darwinAccessibilityAdapter(): DarwinAccessibilityAdapter {
 				return { count: 0, status: AX_STATUS.refused, reason: unit };
 			}
 			return report(unit, Number(unit.symbols.crust_ax_element_count() ?? -2));
+		},
+		announce: (text, priority) => {
+			const unit = pageCompiled();
+			if (typeof unit === "string") return { announced: false, reason: unit };
+			const posted = Number(
+				unit.symbols.crust_ax_announce(cstr(text), priority === "assertive" ? 1 : 0) ?? 0,
+			);
+			return posted === 1
+				? { announced: true, reason: "AXAnnouncementRequestedNotification was posted" }
+				: { announced: false, reason: "the announcement dictionary could not be built" };
+		},
+		title: (text, label) => {
+			const unit = pageCompiled();
+			if (typeof unit === "string") return { titled: false, reason: unit };
+			const applied = Number(unit.symbols.crust_ax_title(cstr(text), cstr(label ?? "")) ?? 0);
+			return applied === 1
+				? { titled: true, reason: "setAccessibilityLabel: was applied" }
+				: {
+						titled: false,
+						reason: `no window named ${JSON.stringify(label ?? "")} accepted an accessible label`,
+					};
+		},
+		focus: (label) => {
+			const unit = pageCompiled();
+			if (typeof unit === "string") return { focused: false, reason: unit };
+			const moved = Number(unit.symbols.crust_ax_focus(cstr(label ?? "")) ?? 0);
+			return moved === 1
+				? { focused: true, reason: "AXFocusedWindow and AXFocused were set and posted" }
+				: {
+						focused: false,
+						reason: `no AX window matched ${JSON.stringify(label ?? "the key window")}`,
+					};
 		},
 	};
 }

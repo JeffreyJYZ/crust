@@ -11,12 +11,12 @@ export function failure(error: unknown): TrayFailure {
 	return { ok: false, code, message };
 }
 
-export function invalidText(args: unknown): TrayFailure {
+export function invalidText(args: unknown, command = "setTitle"): TrayFailure {
 	const seen = typeof args === "object" && args !== null ? JSON.stringify(args) : String(args);
 	return {
 		ok: false,
 		code: "invalid-text",
-		message: `crust: tray.setTitle needs { text } with a string, got ${seen}`,
+		message: `crust: tray.${command} needs { text } with a string, got ${seen}`,
 	};
 }
 

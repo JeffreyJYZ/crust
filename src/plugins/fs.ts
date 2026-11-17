@@ -9,8 +9,11 @@ import { resolve } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 import { definePlugin } from "./define";
+import { binaryCommands } from "./fs-binary.ts";
 import { createFsScope, type FsScopeOptions, scopeCommands } from "./fs-scope.ts";
 
+export type { MkdirArgs, MkdirResult, ReadBinaryArgs } from "./fs-binary.ts";
+export type { WriteBinaryArgs, WriteBinaryResult } from "./fs-binary.ts";
 export type { FsGrant, FsScopeOptions, FsScopeStatus } from "./fs-scope.ts";
 
 export interface ReadTextFileArgs {
@@ -184,6 +187,7 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 				await attempt("rename", source, renamePath(source, destination));
 				return { path: resolve(destination) };
 			},
+			...binaryCommands(scoped),
 			...scopeCommands(scope),
 		},
 	});

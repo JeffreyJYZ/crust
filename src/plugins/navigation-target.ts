@@ -44,3 +44,25 @@ export function target(args: unknown): { label?: string } | NavigationFailure {
 	if (typeof label !== "string" || label.length === 0) return badLabel(label);
 	return { label };
 }
+
+/** A present but unusable URL, refused before any native load starts. */
+function badUrl(seen: unknown): NavigationFailure {
+	return {
+		ok: false,
+		code: "bad-request",
+		message: `crust: navigation url must be a non-empty string, got ${JSON.stringify(seen)}`,
+	};
+}
+
+/**
+ * `loadUrl`'s arguments: the URL plus the window the shared `target` already resolves.
+ * A malformed URL is the caller's error and keeps the resolver's `bad-request`.
+ */
+export function loadArgs(args: unknown): { url: string; label?: string } | NavigationFailure {
+	const chosen = target(args);
+	if ("ok" in chosen) return chosen;
+	if (typeof args !== "object" || args === null) return badUrl(args);
+	const url = (args as { url?: unknown }).url;
+	if (typeof url !== "string" || url.length === 0) return badUrl(url);
+	return { url, ...chosen };
+}

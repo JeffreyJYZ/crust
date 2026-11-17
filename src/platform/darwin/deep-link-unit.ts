@@ -28,6 +28,7 @@ export interface DeepLinkUnit {
 		crust_deeplink_argv: (argc: number, argv: number) => number;
 		crust_lifecycle_take: () => number;
 		crust_lifecycle_settle: () => number;
+		crust_lifecycle_immediate: () => void;
 	};
 }
 
@@ -51,6 +52,7 @@ function compile(): DeepLinkUnit {
 			crust_deeplink_argv: { args: [I32, P], returns: I32 },
 			crust_lifecycle_take: { args: [], returns: I32 },
 			crust_lifecycle_settle: { args: [], returns: I32 },
+			crust_lifecycle_immediate: { args: [], returns: V },
 		},
 	}) as unknown as DeepLinkUnit;
 }

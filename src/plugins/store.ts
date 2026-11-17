@@ -1,8 +1,7 @@
 /**
  * `crust:store` — Tauri's persistent key-value store: one JSON object under the app's data directory, held in memory so a read costs nothing and written atomically on every change. A corrupt file is moved aside once (`store.json.corrupt`) and the store starts empty, which the next answer reports as `recovered` so a page can tell it lost data instead of mistaking it for a missing key.
+ * Every command takes an optional `{ name }`: the empty name is the original `store.json`, a named one is its own `store.<name>.json` file, so two features keep separate keys without prefixing strings. Scopes are created lazily and cached per name.
  */
-
-import { join } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 import { definePlugin } from "./define";
@@ -10,44 +9,45 @@ import {
 	assertJsonValue,
 	CORRUPT_SUFFIX,
 	defaultStoreRoot,
-	readStore,
 	STORE_FILE,
 	type StoreEntries,
-	writeStore,
 } from "./store-file";
+import { StoreScope, storeFileFor, type StoreAnswer } from "./store-scope";
 
 export { CORRUPT_SUFFIX, defaultStoreRoot, STORE_FILE, type StoreEntries };
+export {
+	NAMED_STORE_PREFIX,
+	NAMED_STORE_SUFFIX,
+	storeFileFor,
+	type StoreAnswer,
+} from "./store-scope";
 
-/** Where the file goes; a test injects a temp root, an app names its own id. */
+/** Where the store files go; a test injects a temp root, an app names its own id. */
 export interface StoreAdapter {
-	/** Data directory the `store.json` sits under. */
+	/** Data directory the store files sit under. */
 	root?: string;
 	/** Bundle id naming the default root, `~/Library/Application Support/<id>`. */
 	appId?: string;
 	home?: string;
 }
 
-export interface StoreGetArgs {
+/** The optional store name every command accepts. */
+export interface StoreNamedArgs {
+	name?: string;
+}
+
+export interface StoreGetArgs extends StoreNamedArgs {
 	key: string;
 }
 
-export interface StoreSetArgs {
+export interface StoreSetArgs extends StoreNamedArgs {
 	key: string;
 	/** Anything JSON holds unchanged; `undefined`, a function or a cycle is a `bad-request`. */
 	value: unknown;
 }
 
-export interface StoreKeyArgs {
+export interface StoreKeyArgs extends StoreNamedArgs {
 	key: string;
-}
-
-/** Every command's answer, so a caller learns where the file is without joining strings. */
-export interface StoreAnswer {
-	ok: true;
-	/** Absolute path of `store.json`. */
-	path: string;
-	/** Set once, on the first answer after a corrupt file was moved aside. */
-	recovered?: string;
 }
 
 export interface StoreGetResult extends StoreAnswer {
@@ -83,82 +83,85 @@ function requireKey(value: unknown, command: string): string {
 	return value;
 }
 
+/** Read the optional store name; a present but wrong-typed value is the caller's error. */
+function readName(args: unknown): string {
+	if (args === undefined || args === null) return "";
+	if (typeof args !== "object") {
+		throw new CrustError("bad-request", "store: command args must be an object");
+	}
+	const value = (args as { name?: unknown }).name;
+	if (value === undefined) return "";
+	if (typeof value !== "string") {
+		throw new CrustError("bad-request", 'store: "name" must be a string when given');
+	}
+	return value;
+}
+
 export function createStorePlugin(adapter: StoreAdapter = {}) {
-	const file = join(
-		adapter.root ?? defaultStoreRoot(adapter.appId ?? "crust", adapter.home),
-		STORE_FILE,
-	);
-	/** Read once on the first command, so a store a page never touches costs no disk access. */
-	let entries: StoreEntries | undefined;
-	/** Set by the load that moved a corrupt file aside, cleared by the answer that reports it. */
-	let recovered: string | undefined;
-
-	async function loaded(): Promise<StoreEntries> {
-		if (entries !== undefined) return entries;
-		const read = await readStore(file);
-		entries = read.entries;
-		recovered = read.corrupt;
-		return entries;
-	}
-
-	/** Called after the work, so a load inside this command reports its recovery in this answer. */
-	function answer(): StoreAnswer {
-		const base: StoreAnswer = { ok: true, path: file };
-		if (recovered !== undefined) {
-			base.recovered = recovered;
-			recovered = undefined;
-		}
-		return base;
-	}
-
-	async function persist(next: StoreEntries): Promise<void> {
-		await writeStore(file, next);
-		entries = next;
-	}
+	const root = adapter.root ?? defaultStoreRoot(adapter.appId ?? "crust", adapter.home);
+	/** One scope per name, created on first use and reused for the life of the plugin. */
+	const scopes = new Map<string, StoreScope>();
+	const scopeFor = (name: string): StoreScope => {
+		const existing = scopes.get(name);
+		if (existing !== undefined) return existing;
+		const created = new StoreScope(storeFileFor(root, name));
+		scopes.set(name, created);
+		return created;
+	};
+	const forArgs = (args: unknown): StoreScope => scopeFor(readName(args));
 
 	return definePlugin({
 		name: "store",
 		commands: {
-			get: async ({ key }: StoreGetArgs): Promise<StoreGetResult> => {
-				const name = requireKey(key, "get");
-				const current = await loaded();
-				return { ...answer(), value: Object.hasOwn(current, name) ? current[name] : null };
+			get: async (args: StoreGetArgs): Promise<StoreGetResult> => {
+				const store = forArgs(args);
+				const name = requireKey(args.key, "get");
+				const current = await store.loaded();
+				return {
+					...store.answer(),
+					value: Object.hasOwn(current, name) ? current[name] : null,
+				};
 			},
-			set: async ({ key, value }: StoreSetArgs): Promise<StoreSetResult> => {
-				const name = requireKey(key, "set");
-				assertJsonValue(value, name);
-				const current = await loaded();
+			set: async (args: StoreSetArgs): Promise<StoreSetResult> => {
+				const store = forArgs(args);
+				const name = requireKey(args.key, "set");
+				assertJsonValue(args.value, name);
+				const current = await store.loaded();
 				// Store the JSON round trip, so what a later `get` answers is what is on disk and a
 				// caller mutating its own object cannot drift the in-memory copy.
-				const stored = JSON.parse(JSON.stringify(value)) as unknown;
-				await persist({ ...current, [name]: stored });
-				return { ...answer(), key: name };
+				const stored = JSON.parse(JSON.stringify(args.value)) as unknown;
+				await store.persist({ ...current, [name]: stored });
+				return { ...store.answer(), key: name };
 			},
-			delete: async ({ key }: StoreKeyArgs): Promise<StoreDeleteResult> => {
-				const name = requireKey(key, "delete");
-				const current = await loaded();
+			delete: async (args: StoreKeyArgs): Promise<StoreDeleteResult> => {
+				const store = forArgs(args);
+				const name = requireKey(args.key, "delete");
+				const current = await store.loaded();
 				if (!Object.hasOwn(current, name))
-					return { ...answer(), key: name, existed: false };
+					return { ...store.answer(), key: name, existed: false };
 				const next = { ...current };
 				delete next[name];
-				await persist(next);
-				return { ...answer(), key: name, existed: true };
+				await store.persist(next);
+				return { ...store.answer(), key: name, existed: true };
 			},
-			keys: async (): Promise<StoreKeysResult> => {
-				const current = await loaded();
+			keys: async (args?: StoreNamedArgs): Promise<StoreKeysResult> => {
+				const store = forArgs(args);
+				const current = await store.loaded();
 				// Code-unit order, so the list is the same on every machine and locale.
-				return { ...answer(), keys: Object.keys(current).sort() };
+				return { ...store.answer(), keys: Object.keys(current).sort() };
 			},
-			clear: async (): Promise<StoreClearResult> => {
-				const current = await loaded();
+			clear: async (args?: StoreNamedArgs): Promise<StoreClearResult> => {
+				const store = forArgs(args);
+				const current = await store.loaded();
 				const cleared = Object.keys(current).length;
-				await persist({});
-				return { ...answer(), cleared };
+				await store.persist({});
+				return { ...store.answer(), cleared };
 			},
-			save: async (): Promise<StoreSaveResult> => {
-				const current = await loaded();
-				await persist({ ...current });
-				return { ...answer(), keys: Object.keys(current).length };
+			save: async (args?: StoreNamedArgs): Promise<StoreSaveResult> => {
+				const store = forArgs(args);
+				const current = await store.loaded();
+				await store.persist({ ...current });
+				return { ...store.answer(), keys: Object.keys(current).length };
 			},
 		},
 	});

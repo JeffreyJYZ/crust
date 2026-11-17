@@ -51,6 +51,11 @@ export interface NavigationArgs {
 	label?: string;
 }
 
+/** `loadUrl` aims one window's webview at a URL; the label picks the window as it does everywhere else. */
+export interface NavigationLoadUrlArgs extends NavigationArgs {
+	url: string;
+}
+
 /**
  * The native half. The plugin owns the event names; the adapter owns the webview.
  * Every member takes the window label last, so the plugin can aim one command at one window
@@ -69,4 +74,10 @@ export interface NavigationAdapter {
 	reload(label?: string): boolean;
 	goBack(label?: string): boolean;
 	goForward(label?: string): boolean;
+	/**
+	 * Start a load of `url`. Optional: a platform whose webview cannot be pointed
+	 * at an arbitrary URL leaves this out, and the plugin answers `not-implemented`
+	 * naming `loadRequest:` instead of pretending a load began.
+	 */
+	loadUrl?(url: string, label?: string): boolean;
 }

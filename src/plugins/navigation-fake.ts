@@ -38,6 +38,7 @@ export function fakeNavigation(
 		reload?: boolean;
 		back?: boolean;
 		forward?: boolean;
+		load?: boolean;
 	} = {},
 ): RecordedNavigation {
 	const calls: string[] = [];
@@ -67,6 +68,10 @@ export function fakeNavigation(
 		goForward: () => {
 			calls.push("goForward");
 			return options.forward ?? false;
+		},
+		loadUrl: (url: string) => {
+			calls.push(`loadUrl:${url}`);
+			return options.load ?? true;
 		},
 	};
 	return {

@@ -106,10 +106,10 @@ export async function nativePlugins(
 	const navigation = await import("@/platform/darwin/navigation");
 	const find = await import("@/platform/darwin/find");
 	const downloads = await import("@/platform/darwin/downloads");
-	const network = await import("@/platform/darwin/network");
 	const crash = await import("@/platform/darwin/crash");
 	const locale = await import("@/platform/darwin/locale");
 	const { startCrashGuard } = await import("@/runtime-crash-guard");
+	const { darwinNetworkPlugin } = await import("@/runtime-network");
 	const { createNavigationPlugin } = await import("@/plugins/navigation");
 	const { createFindInPagePlugin } = await import("@/plugins/findinpage");
 	const {
@@ -127,7 +127,6 @@ export async function nativePlugins(
 		createPowerPlugin,
 		createAccessibilityPlugin,
 		createDownloadsPlugin,
-		createNetworkPlugin,
 		createCrashReporterPlugin,
 		createI18nPlugin,
 		deepLink,
@@ -184,7 +183,7 @@ export async function nativePlugins(
 		createDownloadsPlugin(downloads.darwinDownloadsAdapter({ webview: webviewFor }), {
 			app: appId,
 		}),
-		createNetworkPlugin(network.darwinNetworkAdapter()),
+		darwinNetworkPlugin(),
 		createCrashReporterPlugin({ root: appRoot, guard, native: crashNative }),
 		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
 		keychainPlugin,

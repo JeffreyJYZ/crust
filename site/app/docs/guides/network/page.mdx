@@ -1,12 +1,41 @@
 # Network
 
-The rules a page's own requests are matched against, and the log of what was seen. Interception is a `WKURLSchemeHandler` the darwin adapter registers, so the decision runs in the process that owns the webview.
+Two surfaces under one plugin name, and they answer different questions. **Connectivity** — `status` and `onChange` — reports whether this machine has a path to the network. **Interception** — the rules and the log — reports what happened to a request under the `crust-net` scheme. Neither one implies the other: an app can be online with no rules installed, and a rule set can block a request on a machine with no network at all.
+
+## Connectivity
+
+| command    | arguments | answer                                       |
+| ---------- | --------- | -------------------------------------------- |
+| `status`   | none      | `{ ok: true, online, interfaceKinds }`       |
+| `onChange` | none      | `{ ok: true, event: "network:change" }`      |
+
+```ts
+const { online, interfaceKinds } = await window.crust.invoke("network", "status");
+if (!online) showOfflineBanner();
+
+await window.crust.invoke("network", "onChange");
+window.crust.listen("network:change", ({ online, interfaceKinds }) => {
+	banner.hidden = online;
+});
+```
+
+`online` comes from `SCNetworkReachability`, not from a probe request: it answers whether a path exists, so a captive portal or a refused DNS lookup still reads online, and a machine whose radio is off reads offline. `interfaceKinds` is the set of interface types the machine has — `wifi`, `wired`, `cellular`, `other` — from `SCNetworkInterfaceCopyAll`, so a page can say "on cellular, do not fetch" without guessing from what is missing.
+
+The observer is scheduled on the main run loop, which is the same loop the app pumps events through. `onChange` installs it once; a second call replaces the listener rather than stacking a duplicate `network:change` per call.
+
+**Not on a platform without the call:** `status` and `onChange` answer `not-implemented` naming `SCNetworkReachability in SystemConfiguration` (macOS), `INetworkListManager in NetworkListManager` (Windows) or `NetworkChangeNotifier from Gdk` (Linux). A `status` with no adapter is a refusal, never an empty `{ online: false }` that reads as a real reading.
+
+The interception half is a `WKURLSchemeHandler` the darwin adapter registers, so its decision runs in the process that owns the webview, and it is registered with `darwinNetworkAdapter()` — `window.crust.invoke("network", …)` works in an app that names no plugin.
 
 An `allow` rule **serves the bytes it carries**. It is never a pass-through and never a fetch: the handler answers `didReceiveResponse:` / `didReceiveData:` / `didFinish:` itself, with an `NSHTTPURLResponse` carrying `Content-Type`, `Content-Length` and `Access-Control-Allow-Origin`.
 
 Registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
 
-## Commands
+## Interception
+
+An `allow` rule **serves the bytes it carries**. It is never a pass-through and never a fetch: the handler answers `didReceiveResponse:` / `didReceiveData:` / `didFinish:` itself, with an `NSHTTPURLResponse` carrying `Content-Type`, `Content-Length` and `Access-Control-Allow-Origin`.
+
+### Commands
 
 | command    | arguments   | answer                                            |
 | ---------- | ----------- | ------------------------------------------------- |
@@ -86,10 +115,8 @@ One event per intercepted task, emitted in the same call that answers WebKit. `c
 
 ## What it does not intercept
 
-Only requests under the `crust-net` scheme reach `decide`. A page loading ordinary `https://` URLs is not observed by this plugin; a rule list is not a proxy, and `setRules` cannot block a request the handler never sees.
-
-The parity row for this surface is `partial` for two reasons: that scheme scope, and because a page inside a crust window cannot be driven yet — the proof above runs against a probe-owned webview with the same WebKit and the same handler.
+Only requests under the `crust-net` scheme reach `decide`. A page loading ordinary `https://` URLs is not observed by this plugin; a rule list is not a proxy, and `setRules` cannot block a request the handler never sees. `status` answers that other question — whether a path exists at all — and a rule list never changes its answer.
 
 ## Failure shape
 
-Without an adapter, each command answers `not-implemented` with `requires: "WKURLSchemeHandler"`. A malformed rule list is a rejected invoke carrying `bad-request`, naming the rule index and field.
+`status` and `onChange` without an adapter answer `not-implemented` naming their platform call; the interceptor's four answer `not-implemented` with `requires: "WKURLSchemeHandler"`. A malformed rule list is a rejected invoke carrying `bad-request`, naming the rule index and field.

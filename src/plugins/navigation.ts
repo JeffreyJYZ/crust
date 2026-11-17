@@ -12,11 +12,13 @@ import {
 	type PluginContext,
 	type PluginDefinition,
 } from "./define";
+import { loadUrlCommand } from "./navigation-load";
 import { failure, target } from "./navigation-target";
 import type {
 	NavigationAdapter,
 	NavigationArgs,
 	NavigationFailure,
+	NavigationLoadUrlArgs,
 	NavigationState,
 } from "./navigation-types";
 
@@ -27,6 +29,7 @@ export type {
 	NavigationEventPayload,
 	NavigationFailure,
 	NavigationInstall,
+	NavigationLoadUrlArgs,
 	NavigationState,
 } from "./navigation-types";
 
@@ -57,6 +60,10 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 			args: NavigationArgs | undefined,
 			ctx: PluginContext,
 		) => { ok: true; moved: boolean } | NavigationFailure | NotImplemented;
+		loadUrl: (
+			args: NavigationLoadUrlArgs,
+			ctx: PluginContext,
+		) => { ok: true; loaded: boolean } | NavigationFailure | NotImplemented;
 	}
 > {
 	const native = adapter;
@@ -172,6 +179,19 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 					moved: web.goForward(label),
 				}));
 			},
+			/** Point one window's webview at `url`. `loaded: false` means no webview was there. */
+			loadUrl: (args: NavigationLoadUrlArgs, ctx: PluginContext) =>
+				loadUrlCommand(
+					{
+						adapter: native,
+						missing,
+						setSink: (emit) => {
+							sink = emit;
+						},
+					},
+					args,
+					ctx,
+				),
 		},
 	});
 }

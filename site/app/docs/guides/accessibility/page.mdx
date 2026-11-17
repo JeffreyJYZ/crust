@@ -1,24 +1,72 @@
 # Accessibility
 
-Whether this process may drive the accessibility API, the one system prompt that grants it, and a count of the app's own window's AX children. Registered by the macOS runtime with `darwinAccessibilityAdapter()`.
+Two surfaces in one plugin. `announce`, `title` and `focus` let a page **speak through** the platform's accessibility layer. `trusted`, `prompt` and `elementCount` ask **whether** the OS will expose the app's own accessibility tree. The first is how you reach a screen reader; the second is a diagnostic about the tree itself.
 
-This is about the **AX API** — reading and driving other apps. It is not about whether crust's own windows expose an accessibility tree; that is a property of the webview and the native window, and `elementCount` is the only thing here that touches it.
+Registered by the macOS runtime with `darwinAccessibilityAdapter()`.
 
 ## Commands
 
-| command        | arguments | answer                                  |
-| -------------- | --------- | --------------------------------------- |
-| `trusted`      | none      | `{ ok: true, trusted }`                 |
-| `prompt`       | none      | `{ ok: true, trusted, prompted: true }` |
-| `elementCount` | none      | `{ ok: true, count }`                   |
+| command        | arguments                          | answer                                            |
+| -------------- | ---------------------------------- | ------------------------------------------------- |
+| `announce`     | `{ text, priority? }`              | `{ ok: true, announced, trusted, priority, reason }` |
+| `title`        | `{ text, label? }`                 | `{ ok: true, titled, reason }`                    |
+| `focus`        | `{ label? }`                       | `{ ok: true, focused, reason }`                   |
+| `trusted`      | none                               | `{ ok: true, trusted }`                           |
+| `prompt`       | none                               | `{ ok: true, trusted, prompted: true }`           |
+| `elementCount` | none                               | `{ ok: true, count }`                             |
 
-## Trust
+## Speaking through the platform
+
+```ts
+await window.crust.invoke("accessibility", "announce", {
+	text: "Report saved",
+	priority: "polite",
+});
+```
+
+macOS posts `NSAccessibilityAnnouncementRequestedNotification` through `NSAccessibilityPostNotificationWithUserInfo`, with `NSAccessibilityAnnouncementKey` and `NSAccessibilityPriorityKey` in the user-info dictionary. `priority: "assertive"` is priority 90 and interrupts; `"polite"` is 50 and waits for a gap. Anything that is not `assertive` is `polite`, which is also the default.
+
+**An untrusted process still announces.** The post is accepted and macOS drops it, so the answer is `announced: true` with `trusted` beside it rather than a refusal that claims a policy the OS does not apply. Read both fields: `announced` says the call was made, `trusted` says whether anything will be spoken.
+
+`announce` is not a live region. Nothing is inserted into the DOM, so there is no `role="status"` element to find and no 50 ms clear-and-set dance — the platform speaks the string.
+
+## Naming the window
+
+```ts
+await window.crust.invoke("accessibility", "title", { text: "Settings — Main" });
+```
+
+Sets the window's accessible name via `-setAccessibilityLabel:`, which is the string a screen reader reads when it lands on the window. It is deliberately separate from the visible title: `-setTitle:` is untouched, so the title bar and the spoken name can differ. Omit `label` to mean the key window.
+
+## Moving assistive focus
+
+```ts
+await window.crust.invoke("accessibility", "focus", { label: "main" });
+```
+
+Sets `AXFocusedWindow` and `AXFocused`, then posts `AXFocusedWindowChanged` and `AXFocusedUIElementChanged`. A command that only set the attribute would record the intent without moving VoiceOver; the two posts are what makes it move. `focus` takes no text — a page cannot type into another app through it.
+
+A `label` matches a window's title or its existing accessible name. Unknown labels answer `focused: false` with the name in `reason`, never a throw.
+
+## Platforms without an announcement surface
+
+| platform | `announce` answers                                                     |
+| -------- | ---------------------------------------------------------------------- |
+| macOS    | posts the notification                                                 |
+| Linux    | `not-implemented`, `requires: "gtk_widget_announce"`                    |
+| Windows  | `not-implemented`, `requires: "NotifyWinEvent EVENT_OBJECT_LIVEREGIONCHANGED"` |
+
+The Linux answer names GTK 3, not GTK 4: `gtk_widget_announce` arrived in GTK 4 and crust's Linux shim loads `libgtk-3.so.0`, so the call does not exist in the toolkit the app actually links.
+
+The Windows answer is a deliberate refusal. `NotifyWinEvent` with `EVENT_OBJECT_LIVEREGIONCHANGED` is a live-region *change* event, which a screen reader may read on its own schedule; it is not a request to speak a particular string. Wiring it up and calling it an announcement would be the dishonest answer, so it is named and refused.
+
+## The trust probe
 
 ```ts
 const { trusted } = await window.crust.invoke("accessibility", "trusted");
 ```
 
-A read: it never raises a dialog. Use it before a call that needs the API, so the app can explain itself instead of failing opaquely.
+A read: it never raises a dialog. Use it before a call that needs the AX API, so the app can explain itself instead of failing opaquely.
 
 ```ts
 const { trusted, prompted } = await window.crust.invoke("accessibility", "prompt");
@@ -36,10 +84,10 @@ The walk starts at the app's own AX element and counts the children of its first
 
 Two states are not a count, and both answer `not-implemented` rather than `0`:
 
-| `requires`                      | meaning                                           |
-| ------------------------------- | ------------------------------------------------- |
-| `NSWindow`                      | no window is up yet, so there is no tree to count |
-| `AXUIElementCopyAttributeValue` | the AX API refused the walk                       |
+| `requires`                            | meaning                                                         |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `AXUIElementCopyAttributeValue (AXWindows)` | AX listed no windows for this process                      |
+| `AXUIElementCopyAttributeValue`       | the AX API refused the walk                                     |
 
 A count of zero from a window that does not exist is not evidence of anything, which is why the two are separated.
 
@@ -60,8 +108,8 @@ So a zero is not by itself proof that the tree is missing: check `trusted` first
 
 ## Failure shape
 
-Without an adapter — every platform but macOS — each command answers `not-implemented` with `requires: "AXIsProcessTrusted"`.
+Without an adapter — every platform but macOS — each command answers `not-implemented` with the call that platform would need: `AXIsProcessTrusted` on macOS, `gtk_widget_announce` and the ATK calls on Linux, `IUIAutomation` and the UIA calls on Windows. An app that passes its own adapter without one of the three page-facing methods gets `not-implemented` naming that method's call, never a silent success.
 
 ## Limits
 
-The walk reads the app's own element only. Reading another process's tree needs `trusted: true` and code this plugin does not ship.
+`elementCount` walks the app's own element only. Reading another process's tree needs `trusted: true` and code this plugin does not ship. `announce` speaks; it does not read a screen reader's state, and there is no query for what is currently focused — use `focus` to move, not to find out where you are.

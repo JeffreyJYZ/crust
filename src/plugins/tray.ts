@@ -19,7 +19,9 @@ import type {
 	TrayResult,
 	TraySetMenuArgs,
 	TraySetTitleArgs,
+	TraySetTooltipArgs,
 	TrayTitleResult,
+	TrayTooltipResult,
 } from "./tray-types.ts";
 
 export * from "./tray-types.ts";
@@ -28,6 +30,7 @@ export function createTrayPlugin(adapter?: TrayNative): PluginDefinition<
 	"tray",
 	{
 		setTitle: (args: TraySetTitleArgs) => TrayTitleResult | TrayFailure | NotImplemented;
+		setTooltip: (args: TraySetTooltipArgs) => TrayTooltipResult | TrayFailure | NotImplemented;
 		setMenu: (
 			args: TraySetMenuArgs,
 			ctx?: PluginContext,
@@ -42,6 +45,14 @@ export function createTrayPlugin(adapter?: TrayNative): PluginDefinition<
 			`tray.${command} needs NSStatusBar and NSStatusItem, which this platform does not ` +
 				"expose. Pass a TrayNative adapter to createTrayPlugin on a platform that has one.",
 			"NSStatusBar",
+		);
+
+	/** An adapter without a tooltip setter answers by name, never a silent no-op. */
+	const missingTooltip = () =>
+		notImplemented(
+			"tray.setTooltip needs -[NSStatusItem setToolTip:] (or the button's), which this " +
+				"platform's status item does not expose. The tooltip was not applied.",
+			"setToolTip:",
 		);
 
 	/**
@@ -77,6 +88,19 @@ export function createTrayPlugin(adapter?: TrayNative): PluginDefinition<
 				const text = readText(args);
 				if (text === undefined) return invalidText(args);
 				const result = act("setTitle", (native) => native.setTitle(text));
+				if (result !== undefined && (result as TrayFailure).ok === false) return result;
+				return { ok: true, text };
+			},
+
+			setTooltip: (
+				args: TraySetTooltipArgs,
+			): TrayTooltipResult | TrayFailure | NotImplemented => {
+				if (!adapter) return missing("setTooltip");
+				const text = readText(args);
+				if (text === undefined) return invalidText(args, "setTooltip");
+				const setter = (adapter as Partial<TrayNative>).setTooltip;
+				if (typeof setter !== "function") return missingTooltip();
+				const result = act("setTooltip", (native) => setter.call(native, text));
 				if (result !== undefined && (result as TrayFailure).ok === false) return result;
 				return { ok: true, text };
 			},

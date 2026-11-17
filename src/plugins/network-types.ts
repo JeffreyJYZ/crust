@@ -95,8 +95,24 @@ export interface NetworkState {
 	reason: string;
 }
 
+/**
+ * The two connectivity commands, beside the interception four. They answer a different question —
+ * "does this machine have a path to the network" rather than "what happened to a `crust-net`
+ * request" — so they read the adapter in `network-status.ts` and touch no rule or log state.
+ */
+export type NetworkStatusCommands = {
+	status: (
+		args: unknown,
+		ctx: PluginContext,
+	) => Promise<import("./network-status.ts").NetworkStatusResult | NotImplemented>;
+	onChange: (
+		args: unknown,
+		ctx: PluginContext,
+	) => Promise<import("./network-status.ts").NetworkChangeResult | NotImplemented>;
+};
+
 /** The command map, so `plugin.commands.rules` is a function and not `| undefined`. */
-export type NetworkCommands = {
+export type NetworkCommands = NetworkStatusCommands & {
 	rules: (args: unknown, ctx: PluginContext) => Promise<NetworkState | NotImplemented>;
 	setRules: (
 		args: { rules?: unknown },

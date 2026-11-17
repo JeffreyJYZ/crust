@@ -1,7 +1,7 @@
 /**
- * A fake sidecar child for the plugin suite: a `Bun.spawn` stand-in whose stdout/stderr are
+ * A fake sidecar child for the plugin suite: a `Bun.spawn` stand-in whose stdin/stdout/stderr are
  * pushable streams and whose exit promise is controlled by the test. No real binary is executed,
- * so a test can end a process mid-stream and still assert the exit event.
+ * so a test can end a process mid-stream, feed its stdin, and assert SIGTERM→SIGKILL escalation.
  */
 
 import type { SidecarChild, SidecarSpawner } from "./sidecar";
@@ -10,6 +10,10 @@ export interface FakeSidecar {
 	spawn: SidecarSpawner;
 	/** argv the last spawn was handed. */
 	calls: string[][];
+	/** Signals sent to the child, in order. */
+	signals: string[];
+	/** Decode everything written to the child's stdin pipe. */
+	written(): string;
 	/** Push a chunk to stdout, as the program would. */
 	out(text: string): void;
 	/** Push a chunk to stderr. */
@@ -41,10 +45,13 @@ function pushable(): Pushable {
 }
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /** A fake whose child reports `pid` 4242 and waits for the test to end it. */
-export function fakeSidecar(pid = 4242): FakeSidecar {
+export function fakeSidecar(pid = 4242, opts: { ignoreSigterm?: boolean } = {}): FakeSidecar {
 	const calls: string[][] = [];
+	const signals: string[] = [];
+	const stdinChunks: Uint8Array[] = [];
 	const enc = encoder;
 	let out = pushable();
 	let err = pushable();
@@ -56,6 +63,11 @@ export function fakeSidecar(pid = 4242): FakeSidecar {
 	});
 	const child: SidecarChild = {
 		pid,
+		stdin: new WritableStream<Uint8Array>({
+			write(chunk) {
+				stdinChunks.push(chunk);
+			},
+		}),
 		get stdout() {
 			return out.stream;
 		},
@@ -70,7 +82,10 @@ export function fakeSidecar(pid = 4242): FakeSidecar {
 			return signalCode;
 		},
 		kill(sig) {
-			signalCode = String(sig ?? "SIGTERM");
+			const name = String(sig ?? "SIGTERM");
+			signals.push(name);
+			if (opts.ignoreSigterm && name === "SIGTERM") return;
+			signalCode = name;
 			exitCode = null;
 			settle(0);
 		},
@@ -85,6 +100,8 @@ export function fakeSidecar(pid = 4242): FakeSidecar {
 	};
 	return {
 		calls,
+		signals,
+		written: () => decoder.decode(Buffer.concat(stdinChunks)),
 		spawn: (cmd) => {
 			calls.push([...cmd]);
 			return child;

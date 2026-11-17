@@ -20,6 +20,9 @@ export function fakeAdapter(): FakeTray {
 		setTitle(text) {
 			adapter.calls.push(`setTitle:${text}`);
 		},
+		setTooltip(text) {
+			adapter.calls.push(`setTooltip:${text}`);
+		},
 		setMenu(items) {
 			adapter.calls.push(`setMenu:${items.map((item) => item.label).join(",")}`);
 			adapter.items = items;

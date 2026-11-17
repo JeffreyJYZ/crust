@@ -59,6 +59,8 @@ function twoWindows(): Recorded {
 		reload: (label) => note("reload", label, web(label)) !== null,
 		goBack: (label) => note("goBack", label, web(label)) !== null,
 		goForward: (label) => note("goForward", label, web(label)) !== null,
+		loadUrl: (target, label) =>
+			note("loadUrl", label, web(label)) !== null && target.length > 0,
 	};
 	return { adapter, seen };
 }
@@ -95,12 +97,14 @@ describe("navigation label", () => {
 		plugin.commands.reload({ label: "inspector" }, ctx);
 		plugin.commands.goBack({ label: "main" }, ctx);
 		plugin.commands.goForward({ label: "inspector" }, ctx);
+		plugin.commands.loadUrl({ url: "https://crust.dev", label: "main" }, ctx);
 		plugin.commands.stop({ label: "main" }, ctx);
 		expect(seen).toEqual([
 			{ command: "start", label: "inspector", view: 22 },
 			{ command: "reload", label: "inspector", view: 22 },
 			{ command: "goBack", label: "main", view: 11 },
 			{ command: "goForward", label: "inspector", view: 22 },
+			{ command: "loadUrl", label: "main", view: 11 },
 			{ command: "stop", label: "main", view: 11 },
 		]);
 	});

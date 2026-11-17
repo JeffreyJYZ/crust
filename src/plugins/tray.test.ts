@@ -36,7 +36,7 @@ describe("status_bar.c", () => {
 });
 
 describe("tray plugin shape", () => {
-	test("is named tray and declares exactly the five commands", () => {
+	test("is named tray and declares exactly the six commands", () => {
 		const plugin = createTrayPlugin(fakeAdapter());
 		expect(plugin.name).toBe("tray");
 		expect(Object.keys(plugin.commands).sort()).toEqual([...TRAY_COMMANDS].sort());
@@ -50,11 +50,15 @@ describe("tray plugin shape", () => {
 });
 
 describe("tray commands with an adapter", () => {
-	test("setTitle, setMenu, show, hide and destroy reach the adapter", () => {
+	test("setTitle, setTooltip, setMenu, show, hide and destroy reach the adapter", () => {
 		const adapter = fakeAdapter();
 		const plugin = createTrayPlugin(adapter);
 
 		expect(plugin.commands.setTitle({ text: "crust" })).toEqual({ ok: true, text: "crust" });
+		expect(plugin.commands.setTooltip({ text: "a hover hint" })).toEqual({
+			ok: true,
+			text: "a hover hint",
+		});
 		expect(plugin.commands.setMenu({ items: [{ label: "Open" }, { label: "Quit" }] })).toEqual({
 			ok: true,
 			labels: ["Open", "Quit"],
@@ -65,6 +69,7 @@ describe("tray commands with an adapter", () => {
 
 		expect(adapter.calls).toEqual([
 			"setTitle:crust",
+			"setTooltip:a hover hint",
 			"setMenu:Open,Quit",
 			"show",
 			"hide",

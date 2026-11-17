@@ -19,6 +19,7 @@ import {
 } from "./define.ts";
 import { type MatchOptions, patternMatches } from "./network-match.ts";
 import { readRules } from "./network-rules.ts";
+import { type NetworkStatusAdapter, readStatus, subscribeStatus } from "./network-status.ts";
 import {
 	NETWORK_BODY_LIMIT,
 	NETWORK_DEFAULT_TYPE,
@@ -63,8 +64,10 @@ interface Verdict {
 export function createNetworkPlugin(
 	adapter?: NetworkAdapter,
 	options: MatchOptions = {},
+	status?: NetworkStatusAdapter,
 ): PluginDefinition<"network", NetworkCommands> {
 	const native = adapter;
+	const connectivity = status;
 	let rules: NetworkRule[] = [];
 	const entries: NetworkLogEntry[] = [];
 	let context: PluginContext | undefined;
@@ -139,6 +142,10 @@ export function createNetworkPlugin(
 	};
 
 	const commands: NetworkCommands = {
+		/** The machine's path to the network, from the OS. Not the interceptor's state. */
+		status: async () => readStatus(connectivity),
+		/** Subscribe to path changes; each report arrives as `network:change`. */
+		onChange: async (_args, ctx) => subscribeStatus(connectivity, ctx),
 		/** The rules in force, and whether the scheme handler is registered at all. */
 		rules: async (_args, ctx) => {
 			if (!native) return missing("rules");

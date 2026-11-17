@@ -1,129 +1,136 @@
 /**
- * `crust:accessibility` — whether this process may drive the accessibility API, the one system
- * prompt that grants it, and a count of the app's own window's AX children. ApplicationServices is
- * not here: macOS supplies `darwinAccessibilityAdapter()`, and a platform without AX keeps answering
- * a typed `NotImplemented`.
- * `elementCount` is the proof that a window really exposes a tree rather than merely claiming to: it
- * walks the app's own element, and when no window is up it answers `0` with `notImplemented` naming
- * the window, because a count of zero from a window that does not exist is not evidence of anything.
+ * `crust:accessibility` — one plugin, two surfaces.
+ *
+ * - `announce`, `title` and `focus` are what a page uses to speak through the platform's accessibility
+ *   layer: Butter's `a11y:announce` / `a11y:title` / `a11y:focus`, as commands so nothing depends on a
+ *   live-region DOM shim the page has to build itself. The handlers live in `accessibility-page.ts`.
+ * - `trusted`, `prompt` and `elementCount` are the trust probe: whether the OS will expose the tree, the
+ *   one system dialog that grants it, and a count of the app's own AX children. Those live in
+ *   `accessibility-trust.ts`.
+ *
+ * This file is only the composition root, and the one place that decides which platform call a refusal
+ * names. A page-facing command is never gated on `trusted`: an untrusted process still posts and the OS
+ * drops it, so the answer reports both facts instead of claiming a policy the OS does not apply.
  */
 
-import { definePlugin, type NotImplemented, notImplemented, type PluginDefinition } from "./define";
+import { definePlugin, notImplemented, type PluginDefinition } from "./define";
+import {
+	pageCommands,
+	type AnnounceArgs,
+	type AnnounceResult,
+	type FocusArgs,
+	type FocusResult,
+	type PageGuards,
+	type TitleArgs,
+	type TitleResult,
+} from "./accessibility-page";
+import { accessibilityNeed, accessibilityRequires } from "./accessibility-requires";
+import {
+	trustCommands,
+	type ElementCountResult,
+	type PromptFailure,
+	type PromptResult,
+	type TrustedResult,
+} from "./accessibility-trust";
+import type {
+	AccessibilityAdapter,
+	AccessibilityFailure,
+	AnnouncePriority,
+} from "./accessibility-types";
+import { type NotImplemented } from "./define";
 
-/**
- * What the walk found. `counted` carries a real number, `noWindowsListed` means the AX window list
- * was empty — a process reading its own tree can get that while a window is on screen — and
- * `refused` means the AX API itself said no.
- */
-export const AX_STATUS = { counted: 0, noWindowsListed: 1, refused: 2 } as const;
-
-export interface AxElementReport {
-	/** Children of the app's first window; 0 when there is nothing to count. */
-	count: number;
-	/** One of `AX_STATUS`. */
-	status: number;
-	reason: string;
-}
-
-/** The native half of `crust:accessibility`; `platform/darwin/accessibility.ts` implements it. */
-export interface AccessibilityAdapter {
-	trusted(): boolean | Promise<boolean>;
-	/** Raises the system prompt and answers the state after it: a human answers, so false is common. */
-	prompt(): boolean | Promise<boolean>;
-	elementCount(): AxElementReport | Promise<AxElementReport>;
-}
-
-export interface TrustedResult {
-	ok: true;
-	trusted: boolean;
-}
-
-export interface PromptResult {
-	ok: true;
-	trusted: boolean;
-	/** Always true: the dialog was raised. Whether it was answered is `trusted`. */
-	prompted: true;
-}
-
-/** A native refusal (e.g. the AX unit did not compile), converted from an adapter throw. */
-export interface PromptFailure {
-	ok: false;
-	code: "handler-error";
-	message: string;
-}
-
-export interface ElementCountResult {
-	ok: true;
-	/** Children of the app's first window. Zero is a real answer here: a window with no children. */
-	count: number;
-}
+export {
+	type AccessibilityAdapter,
+	type AccessibilityFailure,
+	type AnnouncePriority,
+	type AnnounceReport,
+	AX_STATUS,
+	type AxElementReport,
+	type FocusReport,
+	type TitleReport,
+} from "./accessibility-types";
+export {
+	accessibilityNeed,
+	accessibilityRequires,
+	hasAnnouncement,
+} from "./accessibility-requires";
+export type {
+	AnnounceArgs,
+	AnnounceResult,
+	FocusArgs,
+	FocusResult,
+	TitleArgs,
+	TitleResult,
+} from "./accessibility-page";
+export type {
+	ElementCountResult,
+	PromptFailure,
+	PromptResult,
+	TrustedResult,
+} from "./accessibility-trust";
 
 /** The commands in the order this plugin declares them. */
-export const ACCESSIBILITY_COMMANDS = ["trusted", "prompt", "elementCount"] as const;
+export const ACCESSIBILITY_COMMANDS = [
+	"trusted",
+	"prompt",
+	"elementCount",
+	"announce",
+	"title",
+	"focus",
+] as const;
 
-export function createAccessibilityPlugin(adapter?: AccessibilityAdapter): PluginDefinition<
+export interface AccessibilityOptions {
+	/** `process.platform`; the default, so a refusal names the right platform's call. */
+	platform?: string;
+}
+
+export function createAccessibilityPlugin(
+	adapter?: AccessibilityAdapter,
+	options: AccessibilityOptions = {},
+): PluginDefinition<
 	"accessibility",
 	{
 		trusted: () => Promise<TrustedResult | NotImplemented>;
 		prompt: () => Promise<PromptResult | PromptFailure | NotImplemented>;
 		elementCount: () => Promise<ElementCountResult | NotImplemented>;
+		announce: (
+			args: AnnounceArgs | undefined,
+		) => Promise<AnnounceResult | AccessibilityFailure | NotImplemented>;
+		title: (
+			args: TitleArgs | undefined,
+		) => Promise<TitleResult | AccessibilityFailure | NotImplemented>;
+		focus: (
+			args: FocusArgs | undefined,
+		) => Promise<FocusResult | AccessibilityFailure | NotImplemented>;
 	}
 > {
-	const missing = (command: string) =>
-		notImplemented(
-			`accessibility.${command} needs ApplicationServices, which only macOS provides. Pass an ` +
-				"AccessibilityAdapter to createAccessibilityPlugin where AX exists.",
-			"AXIsProcessTrusted",
+	const platform = options.platform ?? process.platform;
+	const missing = (command: string) => {
+		const need = accessibilityNeed(command as "trusted", platform);
+		return notImplemented(
+			`accessibility.${command} has no native half on this platform: ${need.reason}. Pass an ` +
+				"AccessibilityAdapter to createAccessibilityPlugin where that call exists.",
+			need.requires,
 		);
+	};
+
+	/** A page surface the adapter does not carry: named, never a silent success. */
+	const unsupported = (command: "announce" | "title" | "focus") => {
+		const need = accessibilityNeed(command, platform);
+		return notImplemented(
+			`accessibility.${command}: this app passed an adapter without that method. Needs ` +
+				`${need.requires} — ${need.reason}.`,
+			need.requires,
+		);
+	};
+
+	const guards: PageGuards = { missing, unsupported };
 
 	return definePlugin({
 		name: "accessibility",
 		commands: {
-			/** Whether this process may use the AX API. A read: it never raises the dialog. */
-			trusted: async (): Promise<TrustedResult | NotImplemented> => {
-				if (!adapter) return missing("trusted");
-				return { ok: true, trusted: await adapter.trusted() };
-			},
-
-			/** Raise the one system prompt that grants trust, and report the state after it. */
-			prompt: async (): Promise<PromptResult | PromptFailure | NotImplemented> => {
-				if (!adapter) return missing("prompt");
-				try {
-					const trusted = await adapter.prompt();
-					return { ok: true, trusted, prompted: true };
-				} catch (error) {
-					return {
-						ok: false,
-						code: "handler-error",
-						message: error instanceof Error ? error.message : String(error),
-					};
-				}
-			},
-
-			/**
-			 * Count the AX children of the app's own first window. Measured 2026-11-16: a process
-			 * reading its own pid is answered by AppKit locally rather than by the system AX server,
-			 * so an empty window list can come back while the window is on screen — the refusal says
-			 * that instead of claiming no window exists.
-			 */
-			elementCount: async (): Promise<ElementCountResult | NotImplemented> => {
-				if (!adapter) return missing("elementCount");
-				const report = await adapter.elementCount();
-				if (report.status === AX_STATUS.counted) return { ok: true, count: report.count };
-				if (report.status === AX_STATUS.noWindowsListed) {
-					return notImplemented(
-						`accessibility.elementCount: 0 elements, because AX listed no windows for this ` +
-							`process — ${report.reason}. A process reading its own AX tree is answered by ` +
-							"AppKit locally, not by the system AX server, so this is not evidence that the " +
-							"window is missing; accessibility.trusted reports whether AX is available.",
-						"AXUIElementCopyAttributeValue (AXWindows)",
-					);
-				}
-				return notImplemented(
-					`accessibility.elementCount: the AX API refused the walk — ${report.reason}`,
-					"AXUIElementCopyAttributeValue",
-				);
-			},
+			...trustCommands(adapter, missing),
+			...pageCommands(adapter, guards),
 		},
 	});
 }

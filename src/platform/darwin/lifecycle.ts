@@ -17,6 +17,8 @@ export interface LifecycleShim {
 	take(): number;
 	/** 1 when a deferred terminate was answered, 0 when none was pending. */
 	settle(): number;
+	/** Tell the C half this process is quitting on its own terms, so a later terminate is immediate. */
+	immediate?(): void;
 }
 
 /** The real lifecycle shim over the deep-link C unit. */
@@ -24,6 +26,9 @@ export function darwinLifecycleShim(): LifecycleShim {
 	return {
 		take: () => Number(deepLinkUnit().symbols.crust_lifecycle_take() ?? 0),
 		settle: () => Number(deepLinkUnit().symbols.crust_lifecycle_settle() ?? 0),
+		immediate: () => {
+			deepLinkUnit().symbols.crust_lifecycle_immediate();
+		},
 	};
 }
 
@@ -58,6 +63,9 @@ export function darwinLifecycleSource(
 		take: () => lifecycleEventsFromMask(shim.take()),
 		settle: () => {
 			shim.settle();
+		},
+		immediate: () => {
+			shim.immediate?.();
 		},
 	};
 }
