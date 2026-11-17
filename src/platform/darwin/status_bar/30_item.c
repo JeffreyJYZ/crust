@@ -93,3 +93,23 @@ int tray_set_visible(obj_t item, int visible) {
 	return 1;
 }
 
+// The hover tooltip. `-setToolTip:` is on NSStatusItem itself on modern AppKit and on its button on
+// older builds; whichever answers is used and the button is the fallback, the same two-step
+// `tray_set_title` takes, so one platform difference cannot make the setter a silent no-op.
+int tray_set_tooltip(obj_t item, const char *bytes, long long len) {
+	if (!item) return 0;
+	obj_t text = tray_nsstring(bytes, len);
+	if (!text) return 0;
+
+	if (tray_responds(item, "setToolTip:")) {
+		((void (*)(void *, void *, obj_t))objc_msgSend)(item, sel_registerName("setToolTip:"),
+		                                                text);
+		return 1;
+	}
+	if (!tray_responds(item, "button")) return 0;
+	obj_t button = ((obj_t (*)(void *, void *))objc_msgSend)(item, sel_registerName("button"));
+	if (!button || !tray_responds(button, "setToolTip:")) return 0;
+	((void (*)(void *, void *, obj_t))objc_msgSend)(button, sel_registerName("setToolTip:"), text);
+	return 1;
+}
+

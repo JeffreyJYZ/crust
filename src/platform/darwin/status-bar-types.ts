@@ -35,6 +35,8 @@ export interface StatusBarReadback {
 export interface StatusBar {
 	/** Replace the text beside the icon. Empty is legal and shows no text. */
 	setTitle(text: string): void;
+	/** The hover tooltip: `-setToolTip:` on the item, or on its button when this AppKit has no item-level one. */
+	setTooltip(text: string): void;
 	/** Put the item back on the menu bar. */
 	show(): void;
 	/** Take the item off the menu bar; it stays alive. */

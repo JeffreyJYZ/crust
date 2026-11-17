@@ -10,6 +10,7 @@ export const STATUS_BAR_SYMBOL_NAMES = [
 	"tray_title_copy",
 	"tray_title_capacity",
 	"tray_set_visible",
+	"tray_set_tooltip",
 	"tray_item_visible",
 	"tray_item_length",
 	"tray_button_window",

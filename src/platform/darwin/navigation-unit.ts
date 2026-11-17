@@ -64,6 +64,7 @@ export interface NavigationUnit {
 		crust_nav_can_go_back: (web: number) => number;
 		crust_nav_can_go_forward: (web: number) => number;
 		crust_nav_reload: (web: number) => number;
+		crust_nav_load_url: (web: number, bytes: Uint8Array, len: number) => number;
 		crust_nav_go_back: (web: number) => number;
 		crust_nav_go_forward: (web: number) => number;
 		crust_nav_webview: (window: number) => number;
@@ -93,6 +94,7 @@ function compile(): NavigationUnit {
 			crust_nav_can_go_back: { args: [P], returns: I32 },
 			crust_nav_can_go_forward: { args: [P], returns: I32 },
 			crust_nav_reload: { args: [P], returns: I32 },
+			crust_nav_load_url: { args: [P, P, I64], returns: I32 },
 			crust_nav_go_back: { args: [P], returns: I32 },
 			crust_nav_go_forward: { args: [P], returns: I32 },
 			crust_nav_webview: { args: [P], returns: P },

@@ -94,6 +94,17 @@ export function createStatusBar(): StatusBar {
 			checked(native.symbols.tray_set_visible(requireLive("show"), 1), "show");
 		},
 
+		/**
+		 * The hover tooltip. `-setToolTip:` is on the item on modern AppKit and on its button on
+		 * older builds; the C half tries both and answers 0 only when neither responds, so this is
+		 * a real application rather than a claim.
+		 */
+		setTooltip(text: string): void {
+			const target = requireLive("setTooltip");
+			const { p, len } = cbuf(text);
+			checked(native.symbols.tray_set_tooltip(target, p, len), "setTooltip");
+		},
+
 		hide(): void {
 			checked(native.symbols.tray_set_visible(requireLive("hide"), 0), "hide");
 		},

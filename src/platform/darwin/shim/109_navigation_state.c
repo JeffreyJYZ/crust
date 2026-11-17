@@ -59,6 +59,45 @@ int crust_nav_reload(void *web) {
 	return 1;
 }
 
+// Start a load from a URL string. Two steps that can each fail, so each is checked: an NSURL the
+// class cannot parse is not a load, and an NSURLRequest needs `-initWithURL:`. Butter scrolls its
+// own JSON at this point; this stays in C because a string crossing bun:ffi would have to come back
+// as an object to build the request.
+int crust_nav_load_url(void *web, const char *bytes, long long len) {
+	if (!web || !bytes || len <= 0) return 0;
+	if (!nav_has(web, "loadRequest:")) return 0;
+
+	void *strCls = objc_getClass("NSString");
+	if (!strCls || !nav_has(strCls, "alloc")) return 0;
+	void *allocStr = ((void *(*)(void *, void *))objc_msgSend)(strCls, sel_registerName("alloc"));
+	if (!allocStr) return 0;
+	void *text = ((void *(*)(void *, void *, const char *, unsigned long,
+	                         long long))objc_msgSend)(
+	    allocStr, sel_registerName("initWithBytes:length:encoding:"), bytes, (unsigned long)len,
+	    4LL);
+	if (!text) return 0;
+
+	void *urlCls = objc_getClass("NSURL");
+	if (!urlCls || !nav_has(urlCls, "URLWithString:")) return 0;
+	void *url = ((void *(*)(void *, void *, void *))objc_msgSend)(urlCls,
+	                                                             sel_registerName("URLWithString:"),
+	                                                             text);
+	if (!url) return 0;
+
+	void *reqCls = objc_getClass("NSURLRequest");
+	if (!reqCls || !nav_has(reqCls, "alloc")) return 0;
+	void *allocReq = ((void *(*)(void *, void *))objc_msgSend)(reqCls, sel_registerName("alloc"));
+	if (!allocReq) return 0;
+	if (!nav_has(allocReq, "initWithURL:")) return 0;
+	void *request = ((void *(*)(void *, void *, void *))objc_msgSend)(allocReq,
+	                                                                  sel_registerName("initWithURL:"),
+	                                                                  url);
+	if (!request) return 0;
+
+	((void (*)(void *, void *, void *))objc_msgSend)(web, sel_registerName("loadRequest:"), request);
+	return 1;
+}
+
 int crust_nav_go_back(void *web) {
 	if (!crust_nav_can_go_back(web)) return 0;
 	((void (*)(void *, void *))objc_msgSend)(web, sel_registerName("goBack"));

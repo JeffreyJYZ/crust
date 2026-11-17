@@ -46,6 +46,10 @@ export function fakeNavigation() {
 			seen.push(web);
 			return 1;
 		},
+		crust_nav_load_url: (web) => {
+			seen.push(web);
+			return 1;
+		},
 		crust_nav_go_back: (web) => {
 			seen.push(web);
 			return 1;

@@ -52,6 +52,7 @@ function compile(): StatusBarShim {
 			tray_title_copy: { args: [P], returns: CS },
 			tray_title_capacity: { args: [], returns: I32 },
 			tray_set_visible: { args: [P, I32], returns: I32 },
+			tray_set_tooltip: { args: [P, P, I64], returns: I32 },
 			tray_item_visible: { args: [P], returns: I32 },
 			tray_item_length: { args: [P], returns: F64 },
 			tray_button_window: { args: [P], returns: I64 },

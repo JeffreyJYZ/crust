@@ -148,5 +148,13 @@ export function darwinNavigationAdapter(
 		reload: (label?: string) => act(native.crust_nav_reload, label),
 		goBack: (label?: string) => act(native.crust_nav_go_back, label),
 		goForward: (label?: string) => act(native.crust_nav_go_forward, label),
+		loadUrl: (url: string, label?: string): boolean => {
+			const load = native.crust_nav_load_url;
+			if (typeof load !== "function") return false;
+			const view = target(label);
+			if (view === null) return false;
+			const bytes = new TextEncoder().encode(url);
+			return Number(load(view, bytes, bytes.length) ?? 0) === 1;
+		},
 	};
 }
