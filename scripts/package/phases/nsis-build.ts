@@ -38,8 +38,10 @@ export async function buildPhase(verdict: Verdict, scratch: string): Promise<Bui
 		.default as ExampleConfig;
 	const dist = join(scratch, "dist");
 	const binary = join(dist, BINARY_NAME);
-	const installer = join(scratch, `${configured.app.id}-${configured.app.version}-setup.exe`);
-	const script = join(scratch, `${configured.app.id}.nsi`);
+	// `crust package` puts every artefact inside `dist`, beside the binary, so the proof looks where
+	// the command writes rather than one directory up in the project root.
+	const installer = join(dist, `${configured.app.id}-${configured.app.version}-setup.exe`);
+	const script = join(dist, `${configured.app.id}.nsi`);
 
 	// ---- 0. the scratch project this proof packages ------------------------
 	await mkdir(join(scratch, "node_modules"), { recursive: true });

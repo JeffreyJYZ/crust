@@ -107,14 +107,17 @@ export async function installPhase(
 				? `the script installs under $LOCALAPPDATA and carries only the binary`
 				: `the script has no ${installDir} line`,
 	);
-	// The installer must not embed itself: a script or setup `.exe` inside the payload
-	// directory would ship itself inside the installer it defines.
+	// The payload is one named file, so a script sitting inside `dist` no longer ships itself. What
+	// the proof asserts instead is where `crust package` puts its output: both artefacts belong
+	// beside the binary in `dist`, not scattered into the project root.
 	verdict.check(
 		"script dir",
-		!built.script.startsWith(`${built.dist}\\`) && !built.script.startsWith(`${built.dist}/`),
-		built.script.startsWith(`${built.dist}\\`)
-			? `${built.script} is inside ${built.dist}, so it would ship inside itself`
-			: `${built.script} sits outside ${built.dist}`,
+		!scriptText.includes("File /r") &&
+			built.installer.startsWith(`${built.dist}\\`) ===
+				built.script.startsWith(`${built.dist}\\`),
+		scriptText.includes("File /r")
+			? "the script copies a directory, so it ships whatever else dist holds"
+			: `installer and script ${built.installer.startsWith(`${built.dist}\\`) ? "both sit in" : "both sit outside"} ${built.dist}`,
 	);
 
 	// ---- 4. install it -----------------------------------------------------
