@@ -13,13 +13,13 @@ Reports live under `../defects-wave3/`; this file is the ledger of what landed.
 | 01#7 unescaped SSE event name   | bridge         | `events.ts` refuses/strips a newline in the name                      | same                        |
 | 20#3 token file 0644            | bridge         | `runtime.ts` writes `.crust/dev.json` with `mode: 0o600`              | `runtime` suite             |
 | 20#4 docstring vs origin gate   | bridge         | `server.ts` states the real posture: absent origin allowed, token is the credential | — |
-| 20#1 token in the public doc    | **open**       | needs native injection or non-HTTP IPC; not a file-level fix          | —                           |
+| 20#1 token in the public doc    | token-lane     | token rides the navigation URL; the document answers 401 without it    | `server-document.test.ts`   |
 | 02#1 frame scanner blind spots  | windows-frames | `frames.ts` parses pointers, 2-D bounds, initialisers, multi-declarator | `frame.test.ts`          |
 | 02#3 preflight never ran        | windows-frames | `backend-default.ts` resolves every `PREFLIGHT` entry, sets `missing` | `preflight.test.ts`         |
 | 02#2 slot leak on failed create | windows-slot   | `window-open.ts` calls `shim_webview_close`; C compacts `g_windows`   | `window-open.test.ts`       |
 | 02#4 uninitialised RECT         | windows-slot   | `20_class.c` checks `GetClientRect`                                   | `shim-resources.test.ts`    |
 | 11#1/#3 vacuous Windows smoke   | windows-slot   | `nativeMessages` from `shim_pump()`; detail names the HWND            | `platform-pump.test.ts`     |
-| 02#5 `userDataDir` dead knob    | **open**       | needs a `CrustConfig` key; `app-loop.ts` pass-through                 | —                           |
+| 02#5 `userDataDir` dead knob    | coordinator    | `app-loop.ts` derives it from `defaultStateRoot(config.app.id)`        | `app-run.test.ts`           |
 | 03#1 preflight never ran        | linux          | `backend.ts` probes before `shim_lib_open`                            | `backend-preflight.test.ts` |
 | 03#2 preflight 2 of 15          | linux          | `preflight.ts` covers 12 mandatory symbols                            | `preflight.test.ts`         |
 | 03#3 slots never reclaimed      | linux          | `40_window.c` releases a slot on destroy                              | `shim-source.test.ts`       |
@@ -86,4 +86,11 @@ Reports live under `../defects-wave3/`; this file is the ledger of what landed.
 | 14#2 always-true assertion      | tests          | default `dialogPlugin` imported and exercised                         | `dialog.test.ts`            |
 | 14#3 untested status bar        | tests          | `status-bar-item.test.ts` + helpers, 16 cases                         | itself                      |
 | 15#1 React double build         | tests          | `templates/react/package.json` build is `crust build`                 | `template-build.test.ts`    |
-| 15#2 `--next` file list         | docs           | `start/files` names `app/about/page.tsx`                              | —                           |
+| 19#4/#5 config reference        | docs           | ten `ROOT_KEYS`, `build.urlScheme`, live plugin list                   | `docs-reference.test.ts`    |
+| 21 permissions (new)            | permissions    | `security.capabilities` + `grants`, gated in `createRunner`             | `capabilities.test.ts`      |
+| 22 min size on every platform   | minsize        | `minHeight` key, `WM_GETMINMAXINFO`, floor = configured minimum        | `min-size.test.ts`          |
+
+**Nothing is open.** The two rows that said `open` after wave 3 — the token in the document and the
+dead `userDataDir` — were closed by the token lane and by `app-loop.ts` deriving the folder from
+`app.id`, and the two gaps the parity page could not see (no permission model, no per-platform
+minimum size) are now features with their own tests.
