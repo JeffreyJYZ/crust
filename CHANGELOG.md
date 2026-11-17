@@ -4,7 +4,7 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
-## [0.1.22] — 2026-11-17
+## [0.1.23] — 2026-11-17
 
 ### Added
 
