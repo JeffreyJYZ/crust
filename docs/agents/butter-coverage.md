@@ -156,21 +156,24 @@ built. Both were read from Butter's own README and shim in this repo's clone, no
 
 | capability                    | Butter                                                              | crust                                                                                                     | verdict |
 | ----------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------- |
-| asset + IPC transport         | `butter://` custom protocol on the WebView; **no listening socket** | loopback HTTP on `127.0.0.1` with a bearer token on the navigation URL                                     | different, stated |
-| IPC payload path              | shared-memory ring buffer between the Bun host and a native child     | one process; `POST /_crust/invoke` over that loopback socket                                              | different, stated |
+| asset + IPC transport         | `butter://` custom protocol on the WebView; **no listening socket** | loopback HTTP on `127.0.0.1` with a bearer token on the navigation URL                                    | **accepted difference** (owner, 2026-11-17) |
+| IPC payload path              | shared-memory ring buffer between the Bun host and a native child     | one process; `POST /_crust/invoke` over that loopback socket                                              | **accepted difference** (owner, 2026-11-17) |
 
 Neither is a gap in a plugin, and neither is `partial`: crust's transport has a property Butter's does
 not (a single code path covers `crust dev` and a packaged app, because the page is served by the same
 bridge that answers it), and Butter's has one crust does not (with no socket there is nothing for a
-local process to fetch). The parity page states the transport row as `partial` for exactly this
-reason, and `site/app/docs/limits/page.mdx` states the security consequence: the boundary is the local
-account, not the process.
+local process to fetch). The owner reviewed both and **accepted the loopback transport as crust's
+standing design** on 2026-11-17, so these rows are settled rather than open: the difference is a
+decision with a reason, not an unfinished gap.
 
-**What crust would need to close it:** a page-serving URI scheme per platform
-(`register_uri_scheme_protocol` on WKWebView, `WebView2`'s `AddWebResourceRequestedFilter`), which is
-the one thing `AGENTS.md` records as a deliberate rejection — a scheme leaked into two layers once
-already, and a wrong one collides with an app's own deep links. Recorded here so the difference is a
-decision with a reason rather than an unnoticed hole.
+`site/app/docs/limits/page.mdx` states the security consequence in the same words: the boundary is the
+local account, not the process.
+
+**What would have been needed to close it:** a page-serving URI scheme per platform
+(`register_uri_scheme_protocol` on WKWebView, `WebView2`'s `AddWebResourceRequestedFilter`). `AGENTS.md`
+records that as a deliberate rejection — a scheme leaked into two layers once already, and a wrong one
+collides with an app's own deep links — and reversing it would delete a recorded decision and its
+reason. The owner chose to keep the rule instead.
 
 ## Re-checking this table
 

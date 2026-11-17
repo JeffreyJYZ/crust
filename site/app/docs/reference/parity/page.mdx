@@ -85,7 +85,7 @@ token boundary were both absent from this page for two revisions while the sweep
 | Security / capabilities        | `security.capabilities` + `security.grants`, checked in the bridge before a handler runs                    | same      |
 | CSP                            | `security.csp`, and `DEFAULT_CSP` when absent: no inline script, no evaluated string, no framing           | same      |
 | Isolation pattern              | none — there is no second document between the page and the bridge                                         | absent    |
-| IPC transport                  | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all        | partial   |
+| IPC transport                  | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all        | accepted difference |
 | Command authorisation          | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same      |
 | Typed IPC                      | `typedHost`/`typedClient` over one `InvokeMap`; the names and shapes a host registers are the ones a page may call, checked at compile time | same      |
 | Sidecar binaries               | `build.sidecars` copies each binary beside the app at `0755`; `sidecar.spawn` runs one, `write`/`kill` drive it through a stdin pipe, `list` names the live children, and `sidecar-stdout`/`sidecar-exit` stream back; an undeclared name or a path outside the bundle is refused by name | same |
@@ -98,11 +98,13 @@ token boundary were both absent from this page for two revisions while the sweep
 
 Three of these are worth stating plainly rather than in a cell:
 
-- **`partial` on the transport is the honest shape.** Tauri and Butter both register a custom scheme
-  on the WebView, so there is no port to ask and nothing to fetch. crust serves the page over
-  loopback, which is what lets one code path cover `crust dev` and a built app. The token now rides
-  the navigation URL instead of the document body, so a local process can no longer read it, but the
-  socket still exists and the boundary is the local account.
+- **`accepted difference` on the transport is a decision, not a gap held open.** Tauri and Butter both
+  register a custom scheme on the WebView, so there is no port to ask and nothing to fetch. crust
+  serves the page over loopback, which is what lets one code path cover `crust dev` and a built app.
+  The token now rides the navigation URL instead of the document body, so a local process can no longer
+  read it, but the socket still exists and the boundary is the local account. The owner reviewed that
+  trade and kept it on 2026-11-17; a page-serving scheme would reverse a recorded decision, because a
+  scheme leaked into two layers once already and a wrong one collides with an app's own deep links.
 - **`absent` on isolation is a real gap**, not a naming difference. Tauri's isolation pattern puts a
   second document between the page and the IPC layer with a key the page cannot read, so script
   injected into the app cannot issue commands. crust has no equivalent.
@@ -114,12 +116,13 @@ Three of these are worth stating plainly rather than in a cell:
 
 - **same** — 45 rows
 - **via Bun** — 7 rows
-- **partial** — 3 rows
+- **partial** — 2 rows
 - **absent** — 1 row
+- **accepted difference** — 1 row, the IPC transport, decided rather than outstanding
 - **module only** — 0 rows
 - **total** — 56 rows, in three tables: 44 callable surfaces, 6 framework guarantees and the 6 Butter-parity rows
 
-The three partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and secure storage has no Linux half because libsecret needs a running keyring daemon crust does not bind. Network stopped being partial when `status`/`onChange` joined the interceptor, so the row now answers connectivity as well as interception. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
+The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and secure storage has no Linux half because libsecret needs a running keyring daemon crust does not bind. Network stopped being partial when `status`/`onChange` joined the interceptor, so the row now answers connectivity as well as interception. The transport is the one `accepted difference` — decided by the owner rather than outstanding. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
 
 The eighteen rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
 
