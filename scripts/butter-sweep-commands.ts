@@ -28,6 +28,13 @@ const NO_PERSON =
 /** Where the sweep writes its i18n catalogue; the runner creates it beside the case table. */
 export const LOCALES_DIR = ".sweep-tmp/locales";
 
+/**
+ * `clipboard.writeImage` takes real bytes, and a JSON case table cannot carry a Uint8Array — so a
+ * case names this marker and the child substitutes a 1×1 transparent PNG. The smallest real PNG is
+ * what makes the write a pasteboard write rather than a shape check.
+ */
+export const PNG_MARKER = "sweep-png";
+
 export const SWEEP: readonly SweepCase[] = [
 	// fs — every path inside a temp dir the runner owns.
 	{ command: "fs.writeTextFile", args: { path: ".sweep-tmp/sweep.txt", contents: "sweep" } },
@@ -118,7 +125,6 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "os.paths", args: {} },
 	{ command: "os.locale", args: {} },
 	{ command: "deep-link.url", args: {} },
-	{ command: "single-instance.release", args: { id: "crust.sweep" }, skip: "the runtime claims this lock at launch and the runner holds it; a release here would free the harness's own claim" },
 	{ command: "sidecar.list", args: {} },
 	{ command: "menu.isDefault", args: {} },
 	{ command: "menu.read", args: {} },
@@ -148,6 +154,18 @@ export const SWEEP: readonly SweepCase[] = [
 	// context that names a window rather than skipped.
 	{ command: "window.label", args: {}, window: "main" },
 
+	// shell — a real child, allowlisted to a harmless program by the child's own config, so the
+	// command runs rather than refusing.
+	{ command: "shell.spawn", args: { program: "sh", args: ["-c", "echo sweep"] } },
+	{ command: "shell.list", args: {} },
+	// sidecar — the runner writes a shell script into the bundle dir first, so `spawn` has a declared name.
+	{ command: "sidecar.spawn", args: { name: "sweep.sh", args: [] } },
+	{ command: "sidecar.list", args: {} },
+	// clipboard image — a real 1×1 PNG through the real pasteboard, then read back.
+	{ command: "clipboard.writeImage", args: { png: { __bytes: "sweep-png" } } },
+	// tray.destroy runs last: it removes the item every earlier tray command needed.
+	{ command: "tray.destroy", args: {} },
+
 	// --- skipped, each with the reason a runner cannot act ---
 	{ command: "dialog.openPanel", skip: NO_PERSON },
 	{ command: "dialog.savePanel", skip: NO_PERSON },
@@ -157,14 +175,9 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "opener.openUrl", skip: "launches the default browser, which a headless runner must not do" },
 	{ command: "opener.revealItem", skip: "opens a Finder window and steals focus from the person using the machine" },
 	{ command: "opener.openPath", skip: "hands a path to LaunchServices, which may open any registered app" },
-	{ command: "shell.spawn", skip: "runs a program; the shell suite drives a real child against an allowlist" },
-	{ command: "sidecar.spawn", skip: "needs a binary copied into the bundle; the sidecar suite drives a real child" },
-	{ command: "crash-reporter.install", skip: "arms signal handlers that would take the test runner down with them" },
-	{ command: "crash-reporter.uninstall", skip: "disarms the signal handlers that crash-reporter.install would arm, and this sweep never arms them" },
 	{ command: "updater.install", skip: "replaces the running bundle on disk, which would leave the sweep swapping its own app" },
 	{ command: "updater.relaunch", skip: "re-executes the app, which kills the test runner before it can report" },
 	{ command: "menu.showContext", skip: "opens a modal context menu that blocks until a person dismisses it" },
 	{ command: "downloads.start", skip: "starts a real network download into the app data root, which a runner must not touch" },
-	{ command: "tray.destroy", skip: "removes the status item every later tray command in this sweep needs, so it runs last or not at all" },
-	{ command: "clipboard.writeImage", skip: "writes the real pasteboard image; the clipboard suite owns that round trip" },
+	{ command: "single-instance.release", skip: "the runtime claims this lock at launch and the runner holds it; a release here would free the harness's own claim" },
 ];

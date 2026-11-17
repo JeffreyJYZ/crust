@@ -33,8 +33,9 @@ function childScript(casesPath: string): string {
 import { DarwinPlatform } from "./src/platform/darwin/platform.ts";
 import { nativePlugins } from "./src/runtime-plugins.ts";
 import { corePlugins } from "./src/plugins/core.ts";
-import { nativePlugins as _n } from "./src/runtime-plugins.ts";
 
+/** A 1x1 transparent PNG so the image write carries real bytes. */
+const SWEEP_PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
 const isRefusal = (answer) => {
   if (typeof answer !== "object" || answer === null) return false;
   if (answer.code === "not-implemented") return true;
@@ -49,7 +50,10 @@ platform.pump(16);
 // "no window" and would read like a gap rather than a wait.
 await Bun.sleep(500);
 
-const plugins = await nativePlugins(corePlugins, platform, { app: "crust.butter.sweep" });
+const plugins = await nativePlugins(corePlugins, platform, {
+  app: "crust.butter.sweep",
+  shell: { allow: ["sh"] },
+});
 const byName = new Map(plugins.map((p) => [p.name, p]));
 const ctx = { emit: () => {} };
 const cases = JSON.parse(await Bun.file(${JSON.stringify(casesPath)}).text());
@@ -69,12 +73,28 @@ for (const entry of cases) {
     console.log(JSON.stringify({ command: entry.command, refusal: false, detail: "NO-COMMAND" }));
     continue;
   }
+  /**
+   * The page-facing byte array for a command arg. The bridge revives a binary argument into a
+   * Uint8Array, and a case table written as JSON has no way to express one — so a case may name a
+   * marker string and the child substitutes it here.
+   */
+  const revive = (value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (value.__bytes === "sweep-png") return SWEEP_PNG;
+      const out = {};
+      for (const [k, v] of Object.entries(value)) out[k] = revive(v);
+      return out;
+    }
+    if (Array.isArray(value)) return value.map(revive);
+    return value;
+  };
+
   let answer;
   try {
     // The bridge attaches the caller's window to every request; a direct handler call has to add it
     // itself, or window.label refuses for want of the identity it exists to report.
     const request = entry.window === undefined ? ctx : { ...ctx, window: entry.window };
-    answer = await handler(entry.args, request);
+    answer = await handler(revive(entry.args), request);
   } catch (error) {
     // A throw is a run: the command was reached and refused for a reason it named. The sweep's
     // subject is a hollow row, which answers not-implemented instead of throwing.
@@ -104,6 +124,10 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 		const dir = `${REPO}/.sweep-tmp`;
 		await Bun.$`mkdir -p ${dir}/locales`.quiet();
 		await Bun.write(`${dir}/locales/en.json`, JSON.stringify({ sweep: "swept" }));
+		// A declared sidecar and its manifest, so `sidecar.spawn` has a name the build would have copied.
+		await Bun.write(`${dir}/sweep.sh`, "#!/bin/sh\necho sidecar-ok\n");
+		await Bun.$`chmod 755 ${dir}/sweep.sh`.quiet();
+		await Bun.write(`${dir}/crust-sidecars.json`, JSON.stringify(["sweep.sh"]));
 		const casesPath = `${dir}/cases.json`;
 		await Bun.write(casesPath, JSON.stringify(SWEEP));
 
@@ -111,7 +135,7 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 			cwd: REPO,
 			stdout: "pipe",
 			stderr: "pipe",
-			env: { ...process.env, CRUST_TEST_CHILD: "1", CRUST_DATA_DIR: dir },
+			env: { ...process.env, CRUST_TEST_CHILD: "1", CRUST_DATA_DIR: dir, CRUST_SIDECARS_DIR: dir },
 		});
 		const out = await new Response(child.stdout).text();
 		const err = await new Response(child.stderr).text();
