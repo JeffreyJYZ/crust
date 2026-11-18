@@ -24,16 +24,17 @@ Failure codes: `bad-request` (no `appPath`, no bundle id known, or a bundle with
 
 ## `logging`
 
-| command    | arguments            | answer                                                 |
-| ---------- | -------------------- | ------------------------------------------------------ |
-| `setLevel` | `{ level }`          | `{ level, changed }`                                   |
-| `level`    | none                 | the level in force, as a string                        |
-| `write`    | `{ level, message }` | `{ written, line?, path?, rotated?, reason?, error? }` |
-| `tail`     | `{ limit? }`         | `{ lines }`                                            |
+| command     | arguments            | answer                                                  |
+| ----------- | -------------------- | ------------------------------------------------------- |
+| `setLevel`  | `{ level }`          | `{ level, changed }`                                    |
+| `level`     | none                 | the level in force, as a string                         |
+| `configure` | `{ file?, level? }`  | `{ ok, file?, level?, error? }`                         |
+| `write`     | `{ level, message }` | `{ written, line?, path?, rotated?, reason?, error? }`  |
+| `tail`      | `{ limit? }`         | `{ lines }`                                             |
 
 Levels are `trace`, `error`, `warn`, `info`, `debug`; `info` is the default. A line below the level in force is dropped before it reaches the file, and `write` reports which happened through `reason`: `below-level`, `bad-level`, or `sink-error` with `error` carrying the reason. `rotated` is set when that write moved `app.log` aside to `app.log.1` at the 1 MiB threshold. `tail` reads the in-memory ring of the last 200 lines and touches no disk; `limit` is clamped to that size.
 
-`setLevel` answers `changed: false` for a name that is not a level, so a caller can tell "ignored" from "applied". Nothing here throws: a bad payload answers `written: false` with `reason: "bad-level"`.
+`setLevel` answers `changed: false` for a name that is not a level, so a caller can tell "ignored" from "applied". `configure` repoints the live file and sets the level in one call; its `file` must be absolute and stay inside the app's data root (symlinks resolved), or it answers `{ ok: false, error }`. Nothing here throws: a bad payload answers `written: false` with `reason: "bad-level"`.
 
 ## `i18n`
 

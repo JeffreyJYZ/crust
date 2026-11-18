@@ -44,6 +44,25 @@ The colon is part of the match, so `dialog:*` does not cover `dialogx.openPanel`
 
 `grants` names capabilities; a name that no capability declares is a config error, and a grant on a label no window uses is simply unused.
 
+## App commands
+
+A page calls its own commands through `app.invoke({ name: "notes.save" })`. That one wire handler is a dispatcher, so the gate checks the action the `name` selects: `app:notes.save`, not the wire key `app:invoke`. The finest matching action is the one a refusal names.
+
+There are two ways to grant an app command:
+
+- `app:notes.save` — the narrow form, `app:<name>`; covers only that command.
+- `app:invoke` — the broad alias; still covers every app command, so existing apps and the scaffolds keep working without a config edit.
+
+A grant of either authorizes the call. Every scaffold grants the broad `app:invoke` deliberately: a new app's own commands work without a second config edit, and the app can narrow later.
+
+The `*` caveat matters here. `app:notes.*` matches every command under that prefix, `delete` as well as `save`. So this grant:
+
+```ts
+capabilities: [{ name: "notes", actions: ["app:notes.save"] }],
+```
+
+allows `app:notes.save` but refuses `app:notes.delete` with `app:notes.delete is not granted to window …`. Scoping one command needs the exact action; a wildcard cannot tell two commands under one prefix apart.
+
 ## The refusal
 
 A command the label does not hold answers `forbidden` (HTTP 403) and names all three things an author needs at 2am: the action, the window, and the capability that would have allowed it.

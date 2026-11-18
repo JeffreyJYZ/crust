@@ -36,13 +36,15 @@ framework is linked by name (`-framework AppKit`, `-framework Foundation`, `-fra
 ## The run loop
 
 `[NSApp run]` never returns, so it cannot be called — Bun's event loop would stop. The Cocoa loop
-is pumped from JavaScript in **0.25 ms slices on a 16 ms timer**, and each tick drains AppKit's
-event queue (`nextEventMatchingMask:` → `sendEvent:` → `updateWindows`) before falling back to
-`CFRunLoopRunInMode`.
+is pumped from JavaScript on a **16 ms timer** (`PUMP_INTERVAL_MS`), and each tick drains AppKit's
+event queue (`nextEventMatchingMask:` with a 4 ms deadline → `sendEvent:` → `updateWindows`) before
+falling back to a 2 ms `CFRunLoopRunInMode`.
 
-The slice length is the whole design: 0.25 ms and 0.5 ms both delivered 186 of 187 ticks, 1 ms
-reached 96.8%, 4 ms only 82.4%. A 4 ms slice is _worse than not pumping at all_. Blocking
-JavaScript blocks drawing, so long work belongs on a `Worker`.
+Slice length decides tick fidelity: a sweep (`research/runloop`) found 0.25 ms and 0.5 ms both
+delivered 186 of 187 ticks, 1 ms reached 96.8%, and 4 ms only 82.4% — a 4 ms slice is _worse than
+not pumping at all_. That is the tuning evidence for a shorter slice; the shipped shim
+(`shim/50_app.c`) passes a 4 ms deadline and a 2 ms fallback, so the measured optimum is not the
+value in the code. Blocking JavaScript blocks drawing, so long work belongs on a `Worker`.
 
 ## The bridge
 
@@ -63,7 +65,7 @@ shell and network) while POST invoke kept working. A page from another origin st
 
 A page loads from the **bridge URL** (`http://127.0.0.1:<port>/`), navigated by the platform's own call — darwin sends `-loadRequest:`. No platform registers a custom scheme to serve a page: a scheme that cannot serve bytes earns nothing, and `crust://` is already taken. `urlScheme` is optional app config with no default, so `crust://` belongs to an app's deep links, never to the framework.
 
-That leaves a new platform one job: implement `Platform` — `start`, `pump`, `createWindow`, `window`, `quit` — and nothing more. A page-serving scheme invented per platform is how two lanes produced two incompatible loaders for one contract.
+That leaves a new platform one job: implement `Platform` — the five required methods `start`, `pump`, `createWindow`, `window`, `quit`, plus the optional `windowLabels?()` and `lifecycle?()` hooks when the platform can answer them. A page-serving scheme invented per platform is how two lanes produced two incompatible loaders for one contract.
 
 ## Why the page comes over loopback and not a custom scheme
 
@@ -99,7 +101,8 @@ service workers are available, `location.origin` is a real value, and every plat
 same because every platform's engine already knows what an http origin is.
 
 That is why crust's page is the same shape under `crust dev` and in a built app, and why a new
-platform only implements `Platform` — five methods — instead of also owning a URI scheme.
+platform only implements `Platform` — five required methods and two optional hooks — instead of
+also owning a URI scheme.
 
 ### The one thing a scheme actually buys
 
@@ -121,7 +124,7 @@ loads, and `crypto.subtle` is defined.
 
 ## Known shape, stated honestly
 
-- **~85 MB is the floor**, because Bun is embedded. The honest claim is "no bundled Chromium",
+- **~86 MiB is the floor**, because Bun is embedded. The honest claim is "no bundled Chromium",
   never "as small as Tauri" — Tauri ships no JavaScript engine.
 - **Ad-hoc signing by default.** It runs locally and Gatekeeper refuses it anywhere else until
   `crust sign` puts a Developer ID on it.

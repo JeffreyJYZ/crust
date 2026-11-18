@@ -1,7 +1,7 @@
 # Logging
 
-A level filter, an append-only file under the app's data directory, and an in-memory ring so a page
-reads the tail without touching the disk. Registered on macOS under `logging`.
+A level filter, a file under the app's data directory that rotates at 1 MiB, and an in-memory ring
+so a page reads the tail without touching the disk. Registered on macOS under `logging`.
 
 ## write
 
@@ -15,7 +15,7 @@ const result = await window.crust.invoke("logging", "write", {
 
 | argument  | notes                                     |
 | --------- | ----------------------------------------- |
-| `level`   | `error`, `warn`, `info` or `debug`        |
+| `level`   | `trace`, `error`, `warn`, `info` or `debug` |
 | `message` | anything; it is stringified into the line |
 
 A line below the configured level is dropped before it reaches the file, and the answer says which of
@@ -25,7 +25,7 @@ the two happened:
 | ------------------------------------------------------- | ------------------------------------------------------------ |
 | `{ written: true, line, path }`                         | the line was formatted and appended                          |
 | `{ written: false, reason: "below-level" }`             | the level is quieter than the current one                    |
-| `{ written: false, reason: "bad-level" }`               | `level` is not one of the four                               |
+| `{ written: false, reason: "bad-level" }`               | `level` is not one of the five                               |
 | `{ written: false, reason: "sink-error", line, error }` | the file could not be written; the line is still in the ring |
 
 A write has no failure code: it answers a result every time, so a log call never breaks a caller.
@@ -40,6 +40,21 @@ await window.crust.invoke("logging", "setLevel", { level: "debug" });
 `changed` is false when the argument was not a level, which tells "ignored" from "applied". `level`
 takes no arguments and answers the current name. The plugin starts at `info`.
 
+## configure
+
+```js
+const { ok, file, level } = await window.crust.invoke("logging", "configure", {
+	file: "/Users/me/Library/Application Support/land.jyz.notes/logs/app.log",
+	level: "debug",
+});
+```
+
+Both arguments are optional: `file` repoints the live sink and `level` sets the filter in one call.
+It answers `{ ok: true, file, level }` with the values in force afterwards. `file` must be absolute
+and resolve inside the app's data root — a sibling whose name merely starts with the root's, or a
+symlink that leads out of it, answers `{ ok: false, error }`; so does an unknown `level`. The archive
+is always the live file's `app.log.1` sibling, so repointing moves the rotation with it.
+
 ## tail
 
 ```js
@@ -48,7 +63,7 @@ const { lines } = await window.crust.invoke("logging", "tail", { limit: 50 });
 
 The last `limit` lines of the in-memory ring, capped at 200 and defaulting to the whole ring. It never
 reads the file, so it answers instantly and only covers this process's own lines. The file itself is
-unbounded and is the record that survives a restart.
+rotated at 1 MiB into its `app.log.1` sibling and is the record that survives a restart.
 
 ## Where the file is
 

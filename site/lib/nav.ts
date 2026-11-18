@@ -46,6 +46,7 @@ export const NAV: readonly NavGroup[] = [
 			{ label: "Packaging", href: "/docs/guides/package" },
 			{ label: "Package formats", href: "/docs/guides/package-formats" },
 			{ label: "Notarization", href: "/docs/guides/notarize" },
+			{ label: "Release", href: "/docs/guides/release" },
 			{ label: "Theme", href: "/docs/guides/theme" },
 			{ label: "Dock", href: "/docs/guides/dock" },
 			{ label: "Power", href: "/docs/guides/power" },

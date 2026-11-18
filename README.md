@@ -54,7 +54,7 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 - **No native build step.** No `cargo`, no Xcode project, no bottle per architecture. The shim
   compiles from source at launch, so a checkout runs as-is.
-- **No Chromium.** The WebView already on the Mac does the rendering, which is why an app is ~85 MB
+- **No Chromium.** The WebView already on the Mac does the rendering, which is why an app is ~86 MiB
   of embedded Bun runtime and your code rather than a browser engine of its own.
 - **The boring surfaces work.** Files, dialogs, tray, notifications, windows, packaging, a dev server
   and a DMG — each one has a test behind it, not a promise.

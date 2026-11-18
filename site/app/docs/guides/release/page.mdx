@@ -1,0 +1,84 @@
+# Release, updates and CI
+
+crust has no `crust release`, no `crust update publish` and no app `--target` flag. This page gives the commands that exist instead, so an empty answer is never mistaken for a missing feature. `crust init` copies a `.github/workflows/release.yml` into every scaffold; the workflow is the build-and-upload half, and this page is the publish half.
+
+## Bump the version and cut a tag
+
+There is no version command. `app.version` in `crust.config.ts` is the source of truth — edit it, commit, tag `v<version>`, push the tag. The scaffolded workflow triggers on `v*` and packages the tagged tree.
+
+```sh
+sd 'version: "[0-9.]+"' 'version: "0.2.0"' crust.config.ts
+git commit -am 'chore: 0.2.0' && git tag -a v0.2.0 -m '0.2.0' && git push origin v0.2.0
+```
+
+`crust package` names artifacts from `app.name` and `app.version`, so the tag and the manifest version must be the same string.
+
+## What the workflow does
+
+`.github/workflows/release.yml` runs on `macos-14`, installs with `bun install --frozen-lockfile`, runs `bun run build` (which is `crust build`; the frontend build runs in `beforeBuildCommand`), then `bunx crust package --format dmg` and uploads `dist/*.dmg` to the release for the tag with `gh release create` / `gh release upload`. It needs no secret beyond the default `GITHUB_TOKEN`.
+
+Signing and notarization are deliberately not in it: `crust sign` and `crust notarize` need `CRUST_SIGNING_IDENTITY` and a notary profile, which are distribution decisions. Add those steps only when the certificate exists.
+
+## Cross-compile: one command per host, not one flag
+
+`crust build` is host-only. It picks the icon and the signing path from `process.platform`, and there is no `--target` for app builds:
+
+```sh
+bunx crust build --help      # no --target option
+```
+
+`--target` exists only for crust's own standalone executable (`bun run build:standalone -- --target bun-<os>-<arch>`), which compiles crust, not the user's app. To ship more than one OS, run the same `bunx crust build` on a runner of each OS. The scaffolded workflow is the macOS job; add a Linux job for `--format appimage` (needs `app.icon` and `appimagetool`) and a Windows job for `--format nsis` (needs `makensis`). The `.dmg`, `sign` and `notarize` steps stay on a mac host.
+
+## Publish an update
+
+Nothing in crust writes the manifest `updater.check` reads, or signs the artifact. The artifact is a zip of the `.app` that `crust build` produced in `dist/` — `download` extracts a real zip and hands `install` the `.app` inside it (see `src/plugins/updater-artifact.ts`). The `.dmg`, AppImage and NSIS files from `crust package` are release downloads, not updater artifacts. These commands produce the manifest by hand; they use OpenSSL 3/4 and `shasum`, both present on macOS and Linux GitHub runners.
+
+```sh
+# once. Keep key.pem outside the repo; it is the signing identity.
+openssl genpkey -algorithm ed25519 -out key.pem
+
+# the raw 32-byte public key updater.pubkey pins (not the 44-byte SPKI form)
+openssl pkey -in key.pem -pubout -outform DER | tail -c 32 | base64
+
+# a 64-byte Ed25519 signature over the artifact bytes, and its sha256
+openssl pkeyutl -sign -inkey key.pem -rawin -in dist/MyApp-0.2.0.zip | base64
+shasum -a 256 dist/MyApp-0.2.0.zip | awk '{print $1}'
+```
+
+Write the three outputs into the JSON the update endpoint serves:
+
+```json
+{
+  "version": "0.2.0",
+  "url": "https://updates.example.com/MyApp-0.2.0.zip",
+  "notes": "what changed, as Markdown",
+  "sha256": "64 lowercase hex characters",
+  "signature": "base64, 64 raw bytes",
+  "pubkey": "base64, 32 raw bytes"
+}
+```
+
+Pin that same `pubkey` in `crust.config.ts`:
+
+```ts
+updater: {
+  endpoint: "https://updates.example.com/0.2.0.json",
+  pubkey: "the base64 string printed above",
+},
+```
+
+A manifest carrying a different `pubkey` is refused as `bad-manifest`, so a hostile endpoint cannot swap in its own key. Host one immutable JSON per version at a stable URL; a URL that serves a new manifest under an old version breaks clients that already pinned the old key.
+
+Two constraints from the updater contract matter here. `install` accepts only a receipt from a `download` this same run verified, so the bytes at `url` must be the exact bytes the signature covers — extract inside the download, never before it. And a signature is over an artifact's bytes, so sign the archive, not the `.app` tree; a tree has no single byte sequence to sign. The full contract is in [Updater](/docs/guides/updater).
+
+## Proof
+
+The recipe above was run end to end and checked with the verifier crust itself uses:
+
+```sh
+bun -e "import {verifyEd25519} from './src/plugins/updater-signature.ts'; \
+  const bytes = new Uint8Array(await Bun.file('dist/MyApp-0.2.0.zip').arrayBuffer()); \
+  console.log(await verifyEd25519(pubkey, signature, bytes))"   # true
+```
+
+`pubkey` decodes to 32 bytes and `signature` to 64; no new crypto was added to crust.

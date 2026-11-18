@@ -84,9 +84,13 @@ A green gate is the only proof a landing is safe.
   until the number was updated, so change the count in the same commit as the template.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is the only launch path that reports exit 0.
-- **After a probe that launches or activates a GUI app, hand focus back to Ghostty**
-  (`open -a Ghostty`) — otherwise the human is left looking at a test window. Capture before touching
-  the shell: a screenshot taken after a command shows the terminal, not the app.
+- **After a probe that launches or activates a GUI app, hand focus back to whichever app was frontmost
+  before it started — not necessarily Ghostty** (user, 2026-11-18) — capture it first with
+  `osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`
+  and restore that same app, falling back to Ghostty only when the capture failed. The point is the
+  human is never left looking at a test window; yanking them to a terminal they were not using is its
+  own theft. Capture before touching the shell too: a screenshot taken after a command shows the
+  terminal, not the app.
 - **Every crust launch now activates**, because the accessibility fix sends `-activateIgnoringOtherApps:`
   when the app is not already active — so a probe steals focus where it used to steal nothing, and any
   harness that launches a built app must hand focus back when the run ends (2026-11-16).

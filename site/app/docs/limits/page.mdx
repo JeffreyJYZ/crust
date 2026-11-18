@@ -11,6 +11,7 @@ What crust does not do, stated before you build on it. Each line is a boundary, 
 | no Xcode required           | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
 | Linux needs two packages    | GTK3 and WebKitGTK are `dlopen`ed at launch, and the C development package supplies the `libc.so` linker script the shim links against |
 | Windows needs WebView2      | it ships with Windows 11 and is an Evergreen update on 10; absent, the preflight says so before the first window                   |
+| auto-update needs macOS     | `updater.install` and `updater.relaunch` swap a `.app` and run `open -n`; on Windows and Linux they refuse with `unsupported-platform` |
 
 ## Distribution
 
@@ -23,6 +24,11 @@ What crust does not do, stated before you build on it. Each line is a boundary, 
   <AccordionItem title="No notarisation without a Developer ID">
 
 A notarised ticket needs a certificate and `notarytool` credentials. `crust sign` takes `CRUST_SIGNING_IDENTITY`, signs with the hardened runtime, and still reports `spctl` refusing until the ticket is stapled.
+
+  </AccordionItem>
+  <AccordionItem title="Auto-update is macOS-only">
+
+`updater.check` and `updater.download` are network and hashing only, so they work on every platform. `updater.install` and `updater.relaunch` replace a macOS `.app` bundle and launch it with `open -n`, which have no Windows or Linux equivalent. On those platforms both commands refuse with code `unsupported-platform` and name the platform in the message: an app cannot advertise an update path that can never finish, and there is no silent half-feature.
 
   </AccordionItem>
   <AccordionItem title="A whole asset directory goes into the binary">
@@ -39,7 +45,7 @@ Route handlers, middleware, ISR, `next/image` optimisation, Server Actions and r
 
 ## No bundled Chromium
 
-The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS ships. A platform WebKit bug is not something crust can patch, and a page cannot rely on a browser crust pinned. The honest size claim is "no bundled Chromium", never "as small as Tauri": the ~85 MiB floor is the Bun runtime inside the binary, and Tauri's floor is smaller because it ships no JavaScript engine at all.
+The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS ships. A platform WebKit bug is not something crust can patch, and a page cannot rely on a browser crust pinned. The honest size claim is "no bundled Chromium", never "as small as Tauri": the ~86 MiB floor is the Bun runtime inside the binary, and Tauri's floor is smaller because it ships no JavaScript engine at all.
 
 ## Security
 

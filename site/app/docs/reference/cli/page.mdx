@@ -52,7 +52,7 @@ The config is built in memory: id `crust.single.<slug>`, name and window title f
 
 ## `crust doctor`
 
-Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `assets`, `templates`, `bundle`, then the `extensions` block. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
+Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `source` (known-fatal traps, only in an app directory with a config), `assets`, `templates`, `bundle`, then the `extensions` block. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
 
 The `extensions` block reports `zig`, `rustc` and `clang` as found with their version or missing, then one verdict per `.zig`, `.rs` or `.c` file under `native/`. A source file whose compiler is missing counts as a failure; a project with no `native/` directory prints one line and adds nothing to the count.
 
