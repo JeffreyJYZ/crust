@@ -1,17 +1,18 @@
 /**
- * The framework flags are a contract between parse, init and the standalone
- * gate: parse must set the flag, init must copy that template, and the gate must
- * expect exactly the files the template ships. A drift in any one reddens a
- * macOS job that nobody can reproduce by reading TypeScript.
+ * The framework flags are a contract between the CLI, init and the standalone
+ * gate: the CLI must set the flag, init must copy that template, and the gate
+ * must expect exactly the files the template ships. A drift in any one reddens
+ * a macOS job that nobody can reproduce by reading TypeScript. The argv-level
+ * refusals now live in cli-contract.test.ts; here the options are built direct.
  */
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { InitOptions } from "./init";
 import { crustDep, init } from "./init";
-import { parse } from "./parse";
-import { USAGE } from "./usage";
+import { OPTION_DESCRIPTIONS } from "./help";
 
 const scratchDirs: string[] = [];
 
@@ -41,9 +42,9 @@ describe("init framework flags", () => {
 	for (const flag of ["react", "svelte", "vue"] as const) {
 		test(`--${flag} scaffolds its template and substitutes every token`, async () => {
 			const target = join(await scratch(), "My App");
-			const parsed = parse(["init", target, `--${flag}`]);
-			expect(parsed.error).toBeUndefined();
-			expect(await init(parsed.options)).toBe(0);
+			const options: InitOptions = { dir: target };
+			options[flag] = true;
+			expect(await init(options)).toBe(0);
 
 			expect(listed(target)).toHaveLength(COUNTS[flag]);
 			expect(await Bun.file(join(target, ".gitignore")).text()).toContain("node_modules/");
@@ -58,10 +59,10 @@ describe("init framework flags", () => {
 		const errors = spyOn(console, "error").mockImplementation(() => {});
 		try {
 			const target = join(await scratch(), "app");
-			const parsed = parse(["init", target, "--react", "--vue"]);
-			expect(parsed.options.react).toBe(true);
-			expect(parsed.options.vue).toBe(true);
-			expect(await init(parsed.options)).toBe(1);
+			const options: InitOptions = { dir: target, react: true, vue: true };
+			expect(options.react).toBe(true);
+			expect(options.vue).toBe(true);
+			expect(await init(options)).toBe(1);
 			const said = errors.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(said).toContain("--react");
 			expect(said).toContain("--vue");
@@ -71,25 +72,37 @@ describe("init framework flags", () => {
 		}
 	});
 
-	test("a framework flag outside init is a parse error", () => {
-		for (const flag of ["react", "next", "svelte", "vue"] as const) {
-			expect(parse(["dev", `--${flag}`]).error).toBe(`--${flag} only applies to init`);
-		}
-	});
+	// The four "flag outside init is refused" argv rows now live in
+	// cli-contract.test.ts, which drives the real entry point instead of parse().
 
 	test("help lists all four scaffolds", () => {
-		for (const flag of ["--react", "--next", "--svelte", "--vue"])
-			expect(USAGE).toContain(flag);
+		// cac renders these descriptions in both help screens; there is no
+		// hand-written USAGE block to read them back out of any more.
+		for (const flag of ["react", "next", "svelte", "vue"] as const)
+			expect(Object.keys(OPTION_DESCRIPTIONS)).toContain(flag);
 	});
 
 	test("a checkout path with backslashes still yields parseable package.json", () => {
 		// A native Windows root such as C:\a\crust must survive substitution into
 		// the JSON template: raw \a and \c are not valid JSON escapes.
-		const spec = crustDep("C:\\a\\crust", true);
+		const spec = crustDep("C:\\a\\crust", true, "0.1.29");
 		// Raw substitution, the way applyTokens fills the template: no escaping.
 		const manifest = `{"devDependencies":{"crust":"${spec}"}}`;
 		expect(() => JSON.parse(manifest)).not.toThrow();
 		expect(JSON.parse(manifest).devDependencies.crust).toBe("link:C:/a/crust");
+	});
+
+	test("a release version pins the matching tag", () => {
+		expect(crustDep("/cache/crust", false, "0.1.29")).toBe("github:JeffreyJYZ/crust#v0.1.29");
+	});
+
+	test("a non-release version stays unpinned", () => {
+		// A `-dev` build has no tag; pinning v0.1.30-dev would break install.
+		expect(crustDep("/cache/crust", false, "0.1.30-dev")).toBe("github:JeffreyJYZ/crust");
+	});
+
+	test("a checkout still links the live tree whatever the version", () => {
+		expect(crustDep("/checkout/crust", true, "0.1.29")).toBe("link:/checkout/crust");
 	});
 
 	test("the standalone gate asserts these exact counts", async () => {
