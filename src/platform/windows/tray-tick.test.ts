@@ -15,6 +15,7 @@ import { recordingContext } from "@/plugins/tray-fake.ts";
 import { fakeBackend } from "./fake-backend.ts";
 import { fakeNotifyTray } from "./notify-tray-fake.ts";
 import { createPlatform } from "./platform-factory.ts";
+import { setActiveWindowsPlatform } from "./active-platform.ts";
 import { windowsTrayAdapter } from "./tray-adapter.ts";
 import { pollTrayTick, setActiveWindowsTray } from "./tray-tick.ts";
 
@@ -32,6 +33,10 @@ function built(clicks: number[]) {
 
 afterEach(() => {
 	setActiveWindowsTray(undefined);
+	// `createPlatform` registers the instance in the process-wide registry, and this suite builds
+	// one per test: leaving it set is what made a later file's `window` namespace answer over this
+	// file's fake platform instead of its own.
+	setActiveWindowsPlatform(undefined);
 });
 
 describe("the Windows pump drains the tray", () => {
