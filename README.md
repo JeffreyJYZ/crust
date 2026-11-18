@@ -1,12 +1,14 @@
 # crust
 
-macOS apps from Bun and the system WebView. No Rust, no bundled Chromium, no native build step.
+Desktop apps from Bun and the system WebView — macOS, Linux and Windows. No Rust, no bundled
+Chromium, no native build step.
 
-The window is AppKit, the page is `WKWebView`, and the backend is Bun answering `invoke` calls over
-a loopback bridge. The only C is a small shim compiled at launch by the TinyCC that ships inside
-Bun, so there is nothing to build before you run and no compiled artifact to match to your machine.
+On macOS the window is AppKit and the page is `WKWebView`; Linux uses GTK3/WebKitGTK and Windows uses
+Win32/WebView2. The backend is Bun answering `invoke` calls over a loopback bridge. The only C is a
+small shim compiled at launch by the TinyCC that ships inside Bun, so there is nothing to build before
+you run and no compiled artifact to match to your machine.
 
-macOS 13 or later, Apple silicon.
+macOS 13+, Linux or Windows with WebView2 — x64 and arm64 on each. Homebrew is macOS-only.
 
 ## Quickstart
 
@@ -15,6 +17,11 @@ brew install JeffreyJYZ/tap/crust
 crust init my-app --react
 cd my-app && bun install && crust dev
 ```
+
+Homebrew is macOS-only; on Linux or Windows download the matching release binary from the
+[install page](https://crust.jyz.land/docs/start/install). Six assets are attached to each tag:
+`crust-<version>-darwin-arm64`, `crust-<version>-darwin-x64`, `crust-<version>-linux-x64`,
+`crust-<version>-linux-arm64`, `crust-<version>-windows-x64.exe`, `crust-<version>-windows-arm64.exe`.
 
 Not on npm, and not going to be: `crust` on npm is an unrelated 2020 package, and `crust init` pins the dependency as `link:` to the CLI's own tree, so `bun add crust` fetches the wrong thing. Without Homebrew, work from a checkout —
 `git clone https://github.com/JeffreyJYZ/crust && cd crust && bun install && bun run start init my-app` — or run `bun run build:standalone` for one executable that scaffolds with no checkout at all.
@@ -76,8 +83,8 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 ## What it will not do
 
-- **macOS 13+ on arm64 only.** Intel Macs are not supported, and neither are Windows or Linux — there
-  is no plan and no partial path for them.
+- **No other architectures or mobile targets.** The six release binaries cover x64 and arm64 on
+  macOS 13+, Linux and Windows (WebView2); there is no riscv64 build and no iOS or Android path.
 - **Ad-hoc by default.** `crust build` signs with `codesign --sign -`, which opens on the machine that
   built it and is refused by Gatekeeper on any other, so a recipient needs `xattr -dr
 com.apple.quarantine "my-app.app"` or right-click → Open. `crust sign` swaps in a Developer ID from

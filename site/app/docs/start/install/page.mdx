@@ -7,7 +7,7 @@ install time. Building a macOS app is the step that wants the Xcode command line
 
 ## Download a binary
 
-One file per platform, built by the release workflow and attached to the tag that names it:
+Six files — x64 and arm64 on each of macOS, Linux and Windows — built by the release workflow and attached to the tag that names it:
 
 | platform              | file                                  |
 | --------------------- | ------------------------------------- |
@@ -44,7 +44,7 @@ brew install JeffreyJYZ/tap/crust
 crust --version                 # 0.1.26
 ```
 
-A source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
+macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or Windows use a [release binary](#download-a-binary) instead. It is a source install for darwin: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
 
   </TabPanel>
   <TabPanel label="From a checkout">

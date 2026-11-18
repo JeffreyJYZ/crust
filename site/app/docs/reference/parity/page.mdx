@@ -54,7 +54,7 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 | Single instance | `single-instance.acquire/release/activate` | same — the runtime locks `app.id` at launch | skip `single-instance.release` — the runner holds its own lock |
 | Deep linking | `deep-link.scheme/url`; `build.urlScheme` writes `CFBundleURLTypes`, the launch URL is claimed in `app.run()` | same | `deep-link.url` |
 | Autostart | `autostart.enable/disable/isEnabled` | same | `autostart.isEnabled` and `autostart.disable` on a sweep-only id; skip `autostart.enable` — would add a real login item |
-| Updater | `updater.check/download/install/relaunch`, sha256 + Ed25519 verify, atomic bundle swap, `open -n` relaunch, registered from `updater` config | same | skip `updater.install` — swaps the running bundle; `relaunch` kills the runner |
+| Updater | `updater.check/download/install/relaunch`, sha256 + Ed25519 verify, atomic bundle swap, `open -n` relaunch, registered from `updater` config; on `win32`/`linux`, `install` and `relaunch` refuse `unsupported-platform` naming the platform rather than advertise an update that cannot finish | same | skip `updater.install` — swaps the running bundle; `relaunch` kills the runner; `src/plugins/updater-platform.test.ts` proves the off-macOS refusal |
 | Window state | `window-state.save/restore/forget` plus `saveAll/restoreAll/forgetAll` | same | `window-state.restore` |
 | Positioner | nine presets: center, four corners, four edge midpoints | same | `positioner.center` |
 | Process | `process` in the backend | via Bun | — |
@@ -66,7 +66,7 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 | Command line (CLI) | `process.argv` in the backend | via Bun | — |
 | Persisted scope | `fs.scopeList/scopeRevoke` from a page, `fs.scopeAllow` only with `grants: "page"`, `fs.scope` config, grants persisted in `scope.json` | same — a page cannot widen its own scope by default, and `scopeList` reports `scoped: false` when no boundary exists | `fs.scopeList` |
 | Stronghold | `stronghold.open/set/get/delete/keys/close`, PBKDF2-SHA256 600k + AES-256-GCM, file holds no plaintext | same | `stronghold.get` |
-| Secure storage | `keychain.set/get/delete/list` — the OS credential store: macOS `SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`, Windows `CredWriteW`/`CredReadW`/`CredDeleteW`, no shell and no secret in a process list. A missing credential answers `{ found: false }`. Linux is **not-implemented** (needs libsecret/gnome-keyring) and Windows `list` is not-implemented (needs `CredEnumerateW`) | partial — darwin same, linux not-implemented | — |
+| Secure storage | `keychain.set/get/delete/list` — the OS credential store: macOS `SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`, Windows `CredWriteW`/`CredReadW`/`CredDeleteW`, Linux `set/get/delete` through libsecret's synchronous API (`libsecret-1.so.0` plus a Secret Service provider). No shell and no secret in a process list; a missing credential answers `{ found: false }`. Linux `list` is **not-implemented**, naming `secret_service_search_sync` in libsecret; Windows `list` is **not-implemented** (needs `CredEnumerateW`) | same — `set/get/delete` on all three platforms; `list` refuses by name where no enumerator exists | no sweep command — `src/platform/linux/keychain.test.ts` maps the Linux shapes and absence; `src/plugins/keychain-list.test.ts` proves the named refusal |
 | Logging | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1` | same | `logging.tail` |
 | Dock | `dock.badge/badgeLabel/bounce/progress` — badge text, attention bounce, determinate bar | same | `dock.badge` |
 | Power | `power.state/idleSeconds/sleepPrevent/sleepAllow` plus all six push events (`onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`) — battery, AC, low-power flag, idle time, a sleep assertion released on exit | same | `power.idleSeconds` |
@@ -100,6 +100,9 @@ token boundary were both absent from this page for two revisions while the sweep
 | Power events | all six power notifications are push events — `onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`, from `NSWorkspace` and the distributed centre; a platform without one answers `not-implemented` naming it rather than a listener that never fires | same | no sweep command — push events, not invokable commands |
 | Devtools in development | `crust dev` sets `CRUST_DEV_INSPECT`; the window is inspectable only behind that flag, so a built app cannot open one | same | no sweep command — `CRUST_DEV_INSPECT` flag, not a command |
 | Updater signing | Ed25519 over the manifest, sha256 over every artefact, a swapped-out key refused | same | skip `updater.install` — swaps the bundle; `src/plugins/updater-download.test.ts` proves the signature |
+| App command grants | `app.command(name, …)` is authorised as `app:<name>`, not the shared wire key `app:invoke`; an exact or wildcard grant scopes one command, while a flat `app:invoke` grant stays a broad alias so scaffolds that opted in earlier keep working | same | no sweep command — `src/bridge/server/app-command-grants.test.ts` (save 200 / delete 403 naming `app:notes.delete`; flat alias still reaches both) |
+| Typed failure status | a refused `window`/`tray` command answers a non-200 transport status while the page still resolves the typed failure value instead of a rejection: 404 unknown window, 400 invalid size, 501 unknown adapter, 500 handler error | same | no sweep command — `src/bridge/server/failure-status.test.ts` |
+| Release assets | six assets per tag, including `crust-<version>-windows-arm64.exe` built on a native `windows-11-arm` runner; the Windows arm64 target is a real PE with the `4d5a` magic | same | no sweep command — `scripts/release/targets.test.ts` + `scripts/release/release-workflow.test.ts` |
 
 Three of these are worth stating plainly rather than in a cell:
 
@@ -119,19 +122,19 @@ Three of these are worth stating plainly rather than in a cell:
 
 ## What this means
 
-- **same** — 45 rows
+- **same** — 49 rows
 - **via Bun** — 7 rows
-- **partial** — 2 rows
+- **partial** — 1 row
 - **absent** — 1 row
 - **accepted difference** — 1 row, the IPC transport, decided rather than outstanding
 - **module only** — 0 rows
-- **total** — 56 rows, in three tables: 8 core, 35 plugin and 13 framework-guarantee rows
+- **total** — 59 rows, in three tables: 8 core, 35 plugin and 16 framework-guarantee rows
 
-The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and secure storage has no Linux half because libsecret needs a running keyring daemon crust does not bind. Network stopped being partial when `status`/`onChange` joined the interceptor, so the row now answers connectivity as well as interception. The transport is the one `accepted difference` — decided by the owner rather than outstanding. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
+The one partial row names its own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector. Secure storage stopped being partial when Linux gained `set/get/delete` through libsecret's synchronous API; `list` still refuses by name on Linux and Windows where no enumerator exists. Network stopped being partial when `status`/`onChange` joined the interceptor, so the row now answers connectivity as well as interception. The transport is the one `accepted difference` — decided by the owner rather than outstanding. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
 
-The eighteen rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
+The twenty-one rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
 
-Across the 45 `same` rows, 26 name a command the sweep drives, 6 name a `skip` a runner cannot act, and 13 have no sweep command. Eleven of those thirteen are config, transport, events or structure — no page command could prove them — and two are gaps in the sweep table itself: `shortcut.*` and `autostart.*` have no case in `scripts/butter-sweep-commands.ts`, so those rows rest on `e2e:parity` and not on the sweep. That is a finding for the sweep owner, not a claim that the sweep proves them.
+Across the 49 `same` rows, 28 name a command the sweep drives, 6 name a `skip` a runner cannot act, 7 name a test file instead of a sweep command, and 8 are config, transport, events or structure that no page command could prove. The seven test-file rows are secure storage, security/capabilities, CSP, command authorisation, app command grants, typed failure status and release assets; the eight structural rows are Webviews, events, the localhost server, typed IPC, window material, lifecycle events, power events and devtools. The old `shortcut.*` and `autostart.*` gap is closed: five `shortcut.*` cases and two `autostart.*` cases are driven in `scripts/butter-sweep-commands.ts`, with `autostart.enable` skipped because it would add a real login item. No `same` row is left resting on `e2e:parity` alone.
 
 The Bun rows are not a shortfall: a page reaches them through the backend it already has, and that is
 how Tauri's own macOS column behaves for HTTP, WebSocket and process information too. SQL left that

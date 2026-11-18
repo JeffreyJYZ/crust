@@ -31,6 +31,11 @@ Credential Manager, where a user can revoke it. Reach for `keychain` when the OS
 | `delete` | `service`, `account`      | `{ ok: true, deleted: boolean }`          |
 | `list`   | `service`                 | `{ ok: true, accounts: string[] }`        |
 
+The `list` answer above is what a platform that binds enumeration returns. macOS binds
+`SecItemCopyMatching` and Windows binds `CredEnumerateW`, so `list` works on both. Linux binds no
+enumerator, so `list` refuses with `not-implemented` naming `secret_service_search_sync`; `set`, `get`
+and `delete` work on all three platforms.
+
 **A missing credential is `{ found: false }`, never an error.** "You have not stored this" is a normal
 answer, and a refusal a caller must catch would make a first launch look broken.
 
@@ -51,10 +56,12 @@ name inside the C string the OS is handed, which is how two credentials could co
 - **Linux** — libsecret's synchronous simple API over the same dlopen'd C shim GTK and WebKitGTK use.
   The `*_sync` calls make their own `GMainContext`/`GMainLoop`, so crust needs no running loop — only
   `libsecret-1.so.0` and a Secret Service provider (gnome-keyring, ksecretservice or KWallet) on the
-  session bus. The library is opened on the first command, not at import; a missing library or symbol
-  becomes `handler-error` naming libsecret and the install line — Debian/Ubuntu
-  `libsecret-1-0 gnome-keyring`, Fedora `libsecret gnome-keyring`. `list` is not bound, so it answers
-  `not-implemented` naming `secret_service_search_sync`.
+  session bus. No GLib allocation crosses the FFI boundary: the C half copies the secret into a static
+  buffer and frees the `GError` itself, so a GLib string is never handed to Bun's allocator. The library
+  is opened on the first command, not at import; a missing library or symbol becomes `handler-error`
+  naming libsecret and the install line — Debian/Ubuntu `libsecret-1-0 gnome-keyring`, Fedora
+  `libsecret gnome-keyring`. `list` is not bound, so it answers `not-implemented` naming
+  `secret_service_search_sync`.
 
 ## Failure codes
 
@@ -64,5 +71,7 @@ name inside the C string the OS is handed, which is how two credentials could co
 | `not-implemented`  | no adapter on this platform, or `list` on Windows/Linux; `requires` names what is missing |
 | `handler-error`    | the OS refused the read, write or delete — a locked keychain, a denied prompt, or Linux's missing libsecret/provider |
 
-A secret is read into a caller-sized buffer and re-read at its exact length when the first buffer was
-too small, so a long private key is never truncated at a guess.
+On macOS a secret is read into a caller-sized buffer and re-read at its exact length when the first
+buffer was too small, so a long private key is never truncated at a guess. Linux uses a fixed 64 KiB
+static buffer in the C shim and refuses a larger secret with `handler-error` rather than cutting it;
+no platform silently truncates a credential.

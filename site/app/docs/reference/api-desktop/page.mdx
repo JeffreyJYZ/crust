@@ -64,6 +64,8 @@ Failure codes: `bad-request` (a missing or empty `reason`), `handler-error` (IOK
 
 `elementCount` answers `not-implemented` rather than a misleading zero when the AX window list came back empty (`requires: "AXUIElementCopyAttributeValue (AXWindows)"`) or the API refused the walk (`requires: "AXUIElementCopyAttributeValue"`). Without an adapter, all three answer `not-implemented` with `requires: "AXIsProcessTrusted"`.
 
+`elementCount` never sees web content. The page-local `crust.a11y.pageTree(selector?)` and `crust.a11y.focusElement(selector)` fill that gap without a bridge call or native half: the tree reports `{ role, label, focusable, readingOrder }` with `source: "dom"` and a note that this is the page's view, not the OS accessibility tree; focus calls `.focus()` and reports what actually took it, refusing with `code: "not-focusable"` when the browser declines. They are `window.crust` commands, not `invoke` command names. The full shapes are in the accessibility guide.
+
 ## `opener`
 
 | command      | arguments  | answer                               |

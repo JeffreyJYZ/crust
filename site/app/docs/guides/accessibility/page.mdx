@@ -1,6 +1,6 @@
 # Accessibility
 
-Two surfaces in one plugin. `announce`, `title` and `focus` let a page **speak through** the platform's accessibility layer. `trusted`, `prompt` and `elementCount` ask **whether** the OS will expose the app's own accessibility tree. The first is how you reach a screen reader; the second is a diagnostic about the tree itself.
+Two surfaces in one plugin. `announce`, `title` and `focus` let a page **speak through** the platform's accessibility layer. `trusted`, `prompt` and `elementCount` ask **whether** the OS will expose the app's own accessibility tree. The first is how you reach a screen reader; the second is a diagnostic about the tree itself. A third surface is page-local: `window.crust.a11y` reads and focuses the page's own DOM without crossing the bridge.
 
 Registered by the macOS runtime with `darwinAccessibilityAdapter()`.
 
@@ -91,6 +91,21 @@ Two states are not a count, and both answer `not-implemented` rather than `0`:
 
 A count of zero from a window that does not exist is not evidence of anything, which is why the two are separated.
 
+## The page's own tree and DOM focus
+
+`elementCount` cannot say what is inside the page: it walks the app's AX element in a process that is not trusted by default, and the content tree belongs to WebKit and VoiceOver. The page half closes the part it can honestly close — two **page-local** commands on `window.crust.a11y`, with no bridge call and no native half:
+
+```ts
+const { nodes, note } = window.crust.a11y.pageTree("main");
+const focus = window.crust.a11y.focusElement("#save");
+```
+
+`pageTree(selector?)` walks a subtree (default `body`) in reading order and reports each element as `{ role, label, focusable, readingOrder }`. `role` is the explicit `role` attribute or the implicit role from the tag (`input[type=checkbox]` → `checkbox`, `<h1>` → `heading`, `<div>` → `generic`); `label` comes from `aria-label`, `aria-labelledby`, `alt`, `title`, then text content; `focusable` is tab reachability, not programmatic focusability. The answer carries `source: "dom"` and a `note`: this is the page's own view, **not the operating system's accessibility tree**, so a populated tree is not evidence a screen reader can reach the page. Reading another process's tree still needs a trusted process and code this plugin does not ship.
+
+`focusElement(selector)` calls `.focus()` on the first match, then reads `document.activeElement`. It answers `{ ok: true, focused: true, active: { role, label } }` with what **actually** took focus, not what was asked to. A browser refuses a `<div>` without `tabindex`, so that case answers `{ ok: false, code: "not-focusable" }` with a message naming `tabindex`; an unmatched or empty selector answers `not-found` or `bad-request`. This is keyboard/DOM focus, distinct from the plugin's `accessibility.focus` command, which moves *assistive* focus to a window.
+
+Both commands answer `{ ok: false, code: "no-document" }` when the page has no document. The bridge's document snippet and `crust/vite`'s dev-page snippet both install them, so every served page has `crust.a11y`.
+
 ## A window is in AX only when the app is active
 
 AppKit lists only windows on the **active Space**, and a window joins that Space only when its app is active. `-[NSApplication activate]` is silently refused for a process LaunchServices did not launch — which is how `crust dev` and the parity harness run — so a window can be visible, clickable and absent from `AXWindows` for every other process while `AXIsProcessTrusted` is true.
@@ -112,4 +127,4 @@ Without an adapter — every platform but macOS — each command answers `not-im
 
 ## Limits
 
-`elementCount` walks the app's own element only. Reading another process's tree needs `trusted: true` and code this plugin does not ship. `announce` speaks; it does not read a screen reader's state, and there is no query for what is currently focused — use `focus` to move, not to find out where you are.
+`elementCount` walks the app's own element only. Reading another process's tree needs `trusted: true` and code this plugin does not ship. `announce` speaks; it does not read a screen reader's state. `crust.a11y.pageTree` reports the DOM, not the OS tree; `crust.a11y.focusElement` reports what took DOM focus, not where assistive focus is — the plugin's `focus` still only moves it.

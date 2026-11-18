@@ -1,0 +1,10 @@
+# changelog-truth — traps worth keeping
+
+- A changelog written from commit messages inherits their rounding: `a4c9e15` says "seven doc pages" while its own message lists ten defects and its diff touches 24 pages under `site/app/docs`. Drop the count; enumerate what the tree proves.
+- Historical counts measured against an untracked mirror have no committed evidence: `.gitignore:11` ignores `research/*/repo/`, so `f00d5bd`'s 41 failures and 202 newly-collected tests cannot be re-measured from a clone. Say they were local measurements.
+- Commit prose can flatten two mechanisms into one: "each unit owns one cleanup label" is true only of `113_network_serve.c:106` (`done:`); `110_network.c` releases per path via `net_release`, `downloads/00_prelude.c:71` via `dl_release`.
+- Counts on a sibling page drift after the changelog is written: `reference/parity/page.mdx:137` says 49 `same` rows where the changelog said 45. Prefer "every row" over a pinned number.
+- "HTML-driven root entry" hid the actual rule: `dev.ts:22-33` reads the HTML module `src`, `dev.ts:41-55` skips that candidate and picks root `main.ts`; an explicit `--entry` still wins.
+- Claims that checked out against the tree: six targets in `scripts/release/targets.ts`, 69 Windows ffi declarations (`ffi.ts` 64 + `keychain-ffi.ts` 5 via `ffiSymbols`), 9 releases per serve (`src/platform/darwin/network-ownership.test.ts:27-29`), 13 focus-capturing harnesses, `POWER_COMMANDS` 10, six `Intl` plural categories.
+- Proof commands: `git show f00d5bd`, `git show a4c9e15`, `git show 1be0b5f`, `rg -n 'same \|' site/app/docs/reference/parity/page.mdx`, `rg -l 'captureFrontmost\(\)' scripts`, `bun -e 'import {ffiSymbols} from "./src/platform/windows/c-abi.ts"; …'`.
+- Defects found outside this lane, left to the owning lane: `reference/parity/page.mdx:69,130` still calls Linux keychain not-implemented, and `:137` says `shortcut.*`/`autostart.*` have no sweep case while `scripts/butter-sweep-commands.ts:168-179` has them.
