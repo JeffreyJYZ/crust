@@ -19,6 +19,8 @@
  * bound to that token when it served the document, never the label the page sends in a request.
  */
 
+import type { BridgeHandle } from "./server/types.ts";
+
 /** The query parameter that names a window. */
 export const WINDOW_PARAM = "window";
 
@@ -55,6 +57,26 @@ export function setBridgeToken(token: string | undefined, origin?: string): void
 /** The recorded token, or `undefined` when no bridge has started. */
 export function currentBridgeToken(): string | undefined {
 	return bridgeToken;
+}
+
+/**
+ * The same handle, with the token it recorded cleared when it stops.
+ *
+ * The recorded token is process-wide because `window.create` has no bridge in scope, so the writer
+ * is the only place that can undo it — and a stopped bridge must not leave it behind: the next
+ * window would carry a dead credential and the document route would answer `401`. Wrapping the
+ * handle here means every caller of `startApp` gets the clear, including a test that only stops the
+ * bridge in its teardown, so no test file can leave a token for the next one.
+ */
+export function tokenClearedOnStop(handle: BridgeHandle): BridgeHandle {
+	const recorded = currentBridgeToken();
+	return {
+		...handle,
+		async stop() {
+			if (currentBridgeToken() === recorded) setBridgeToken(undefined);
+			await handle.stop();
+		},
+	};
 }
 
 /**

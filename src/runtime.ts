@@ -24,7 +24,7 @@ import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts"
 import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
-import { setBridgeToken } from "@/bridge/window-identity.ts";
+import { setBridgeToken, tokenClearedOnStop } from "@/bridge/window-identity.ts";
 import type { StartAppOptions } from "./runtime-options.ts";
 
 /**
@@ -152,7 +152,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		// resolves against the Vite page, which injects its own `__CRUST__`, so nothing is recorded
 		// there: publishing the token into a Vite-served URL would only put it in the dev server log.
 		setBridgeToken(runConfig.dev?.url ? undefined : bridge.token, bridge.url);
-		return bridge;
+		// The handle clears what it recorded when it stops: no stale credential for the next window.
+		return (bridge = tokenClearedOnStop(bridge));
 	};
 
 	app.deferBridge((runConfig) => {

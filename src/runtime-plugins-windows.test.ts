@@ -117,6 +117,22 @@ describe("the window adapter the registry picks", () => {
 	});
 
 	/**
+	 * The clear is honoured, which is what makes the singleton safe to leave set in one file: a
+	 * platform registered by an earlier test must not survive into the next one, and the registry
+	 * must answer as if none was built rather than reach a stale instance.
+	 */
+	test("a cleared platform leaves the registry bare, never pointed at a stale one", async () => {
+		await windowsWindow();
+		setActiveWindowsPlatform(undefined);
+		const window = await commandsOf("win32", "window");
+		expect(window.list?.({})).toMatchObject({
+			ok: false,
+			code: "unknown-adapter",
+			message: expect.stringContaining("no Windows platform is attached"),
+		});
+	});
+
+	/**
 	 * Linux used to be pinned here as bare. It now has an arm of its own
 	 * (`runtime-plugins-linux.test.ts`), which owns both cases — wired and not-yet-built — because the
 	 * active-platform registry is process-wide state and this file must not depend on what an earlier
