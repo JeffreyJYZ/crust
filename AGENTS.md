@@ -100,6 +100,11 @@ A green gate is the only proof a landing is safe.
 - **Say so before anything that takes focus, moves a window or asks for a physical click** — their
   screen is theirs. A performed click they reported outranks a missing log line, because
   instrumentation may predate the log file.
+- **A focus-dependent test failure is probably the human, not the code** (user, 2026-11-18) — AppKit
+  answers `AXWindows` only for a window on the active Space, so switching apps mid-run makes
+  `accessibility.elementCount` refuse honestly and the sweep look broken. The control is a deliberate
+  switch: 3 s in passed, 0.4 s in failed. Reproduce that before calling it a defect, and make the
+  harness independent of who is frontmost rather than tolerating a flaky local gate.
 
 ## Docs site (`site/`)
 

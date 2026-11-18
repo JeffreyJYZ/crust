@@ -19,6 +19,10 @@ interface Answer {
 	command: string;
 	refusal: boolean;
 	detail: string;
+	/** Set only when AX could not list windows after the child re-activated and retried. */
+	frontmostLost?: boolean;
+	/** The AX refusal text behind a frontmost-lost report, so the run says what actually answered. */
+	report?: string;
 }
 
 describe("butter sweep — every mapped command runs on the real platform", () => {
@@ -94,6 +98,30 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 		const refusals = answers.filter((answer) => answer.refusal);
 		// The failure message carries the answer, so a red run names the capability rather than a count.
 		expect(refusals.map((answer) => `${answer.command}: ${answer.detail}`)).toEqual([]);
+	});
+
+	test("a frontmost-lost AX answer is reported, never silently counted as a pass", () => {
+		const lost = answers.filter((answer) => answer.frontmostLost);
+		for (const answer of lost) {
+			expect(answer.command).toBe("accessibility.elementCount");
+			expect(answer.detail).toBe("frontmost-lost");
+			// The report carries the refusal text, so a red run names what AX actually answered.
+			expect((answer.report ?? "").includes("AX listed no windows")).toBe(true);
+			expect(answer.refusal).toBe(false);
+		}
+		// An unmarked no-windows refusal would otherwise read as an ordinary refusal and get lost in
+		// the count, so demand that every one of them carries the environment marker.
+		expect(
+			answers
+				.filter((a) => !a.frontmostLost && a.detail.includes("AX listed no windows"))
+				.map((a) => a.command),
+		).toEqual([]);
+		// Re-activation is a retry, not an excuse: the row is proven only when a count came back.
+		const count = answers.find((answer) => answer.command === "accessibility.elementCount");
+		expect({ detail: count?.detail, lost: count?.frontmostLost ?? false }).toEqual({
+			detail: "ok",
+			lost: false,
+		});
 	});
 
 	test("no driven command is missing from the runtime, and no command is missing from the table", () => {
