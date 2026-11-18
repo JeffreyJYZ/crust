@@ -110,9 +110,9 @@ this lane in `987f0bf` on top of `5d7502d`.
 
 - **`examples/native/README.md:36-41`** says a native extension's dylib is never in a standalone bundle
   (finding 1's evidence path) — unchanged and correct, finding 1 was not mine.
-- **`src/cli/dev/runtime.ts:132-137`** gets no change from me: it is the `runtime`/`cli` lane's file, and
-  the finding's dev-watch half is now partly addressed from the generated module (`reload()`), but
-  watching `native/` and `extensions/generated/` for a rebuild is a change in that file.
+- **`src/cli/dev/runtime.ts`** — the dev-watch half is now closed by the `runtime`/`cli` lane: the
+  watch's directory set includes `native/` when it exists, so a rebuilt dylib restarts the runtime.
+  The generated module's `reload()` is still available. `extensions/generated/` is not watched.
 - **Finding 7** (the C path is never exercised by a real compiler) was not in my list, but the clang
   entry added to `extension-compile-real.test.ts` closes it, so CI now compiles the C command line.
 

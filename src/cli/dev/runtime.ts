@@ -23,6 +23,8 @@ export interface RuntimeOptions {
 	env?: Record<string, string>;
 	/** Extension files that loaded from disk; empty spawns the plain runtime. */
 	extensionFiles?: readonly string[];
+	/** The project's `native/` source dir, when it exists. Edit there rebuilds the dylib. */
+	nativeDir?: string;
 }
 
 export async function spawnRuntime(options: RuntimeOptions) {
@@ -77,10 +79,22 @@ async function devEntryPath(options: RuntimeOptions, crust: string): Promise<str
 	return path;
 }
 
-/** The directories holding extensions, so an edit there restarts the runtime that imported them. */
-function extensionDirs(files: readonly string[] | undefined): string[] {
-	return [...new Set((files ?? []).map((file) => dirname(file)))];
+/**
+ * The dirs whose edits restart the runtime: each extension file's parent, plus the `native/`
+ * source dir when the project has one. Kept pure so the dev watch can be tested without spawning
+ * a runtime or installing real fs watchers.
+ */
+export function extensionDirs(
+	files: readonly string[] | undefined,
+	nativeDir?: string,
+): string[] {
+	const dirs = [...new Set((files ?? []).map((file) => dirname(file)))];
+	if (nativeDir !== undefined) dirs.push(nativeDir);
+	return dirs;
 }
+
+/** Source files that reach the dev runtime: extension modules and native extension sources. */
+const BACKEND_SOURCE = /\.(?:ts|c|rs|zig)$/;
 
 /**
  * Run the runtime, restarting it on a backend file change. The watch covers
@@ -128,11 +142,15 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 
 	// An extension is backend code the generated entry imports, and it usually sits outside the
 	// entry's directory, so it needs its own watch: a fix that silently never reaches the runtime
-	// is the dev/prod divergence this whole path exists to close.
-	const extensionWatchers = extensionDirs(options.extensionFiles).map((dir) =>
+	// is the dev/prod divergence this whole path exists to close. `native/` is in the same set —
+	// editing clock.c and rebuilding the dylib must restart as surely as editing a .ts module.
+	// The watch is plain (non-recursive) on purpose: compiler output lives in child dirs such as
+	// target/ and zig-out/, and a recursive watch would fire on each generated object and spin
+	// the restart loop. The sources being edited sit directly in the watched dir.
+	const extensionWatchers = extensionDirs(options.extensionFiles, options.nativeDir).map((dir) =>
 		watch(dir, { recursive: false }, (_event, filename) => {
 			if (stopping || restarting) return;
-			if (!String(filename ?? "").endsWith(".ts")) return;
+			if (!BACKEND_SOURCE.test(String(filename ?? ""))) return;
 			restart();
 		}),
 	);

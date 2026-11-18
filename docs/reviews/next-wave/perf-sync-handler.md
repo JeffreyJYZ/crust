@@ -49,6 +49,11 @@ max gap `17.0 ms`.
 Both change the *execution model* plugins run under, which is a plugin-contract decision the user
 owns. This lane recommends only; it does not implement either.
 
+**Status: open decision, not a defect.** Asked directly, the answer was "idk" — so it stays open and
+unimplemented rather than being closed by silence. Nothing in the tree is wrong: a plugin whose
+handlers are fast, which is what a desktop app's handlers are meant to be, never reaches this. What
+is missing is a rule for a plugin that is slow, and that rule is the choice below.
+
 ### 1. Per-plugin worker
 
 Dispatch each plugin's handlers to a worker thread dedicated to that plugin. One plugin's blocking
