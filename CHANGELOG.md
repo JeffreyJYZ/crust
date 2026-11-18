@@ -4,6 +4,33 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.27] — 2026-11-18
+
+### Added
+
+- **A Windows arm64 release.** `bun build --compile --target=bun-windows-arm64` is a real target on Bun 1.4.4 — it emits a PE32+ Aarch64 image — so the release table gains a sixth entry and the matrix builds it on a native `windows-11-arm` runner rather than an x64 one that could only skip its own proof. `verify-assets` grew the same row, so a release missing that asset fails instead of quietly shipping five. Windows arm64 also needed work below the table: `RECT` is passed by value under AAPCS64, and all 69 `bun:ffi` declarations were checked against their C prototypes.
+- **A Linux keychain.** libsecret's `secret_password_*v_sync` creates its own `GMainContext` and `GMainLoop`, so a headless caller can use it and crust needs only `libsecret-1.so.0` plus a Secret Service provider on the session bus. The sixth Linux shim part binds that API and copies secrets into a static buffer, so no GLib allocation crosses `bun:ffi`. A machine without a provider still refuses, naming the package to install.
+- **A gate that can see a skip.** `bun test` prints `1 pass, 1 skip, 0 fail` and exits 0, so a skip was indistinguishable from a pass. `test:no-skips` writes a JUnit report and fails on any `<skipped/>` outside an explicit allowlist.
+
+### Changed
+
+- **The test path list was a substring filter.** `bun test src` swept the vendored `research/electrobun` mirror and reported 41 failures that were not this repo's; `./src` is a path. With that fixed the suite collected 202 tests that had never run — all passing.
+- **AOT is detected by trying the flag.** The branch probed `bun compile --help`, a subcommand stable Bun does not have, so it always answered no. It now tries `bun build --compile --aot`; stable 1.4.4 gains no bytes from it, so it is kept because it is free rather than because it helps. `bun-version` is pinned in the workflow so a released binary stops tracking the runner's default.
+- **A probe hands focus back to whichever app was frontmost before it started**, not a fixed terminal. Thirteen harnesses capture first and restore after, and both spawns are timeboxed so a wedged System Events cannot hold a gate.
+
+### Fixed
+
+- **Capability grants were spoofable.** The gate read the window label out of the request body while one process token served every window, so any page holding it could claim `window: "admin"` and receive that label's grants. The bridge now binds a label to the token when it serves a document and authorises on that; the body field is routing only. `app.invoke` also gates per command (`app:<name>`), with the flat `app:invoke` kept as a broad alias.
+- **`updater.check` fetched any URL a page handed it**, while `download` applied the scheme policy. Both share one check now, and `install`/`relaunch` refuse `unsupported-platform` off macOS instead of half-working.
+- **`build.sidecars` never reached the build.** The config was validated and documented and never passed to `buildApp`, so every built app wrote an empty manifest and every `sidecar.spawn` name was refused. Single-file builds and both installers carry it too.
+- **`crust dev` on the Svelte and Vue scaffolds died `document is not defined`** with no window: the entry resolver picked the page's `src/main.ts`, which is the frontend. It picks the HTML-driven root entry now.
+- **The native units leaked.** A serve never released its `NSData`, `NSHTTPURLResponse` or the strings it built; a download completion was attributed by queue position, so an out-of-order callback resumed the wrong task; and a failed class registration stayed cached, wedging the unit. Each unit owns one cleanup label and an ownership harness counts the releases — 0 on the old shim, 9 per serve on this one.
+- **A chunked invoke body walked past `MAX_BODY_BYTES`**, which only checked `content-length`. Both body shapes are counted as they stream.
+- **Window and tray failures answered inside HTTP 200**, so a caller reading only the transport could not tell a refusal from a success. The code now maps to the same status table `CrustError` uses, while the body and the client's resolution are unchanged, so a caller that ignores the result keeps working.
+- **The shell env blocklist compared raw keys**, so `dyld_` walked past a check that refused `DYLD_`. **Plurals collapsed** `zero`/`two`/`few`/`many` into `other` (Arabic showed one form), `i18n.locale` disagreed with `translate` about which language was configured, and nothing bound `dir`. All six `Intl` categories are honoured and RTL is bound from the locale.
+- **Seven documentation pages were wrong**, each found by reading the code: `permissions` still described the pre-fix spoofable model, `lifecycle` said four events where `AppEvent` has six, `screen` claimed a coordinate equivalence that does not hold, `reference/api` said `POWER_COMMANDS` was 4 where it is 10 and omitted six push commands plus `navigation.loadUrl`, `tray.setTooltip` and the binary `fs` commands, `reference/cli` had neither `--svelte` nor `--vue`, `reference/errors` omitted a 403 and the bad-token case, and `clipboard` documented `readImage` as refused when it is implemented.
+- **The parity page's 45 `same` rows now each name their proof.** Two — `shortcut.*` and `autostart.*` — named nothing that ran, so the sweep gained cases; `autostart.enable` is skipped rather than driven, because it would write a real login item.
+
 ## [0.1.26] — 2026-11-18
 
 ### Added
