@@ -15,6 +15,7 @@ export type UpdaterErrorCode =
 	| "install-failed"
 	| "relaunch-failed"
 	| "not-an-app-bundle"
+	| "unsupported-platform"
 	| "unverified-artifact"
 	| "handler-error";
 
@@ -152,6 +153,18 @@ export function hashMismatch(path: string, actual: string, expected: string): Up
 export function notAppBundle(path: string, reason: string, command = "install"): UpdaterFailure {
 	const message = `crust: updater.${command}: ${path} ${reason}`;
 	return { ok: false, code: "not-an-app-bundle", message, path };
+}
+
+/**
+ * The bundle swap and the launch are macOS-shaped: `install` renames an `.app` and `relaunch` runs
+ * `open -n`. Off macOS there is no install path, so refuse by name instead of letting a page see a
+ * misleading `not-an-app-bundle` and conclude the update nearly worked.
+ */
+export function platformFailure(command: "install" | "relaunch", platform: string): UpdaterFailure {
+	const message =
+		`crust: updater.${command}: auto-update replaces a macOS .app bundle and relaunches with ` +
+		`open -n; platform ${platform} has no install path, so this update cannot be applied`;
+	return { ok: false, code: "unsupported-platform", message };
 }
 
 /** A page payload is whatever the bridge parsed, so a reader answers `undefined` rather than throwing. */

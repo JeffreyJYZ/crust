@@ -12,13 +12,17 @@ import { createI18nPlugin } from "@/plugins/i18n";
 describe("i18n.locale", () => {
 	test("reports the language the adapter read", () => {
 		const plugin = createI18nPlugin({ messages: CATALOGUE, adapter });
-		expect(call(plugin, "locale")).toEqual({ ok: true, locale: "en-GB" });
+		expect(call(plugin, "locale")).toEqual({ ok: true, locale: "en-GB", dir: "ltr" });
 	});
 
 	test("a setLocale choice outranks the system's language", () => {
 		const plugin = createI18nPlugin({ messages: CATALOGUE, adapter });
-		expect(call(plugin, "setLocale", { locale: "fr" })).toEqual({ ok: true, locale: "fr" });
-		expect(call(plugin, "locale")).toEqual({ ok: true, locale: "fr" });
+		expect(call(plugin, "setLocale", { locale: "fr" })).toEqual({
+			ok: true,
+			locale: "fr",
+			dir: "ltr",
+		});
+		expect(call(plugin, "locale")).toEqual({ ok: true, locale: "fr", dir: "ltr" });
 	});
 
 	test("a plugin with neither an adapter nor a catalogue is not-implemented, naming NSLocale", () => {
@@ -39,6 +43,7 @@ describe("i18n.messages", () => {
 		expect(call(plugin, "messages")).toEqual({
 			ok: true,
 			locale: "en",
+			dir: "ltr",
 			messages: CATALOGUE.en,
 		});
 	});
@@ -48,6 +53,7 @@ describe("i18n.messages", () => {
 		expect(call(plugin, "messages", { locale: "fr" })).toEqual({
 			ok: true,
 			locale: "fr",
+			dir: "ltr",
 			messages: CATALOGUE.fr,
 		});
 	});

@@ -19,10 +19,15 @@ const INJECTION = [
 ] as const;
 
 /** `DYLD_*` is a family, not a name: every member redirects or injects a library on macOS. */
-const DYLD_PREFIX = "DYLD_";
+const DYLD_PREFIX = "dyld_";
+
+// Windows environment names are case-insensitive, so `node_options` reaches Node as NODE_OPTIONS.
+// Compare folded names; the caller's original spelling still goes into the refusal message.
+const INJECTION_FOLDED = INJECTION.map((name) => name.toLowerCase());
 
 function injection(key: string): boolean {
-	return key.startsWith(DYLD_PREFIX) || INJECTION.some((name) => name === key);
+	const folded = key.toLowerCase();
+	return folded.startsWith(DYLD_PREFIX) || INJECTION_FOLDED.some((name) => name === folded);
 }
 
 export type EnvPlan = { ok: true; env: Record<string, string> } | ShellFailure;

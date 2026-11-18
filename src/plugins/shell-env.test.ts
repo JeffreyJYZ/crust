@@ -53,6 +53,26 @@ describe("a page-supplied env", () => {
 		}
 	});
 
+	test("finding 3: lowercase spellings are refused too, because Windows names fold", async () => {
+		const open = await shellHarness({ env: true });
+		try {
+			for (const name of [
+				"node_options",
+				"bash_env",
+				"ld_preload",
+				"dyld_insert_libraries",
+			]) {
+				const refused = refusal(
+					await open.spawn({ program: "echo", env: { [name]: "x" } }),
+				);
+				expect(refused.code).toBe("env-not-allowed");
+				expect(refused.message).toContain(JSON.stringify(name));
+			}
+		} finally {
+			await open.stop();
+		}
+	});
+
 	test("a benign variable does reach the program when the host opts in", async () => {
 		const open = await shellHarness({ env: true });
 		try {

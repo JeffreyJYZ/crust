@@ -37,6 +37,8 @@ export interface LocaleResult {
 	ok: true;
 	/** The locale this answer is in, e.g. `"en-GB"`. */
 	locale: string;
+	/** The document direction that locale needs: `rtl` for ar/he/fa/…, else `ltr`. */
+	dir: "ltr" | "rtl";
 }
 
 export interface MessagesResult extends LocaleResult {

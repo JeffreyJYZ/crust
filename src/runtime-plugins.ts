@@ -7,6 +7,7 @@ import { crashRecordPath } from "@/platform/darwin/crash-record";
 import { createSidecarPlugin } from "@/plugins/sidecar";
 import { createWindowPlugin, type PluginDefinition } from "@/plugins";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
+import { nonDarwinPlugins, nonDarwinScreenPlugin } from "@/runtime-non-darwin";
 import { platformKeychainPlugin } from "@/runtime-keychain";
 import { startCrashPart } from "@/runtime-crash-start";
 
@@ -36,6 +37,7 @@ function optionsOf(options: NativePluginOptions | ShellConfig): NativePluginOpti
  * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
  * `shell` has no native half but needs the config's allowlist, so it is built here too: with no `shell` section the allowlist is empty and every `spawn` is refused by name.
  * `updater` is registered only when the config has an `updater` section: an app with no update story then carries no download-and-replace surface, and naming it in `plugins` is the unknown-plugin error it should be.
+ * The updater self-gates `install` and `relaunch` on `process.platform`: off macOS they refuse with `unsupported-platform` rather than advertising an update path that cannot finish (`open -n` and the `.app` swap are macOS-shaped).
  * No platform, or not macOS, keeps the honest answers and still registers the plugin under its own name so `selectedPlugins` matches `config.plugins`.
  */
 export async function nativePlugins(
@@ -61,7 +63,6 @@ export async function nativePlugins(
 		createTrayPlugin,
 		createUpdaterPlugin,
 		powerPlugin,
-		screenPlugin,
 	} = await import("@/plugins");
 	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
 	// The sidecar plugin reads its declared names from the manifest `crust build` copied
@@ -81,11 +82,13 @@ export async function nativePlugins(
 			createWindowPlugin(),
 			// No notification center: onSleep still gets a typed not-implemented, not unknown-plugin.
 			powerPlugin,
-			// Same for displays: a platform with no enumerator answers not-implemented by name.
-			screenPlugin,
+			// Displays have a working half on both platforms; the selector wires the right one.
+			nonDarwinScreenPlugin(process.platform),
 			storePlugin,
 			databasePlugin,
 			keychainPlugin,
+			// Seventeen darwin-only namespaces, bare so each refuses by name instead of being absent.
+			...nonDarwinPlugins,
 			shellPlugin,
 			sidecarPlugin,
 			...updaterPlugins,

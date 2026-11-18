@@ -22,7 +22,7 @@ import {
 	verifyEd25519,
 } from "./updater-signature";
 import type { DownloadArgs, DownloadResult, UpdaterAdapter, UpdaterOptions } from "./updater-types";
-import { downloadUrlFailure } from "./updater-url";
+import { fetchUrlFailure } from "./updater-url";
 
 export async function runDownload(
 	adapter: UpdaterAdapter,
@@ -32,7 +32,7 @@ export async function runDownload(
 ): Promise<DownloadResult | UpdaterFailure> {
 	const url = readString(args, "url");
 	if (url === undefined) return invalidArguments("download", "needs { url }", args);
-	const refused = downloadUrlFailure(url, { allowFile: options.allowFileUrl === true });
+	const refused = fetchUrlFailure(url, { allowFile: options.allowFileUrl === true });
 	if (refused !== undefined) return refused;
 	const expected = readSha256(args);
 	if (expected === undefined || expected === null) {

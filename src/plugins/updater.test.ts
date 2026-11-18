@@ -34,7 +34,12 @@ describe("updater.check", () => {
 				throw new Error("ENOTFOUND");
 			},
 		});
-		expect(await plugin(down).check({ endpoint: "e", currentVersion: "1.0.0" })).toMatchObject({
+		expect(
+			await plugin(down).check({
+				endpoint: "https://example.test/e",
+				currentVersion: "1.0.0",
+			}),
+		).toMatchObject({
 			available: false,
 			error: { code: "check-failed", message: "ENOTFOUND" },
 		});
@@ -44,6 +49,32 @@ describe("updater.check", () => {
 		});
 		const noArgs = await plugin(offlineAdapter()).check({} as CheckArgs);
 		expect(noArgs).toMatchObject({ available: false, error: { code: "invalid-arguments" } });
+	});
+
+	test("finding 2: check refuses an http or file endpoint with the download URL policy", async () => {
+		const unreached = offlineAdapter({
+			fetchJson: async () => {
+				throw new Error("the adapter must not be reached for a refused url");
+			},
+		});
+		const plain = await plugin(unreached).check({
+			endpoint: "http://127.0.0.1:9999/manifest.json",
+			currentVersion: "1.0.0",
+		});
+		expect(plain).toMatchObject({ available: false, error: { code: "invalid-arguments" } });
+		expect(plain.error?.message).toContain("crust: updater.check refuses a http: url");
+		const local = "file:///Users/jyz/Downloads/latest.json";
+		const file = await plugin(unreached).check({ endpoint: local, currentVersion: "1.0.0" });
+		expect(file.error?.message).toContain("updater.allowFileUrl");
+		const allowed = offlineAdapter({
+			fetchJson: async () => ({ version: "2.0.0", url: "u.app" }),
+		});
+		expect(
+			await plugin(allowed, { allowFileUrl: true }).check({
+				endpoint: local,
+				currentVersion: "1.0.0",
+			}),
+		).toMatchObject({ available: true, version: "2.0.0" });
 	});
 
 	test("the endpoint falls back to the configured one, and a foreign key is refused", async () => {

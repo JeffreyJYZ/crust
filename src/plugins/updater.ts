@@ -13,11 +13,13 @@ import {
 	invalidArguments,
 	isNewer,
 	notAppBundle,
+	platformFailure,
 	readString,
 	type UpdaterFailure,
 } from "./updater-args";
 import { parseManifest } from "./updater-manifest";
 import { nodeUpdaterAdapter } from "./updater-node";
+import { fetchUrlFailure } from "./updater-url";
 import { createLauncher, ownBundleFailure } from "./updater-bundle";
 import { runDownload } from "./updater-download";
 import {
@@ -50,6 +52,11 @@ export function createUpdaterPlugin(
 	options: UpdaterOptions = {},
 	/** Where this process's executable sits: `relaunch` derives its own bundle from it. */
 	execPath: string = process.execPath,
+	/**
+	 * The OS this app actually runs on. `install` and `relaunch` replace a `.app` and run `open -n`,
+	 * so they refuse by name off macOS; separate from `execPath` so a test can prove both arms.
+	 */
+	platform: string = process.platform,
 ) {
 	/** Every artifact this instance verified, so `install` can refuse anything else. */
 	const receipts = createReceipts();
@@ -71,6 +78,14 @@ export function createUpdaterPlugin(
 				if (endpoint === undefined || currentVersion === undefined) {
 					return badCheck("check", "needs { endpoint, currentVersion }", args);
 				}
+				// check fetches a page-supplied endpoint too, so it obeys the same scheme policy as
+				// download: https only, and file only when the app opted in with updater.allowFileUrl.
+				const refused = fetchUrlFailure(
+					endpoint,
+					{ allowFile: options.allowFileUrl === true },
+					"check",
+				);
+				if (refused !== undefined) return checkFailure(refused.code, refused.message);
 				let payload: unknown;
 				try {
 					payload = await adapter.fetchJson(endpoint);
@@ -96,6 +111,7 @@ export function createUpdaterPlugin(
 			download: (args: DownloadArgs): Promise<DownloadResult | UpdaterFailure> =>
 				runDownload(adapter, options, receipts, args),
 			install: async (args: InstallArgs): Promise<InstallResult | UpdaterFailure> => {
+				if (platform !== "darwin") return platformFailure("install", platform);
 				const source = readString(args, "path");
 				const appPath = readString(args, "appPath");
 				if (source === undefined || appPath === undefined) {
@@ -144,6 +160,7 @@ export function createUpdaterPlugin(
 				}
 			},
 			relaunch: async (args: BundleArgs): Promise<RelaunchResult | UpdaterFailure> => {
+				if (platform !== "darwin") return platformFailure("relaunch", platform);
 				const appPath = readString(args, "appPath");
 				if (appPath === undefined) {
 					return invalidArguments("relaunch", "needs { appPath }", args);

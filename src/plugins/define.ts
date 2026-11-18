@@ -3,7 +3,7 @@
  * A command the platform cannot run yet returns a typed `NotImplemented` instead of pretending — fail honestly, not silently.
  */
 
-import { CrustError } from "../bridge/errors";
+import { CrustError, toCrustError } from "../bridge/errors";
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -68,6 +68,29 @@ export function isNotImplemented(value: unknown): value is NotImplemented {
 		(value as NotImplemented).code === "not-implemented" &&
 		(value as NotImplemented).ok === false
 	);
+}
+
+/**
+ * Run a handler from the in-process `app.invoke` path. The bridge's runner converts a returned
+ * `NotImplemented` to a `not-implemented` rejection and a thrown value to a `CrustError`; this path
+ * must speak the same language or a caller in `main.ts` can mistake a refusal for data. Both public
+ * spellings stay — `notImplemented()` and `NotImplementedError` are two ways to reach one outcome,
+ * and neither is removed.
+ */
+export async function invokeCommand(
+	handler: (args: Record<string, unknown>) => unknown,
+	args: Record<string, unknown>,
+): Promise<unknown> {
+	let result: unknown;
+	try {
+		result = await handler(args);
+	} catch (error) {
+		throw toCrustError(error);
+	}
+	if (isNotImplemented(result)) {
+		throw new CrustError("not-implemented", result.message, { requires: result.requires });
+	}
+	return result;
 }
 
 /**

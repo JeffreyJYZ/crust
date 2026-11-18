@@ -15,6 +15,7 @@ describe("i18n.translate", () => {
 		expect(call(plugin(), "translate", { key: "greeting", vars: { name: "Ada" } })).toEqual({
 			ok: true,
 			locale: "en",
+			dir: "ltr",
 			key: "greeting",
 			text: "Hello Ada",
 		});
@@ -44,9 +45,9 @@ describe("i18n.translate", () => {
 	});
 
 	test("a count with no plural forms names the forms it looked for", () => {
-		expect(() => call(plugin(), "translate", { key: "missing", vars: { count: 2 } })).toThrow(
-			/missing_one or missing_other/,
-		);
+		const lookup = () => call(plugin(), "translate", { key: "missing", vars: { count: 2 } });
+		expect(lookup).toThrow(/missing_other/);
+		expect(lookup).toThrow(/missing_one/);
 	});
 
 	test("a placeholder nothing supplies is refused instead of reaching a user", () => {

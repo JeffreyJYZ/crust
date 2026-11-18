@@ -17,17 +17,26 @@ export interface CatalogueLookup {
 
 const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
+/** Every category `Intl.PluralRules` can select, so a catalogue can carry all six forms. */
+export const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"] as const;
+export type PluralCategory = (typeof PLURAL_CATEGORIES)[number];
+
 /**
- * `one` or `other` for this locale and count. `Intl.PluralRules` is the rule, because a catalogue only
- * carries two forms and every other category (`few`, `many`) has nowhere to go but `_other`.
+ * The plural category this locale and count select. Kept as all six categories: collapsing
+ * `zero/two/few/many` into `other` makes a six-form locale such as Arabic answer the wrong string for
+ * most counts. A locale tag `Intl` refuses is not one the caller meant, so the count alone decides.
  */
-export function pluralCategory(locale: string, count: number): "one" | "other" {
+export function pluralCategory(locale: string, count: number): PluralCategory {
 	try {
-		return new Intl.PluralRules(locale).select(count) === "one" ? "one" : "other";
+		return new Intl.PluralRules(locale).select(count) as PluralCategory;
 	} catch {
-		// A locale tag `Intl` refuses cannot be a locale the caller meant; the count alone decides.
 		return count === 1 ? "one" : "other";
 	}
+}
+
+/** The forms to try for a category: the exact one first, then the two safe fallbacks. */
+export function pluralForms(category: PluralCategory): PluralCategory[] {
+	return category === "other" ? ["other", "one"] : [category, "other", "one"];
 }
 
 /** Fill `{name}` from `vars`, refusing a placeholder nothing supplies. */
@@ -80,14 +89,16 @@ export function messageFor(
 	const exact = messages[key];
 	if (exact !== undefined) return interpolate(exact, vars, key);
 	const count = vars?.count;
+	let forms: PluralCategory[] = [];
 	if (typeof count === "number" && Number.isFinite(count)) {
-		const form = pluralCategory(locale, count);
-		for (const name of [`${key}_${form}`, `${key}_other`]) {
-			const plural = messages[name];
+		forms = pluralForms(pluralCategory(locale, count));
+		for (const form of forms) {
+			const plural = messages[`${key}_${form}`];
 			if (plural !== undefined) return interpolate(plural, vars, key);
 		}
 	}
-	const pluralHint = typeof count === "number" ? ` (nor ${key}_one or ${key}_other)` : "";
+	const pluralHint =
+		forms.length > 0 ? ` (nor ${forms.map((form) => `${key}_${form}`).join(" or ")})` : "";
 	throw new CrustError(
 		"bad-request",
 		`i18n.translate: "${key}" is not in the "${locale}" catalogue${pluralHint}`,
