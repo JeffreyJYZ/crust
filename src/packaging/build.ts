@@ -9,7 +9,7 @@ import { chmod, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { resolveSidecar, SIDECAR_MANIFEST } from "@/plugins/sidecar";
 import { supportsAot } from "./aot";
-import { assembleApp, type AssembleAppOptions, type AssembledApp } from "./app";
+import { assembleApp, bundlesApp, type AssembleAppOptions, type AssembledApp } from "./app";
 import { runOrThrow } from "./exec";
 
 export interface BuildOptions {
@@ -29,10 +29,12 @@ export interface BuildOptions {
 	verbose?: boolean;
 }
 
-export interface BuildResult extends AssembledApp {
+export interface BuildResult {
 	binaryPath: string;
 	binaryBytes: number;
 	entry: string;
+	/** The assembled `.app`, present only where the shipping product is a bundle (darwin). */
+	assembled?: AssembledApp;
 }
 
 /** Byte count the way the docs quote it. `MiB` is 1,048,576 bytes. */
@@ -47,7 +49,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Compile and assemble. Does not sign. Two numbers, reported separately on purpose: the compiled binary is what `bun build` produced, the assembled bundle is what a recipient's disk gives up — one number for both would hide which half grew.
+ * Compile, then assemble a bundle on darwin only. Does not sign. Two numbers, reported separately on purpose: the compiled binary is what `bun build` produced, the assembled bundle is what a recipient's disk gives up — one number for both would hide which half grew.
  */
 export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	const outDir = resolve(options.outDir ?? "dist");
@@ -98,31 +100,38 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 		);
 	}
 	const binaryBytes = (await stat(written)).size;
-	const assembled = await assembleApp({ ...options.app, binary: written, outDir });
+	const assembled = bundlesApp(process.platform)
+		? await assembleApp({ ...options.app, binary: written, outDir })
+		: undefined;
+	// On macOS the executable sits in `Contents/MacOS` and the manifest in `Contents/Resources`:
+	// a JSON file beside the executable is nested code to codesign and breaks the ad-hoc seal.
+	// Off darwin the flat binary's own directory holds both.
+	const executablePath = assembled?.executablePath ?? written;
 	await copySidecars({
 		names: options.sidecars ?? [],
 		projectDir: options.projectDir ?? process.cwd(),
-		targetDir: dirname(assembled.executablePath),
-		// On macOS the manifest goes to `Contents/Resources`: a JSON file in `Contents/MacOS` is
-		// nested code to codesign and fails the ad-hoc signature with "code object is not signed
-		// at all". Linux and Windows are a flat directory, so the executable's own dir is used.
-		manifestDir:
-			process.platform === "darwin"
-				? join(dirname(dirname(assembled.executablePath)), "Resources")
-				: undefined,
+		targetDir: dirname(executablePath),
+		manifestDir: assembled ? join(dirname(dirname(executablePath)), "Resources") : undefined,
 	});
 
 	if (options.verbose !== false) {
 		console.log(
 			`binary    ${formatBytes(binaryBytes).padStart(9)}  ${binaryBytes} bytes  ${written}`,
 		);
-		console.log(
-			`assembled ${formatBytes(assembled.assembledBytes).padStart(9)}  ` +
-				`${assembled.assembledBytes} bytes  ${assembled.appPath}`,
-		);
+		if (assembled) {
+			console.log(
+				`assembled ${formatBytes(assembled.assembledBytes).padStart(9)}  ` +
+					`${assembled.assembledBytes} bytes  ${assembled.appPath}`,
+			);
+		}
 	}
 
-	return { ...assembled, binaryPath: written, binaryBytes, entry: options.entry };
+	return {
+		...(assembled ? { assembled } : {}),
+		binaryPath: written,
+		binaryBytes,
+		entry: options.entry,
+	};
 }
 
 /**

@@ -1,11 +1,12 @@
 /**
- * `crust build` — compile the backend with Bun, assemble `X.app`, then ad-hoc sign it; a Developer ID signature is `crust sign`'s job. The two sizes print separately because they answer different questions: the compiled binary is what Bun produced, the assembled bundle is what a recipient's disk gives up.
+ * `crust build` — compile the backend with Bun, assemble and ad-hoc sign `X.app` on darwin; a Developer ID signature is `crust sign`'s job. Windows and Linux ship the flat binary instead. The two sizes print separately because they answer different questions: the compiled binary is what Bun produced, the assembled bundle is what a recipient's disk gives up.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
+import { bundlesApp } from "@/packaging/app";
 import { buildApp, formatBytes } from "@/packaging/build";
 import { runOrThrow } from "@/packaging/exec";
 import { signApp } from "@/packaging/sign";
@@ -144,26 +145,33 @@ export async function build(options: CliOptions): Promise<number> {
 	});
 
 	// `codesign` is macOS-only, and the `.app` is not what Linux or Windows ship: those
-	// hosts assemble the same bundle around the same binary and sign nothing.
-	const signed = process.platform === "darwin";
-	if (signed) {
+	// hosts ship the flat binary and sign nothing.
+	const assembled = result.assembled;
+	const signed = bundlesApp(process.platform);
+	if (signed && assembled) {
 		// codesign treats every file in Contents/MacOS as nested code, so a sidecar copied there
 		// fails the bundle seal with "code object is not signed at all" unless it carries its own
 		// ad-hoc signature first. The manifest was moved to Resources for the same reason.
-		const sidecarDir = dirname(result.executablePath);
+		const sidecarDir = dirname(assembled.executablePath);
 		for (const name of config.build?.sidecars ?? []) {
 			const sidecar = resolve(sidecarDir, ...name.split(/[\\/]/));
 			await runOrThrow(["codesign", "--force", "--sign", "-", "--timestamp=none", sidecar]);
 		}
-		await signApp({ appPath: result.appPath, mode: "adhoc" });
+		await signApp({ appPath: assembled.appPath, mode: "adhoc" });
 	}
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);
-	line("app", `${formatBytes(result.assembledBytes)}  ${result.appPath}`);
+	if (assembled) {
+		line("app", `${formatBytes(assembled.assembledBytes)}  ${assembled.appPath}`);
+	}
 	line("sign", signed ? "ad-hoc (codesign --sign -)" : "none — codesign is macOS-only");
 	if (signed) {
 		line("gatekeeper", "refused on another machine until a Developer ID signature exists");
 	}
-	console.log(`\ndone — open it locally with: open ${result.appPath}`);
+	if (assembled) {
+		console.log(`\ndone — open it locally with: open ${assembled.appPath}`);
+	} else {
+		console.log(`\ndone — run it locally with: ${result.binaryPath}`);
+	}
 	return 0;
 }

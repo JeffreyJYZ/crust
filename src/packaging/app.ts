@@ -11,6 +11,15 @@ import { infoPlist, PKG_INFO } from "./plist";
 
 export * from "./plist.ts";
 
+/**
+ * Only macOS ships an `.app` bundle. Windows and Linux ship the flat compiled binary;
+ * assembling a bundle there doubles the output and prints a macOS `open` instruction on
+ * a host that has none. Pure so a non-darwin build is assertable on a darwin machine.
+ */
+export function bundlesApp(platform: NodeJS.Platform): boolean {
+	return platform === "darwin";
+}
+
 export interface AssembleAppOptions {
 	/** Reverse-DNS bundle identifier, e.g. `land.jyz.example`. */
 	id: string;

@@ -66,13 +66,21 @@ export async function buildSingle(app: SingleApp, minimumSystemVersion: string):
 		},
 	});
 
-	await signSidecars(result.executablePath, app.config.build?.sidecars ?? []);
-	await signApp({ appPath: result.appPath, mode: "adhoc" });
+	const assembled = result.assembled;
+	if (assembled) {
+		await signSidecars(assembled.executablePath, app.config.build?.sidecars ?? []);
+		await signApp({ appPath: assembled.appPath, mode: "adhoc" });
+	}
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);
-	line("app", `${formatBytes(result.assembledBytes)}  ${result.appPath}`);
-	line("sign", "ad-hoc (codesign --sign -)");
-	line("gatekeeper", "refused on another machine until a Developer ID signature exists");
-	console.log(`\ndone — open it locally with: open ${result.appPath}`);
+	if (assembled) {
+		line("app", `${formatBytes(assembled.assembledBytes)}  ${assembled.appPath}`);
+		line("sign", "ad-hoc (codesign --sign -)");
+		line("gatekeeper", "refused on another machine until a Developer ID signature exists");
+		console.log(`\ndone — open it locally with: open ${assembled.appPath}`);
+	} else {
+		line("sign", "none — codesign is macOS-only");
+		console.log(`\ndone — run it locally with: ${result.binaryPath}`);
+	}
 	return 0;
 }
