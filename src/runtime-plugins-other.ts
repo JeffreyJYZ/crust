@@ -7,7 +7,13 @@
  * `darwinWindowAdapter`; Windows now wires its own; a platform with neither keeps the bare plugins,
  * which answer `not-implemented` by name instead of throwing at the first command.
  */
-import { createWindowPlugin, createWindowStatePlugin, type PluginDefinition } from "@/plugins";
+import {
+	createPositionerPlugin,
+	createWindowPlugin,
+	createWindowStatePlugin,
+	type PluginDefinition,
+} from "@/plugins";
+import { coreNamespacePlugins, replacesCoreNamespace } from "@/runtime-adapters-other.ts";
 import { nonDarwinPlugins, nonDarwinScreenPlugin } from "@/runtime-non-darwin";
 
 /** The pieces `nativePlugins` has already built when it reaches this arm. */
@@ -27,15 +33,18 @@ export interface OtherPlatformParts {
 }
 
 /**
- * The one namespace an adapted arm replaces. `nonDarwinPlugins` still carries the bare
- * `window-state`, and the registry refuses a duplicate name rather than shadowing one, so it is
- * dropped when — and only when — an adapter was actually wired. `positioner` is *not* in this set:
- * its nine placements are computed in AppKit's bottom-left space, so on a y-down platform (Win32's
- * client origin, GDK's top-left rectangles) it keeps its bare refusal rather than placing windows on
- * the wrong edge. Making it honest needs an axis option in `src/plugins/positioner.ts`, not a flip
- * here.
+ * The namespaces an adapted arm replaces. `nonDarwinPlugins` still carries the bare `window-state`
+ * and `positioner`, and the registry refuses a duplicate name rather than shadowing one, so each is
+ * dropped when — and only when — an adapter was actually wired.
+ *
+ * `positioner` is in the set for Windows only: its nine placements are computed in AppKit's
+ * bottom-left space, and `platform/windows/window-positioner.ts` converts them into Win32's y-down
+ * work area. The Linux arm keeps the bare refusal, because GDK's top-left rectangles have no such
+ * adapter yet.
  */
 const ADAPTED = new Set(["window-state"]);
+/** The Win32 arm's set: the state adapter plus the positioner that converts into the y-down axis. */
+const ADAPTED_WIN32 = new Set([...ADAPTED, "positioner"]);
 
 /** What an OS arm produced: the plugins to register, and the bare names it replaced. */
 interface WindowWiring {
@@ -58,7 +67,13 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 		parts.power,
 		// Displays have a working half on both platforms; the selector wires the right one.
 		nonDarwinScreenPlugin(os),
-		...nonDarwinPlugins.filter((plugin) => !window.replaced.has(plugin.name)),
+		...nonDarwinPlugins.filter(
+			(plugin) =>
+				!window.replaced.has(plugin.name) && !replacesCoreNamespace(plugin.name, os),
+		),
+		// `clipboard`, `opener` and `os.info` with the platform's own adapter where one exists;
+		// `runtime-adapters-other.ts` owns that choice, so a reconciliation touches these two lines.
+		...(await coreNamespacePlugins(os)),
 		parts.store,
 		parts.database,
 		parts.keychain,
@@ -89,9 +104,16 @@ async function windowPlugins(os: string): Promise<WindowWiring> {
 	}
 	if (os !== "win32") return bare();
 	const { windowsWindowAdapter } = await import("@/platform/windows/window-adapter");
+	const { windowsPositioner } = await import("@/platform/windows/window-positioner");
 	const native = windowsWindowAdapter();
 	return {
-		plugins: [createWindowPlugin(native), createWindowStatePlugin({ native })],
-		replaced: ADAPTED,
+		plugins: [
+			createWindowPlugin(native),
+			createWindowStatePlugin({ native }),
+			// The nine placements, measured against the primary work area and flipped into Win32's
+			// y-down axis by the adapter — the plugin's own arithmetic is untouched.
+			createPositionerPlugin(windowsPositioner(native)),
+		],
+		replaced: ADAPTED_WIN32,
 	};
 }
