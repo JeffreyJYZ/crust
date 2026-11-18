@@ -62,6 +62,9 @@ await window.crust.invoke("window", "setPosition", { label: "main", x: 120, y: 8
 ```
 
 - **Size is two positive integers, refused not clamped.** `0` and `12.5` are `invalid-size`, because a silently resized window hides the bug.
+- **The page follows the window.** The webview is four edge pins on the content view with no size of its own, so a drag, a `setSize` or a `maximize` reaches the page. A fixed width/height pair on the webview is what made "apps can't be resized" look true: the window grew and the page stayed at its opening size.
+- **`setSize` and `getSize` speak the window frame.** The title bar is inside the height, so a page's own viewport is the frame less the bar — 32 pt measured on macOS.
+- **The proof is the page's own viewport.** `bun run e2e:window` resizes a real window `900x640 → 1200x760 → 640x460` and asserts `innerWidth`/`innerHeight` after each, in both directions, because a one-way constraint passes growing alone.
 - **Position is two integers, and negative is real.** A negative `x` is a window on a display left of the main one, so only a non-integer is `invalid-position`.
 - **`y` grows upward, as AppKit's.** A larger `y` is nearer the top of the screen.
 - **A flag takes a real boolean.** `"false"` would read as on, so a string is `invalid-value`; `setAlwaysOnTop` and `setFullscreen` both answer the state that follows.

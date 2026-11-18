@@ -183,6 +183,10 @@ e2e:parity: PASS  27/27 assertions
 - **Shortcut** — `RegisterEventHotKey` accepts the pair, and the adapter's `dispatch` seam fires the
   same event a press would carry, which reaches the plugin as `command+shift+k`.
 
+### A resize no command can report
+
+A window answers the size it was given even when the page inside it never changed, which is what "apps can't be resized" was: the window resized, the webview stayed where it opened. So the assertion is the page's own `innerWidth`/`innerHeight`, not the answer to `setSize`. `bun run e2e:window` opens a real window at `900x640`, grows it to `1200x760` and shrinks it to `640x460`, asserting the viewport the page reports after each — 64 assertions, green on macOS on 2026-11-18, and both resize assertions failed with `page saw 900x640` against the pre-fix runtime. Windows has a tag-gated runtime proof of the same thing and Linux is read from code; the [platforms page](/docs/reference/platforms) says which of the three is measured.
+
 ### What even this does not prove
 
 A _physical_ key press reaching the hot key is the window server's table and needs a person and a key;

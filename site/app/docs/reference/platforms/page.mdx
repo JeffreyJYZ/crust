@@ -96,11 +96,35 @@ A third mode runs the composite — exactly what `window-open.ts` does on the pr
 per-step probes and no explicit `NavigateToString` — so a green there is the shipping path's own
 rather than a probe warming the WebView up first.
 
-**What it does not prove.** The window loads `about:blank`, so no document, page JavaScript or
-`invoke` round trip has crossed on Windows; `minWidth`/`minHeight` are carried but unenforced because
-`WM_GETMINMAXINFO` is not handled; and there is no DPI-awareness declaration, so a scaled display may
-size the page differently than macOS does. The Linux result above does not carry over: different
-libraries, different message loop, different loader.
+**What it does not prove.** This smoke loads `about:blank`, so the x64 `windows-latest` job has never
+carried a document, page JavaScript or an `invoke` round trip. Those cross in the `windows-arm-runtime`
+job instead, which scaffolds with `crust init`, builds, and runs the built binary on `windows-11-arm`:
+its v0.1.28, v0.1.29 and v0.1.30 runs each printed `window open` and
+`greet hello crust (page call answered)`, so one real page has invoked across the bridge on arm64.
+`minWidth`/`minHeight` now constrain the window on Windows — `WM_GETMINMAXINFO` answers the configured
+floor, and a create size below it is clamped up. There is still no DPI-awareness declaration, so a
+scaled display may size the page differently than macOS does. The Linux result above does not carry
+over: different libraries, different message loop, different loader.
+
+## The page follows its window
+
+A window that reports the size it set while the webview stays where it opened is what "apps can't be
+resized" looked like, so the claim that needs proving is the page's own viewport, not the command's
+answer. Three different strengths of proof:
+
+- **macOS, measured.** `bun run e2e:window` opens a real window at `900x640`, grows it to `1200x760`
+  and shrinks it to `640x460`, and asserts the `innerWidth`/`innerHeight` the page reports after each
+  — 64 assertions, green 2026-11-18. Against the pre-fix runtime both resize assertions failed with
+  `page saw 900x640`, and the frames read `window 1400x840, content 1100x760` — the defect as numbers.
+- **Windows arm64, no verdict yet.** The `windows-arm-runtime` workflow patches a scaffold so the page
+  reports its viewport and the backend resizes the real HWND `900x640 → 1400x900 → 700x480`, checking
+  each report against the client rect it measured, ±2 px after dpr. It drives `SetWindowPos` directly
+  because at v0.1.30 the runtime binds the `window` commands to the AppKit adapter, so `window.setSize`
+  answers `not-implemented` there. The window and greet lines are measured; the resize assertions
+  landed after v0.1.30 and the job runs on `v*` tags or dispatch, so this half is **read from code**
+  until a tag reports it.
+- **Linux, read from code.** The page fills the window through `gtk_container_add`, so a resize reaches
+  it the same way; no probe has asked a GTK page for its viewport, so nothing here is measured.
 
 ## All three are selected
 

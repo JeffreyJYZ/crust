@@ -34,6 +34,22 @@ does, with or without `-I`. Every symbol is a hand-written `extern` over `void *
 framework is linked by name (`-framework AppKit`, `-framework Foundation`, `-framework WebKit`,
 `-framework CoreFoundation`).
 
+## The page follows its window
+
+A window's content view keeps its autoresizing behaviour, and the webview inside it is four edge pins
+with no width or height of its own. That chain is the whole resize path: the window sizes the content
+view, the content view's size is the webview's, and the page sees whatever the window became.
+
+Both halves are load-bearing, and each hides the other. A fixed width/height pair added on top of the
+pins holds the webview at the size the window opened at — measured 2026-11-18, a window resized to
+`1400x840` with content and webview still `1100x760`, which is what "apps can't be resized" looked
+like from the page. Remove only those constants and the content view, which has no constraints of its
+own, collapses to `0x0` and takes the webview with it. So the content view keeps autoresizing, the
+webview keeps the four pins, and nothing sets a size.
+
+`bun run e2e:window` asks the page for its own `innerWidth`/`innerHeight` after the window grows and
+again after it shrinks, because a one-way constraint passes growing alone.
+
 ## The run loop
 
 `[NSApp run]` never returns, so it cannot be called — Bun's event loop would stop. The Cocoa loop
@@ -135,6 +151,7 @@ loads, and `crypto.subtle` is defined.
 
 ## Deliberately absent
 
-A string intern table, helpers that return an `NSString` object across the FFI, `setFrame:`-based
-layout, and any dependency on Xcode at build or install time. Each was removed after it crashed
+A string intern table, helpers that return an `NSString` object across the FFI, layout by `setFrame:`
+(the geometry calls `window.setSize` and `window.setPosition` still reach it inside the shim), and any
+dependency on Xcode at build or install time. Each was removed after it crashed
 the process or silently corrupted an object; the traps are in `AGENTS.md`.

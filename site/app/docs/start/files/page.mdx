@@ -56,7 +56,8 @@ await app.run();
 | `windows[].label`             | required           | the handle every `window` command uses                     |
 | `windows[].url`               | `"/"`              | appended to the bridge URL unless `dev.url` is set         |
 | `windows[].width`, `height`   | `1100`, `760`      |                                                            |
-| `windows[].minWidth`, `title` | unset              | `height` doubles as the minimum height                     |
+| `windows[].minWidth`, `minHeight` | unset          | independent minimums; a smaller `width`/`height` is clamped up |
+| `windows[].title`             | unset              | window title                                               |
 | `dev.url`                     | unset              | every window loads it verbatim, `windows[].url` is ignored |
 | `build.assets`                | `"public"`         | the directory a build embeds; must hold `index.html`       |
 | `plugins`                     | all built-ins      | naming any registers only those                            |
