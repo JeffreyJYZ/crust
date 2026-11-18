@@ -11,13 +11,15 @@ Scaffold, install, dev. `crust init` writes into an empty directory and refuses 
 
 ## Pick a scaffold
 
-| you have                  | flag      | what it makes                                        |
-| ------------------------- | --------- | ---------------------------------------------------- |
-| HTML and CSS, no bundler  | none      | seven files; the bridge serves `public/` itself      |
-| React, or a Vite frontend | `--react` | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
-| Next.js, app router       | `--next`  | `next dev` on :3000, static export to `out/`         |
+| you have                    | flag        | what it makes                                        |
+| --------------------------- | ----------- | ---------------------------------------------------- |
+| HTML and CSS, no bundler    | none        | seven files; the bridge serves `public/` itself      |
+| React, or a Vite frontend   | `--react`   | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
+| Svelte, or a Vite frontend  | `--svelte`  | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
+| Vue, or a Vite frontend     | `--vue`     | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
+| Next.js, app router         | `--next`    | `next dev` on :3000, static export to `out/`         |
 
-The flag is the whole difference. Plain is the default, and passing both flags is refused before anything is written.
+The flag is the whole difference. Plain is the default, and passing any two flags is refused before anything is written.
 
 ## What you see
 

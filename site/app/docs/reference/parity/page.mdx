@@ -13,6 +13,11 @@ A status is what the code does **now**. All six of the newer plugins are registe
 runtime and exported from the split barrels, so no row carries _module only_; the two _partial_ rows
 name a limitation that registration cannot remove.
 
+The **Proof** column is the evidence for each `same` row. It names either a `plugin.command` that the
+live sweep in `scripts/butter-sweep-commands.ts` drives, a `skip` with the reason a runner cannot act,
+or `no sweep command` with what proves the claim instead. A `same` row with no proof is unproven; the
+sweep test fails on a hollow row rather than trusting the table.
+
 ## Out of scope by design
 
 - iOS and Android targets.
@@ -23,56 +28,56 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 
 ## Core
 
-| Tauri            | crust                                                                                                                                                 | Status  |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Windows          | `window`, 26 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize, decorations, opacity, cursor | same    |
-| Webviews         | one `WKWebView` per window                                                                                                                            | same    |
-| Menus            | `menu.setAppMenu/showContext/reset`, `NSMenu` in `98`+`99`                                                                                            | same    |
-| Tray             | `tray.setTitle/setMenu/setTooltip/show/hide/destroy` — menu rows, and a hover tooltip applied through `-setToolTip:` on the item or its button                                                          | same    |
-| Events           | `crust.listen` over SSE, `PluginContext.emit`                                                                                                         | same    |
-| Path             | `node:path` in the backend                                                                                                                            | via Bun |
-| DPI, image       | CSS pixels and `<img>` in the page                                                                                                                    | via Bun |
-| Localhost server | `crust dev`, and the bridge in production                                                                                                             | same    |
+| Tauri | crust | Status | Proof |
+| --- | --- | --- | --- |
+| Windows | `window`, 26 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize, decorations, opacity, cursor | same | `window.list` |
+| Webviews | one `WKWebView` per window | same | no sweep command — structural; no command reports webview count |
+| Menus | `menu.setAppMenu/showContext/reset`, `NSMenu` in `98`+`99` | same | `menu.read`; `menu.showContext` skipped — modal |
+| Tray | `tray.setTitle/setMenu/setTooltip/show/hide/destroy` — menu rows, and a hover tooltip applied through `-setToolTip:` on the item or its button | same | `tray.setTooltip` |
+| Events | `crust.listen` over SSE, `PluginContext.emit` | same | no sweep command — transport, not a plugin command |
+| Path | `node:path` in the backend | via Bun | — |
+| DPI, image | CSS pixels and `<img>` in the page | via Bun | — |
+| Localhost server | `crust dev`, and the bridge in production | same | no sweep command — dev/bridge infrastructure |
 
 ## Plugins
 
-| Tauri plugin       | crust                                                                                                                                        | Status                                                                                                               |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Dialog             | `dialog.openPanel/savePanel/cancel`                                                                                                          | same                                                                                                                 |
-| File system        | `fs.readTextFile/writeTextFile/readBinary/writeBinary/list/stat/remove/rename/mkdir` + scope                                                 | same                                                                                                                 |
-| Notifications      | `notification.notify` (and `notification.requestPermission`)                                                                                 | same                                                                                                                 |
-| Clipboard          | `clipboard.read/write/readImage/writeImage` — text and PNG bytes                                                                             | same                                                                                                                 |
-| Opener             | `opener.openPath/openUrl/revealItem`                                                                                                         | same                                                                                                                 |
-| OS information     | `os.info` (family, arch, version, uptime, exe extension), `os.locale`, `os.paths`                                                            | same                                                                                                                 |
-| Global shortcut    | `shortcut.register/unregister/unregisterAll/isRegistered/list`                                                                               | same                                                                                                                 |
-| Shell              | `shell.spawn/output/write/close/kill/list`, stdin pipe, `shell-output` events bounded at 500 lines, allowlisted by config                    | same                                                                                                                 |
-| Single instance    | `single-instance.acquire/release/activate`                                                                                                   | same — the runtime locks `app.id` at launch                                                                          |
-| Deep linking       | `deep-link.scheme/url`; `build.urlScheme` writes `CFBundleURLTypes`, the launch URL is claimed in `app.run()`                                | same                                                                                                                 |
-| Autostart          | `autostart.enable/disable/isEnabled`                                                                                                         | same                                                                                                                 |
-| Updater            | `updater.check/download/install/relaunch`, sha256 + Ed25519 verify, atomic bundle swap, `open -n` relaunch, registered from `updater` config | same                                                                                                                 |
-| Window state       | `window-state.save/restore/forget` plus `saveAll/restoreAll/forgetAll`                                                                       | same                                                                                                                 |
-| Positioner         | nine presets: center, four corners, four edge midpoints                                                                                      | same                                                                                                                 |
-| Process            | `process` in the backend                                                                                                                     | via Bun                                                                                                              |
-| HTTP client        | `fetch` in the backend                                                                                                                       | via Bun                                                                                                              |
-| WebSocket          | `WebSocket` in the backend                                                                                                                   | via Bun                                                                                                              |
-| SQL                | `database.open/close/exec/query/get` — `bun:sqlite` under a name that resolves inside the app's data directory, bound parameters only, `readonly` is a real read-only open | same                                                                                                                 |
-| Store              | `store.get/set/delete/keys/clear/save`, each with optional `{ name }` → one `store.<name>.json` per store, atomic 0600 JSON, corrupt file quarantined | same                                                                                                                 |
-| Upload             | `FormData` with `fetch`                                                                                                                      | via Bun                                                                                                              |
-| Command line (CLI) | `process.argv` in the backend                                                                                                                | via Bun                                                                                                              |
-| Persisted scope    | `fs.scopeList/scopeRevoke` from a page, `fs.scopeAllow` only with `grants: "page"`, `fs.scope` config, grants persisted in `scope.json`      | same — a page cannot widen its own scope by default, and `scopeList` reports `scoped: false` when no boundary exists |
-| Stronghold         | `stronghold.open/set/get/delete/keys/close`, PBKDF2-SHA256 600k + AES-256-GCM, file holds no plaintext                                       | same                                                                                                                 |
-| Secure storage     | `keychain.set/get/delete/list` — the OS credential store: macOS `SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`, Windows `CredWriteW`/`CredReadW`/`CredDeleteW`, no shell and no secret in a process list. A missing credential answers `{ found: false }`. Linux is **not-implemented** (needs libsecret/gnome-keyring) and Windows `list` is not-implemented (needs `CredEnumerateW`) | partial — darwin same, linux not-implemented                                                                          |
-| Logging            | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1`                                                              | same                                                                                                                 |
-| Dock               | `dock.badge/badgeLabel/bounce/progress` — badge text, attention bounce, determinate bar                                                      | same                                                                                                                 |
-| Power              | `power.state/idleSeconds/sleepPrevent/sleepAllow` plus all six push events (`onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`) — battery, AC, low-power flag, idle time, a sleep assertion released on exit | same                                                                                                                 |
-| Accessibility      | `accessibility.announce/title/focus` plus `trusted/prompt/elementCount` — speak through the platform, name a window, move assistive focus, and the AX trust read | same — the page-facing trio is `NSAccessibilityPostNotificationWithUserInfo` and `setAccessibilityLabel:`; Linux and Windows refuse `announce` by name, never silently |
-| Theme              | `theme.current/set/reset`, `theme:changed` — light, dark or system, read back from the app                                                   | same                                                                                                                 |
-| Navigation         | `navigation.start/stop/state/reload/goBack/goForward/loadUrl`, four `navigation:*` delegate events                                          | same — registered on macOS; the events need `start`; `loadUrl` builds an `NSURLRequest` and calls `-loadRequest:`                             |
-| Find in page       | `findinpage.search/next/previous` over `WKWebView` find                                                                                      | partial — `matches` is 0 or 1, and `clear` refuses for want of a public selector                                     |
-| Downloads          | `downloads.list/start/cancel/directory/setDirectory`, four `download:*` events                                                               | same — five commands over `WKDownloadDelegate`; a destination is refused outside the app's data root                 |
-| Network            | `network.status/onChange` for connectivity (`SCNetworkReachability`, whole-interface kinds, `network:change` push) **and** `network.rules/setRules/log/clearLog` over a `WKURLSchemeHandler`, 100-entry log | same — two different questions in one plugin: interception is only `crust-net`, connectivity is the OS path, and neither pretends to be the other |
-| Crash reporter     | `crash-reporter.last/list/report/configure/clear/install/uninstall` — a page reports a caught error into the same store (`type: "webview"`) and the guard writes its own (`"signal"`)                                                | same — the runtime starts the guard; a compiled binary re-runs itself in guard mode, and `install` arms the handlers |
-| Language           | `i18n.locale/setLocale/messages/translate` — catalogue, `{name}` interpolation, `_one`/`_other` plurals                                      | same — the catalogue is the app's to supply, and `setLocale` is in-memory because macOS owns the language list       |
+| Tauri plugin | crust | Status | Proof |
+| --- | --- | --- | --- |
+| Dialog | `dialog.openPanel/savePanel/cancel` | same | skip `dialog.openPanel` — needs a person; `savePanel` likewise |
+| File system | `fs.readTextFile/writeTextFile/readBinary/writeBinary/list/stat/remove/rename/mkdir` + scope | same | `fs.readBinary` |
+| Notifications | `notification.notify` (and `notification.requestPermission`) | same | skip `notification.notify` — needs a person; `requestPermission` refuses by design |
+| Clipboard | `clipboard.read/write/readImage/writeImage` — text and PNG bytes | same | `clipboard.writeImage` |
+| Opener | `opener.openPath/openUrl/revealItem` | same | skip `opener.revealItem` — opens Finder and steals focus |
+| OS information | `os.info` (family, arch, version, uptime, exe extension), `os.locale`, `os.paths` | same | `os.info` |
+| Global shortcut | `shortcut.register/unregister/unregisterAll/isRegistered/list` | same | `shortcut.register` and the four other commands, driven on a real hot key then released |
+| Shell | `shell.spawn/output/write/close/kill/list`, stdin pipe, `shell-output` events bounded at 500 lines, allowlisted by config | same | `shell.spawn` |
+| Single instance | `single-instance.acquire/release/activate` | same — the runtime locks `app.id` at launch | skip `single-instance.release` — the runner holds its own lock |
+| Deep linking | `deep-link.scheme/url`; `build.urlScheme` writes `CFBundleURLTypes`, the launch URL is claimed in `app.run()` | same | `deep-link.url` |
+| Autostart | `autostart.enable/disable/isEnabled` | same | `autostart.isEnabled` and `autostart.disable` on a sweep-only id; skip `autostart.enable` — would add a real login item |
+| Updater | `updater.check/download/install/relaunch`, sha256 + Ed25519 verify, atomic bundle swap, `open -n` relaunch, registered from `updater` config | same | skip `updater.install` — swaps the running bundle; `relaunch` kills the runner |
+| Window state | `window-state.save/restore/forget` plus `saveAll/restoreAll/forgetAll` | same | `window-state.restore` |
+| Positioner | nine presets: center, four corners, four edge midpoints | same | `positioner.center` |
+| Process | `process` in the backend | via Bun | — |
+| HTTP client | `fetch` in the backend | via Bun | — |
+| WebSocket | `WebSocket` in the backend | via Bun | — |
+| SQL | `database.open/close/exec/query/get` — `bun:sqlite` under a name that resolves inside the app's data directory, bound parameters only, `readonly` is a real read-only open | same | `database.query` |
+| Store | `store.get/set/delete/keys/clear/save`, each with optional `{ name }` → one `store.<name>.json` per store, atomic 0600 JSON, corrupt file quarantined | same | `store.save` |
+| Upload | `FormData` with `fetch` | via Bun | — |
+| Command line (CLI) | `process.argv` in the backend | via Bun | — |
+| Persisted scope | `fs.scopeList/scopeRevoke` from a page, `fs.scopeAllow` only with `grants: "page"`, `fs.scope` config, grants persisted in `scope.json` | same — a page cannot widen its own scope by default, and `scopeList` reports `scoped: false` when no boundary exists | `fs.scopeList` |
+| Stronghold | `stronghold.open/set/get/delete/keys/close`, PBKDF2-SHA256 600k + AES-256-GCM, file holds no plaintext | same | `stronghold.get` |
+| Secure storage | `keychain.set/get/delete/list` — the OS credential store: macOS `SecItemAdd`/`SecItemCopyMatching`/`SecItemDelete`, Windows `CredWriteW`/`CredReadW`/`CredDeleteW`, no shell and no secret in a process list. A missing credential answers `{ found: false }`. Linux is **not-implemented** (needs libsecret/gnome-keyring) and Windows `list` is not-implemented (needs `CredEnumerateW`) | partial — darwin same, linux not-implemented | — |
+| Logging | `logging.setLevel/level/write/tail`, trace level, 1 MiB rotation to `app.log.1` | same | `logging.tail` |
+| Dock | `dock.badge/badgeLabel/bounce/progress` — badge text, attention bounce, determinate bar | same | `dock.badge` |
+| Power | `power.state/idleSeconds/sleepPrevent/sleepAllow` plus all six push events (`onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`) — battery, AC, low-power flag, idle time, a sleep assertion released on exit | same | `power.idleSeconds` |
+| Accessibility | `accessibility.announce/title/focus` plus `trusted/prompt/elementCount` — speak through the platform, name a window, move assistive focus, and the AX trust read | same — the page-facing trio is `NSAccessibilityPostNotificationWithUserInfo` and `setAccessibilityLabel:`; Linux and Windows refuse `announce` by name, never silently | `accessibility.announce`; `prompt` skipped — needs a person |
+| Theme | `theme.current/set/reset`, `theme:changed` — light, dark or system, read back from the app | same | `theme.current` |
+| Navigation | `navigation.start/stop/state/reload/goBack/goForward/loadUrl`, four `navigation:*` delegate events | same — registered on macOS; the events need `start`; `loadUrl` builds an `NSURLRequest` and calls `-loadRequest:` | `navigation.loadUrl` |
+| Find in page | `findinpage.search/next/previous` over `WKWebView` find | partial — `matches` is 0 or 1, and `clear` refuses for want of a public selector | — |
+| Downloads | `downloads.list/start/cancel/directory/setDirectory`, four `download:*` events | same — five commands over `WKDownloadDelegate`; a destination is refused outside the app's data root | `downloads.list`; `start` skipped — real network download |
+| Network | `network.status/onChange` for connectivity (`SCNetworkReachability`, whole-interface kinds, `network:change` push) **and** `network.rules/setRules/log/clearLog` over a `WKURLSchemeHandler`, 100-entry log | same — two different questions in one plugin: interception is only `crust-net`, connectivity is the OS path, and neither pretends to be the other | `network.status` |
+| Crash reporter | `crash-reporter.last/list/report/configure/clear/install/uninstall` — a page reports a caught error into the same store (`type: "webview"`) and the guard writes its own (`"signal"`) | same — the runtime starts the guard; a compiled binary re-runs itself in guard mode, and `install` arms the handlers | `crash-reporter.report` |
+| Language | `i18n.locale/setLocale/messages/translate` — catalogue, `{name}` interpolation, `_one`/`_other` plurals | same — the catalogue is the app's to supply, and `setLocale` is in-memory because macOS owns the language list | `i18n.translate` |
 
 ## Framework guarantees
 
@@ -80,21 +85,21 @@ Every row above answers "can crust call this surface". These answer a different 
 allowed to* — which a matrix of surfaces cannot show, and which is why the capability model and the
 token boundary were both absent from this page for two revisions while the sweep stayed green.
 
-| Tauri                          | crust                                                                                                    | Status    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------- | --------- |
-| Security / capabilities        | `security.capabilities` + `security.grants`, checked in the bridge before a handler runs                    | same      |
-| CSP                            | `security.csp`, and `DEFAULT_CSP` when absent: no inline script, no evaluated string, no framing           | same      |
-| Isolation pattern              | none — there is no second document between the page and the bridge                                         | absent    |
-| IPC transport                  | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all        | accepted difference |
-| Command authorisation          | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same      |
-| Typed IPC                      | `typedHost`/`typedClient` over one `InvokeMap`; the names and shapes a host registers are the ones a page may call, checked at compile time | same      |
-| Sidecar binaries               | `build.sidecars` copies each binary beside the app at `0755`; `sidecar.spawn` runs one, `write`/`kill` drive it through a stdin pipe, `list` names the live children, and `sidecar-stdout`/`sidecar-exit` stream back; an undeclared name or a path outside the bundle is refused by name | same |
-| Window material                | `windows[].material`: `vibrancy` on macOS, `mica`/`acrylic`/`tabbed` on Windows 11 22H2+, `none` everywhere; a platform without the backdrop refuses the name rather than opening a grey window | same |
-| Lifecycle events               | `activate`, `before-quit`, `will-quit`, `reopen` as `app.on` events and as `app:*` page events, plus `app.info()` — a platform without the concept answers `not-implemented` naming it | same |
-| Screen listing                 | `screen.list`/`screen.primary` — id, primary flag, scale, bounds and work area per display; darwin `NSScreen`, Windows `EnumDisplayMonitors`, Linux GDK monitors, in page pixels like `positioner` | same |
-| Power events                   | all six power notifications are push events — `onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`, from `NSWorkspace` and the distributed centre; a platform without one answers `not-implemented` naming it rather than a listener that never fires | same |
-| Devtools in development        | `crust dev` sets `CRUST_DEV_INSPECT`; the window is inspectable only behind that flag, so a built app cannot open one | same |
-| Updater signing                | Ed25519 over the manifest, sha256 over every artefact, a swapped-out key refused                          | same      |
+| Tauri | crust | Status | Proof |
+| --- | --- | --- | --- |
+| Security / capabilities | `security.capabilities` + `security.grants`, checked in the bridge before a handler runs | same | no sweep command — config + bridge check; `src/bridge/capabilities.test.ts` |
+| CSP | `DEFAULT_CSP` when `security.csp` is absent: no inline script without that response's nonce, no evaluated string, no framing; a custom string replaces the policy | same | no sweep command — `DEFAULT_CSP` + nonce; `src/bridge/server/csp-nonce.test.ts` |
+| Isolation pattern | none — there is no second document between the page and the bridge | absent | — |
+| IPC transport | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all | accepted difference | — |
+| Command authorisation | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same | no sweep command — bridge check; `src/bridge/capabilities.test.ts` |
+| Typed IPC | `typedHost`/`typedClient` over one `InvokeMap`; the names and shapes a host registers are the ones a page may call, checked at compile time | same | no sweep command — compile-time `InvokeMap`, not a runtime command |
+| Sidecar binaries | `build.sidecars` copies each binary beside the app at `0755`; `sidecar.spawn` runs one, `write`/`kill` drive it through a stdin pipe, `list` names the live children, and `sidecar-stdout`/`sidecar-exit` stream back; an undeclared name or a path outside the bundle is refused by name | same | `sidecar.spawn` |
+| Window material | `windows[].material`: `vibrancy` on macOS, `mica`/`acrylic`/`tabbed` on Windows 11 22H2+, `none` everywhere; a platform without the backdrop refuses the name rather than opening a grey window | same | no sweep command — `windows[].material` config, not a command |
+| Lifecycle events | `activate`, `before-quit`, `will-quit`, `reopen` as `app.on` events and as `app:*` page events, plus `app.info()` — a platform without the concept answers `not-implemented` naming it | same | no sweep command — `app.on` events, not plugin commands |
+| Screen listing | `screen.list`/`screen.primary` — id, primary flag, scale, bounds and work area per display; darwin `NSScreen`, Windows `EnumDisplayMonitors`, Linux GDK monitors, in page pixels like `positioner` | same | `screen.primary` |
+| Power events | all six power notifications are push events — `onSleep`/`onWake`/`onScreenSleep`/`onScreenWake`/`onLock`/`onUnlock`, from `NSWorkspace` and the distributed centre; a platform without one answers `not-implemented` naming it rather than a listener that never fires | same | no sweep command — push events, not invokable commands |
+| Devtools in development | `crust dev` sets `CRUST_DEV_INSPECT`; the window is inspectable only behind that flag, so a built app cannot open one | same | no sweep command — `CRUST_DEV_INSPECT` flag, not a command |
+| Updater signing | Ed25519 over the manifest, sha256 over every artefact, a swapped-out key refused | same | skip `updater.install` — swaps the bundle; `src/plugins/updater-download.test.ts` proves the signature |
 
 Three of these are worth stating plainly rather than in a cell:
 
@@ -120,11 +125,13 @@ Three of these are worth stating plainly rather than in a cell:
 - **absent** — 1 row
 - **accepted difference** — 1 row, the IPC transport, decided rather than outstanding
 - **module only** — 0 rows
-- **total** — 56 rows, in three tables: 44 callable surfaces, 6 framework guarantees and the 6 Butter-parity rows
+- **total** — 56 rows, in three tables: 8 core, 35 plugin and 13 framework-guarantee rows
 
 The two partial rows each name their own limitation: find's `matches` is 0 or 1 because `WKFindResult` carries only `-matchFound` and `clear` needs a private selector, and secure storage has no Linux half because libsecret needs a running keyring daemon crust does not bind. Network stopped being partial when `status`/`onChange` joined the interceptor, so the row now answers connectivity as well as interception. The transport is the one `accepted difference` — decided by the owner rather than outstanding. Nothing is missing, and the row count is checked by `bun run check:parity`, which pins Tauri's official feature names **and** six framework guarantees. That second list exists because the first one could not see them: Tauri's security model is not a plugin, so a matrix of callable surfaces went green while the capability model was absent for two revisions.
 
 The eighteen rows Tauri has no official plugin for are reported by that check as _unlisted_ rather than missing: they are crust surfaces, measured here, and they do not change what Tauri's own list covers.
+
+Across the 45 `same` rows, 26 name a command the sweep drives, 6 name a `skip` a runner cannot act, and 13 have no sweep command. Eleven of those thirteen are config, transport, events or structure — no page command could prove them — and two are gaps in the sweep table itself: `shortcut.*` and `autostart.*` have no case in `scripts/butter-sweep-commands.ts`, so those rows rest on `e2e:parity` and not on the sweep. That is a finding for the sweep owner, not a claim that the sweep proves them.
 
 The Bun rows are not a shortfall: a page reaches them through the backend it already has, and that is
 how Tauri's own macOS column behaves for HTTP, WebSocket and process information too. SQL left that

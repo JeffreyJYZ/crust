@@ -9,6 +9,8 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 | `crust init <dir>`               | scaffold into an empty directory: plain HTML and CSS, no bundler                                                             |
 | `crust init <dir> --react`       | the React + Vite scaffold                                                                                                    |
 | `crust init <dir> --next`        | the Next.js scaffold, static export only                                                                                     |
+| `crust init <dir> --svelte`      | the Svelte + Vite scaffold                                                                                                   |
+| `crust init <dir> --vue`         | the Vue + Vite scaffold                                                                                                      |
 | `crust dev [file]`               | watch the backend, restart it on change, keep the frontend with its own dev server                                           |
 | `crust build [file]`             | compile the binary, assemble `X.app` in `dist/`, ad-hoc sign it                                                              |
 | `crust sign`                     | Developer ID signing with hardened runtime and the two entitlements; needs `CRUST_SIGNING_IDENTITY`                          |
@@ -21,18 +23,20 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 
 ## Flags
 
-| flag              | applies to | does                                                      |
-| ----------------- | ---------- | --------------------------------------------------------- |
-| `--dir <path>`    | all        | project directory, default the current directory          |
-| `--config <path>` | all        | config file, relative to `--dir`                          |
-| `--entry <path>`  | all        | backend entry, relative to `--dir`, default `src/main.ts` |
-| `--format <fmt>`  | package    | `dmg`, `appimage` or `nsis`; repeat the flag for several  |
-| `--react`         | init       | copy the React + Vite template                            |
-| `--next`          | init       | copy the Next.js template                                 |
-| `--help`, `-h`    | all        | print the usage text, exit 0                              |
-| `--version`, `-v` | all        | print the version, exit 0                                 |
+| flag              | applies to | does                                                                  |
+| ----------------- | ---------- | --------------------------------------------------------------------- |
+| `--dir <path>`    | all        | project directory, default the current directory                      |
+| `--config <path>` | all        | config file, relative to `--dir`                                      |
+| `--entry <path>`  | all        | backend entry, relative to `--dir`, default `src/main.ts` then `main.ts` |
+| `--format <fmt>`  | package    | `dmg`, `appimage` or `nsis`; repeat the flag for several               |
+| `--react`         | init       | copy the React + Vite template                                        |
+| `--next`          | init       | copy the Next.js template                                             |
+| `--svelte`        | init       | copy the Svelte + Vite template                                       |
+| `--vue`           | init       | copy the Vue + Vite template                                          |
+| `--help`, `-h`    | all        | print the usage text, exit 0                                          |
+| `--version`, `-v` | all        | print the version, exit 0                                             |
 
-`--react` and `--next` are different scaffolds and passing both is refused before anything is written. Either flag outside `init` fails with `crust: --react only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1.
+The four init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1.
 
 ## Single-file mode
 
@@ -52,7 +56,7 @@ The config is built in memory: id `crust.single.<slug>`, name and window title f
 
 ## `crust doctor`
 
-Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `source` (known-fatal traps, only in an app directory with a config), `assets`, `templates`, `bundle`, then the `extensions` block. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
+Checks, in order: `platform`, `bun`, `config`, `macos`, `shim`, `bridge`, `dev port`, `dev url`, `backend`, `dev watch`, `window`, `source` (known-fatal traps, only in an app directory with a config), `assets`, `templates`, `bundle`, `gatekeeper` (only when a `.app` is in `dist/`), then the `extensions` block. Each line is `[ok]`, `[note]` or `[fail]`, and only `fail` is counted. The run ends `all checks passed` with exit 0, or `N checks failed` with exit 1.
 
 The `extensions` block reports `zig`, `rustc` and `clang` as found with their version or missing, then one verdict per `.zig`, `.rs` or `.c` file under `native/`. A source file whose compiler is missing counts as a failure; a project with no `native/` directory prints one line and adds nothing to the count.
 
@@ -62,7 +66,7 @@ The `extensions` block reports `zig`, `rustc` and `clang` as found with their ve
 
 | variable                 | read by                                        | does                                                                                                                |
 | ------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `CRUST_SIGNING_IDENTITY` | `crust sign`, `crust notarize`, `crust doctor` | the Developer ID identity to sign with; absent, `crust sign` fails naming the variable and prints the expected form |
+| `CRUST_SIGNING_IDENTITY` | `crust sign`, `crust notarize`        | the Developer ID identity to sign with; absent, `crust sign` fails naming the variable and prints the expected form |
 | `CRUST_NOTARY_PROFILE`   | `crust notarize`                               | a notarytool `store-credentials` profile; wins over the one-shot route                                              |
 | `CRUST_NOTARY_APPLE_ID`  | `crust notarize`                               | the Apple ID for the one-shot credential route                                                                      |
 | `CRUST_NOTARY_PASSWORD`  | `crust notarize`                               | the app-specific password for that Apple ID                                                                         |

@@ -4,11 +4,12 @@ Six namespaces that belong to the app rather than to a window: `app` for command
 
 ## `app`
 
-| command  | arguments         | answer                             |
-| -------- | ----------------- | ---------------------------------- |
-| `invoke` | `{ name, args? }` | whatever the named command answers |
+| command  | arguments         | answer                                        |
+| -------- | ----------------- | --------------------------------------------- |
+| `invoke` | `{ name, args? }` | whatever the named command answers            |
+| `info`   | none              | `{ id, name, version, execPath, packaged }`   |
 
-The namespace behind a two-argument call: `window.crust.invoke("greet", { name: "Ada" })` is routed by the injected shim to `app.invoke` with `{ name: "greet", args: { name: "Ada" } }`. It reaches the same `app` singleton the backend registered on, so a command added by `main.ts` after the bridge started stays reachable — the handler closes over the app rather than snapshotting its table. A payload without a non-empty string `name` throws, which reaches the page as `handler-error`. Anything the named command answers, including its typed failures and `not-implemented`, is passed through unchanged.
+The namespace behind a two-argument call: `window.crust.invoke("greet", { name: "Ada" })` is routed by the injected shim to `app.invoke` with `{ name: "greet", args: { name: "Ada" } }`. It reaches the same `app` singleton the backend registered on, so a command added by `main.ts` after the bridge started stays reachable — the handler closes over the app rather than snapshotting its table. A payload without a non-empty string `name` throws, which reaches the page as `handler-error`. Ordinary answers and typed failures pass through unchanged, but `not-implemented` does not: a command that *returns* `notImplemented(message, requires)` and one that *throws* `NotImplementedError` are both raised as a `not-implemented` rejection carrying `requires`, so neither can be mistaken for data. A plain thrown error gains the `handler-error` code. `info` is the page's read of `app.info()` — the app id, name and version from config, the executable path, and whether the process is packaged rather than an interpreter running source; it arms the same `app:` page events as `invoke`.
 
 ## `autostart`
 

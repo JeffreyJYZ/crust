@@ -14,10 +14,11 @@ All five are registered by the macOS runtime with the framework's own adapter. W
 | `reload`    | `{ label? }` | `{ ok: true, reloaded }`                               |
 | `goBack`    | `{ label? }` | `{ ok: true, moved }`                                  |
 | `goForward` | `{ label? }` | `{ ok: true, moved }`                                  |
+| `loadUrl`   | `{ url, label? }` | `{ ok: true, loaded }`                           |
 
 **Every command takes an optional `label`**, read before the adapter runs and passed to it last, so one command can aim one window. Omitting it means the app's first open window, which is what a single-window caller has always meant; a label naming no open window is `bad-request` naming it, never a silent fall back to that window.
 
-`start` installs the delegate and reports the native half's own `status` number — never an optimism — and every later callback arrives as an event. `stop` removes the delegate; the webview keeps loading, it just stops reporting, and a second `stop` answers `stopped: false`. `state` answers `handler-error` when there is no webview to ask yet. `reload` answers `reloaded: false` when nothing was sent, and `goBack`/`goForward` answer `moved: false` on an empty history — a fact about the history, not a failure.
+`start` installs the delegate and reports the native half's own `status` number — never an optimism — and every later callback arrives as an event. `stop` removes the delegate; the webview keeps loading, it just stops reporting, and a second `stop` answers `stopped: false`. `state` answers `handler-error` when there is no webview to ask yet. `reload` answers `reloaded: false` when nothing was sent, and `goBack`/`goForward` answer `moved: false` on an empty history — a fact about the history, not a failure. `loadUrl` points one window's webview at a URL: `loaded: false` means no webview was there to load it, a bad URL or label is `bad-request` before any native call, and without `-[WKWebView loadRequest:]` it answers `not-implemented` with `requires: "loadRequest:"`.
 
 Events: `navigation:did-start`, `navigation:did-commit`, `navigation:did-finish`, `navigation:did-fail`, each with `{ url, title }` and, on `did-fail`, a `message` when WebKit named a reason.
 

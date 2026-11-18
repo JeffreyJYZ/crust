@@ -45,7 +45,7 @@ What that second process _is_ depends on how the app runs. In a source checkout 
 | `install`   | none               | `{ armed, reason, record, root }`                                            |
 | `uninstall` | none               | `{ armed: false, reason }`                                                   |
 
-A record is `{ type, signal, code, address, at, handler, exitCode }`. `type` is `"signal"` for a fault the guard watched die and `"webview"` for an error the page caught and reported, and it is how the two halves are told apart. `signal` is a name such as `SIGSEGV`, `null` when the record named a signal this build does not map; `code` is `si_code`, where `1` (`SEGV_MAPERR`) and `2` (`SEGV_ACERR`) are the two a real fault produces; `address` is hex, `0x0` when the kernel supplied none. A `"webview"` record carries `message` and, when the page supplied one, `stack`, and its `signal`/`code`/`address`/`exitCode` are `null` because nothing faulted.
+A record is `{ type, signal, code, address, at, handler, exitCode }`. `type` is `"signal"` for a fault the guard watched die and `"webview"` for an error the page caught and reported, and it is how the two halves are told apart. `signal` is a name such as `SIGSEGV`, `null` when the record named a signal this build does not map; `code` is `si_code`, where `1` (`SEGV_MAPERR`) and `2` (`SEGV_ACCERR`) are the two a real fault produces; `address` is hex, `0x0` when the kernel supplied none. A `"webview"` record carries `message` and, when the page supplied one, `stack`, and its `signal`/`code`/`address`/`exitCode` are `null` because nothing faulted.
 
 ## The page's own reports
 

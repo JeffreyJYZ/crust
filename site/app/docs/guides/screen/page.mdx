@@ -31,9 +31,11 @@ Each `Screen` is `{ id, primary, scale, bounds, workArea }`.
 primary display, `y` grows **down** from its top. A display to the left of or above the primary
 therefore answers a negative `x` or `y`, which is where it really is.
 
-AppKit's own origin is bottom-left with `y` up, so the darwin half flips every rectangle once at the
-seam — the same `y` a page reads from `window.getPosition`. Windows and Linux already report a
-top-left origin, so nothing is flipped there. That is the only difference between platforms.
+AppKit's own origin is bottom-left with `y` up, so the darwin half flips every `screen` rectangle
+once into the top-left pixels read here. `window.getPosition` and the `positioner` / `window-state`
+commands instead pass through AppKit's raw y-up frame — a different coordinate system, so a `screen`
+rectangle cannot be handed straight to `setPosition`. Windows and Linux screen adapters already
+report a top-left origin, so nothing is flipped there.
 
 `workArea` is not `bounds`: a display with a menu bar and a Dock has two rectangles that differ in
 both `y` and `height`. Place a window against `workArea`, not `bounds`, or it sits under the Dock.

@@ -1,6 +1,6 @@
 # Permissions
 
-Decide which window may call which command. Authenticating a page is not the same question as authorising it: the token says a page is this app's own, and capabilities say what that page is allowed to do with it.
+Decide which window may call which command. Authenticating a page is not the same question as authorising it: the token says a page is this app's own and binds it to one window label, and capabilities say what that label may do.
 
 ```ts
 // crust.config.ts
@@ -24,10 +24,12 @@ No `security.capabilities` means **every command is allowed**, which is what eve
 Three rules, all checked at the bridge rather than inside a plugin:
 
 - **Absent or empty `capabilities` allows everything.** Opting in is the only way to be restricted.
-- **Present and non-empty denies by default.** A window label with no entry in `grants` holds no capabilities and may call nothing, and neither may a request that names no label at all.
-- **A grant is per window label.** The label is the only thing the bridge knows about a request, so one window cannot inherit another's authority by asking for it.
+- **Present and non-empty denies by default.** A label with no entry in `grants` holds no capabilities and may call nothing.
+- **A grant is per window label, bound to the token when its document was served.** A page may put any `window` in its own invoke body — that field only routes the command (`ctx.window`), never grants it authority. One window cannot inherit another window's grants by naming it.
 
 The check lives in the invoke path, ahead of the handler, so both payload kinds (JSON and a binary body) and every plugin — built-in, mounted, or a third-party extension — take the same gate. A plugin cannot forget to add it.
+
+**The token is the authority, not the body's `window` field.** The document route mints a fresh token per document and records the `?window=` it served, so the bridge authorises on that bound label. A process token for a dev-server page is bound to `main`, and a request that names no window in its body still uses its token's label. The label in a request is a routing hint: a page that writes `"window":"admin"` can address the admin window but cannot hold the admin window's grants, which belong only to the token minted for that document.
 
 ## Actions
 

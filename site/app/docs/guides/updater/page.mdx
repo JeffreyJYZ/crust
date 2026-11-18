@@ -31,6 +31,8 @@ The endpoint answers one JSON object:
 
 `version` and `url` are required; `notes` stays unparsed Markdown, and `sha256` is 64 hex characters. Versions compare numerically, so `0.10.0` beats `0.9.0` and `1.0.0` beats `1.0.0-beta.1`.
 
+The `endpoint` obeys the same scheme rule as `download`'s `url`: `https` only, and `file:` only when the app set `updater.allowFileUrl`. A page-supplied `http:` endpoint is refused as `invalid-arguments` naming `check` — `crust: updater.check refuses a http: url: only https is fetched` — with `requires: "updater.allowFileUrl"` for a `file:` one. The refusal travels in `error`, so `check` still never rejects.
+
 A manifest that names a `pubkey` other than the pinned one is `bad-manifest` — `the manifest's pubkey is not this app's` — so a hostile endpoint cannot substitute its own key.
 
 `check` never rejects: no update is `{ available: false, version }`, and a failure is `{ available: false, error: { code, message } }`.
@@ -94,6 +96,8 @@ const done = await window.crust.invoke("updater", "install", {
 });
 // { ok: true, appPath: "/Applications/Notes.app", backup: "/Applications/Notes.app.old" }
 ```
+
+`install` — and `relaunch` below — rename a macOS `.app` and launch it with `open -n`. On Linux and Windows they refuse **before touching disk** with `{ ok: false, code: "unsupported-platform", message }` naming the platform: `crust: updater.install: auto-update replaces a macOS .app bundle and relaunches with open -n; platform linux has no install path, so this update cannot be applied`. `check` and `download` work on every platform; only the two bundle commands are macOS-only.
 
 Install takes **only an artifact this same run downloaded and verified**. The plugin keeps a receipt per path, and a path it never verified is refused rather than trusted:
 
@@ -173,6 +177,7 @@ The hardening does not close the update path. A pinned `updater.pubkey`, a `down
 | `unverified-artifact` | `install` was handed a path this run never verified                                           |
 | `install-failed`      | the rename failed, including a cross-volume move                                              |
 | `not-an-app-bundle`   | a path is not an existing `.app`, or is not this app's own bundle                             |
+| `unsupported-platform`| `install` or `relaunch` on Linux or Windows — no macOS `.app` install path                     |
 | `relaunch-failed`     | the own bundle is right and the launcher still refused                                        |
 | `handler-error`       | an adapter threw something it could not name                                                  |
 

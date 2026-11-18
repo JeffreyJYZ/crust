@@ -9,8 +9,8 @@ Plain text on the general pasteboard, through `NSPasteboard`. Registered on macO
 | ------------ | ---------- | ----------------------------- |
 | `read`       | none       | `{ ok: true, text }`          |
 | `write`      | `{ text }` | `{ ok: true, written: true }` |
-| `readImage`  | none       | `not-implemented`             |
-| `writeImage` | none       | `not-implemented`             |
+| `readImage`  | none                 | `{ ok: true, png }` — PNG bytes, or `null` for an empty pasteboard |
+| `writeImage` | `{ png }` or PNG bytes | `{ ok: true, written: true }` |
 
 ```js
 const { text } = await window.crust.invoke("clipboard", "read");
@@ -35,9 +35,13 @@ make "clear the clipboard" impossible.
 
 ## Images
 
-`readImage` and `writeImage` answer `not-implemented` and name the selector each waits on. An image
-is a second object graph in C — `NSImage` in, PNG or TIFF bytes out — so neither command answers an
-empty result that would read as "no image on the clipboard".
+`readImage` answers `{ ok: true, png }`: PNG bytes, or `null` when the pasteboard holds no image.
+`writeImage` takes PNG bytes (`{ png }`, or the bare bytes on the binary route) and answers
+`{ ok: true, written: true }` when the pasteboard took them. Bytes that are not PNG are refused
+`bad-request`, and a pasteboard that refuses the write is `write-failed`. An image is a second object
+graph in C — `NSImage` in, PNG bytes out — so "no image" is `png: null`, not an empty result that
+would read as a refusal. Without an adapter both commands answer `not-implemented` naming
+`NSPasteboard`, as the text commands do.
 
 ## Failure codes
 

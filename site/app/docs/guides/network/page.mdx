@@ -25,11 +25,7 @@ The observer is scheduled on the main run loop, which is the same loop the app p
 
 **Not on a platform without the call:** `status` and `onChange` answer `not-implemented` naming `SCNetworkReachability in SystemConfiguration` (macOS), `INetworkListManager in NetworkListManager` (Windows) or `NetworkChangeNotifier from Gdk` (Linux). A `status` with no adapter is a refusal, never an empty `{ online: false }` that reads as a real reading.
 
-The interception half is a `WKURLSchemeHandler` the darwin adapter registers, so its decision runs in the process that owns the webview, and it is registered with `darwinNetworkAdapter()` — `window.crust.invoke("network", …)` works in an app that names no plugin.
-
-An `allow` rule **serves the bytes it carries**. It is never a pass-through and never a fetch: the handler answers `didReceiveResponse:` / `didReceiveData:` / `didFinish:` itself, with an `NSHTTPURLResponse` carrying `Content-Type`, `Content-Length` and `Access-Control-Allow-Origin`.
-
-Registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
+The interception half is a `WKURLSchemeHandler` the darwin adapter registers, so its decision runs in the process that owns the webview. It is registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
 
 ## Interception
 

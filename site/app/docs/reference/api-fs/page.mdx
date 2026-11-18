@@ -10,6 +10,9 @@ Four namespaces that touch disk or spawn: `fs` (text files, directories, and the
 | --------------- | ---------------------- | ------------------------------------------------ |
 | `readTextFile`  | `{ path }`             | the file's text, as a string                     |
 | `writeTextFile` | `{ path, contents }`   | `{ bytes }`                                      |
+| `readBinary`    | `{ path }`             | the file's bytes, as a `Uint8Array`              |
+| `writeBinary`   | `{ path, bytes }`      | `{ bytes }`                                      |
+| `mkdir`         | `{ path }`             | `{ path, created }`                              |
 | `list`          | `{ path }`             | `{ entries: [{ name, path, directory, size }] }` |
 | `stat`          | `{ path }`             | `{ path, directory, size, modified }`            |
 | `remove`        | `{ path, recursive? }` | `{ removed: true, path }`                        |
@@ -18,7 +21,7 @@ Four namespaces that touch disk or spawn: `fs` (text files, directories, and the
 | `scopeAllow`    | `{ path }`             | `{ ok: true, paths }`                            |
 | `scopeRevoke`   | `{ path }`             | `{ ok: true, paths }`                            |
 
-`list` answers entries sorted by name, each with a basename and an absolute path, so a page never joins strings. `stat` reports `modified` in milliseconds since the epoch. `remove` deletes a directory only with `recursive: true`; a non-empty directory without it is refused by the OS. `rename` checks both ends against the scope: a rename out of a prefix leaks the file as surely as a read.
+`list` answers entries sorted by name, each with a basename and an absolute path, so a page never joins strings. `stat` reports `modified` in milliseconds since the epoch. `remove` deletes a directory only with `recursive: true`; a non-empty directory without it is refused by the OS. `rename` checks both ends against the scope: a rename out of a prefix leaks the file as surely as a read. The binary commands bound the same scope: `readBinary` returns real bytes (the bridge tags them so the page client revives them), `writeBinary` accepts bytes or a numeric-key object, and `mkdir` is recursive, answering `created: false` when the whole chain already existed.
 
 **`scopeAllow` is host-gated.** A page may not widen its own boundary, so the command answers `outside-scope` — before its argument is even read — unless the host built the plugin with `grants: "page"`. The runtime builds it with the default `grants: "runtime"`, so in a running app `fs.scopeAllow` always refuses; the host grants a prefix through `fs.scope` in the config, or by constructing `createFsPlugin({ allow, grants: "page" })` itself. `scopeRevoke` stays reachable from a page because it can only take a grant away. `scopeList` reports `scoped: false` with a `reason` when no `fs.scope` is configured — the boundary is absent, not empty.
 

@@ -12,6 +12,9 @@ The language the app should speak, and the catalogue that answers in it. The onl
 | `translate` | `{ key, vars? }` | `{ ok: true, locale, key, text }` |
 | `load`      | `{ directory }`  | `{ ok: true, locale, available }` |
 
+Every answer also carries `dir`, the document direction for that locale (`ltr`, or `rtl` for an RTL
+base language), so a page can set `lang` and `dir` without deriving them itself.
+
 ```ts
 const plugin = createI18nPlugin({
 	locale: "en",

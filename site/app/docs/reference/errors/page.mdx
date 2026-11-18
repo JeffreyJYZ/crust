@@ -1,6 +1,6 @@
 # Errors
 
-Every bridge failure is a rejected invoke carrying `code` and `message`, plus `requires` on a `not-implemented`. Branch on `error.code` — the HTTP status is informational, and two shapes below answer inside an ordinary `200`.
+Every bridge failure carries `code` and `message`, plus `requires` on a `not-implemented`. Branch on the code: most failures are rejected invokes, but `window`, `tray`, `updater` and others answer a typed `{ ok: false, code, message }` value inside the `{ ok: true, result }` envelope. The bridge gives that value a non-200 HTTP status mapped from the same table below, so the status agrees with the code instead of being informational.
 
 ## Codes
 
@@ -17,12 +17,14 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 | `too-large`       | 413  | body over 2 MiB                                                                    |
 | `not-implemented` | 501  | a command returned `notImplemented(...)`                                           |
 | `forbidden`       | 403  | a window label does not hold a capability covering the command                     |
+| `outside-scope`   | 403  | an `fs` path resolves outside every configured `fs.scope` prefix, or touches the scope store |
 
 ## Messages
 
 | code              | message                                                                        | when                                                           |
 | ----------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------- |
 | `unauthorized`    | `missing or bad bearer token`                                                  | the header is absent or wrong                                  |
+| `unauthorized`    | `missing or bad document token`                                                | the document route's `?token=` is absent or was never issued   |
 | `bad-json`        | `body is not json`                                                             | `JSON.parse` failed on the body                                |
 | `too-large`       | `payload too large`                                                            | the declared or actual body exceeded 2 MiB                     |
 | `bad-request`     | `body needs { plugin, command, args }`                                         | the JSON body has no string `plugin` and `command`             |
@@ -32,6 +34,7 @@ Every bridge failure is a rejected invoke carrying `code` and `message`, plus `r
 | `not-implemented` | the first argument of `notImplemented(...)`, with `requires` set to the second | a command declined instead of pretending                       |
 | `handler-error`   | the thrown message, unchanged                                                  | a handler threw a plain `Error` or any other value             |
 | `forbidden`       | the action, the window label, and the capability that would have allowed it    | the label holds no capability covering the command             |
+| `outside-scope`   | `fs: <path> is outside the app's scope`                                        | the path resolves outside every prefix; the store and a page's own grant widening name the fix instead |
 
 `not-implemented` reaches the page as `{ "code": "not-implemented", "message": "…", "requires": "NSPasteboard" }`, so a caller can tell "this platform cannot do it" from "the call was wrong".
 
@@ -45,11 +48,11 @@ The shim holds one panel, one done flag and one path list, so a second `openPane
 crust: savePanel refused (busy); an NSOpenPanel sheet is already up, and only one panel can be open at a time — answer it, or call dialog.cancel, before asking NSSavePanel for another
 ```
 
-`openPanel` substitutes `NSOpenPanel` for the requested class. A cancelled pick is never an error: the panel answers `{ paths: [] }`, and `dialog.cancel` answers `{ cancelled: true, paths: [] }`, or `{ cancelled: false, paths: [] }` when nothing was pending — an ordinary race with the user.
+`openPanel` uses `NSOpenPanel` and `savePanel` uses `NSSavePanel`; the busy refusal names whichever class is already up. A cancelled pick is never an error: the panel answers `{ paths: [] }`, and `dialog.cancel` answers `{ cancelled: true, paths: [] }`, or `{ cancelled: false, paths: [] }` when nothing was pending — an ordinary race with the user.
 
 ## `window` and `tray`
 
-These two answer a typed failure inside a `200`, never a rejected invoke: `{ ok: false, code, message }`, with `label` on every window failure that knows one.
+These two return a typed failure value rather than a rejected invoke: `{ ok: false, code, message }`, with `label` on every window failure that knows one. The bridge maps the code to a non-200 status through the `CrustError` table — `invalid-*` → 400, `unknown-window` and `destroyed` → 404, `unknown-adapter` → 501, `handler-error` → 500, any unmapped code → 400 — while the `{ ok: true, result: … }` envelope and body stay unchanged. Because the body is unchanged, `await window.close()` still resolves with the typed failure instead of rejecting, so a caller that ignores the result keeps working.
 
 | code              | raised when                                                                 |
 | ----------------- | --------------------------------------------------------------------------- |

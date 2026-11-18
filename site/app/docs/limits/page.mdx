@@ -10,8 +10,11 @@ What crust does not do, stated before you build on it. Each line is a boundary, 
 | x64 and arm64 only          | no riscv64 — Bun ships no such binary, so there is no target to build even if the platform layer would run                          |
 | no Xcode required           | the `.c` shim contains no `#include`; every Objective-C symbol is a hand-written `extern`, so it compiles with an empty environment |
 | Linux needs two packages    | GTK3 and WebKitGTK are `dlopen`ed at launch, and the C development package supplies the `libc.so` linker script the shim links against |
+| Linux keychain needs a Secret Service | `keychain` uses libsecret's synchronous API, which needs a session bus and a provider (`libsecret-1-0` plus `gnome-keyring` on Debian/Ubuntu); without one, the command refuses with the install line |
 | Windows needs WebView2      | it ships with Windows 11 and is an Evergreen update on 10; absent, the preflight says so before the first window                   |
 | auto-update needs macOS     | `updater.install` and `updater.relaunch` swap a `.app` and run `open -n`; on Windows and Linux they refuse with `unsupported-platform` |
+
+On Linux, `keychain` talks to libsecret with `secret_password_store_sync` and `secret_password_lookup_sync`. Those calls spin their own GLib main loop, so crust needs none, but they do need a session D-Bus and a running Secret Service provider — `gnome-keyring` on GNOME, or an equivalent — plus an unlocked collection. A headless session has neither, and the command answers `{ ok: false, code: "handler-error" }` naming `libsecret-1-0` and the package to install. There is no plaintext fallback: a secret crust writes to a file it protects itself is `stronghold`'s job, not the keychain's, so Linux credentials that must work without a desktop session belong in file scope.
 
 ## Distribution
 

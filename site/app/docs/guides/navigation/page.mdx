@@ -14,6 +14,9 @@ Registered by the macOS runtime with `darwinNavigationAdapter(webview)`, so `win
 | `reload`    | none      | `{ ok: true, reloaded }`                                     |
 | `goBack`    | none      | `{ ok: true, moved }`                                        |
 | `goForward` | none      | `{ ok: true, moved }`                                        |
+| `loadUrl`   | `{ url }` | `{ ok: true, loaded }`                                       |
+
+Every command takes an optional `label` to aim at one window. Omitted means the app's first open window; a label that names no open window is `bad-request` naming it, never a silent fall back. The table shows the required arguments only.
 
 `start` installs the delegate and reports the native half's own `status` number — never an optimism. Until `start` has run, nothing is reported.
 
@@ -48,6 +51,8 @@ const now = await window.crust.invoke("navigation", "state");
 
 `stop` removes the delegate; the webview keeps loading, it just stops reporting. Calling it twice answers `stopped: false` the second time, because the delegate is gone either way.
 
+`loadUrl` points one window's webview at a URL and answers `loaded: false` when no webview was there. It validates the URL before any native call and answers `bad-request` for an empty or non-string one.
+
 ## Failure shape
 
-Without an adapter, each command answers `not-implemented` with `requires: "WKNavigationDelegate"`. An adapter that threw becomes `{ ok: false, code: "handler-error", message }`; nothing here throws across the bridge.
+Without an adapter, each command answers `not-implemented` with `requires: "WKNavigationDelegate"`. `loadUrl` on an adapter that exposes no native `-loadRequest:` answers `not-implemented` with `requires: "loadRequest:"`, so no load is ever silently skipped. An adapter that threw becomes `{ ok: false, code: "handler-error", message }`; nothing here throws across the bridge.

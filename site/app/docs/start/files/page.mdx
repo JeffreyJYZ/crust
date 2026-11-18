@@ -35,11 +35,13 @@ await app.run();
 
 ## What each scaffold adds
 
-| scaffold  | files                                                                                                                            |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| plain     | `crust.config.ts`, `main.ts`, `public/index.html`, `public/style.css`, `public/app.js`, `package.json`, `.gitignore`             |
-| `--react` | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.tsx`, `package.json`, `.gitignore`                       |
-| `--next`  | `crust.config.ts`, `main.ts`, `next.config.mjs`, `tsconfig.json`, `app/layout.tsx`, `app/page.tsx`, `app/about/page.tsx`, `package.json`, `.gitignore` |
+| scaffold   | files                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| plain      | `crust.config.ts`, `main.ts`, `public/index.html`, `public/style.css`, `public/app.js`, `package.json`, `.gitignore`              |
+| `--react`  | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.tsx`, `package.json`, `.gitignore`                        |
+| `--svelte` | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.ts`, `src/App.svelte`, `package.json`, `.gitignore`      |
+| `--vue`    | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.ts`, `src/App.vue`, `package.json`, `.gitignore`         |
+| `--next`   | `crust.config.ts`, `main.ts`, `next.config.mjs`, `tsconfig.json`, `app/layout.tsx`, `app/page.tsx`, `app/about/page.tsx`, `package.json`, `.gitignore` |
 
 `package.json` always carries a `dev` and a `build` script that call `crust`, so `bun run dev` and `bun run build` are the short forms.
 
@@ -57,7 +59,7 @@ await app.run();
 | `windows[].minWidth`, `title` | unset              | `height` doubles as the minimum height                     |
 | `dev.url`                     | unset              | every window loads it verbatim, `windows[].url` is ignored |
 | `build.assets`                | `"public"`         | the directory a build embeds; must hold `index.html`       |
-| `plugins`                     | all five built-ins | naming any registers only those                            |
+| `plugins`                     | all built-ins      | naming any registers only those                            |
 
 Every key is validated at startup and extra keys are rejected, so a typo is a startup failure naming the key and the shape it expected — never a silently ignored option. The full table, plus `dev.beforeDevCommand`, `build.beforeBuildCommand` and `security.csp`, is in [Config](/docs/reference/config).
 
