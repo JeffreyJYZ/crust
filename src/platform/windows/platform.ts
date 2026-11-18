@@ -8,10 +8,9 @@
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import { unsupportedLifecycle } from "@/app-types.ts";
 import { type WindowsBackend, type WindowsShim, defaultBackend } from "./backend.ts";
-import { cstring } from "./cstring.ts";
 import { destroyWindow } from "./destroy.ts";
-import { type WindowsPlatformConfig, hresult } from "./platform-config.ts";
-import { preflightError } from "./preflight.ts";
+import { type WindowsPlatformConfig } from "./platform-config.ts";
+import { startWindows } from "./startup.ts";
 import { openWindow } from "./window-open.ts";
 import { WindowsRegistry } from "./windows-registry.ts";
 
@@ -69,36 +68,14 @@ export class WindowsPlatform implements Platform {
 	async start(): Promise<void> {
 		if (this.#started) return;
 		this.#started = true;
-		const missing = preflightError(this.#backend.probe());
-		if (missing) {
-			this.#unavailable = missing;
-			console.log(missing);
+		const started = startWindows(this.#backend, this.#appName);
+		if (!started.ok) {
+			this.#unavailable = started.unavailable;
+			console.log(started.unavailable);
 			return;
 		}
-		const shim = this.#backend.load();
-		// Every Win32 entry point is a pointer `12_win32.c` resolves at runtime, so a machine that
-		// is missing one is a message here rather than a null call at the first window.
-		if (!Number(shim.shim_win32_ready())) {
-			this.#unavailable =
-				"crust: the Win32 entry points did not resolve — user32, ole32 or kernel32 is missing an export this shim calls";
-			console.log(this.#unavailable);
-			return;
-		}
-		const hr = Number(shim.shim_com_init());
-		// S_OK (0) and S_FALSE (1) both mean the apartment is usable; anything else is a machine
-		// that cannot host COM, where a window would fail later with no cause attached.
-		if (hr < 0) {
-			this.#unavailable = `crust: CoInitializeEx failed (${hresult(hr)}) — WebView2 needs a single-threaded apartment`;
-			console.log(this.#unavailable);
-			return;
-		}
-		if (!Number(shim.shim_register_class(cstring(this.#appName)))) {
-			this.#unavailable = `crust: RegisterClassExW("${this.#appName}") failed (GetLastError ${Number(shim.shim_last_error())})`;
-			console.log(this.#unavailable);
-			return;
-		}
-		this.#shim = shim;
-		this.#windows.attach(shim);
+		this.#shim = started.shim;
+		this.#windows.attach(started.shim);
 	}
 
 	/**
@@ -170,6 +147,15 @@ export class WindowsPlatform implements Platform {
 	/** The native `HWND` behind a tracked label; undefined once closed or never created. */
 	nativeWindow(label: string): number | undefined {
 		return this.#windows.get(label)?.hwnd;
+	}
+
+	/**
+	 * The compiled shim, once `start()` has loaded it. The window adapter's geometry, state and focus
+	 * commands are shim calls rather than platform methods, so they need the same symbol table the
+	 * platform itself calls; `undefined` before `start()` is a named refusal there, never a null call.
+	 */
+	shim(): WindowsShim | undefined {
+		return this.#shim;
 	}
 
 	/** The absolute URL a tracked window was asked to load. */

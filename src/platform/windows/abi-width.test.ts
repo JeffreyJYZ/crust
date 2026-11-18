@@ -40,6 +40,11 @@ const THIRTY_TWO: Record<string, string> = {
 	ShowWindow: "int", // BOOL
 	UpdateWindow: "int", // BOOL
 	GetClientRect: "int", // BOOL
+	GetWindowRect: "int", // BOOL
+	SetWindowPos: "int", // BOOL
+	IsIconic: "int", // BOOL
+	IsZoomed: "int", // BOOL
+	SetForegroundWindow: "int", // BOOL
 	SetWindowTextW: "int", // BOOL
 	PeekMessageW: "int", // BOOL
 	TranslateMessage: "int", // BOOL

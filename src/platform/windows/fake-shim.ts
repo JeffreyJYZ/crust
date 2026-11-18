@@ -17,7 +17,7 @@ function text(value: Uint8Array): string {
 
 /**
  * The shim a test drives, with its call log. Exported on its own so a test that only needs to record
- * a few arguments can spread this and override those, instead of restating all 27 methods.
+ * a few arguments can spread this and override those, instead of restating all 33 methods.
  */
 export function fakeShim(
 	options: FakeOptions = {},
@@ -26,6 +26,9 @@ export function fakeShim(
 	open: Set<number> = new Set(),
 ): WindowsShim {
 	let next = 100;
+	// The frame the fake starts at, and what `set_frame` moves. One window's worth is enough: every
+	// test here drives a single label, and a per-hwnd map would only restate the registry.
+	const frame = [40, 60, 900, 640];
 
 	return {
 		shim_win32_ready: () => {
@@ -70,6 +73,24 @@ export function fakeShim(
 			calls.push(`min:${Number(width)}x${Number(height)}`);
 		},
 		shim_window_client_num: (_hwnd, component) => (component === 2 ? 800 : 600),
+		// A frame the tests can move: `set_frame` records the numbers and the four components read
+		// them back, so a setSize/getSize round trip is provable without a window.
+		shim_window_frame_num: (_hwnd, component) => frame[Number(component)] ?? 0,
+		shim_window_set_frame: (_hwnd, x, y, width, height) => {
+			calls.push(`set_frame:${Number(x)},${Number(y)},${Number(width)},${Number(height)}`);
+			frame.splice(0, frame.length, Number(x), Number(y), Number(width), Number(height));
+			return options.failFrame ? 0 : 1;
+		},
+		shim_window_show: (_hwnd, verb) => {
+			calls.push(`show:${Number(verb)}`);
+			return 1;
+		},
+		shim_window_is_minimized: () => (options.minimized ? 1 : 0),
+		shim_window_is_maximized: () => (options.maximized ? 1 : 0),
+		shim_window_focus: () => {
+			calls.push("focus");
+			return options.failFocus ? 0 : 1;
+		},
 		shim_window_set_material: (hwnd, kind) => {
 			calls.push(`material:${Number(hwnd)}:${kind}`);
 			return options.materialResult ?? 0;

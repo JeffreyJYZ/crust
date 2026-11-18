@@ -41,6 +41,26 @@ export interface WindowsShim {
 	/** The drag floor `WM_GETMINMAXINFO` answers with; 0 means no constraint on that axis. */
 	shim_window_set_min(hwnd: number, width: number, height: number): void;
 	shim_window_client_num(hwnd: number, component: number): number;
+	/**
+	 * One component of `GetWindowRect` — 0 x, 1 y, 2 width, 3 height of the whole window rect, which
+	 * is the frame `set_frame` moves. Client size is `shim_window_client_num`; these are not the same
+	 * number, and `setSize` means the frame.
+	 */
+	shim_window_frame_num(hwnd: number, component: number): number;
+	/** `SetWindowPos` with SWP_NOZORDER | SWP_NOACTIVATE: geometry only, never a raise. 1 on success. */
+	shim_window_set_frame(
+		hwnd: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): number;
+	/** `ShowWindow`: 0 minimize, 1 maximize, 2 restore. */
+	shim_window_show(hwnd: number, verb: number): number;
+	shim_window_is_minimized(hwnd: number): number;
+	shim_window_is_maximized(hwnd: number): number;
+	/** `SetForegroundWindow`; 0 is the foreground lock refusing, which the adapter reports. */
+	shim_window_focus(hwnd: number): number;
 	/** HRESULT of DwmSetWindowAttribute(38); negative sentinels mean dwmapi could not be used. */
 	shim_window_set_material(hwnd: number, kind: number): number;
 

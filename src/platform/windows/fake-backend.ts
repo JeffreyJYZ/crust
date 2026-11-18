@@ -24,6 +24,14 @@ export interface FakeOptions {
 	loadThrows?: boolean;
 	/** HRESULT `shim_window_set_material` answers; negative is a refused backdrop. */
 	materialResult?: number;
+	/** Return 0 from `shim_window_set_frame`, as a refused `SetWindowPos` does. */
+	failFrame?: boolean;
+	/** Return 0 from `shim_window_focus`, as Windows' foreground lock does. */
+	failFocus?: boolean;
+	/** What `shim_window_is_minimized` answers. */
+	minimized?: boolean;
+	/** What `shim_window_is_maximized` answers. */
+	maximized?: boolean;
 }
 
 export interface FakeBackend extends WindowsBackend {

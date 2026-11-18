@@ -48,6 +48,11 @@ int shim_win32_load(void) {
 	SHIM_BIND(g_user32, ShowWindow);
 	SHIM_BIND(g_user32, UpdateWindow);
 	SHIM_BIND(g_user32, GetClientRect);
+	SHIM_BIND(g_user32, GetWindowRect);
+	SHIM_BIND(g_user32, SetWindowPos);
+	SHIM_BIND(g_user32, IsIconic);
+	SHIM_BIND(g_user32, IsZoomed);
+	SHIM_BIND(g_user32, SetForegroundWindow);
 	SHIM_BIND(g_user32, SetWindowTextW);
 	SHIM_BIND(g_user32, PeekMessageW);
 	SHIM_BIND(g_user32, TranslateMessage);

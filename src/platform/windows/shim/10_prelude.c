@@ -47,6 +47,13 @@ static int (*IsWindow)(shim_h hwnd);
 static int (*ShowWindow)(shim_h hwnd, int cmd);
 static int (*UpdateWindow)(shim_h hwnd);
 static int (*GetClientRect)(shim_h hwnd, void *rect);
+// The frame, for the window adapter's geometry commands. A `RECT` is four LONGs, so it crosses as a
+// pointer to `int rect[4]` on both ABIs — never by value, which is the arm64 trap `34_slots.c` names.
+static int (*GetWindowRect)(shim_h hwnd, void *rect);
+static int (*SetWindowPos)(shim_h hwnd, shim_h after, int x, int y, int w, int h, unsigned int flags);
+static int (*IsIconic)(shim_h hwnd);
+static int (*IsZoomed)(shim_h hwnd);
+static int (*SetForegroundWindow)(shim_h hwnd);
 static int (*SetWindowTextW)(shim_h hwnd, const shim_wchar *text);
 static int (*PeekMessageW)(void *msg, shim_h hwnd, unsigned int min, unsigned int max, int remove);
 static int (*TranslateMessage)(const void *msg);
@@ -67,6 +74,11 @@ int shim_win32_ready(void);
 #define SHIM_WS_OVERLAPPEDWINDOW 0x00CF0000u
 #define SHIM_CW_USEDEFAULT ((int)0x80000000)
 #define SHIM_SW_SHOW 5
+#define SHIM_SW_MAXIMIZE 3
+#define SHIM_SW_MINIMIZE 6
+#define SHIM_SW_RESTORE 9
+// SWP_NOZORDER | SWP_NOACTIVATE: move and resize, and never steal focus from the page that asked.
+#define SHIM_SWP_GEOMETRY 0x0014u
 #define SHIM_WM_DESTROY 2
 #define SHIM_WM_SIZE 5
 #define SHIM_WM_CLOSE 16

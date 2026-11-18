@@ -7,9 +7,9 @@ import { crashRecordPath } from "@/platform/darwin/crash-record";
 import { createSidecarPlugin } from "@/plugins/sidecar";
 import { createWindowPlugin, type PluginDefinition } from "@/plugins";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
-import { nonDarwinPlugins, nonDarwinScreenPlugin } from "@/runtime-non-darwin";
 import { platformKeychainPlugin } from "@/runtime-keychain";
 import { startCrashPart } from "@/runtime-crash-start";
+import { otherPlatformPlugins } from "@/runtime-plugins-other.ts";
 
 /**
  * The `app` namespace moved to `runtime-app-namespace.ts` when this file crossed the 200-line cap.
@@ -44,6 +44,7 @@ export async function nativePlugins(
 	core: readonly PluginDefinition[],
 	platform: import("@/platform/darwin").DarwinPlatform | undefined,
 	options: NativePluginOptions | ShellConfig = {},
+	os: string = process.platform,
 ): Promise<PluginDefinition[]> {
 	const { shell, updater, fs, app: appId } = optionsOf(options);
 	// One data directory per app id; a static import, because the store is built before any platform.
@@ -76,23 +77,21 @@ export async function nativePlugins(
 	// Same data root as `store`: the reason is in `database-name.ts`'s doc comment.
 	const databasePlugin = createDatabasePlugin({ root: appRoot });
 	const keychainPlugin = await platformKeychainPlugin();
-	if (!platform || process.platform !== "darwin") {
-		return [
-			...core.filter((plugin) => plugin.name !== "window").map(scoped),
-			createWindowPlugin(),
-			// No notification center: onSleep still gets a typed not-implemented, not unknown-plugin.
-			powerPlugin,
-			// Displays have a working half on both platforms; the selector wires the right one.
-			nonDarwinScreenPlugin(process.platform),
-			storePlugin,
-			databasePlugin,
-			keychainPlugin,
-			// Seventeen darwin-only namespaces, bare so each refuses by name instead of being absent.
-			...nonDarwinPlugins,
-			shellPlugin,
-			sidecarPlugin,
-			...updaterPlugins,
-		];
+	// `os` is a parameter so the win32 arm is provable on a machine that is not Windows: the
+	// registry picks the adapter by OS, and no adapter branches on `process.platform` itself.
+	if (!platform || os !== "darwin") {
+		return otherPlatformPlugins({
+			core,
+			scoped,
+			power: powerPlugin,
+			shell: shellPlugin,
+			sidecar: sidecarPlugin,
+			store: storePlugin,
+			database: databasePlugin,
+			keychain: keychainPlugin,
+			updater: updaterPlugins,
+			os,
+		});
 	}
 	const darwin = await import("@/platform/darwin");
 	const notifications = await import("@/platform/darwin/notifications");

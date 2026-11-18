@@ -92,6 +92,12 @@ export function compile(): WindowsShim {
 				shim_window_destroy: { args: [P], returns: I32 },
 				shim_window_set_min: { args: [P, I32, I32], returns: V },
 				shim_window_client_num: { args: [P, I32], returns: I32 },
+				shim_window_frame_num: { args: [P, I32], returns: I32 },
+				shim_window_set_frame: { args: [P, I32, I32, I32, I32], returns: I32 },
+				shim_window_show: { args: [P, I32], returns: I32 },
+				shim_window_is_minimized: { args: [P], returns: I32 },
+				shim_window_is_maximized: { args: [P], returns: I32 },
+				shim_window_focus: { args: [P], returns: I32 },
 				shim_window_set_material: { args: [P, I32], returns: I32 },
 
 				shim_screen_count: { args: [], returns: I32 },

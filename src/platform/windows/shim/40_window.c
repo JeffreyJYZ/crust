@@ -47,6 +47,50 @@ int shim_window_client_num(shim_h hwnd, int component) {
 	return 0;
 }
 
+// --- frame, state and foreground -------------------------------------------
+// The four calls the window adapter's geometry commands need. Each reads or writes one number at a
+// time: a RECT is a pointer to `int[4]` here, because a struct crossing bun:ffi by value is the arm64
+// defect `34_slots.c` records.
+//
+// 0 = x, 1 = y, 2 = width, 3 = height, of the *window* rect (title bar and borders included), which
+// is the same frame `SetWindowPos` moves and resizes.
+int shim_window_frame_num(shim_h hwnd, int component) {
+	int rect[4];
+	if (!hwnd) return 0;
+	if (!GetWindowRect(hwnd, rect)) return 0;
+	if (component == 0) return rect[0];
+	if (component == 1) return rect[1];
+	if (component == 2) return rect[2] - rect[0];
+	if (component == 3) return rect[3] - rect[1];
+	return 0;
+}
+
+// Geometry only: SWP_NOZORDER | SWP_NOACTIVATE, so a resize never raises or focuses the window.
+// 1 on success; 0 is a refused call, which the adapter reports with GetLastError beside it.
+int shim_window_set_frame(shim_h hwnd, int x, int y, int w, int h) {
+	if (!hwnd) return 0;
+	return SetWindowPos(hwnd, 0, x, y, w, h, SHIM_SWP_GEOMETRY) ? 1 : 0;
+}
+
+// One verb for the three window-level toggles, so no caller repeats a ShowWindow command number.
+// 0 = minimize, 1 = maximize, 2 = restore (which is also how a minimized window comes back).
+int shim_window_show(shim_h hwnd, int verb) {
+	if (!hwnd) return 0;
+	ShowWindow(hwnd, verb == 0 ? SHIM_SW_MINIMIZE : verb == 1 ? SHIM_SW_MAXIMIZE : SHIM_SW_RESTORE);
+	return 1;
+}
+
+int shim_window_is_minimized(shim_h hwnd) { return hwnd && IsIconic(hwnd) ? 1 : 0; }
+
+int shim_window_is_maximized(shim_h hwnd) { return hwnd && IsZoomed(hwnd) ? 1 : 0; }
+
+// 0 is the foreground lock refusing the call, which is a real answer on Windows and not a crash:
+// the adapter turns it into `handler-error` naming the OS refusal rather than claiming focus.
+int shim_window_focus(shim_h hwnd) {
+	if (!hwnd) return 0;
+	return SetForegroundWindow(hwnd) ? 1 : 0;
+}
+
 // The thread that owns a window. WebView2 objects are affine to a thread, so the controller call has to
 // happen on the window's own; comparing this with `shim_thread_id()` at the call is the affinity
 // question as a number rather than an argument.
