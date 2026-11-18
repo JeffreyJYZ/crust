@@ -6,7 +6,14 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { clearSurvivors, restoreFocus, runCommand, survivorsOf, Verdict } from "./e2e-harness";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	restoreFocus,
+	runCommand,
+	survivorsOf,
+	Verdict,
+} from "./e2e-harness";
 
 const argv = Bun.argv.slice(2);
 const crustIndex = argv.indexOf("--crust");
@@ -51,6 +58,8 @@ await app.run();
 
 async function main(): Promise<number> {
 	const verdict = new Verdict();
+	// Captured before the build launches a window; passed to restoreFocus in `finally`.
+	const frontmost = await captureFrontmost();
 	// One stable identifier, not a random one. macOS remembers an authorization decision
 	// per bundle identifier, so a stable id means a person clicks Allow **once ever** and
 	// every later run is unattended; a fresh id asks again every time, which made this
@@ -176,7 +185,7 @@ export default {
 		await clearSurvivors(builtBinary);
 		await rm(root, { recursive: true, force: true });
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 }
 

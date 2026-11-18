@@ -6,6 +6,8 @@
 # same page-driven check, and prints what the OS answers — registration-related or
 # not, the answer is measured rather than inferred.
 set -u
+# Capture the human's current app before any launch activates a window.
+FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
 APP="/tmp/crust-notif/dist/crust notif.app"
 BIN="$APP/Contents/MacOS/crust-app"
 LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -36,5 +38,5 @@ wait $pid 2>/dev/null
 rg -o 'notify .*' /tmp/notif-after.out || print -r -- "no notify line"
 pkill -f 'crust notif' 2>/dev/null
 
-# Every crust launch activates its app, so hand focus back to the terminal.
-open -a Ghostty 2>/dev/null || true
+# Every crust launch activates its app, so hand focus back to whoever was here; Ghostty only if capture failed.
+open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true

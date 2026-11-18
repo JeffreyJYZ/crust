@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { pgrepLiteral } from "../src/packaging/extension-pattern.ts";
 import { dylibSuffix } from "../src/packaging/extension-tools.ts";
 import {
+	captureFrontmost,
 	clearSurvivors,
 	probe,
 	restoreFocus,
@@ -148,6 +149,9 @@ async function main(): Promise<number> {
 	return verdict.report("e2e-native");
 }
 
+// Captured before `main` compiles and launches the app, so restore hands focus back
+// to whoever the human was using rather than a fixed terminal.
+const frontmost = await captureFrontmost();
 let code: number;
 try {
 	code = await main();
@@ -158,6 +162,6 @@ try {
 	console.log(`e2e-native: FAIL  ${error instanceof Error ? error.message : String(error)}`);
 	code = 1;
 } finally {
-	await restoreFocus();
+	await restoreFocus(frontmost);
 }
 process.exit(code);

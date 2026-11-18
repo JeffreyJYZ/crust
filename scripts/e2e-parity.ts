@@ -8,6 +8,7 @@
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
+	captureFrontmost,
 	clearSurvivors,
 	probe,
 	restoreFocus,
@@ -147,6 +148,9 @@ async function main(): Promise<number> {
 	return verdict.report("e2e:parity");
 }
 
+// Captured before `main` builds and launches the app, so restore hands focus back to
+// whoever the human was using rather than a fixed terminal.
+const frontmost = await captureFrontmost();
 let code: number;
 try {
 	code = await main();
@@ -156,6 +160,6 @@ try {
 	code = 1;
 } finally {
 	// Before the exit, because `process.exit` does not run a `finally`.
-	await restoreFocus();
+	await restoreFocus(frontmost);
 }
 process.exit(code);

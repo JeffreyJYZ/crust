@@ -3,6 +3,8 @@
 # credentials the page was served — proving the route, token and dev origin
 # without relying on a page's console.
 set -u
+# Capture the human's current app before any launch activates a window.
+FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
 cd /Users/jyz/dev/crust
 bun run src/cli/index.ts dev --dir examples/vite > /tmp/vite3.out 2>&1 &
 pid=$!
@@ -26,5 +28,5 @@ kill -TERM $pid 2>/dev/null
 wait $pid
 pkill -f examples/vite 2>/dev/null
 
-# Every crust launch activates its app, so hand focus back to the terminal.
-open -a Ghostty 2>/dev/null || true
+# Every crust launch activates its app, so hand focus back to whoever was here; Ghostty only if capture failed.
+open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true

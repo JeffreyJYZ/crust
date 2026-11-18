@@ -6,7 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { restoreFocus } from "./e2e-harness.ts";
+import { captureFrontmost, restoreFocus } from "./e2e-harness.ts";
 
 const argv = Bun.argv.slice(2);
 const template = argv.includes("--next") ? "next" : argv.includes("--plain") ? "plain" : "react";
@@ -72,6 +72,9 @@ async function launch(binary: string, deadlineMs: number): Promise<{ code: numbe
 	return { code, log: chunks.join("") };
 }
 
+// Captured before the build launches a window; passed to restoreFocus in `finally`.
+const frontmost = await captureFrontmost();
+
 const workspace = await mkdtemp(join(tmpdir(), "crust-first-run-"));
 const app = join(workspace, "app");
 
@@ -128,7 +131,7 @@ try {
 } finally {
 	await rm(workspace, { recursive: true, force: true });
 	// Last, so a red run does not leave the human looking at the window it opened.
-	await restoreFocus();
+	await restoreFocus(frontmost);
 }
 
 console.log(failures === 0 ? "\nfirst-run: PASS" : `\nfirst-run: FAIL  ${failures} step(s)`);

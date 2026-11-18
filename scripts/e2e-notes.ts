@@ -6,7 +6,14 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, probe, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	probe,
+	restoreFocus,
+	survivorsOf,
+	Verdict,
+} from "./e2e-harness.ts";
 import { lastLine, seconds } from "./lib/text.ts";
 import { BINARY, buildPhase } from "./notes/build.ts";
 
@@ -29,6 +36,9 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
+	// Capture before the probe launches its window, so restore hands focus back to
+	// whoever the human was actually using rather than a fixed terminal.
+	const frontmost = await captureFrontmost();
 
 	// A survivor from an aborted run would make the last assertion meaningless,
 	// so clear ours before starting. The pattern is this bundle's own path.
@@ -43,7 +53,7 @@ async function main(): Promise<number> {
 	} finally {
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 }
 

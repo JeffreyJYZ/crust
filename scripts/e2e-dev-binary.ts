@@ -6,7 +6,13 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { clearSurvivors, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	restoreFocus,
+	survivorsOf,
+	Verdict,
+} from "./e2e-harness.ts";
 import { lastLine } from "./lib/text.ts";
 import { runOnce } from "./dev-binary/run.ts";
 import {
@@ -29,6 +35,8 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
+	// Captured before any `dev` run opens a window; passed to restoreFocus in `finally`.
+	const frontmost = await captureFrontmost();
 	const hasBinary = await Bun.file(BIN).exists();
 	verdict.check(
 		"binary",
@@ -153,7 +161,7 @@ async function main(): Promise<number> {
 		for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
 		await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 
 	return verdict.report("e2e-dev-binary");

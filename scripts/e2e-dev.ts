@@ -4,7 +4,14 @@
  */
 
 import { join, resolve } from "node:path";
-import { clearSurvivors, probe, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	probe,
+	restoreFocus,
+	survivorsOf,
+	Verdict,
+} from "./e2e-harness.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const PROJECT_DIR = join(REPO_ROOT, "examples/hello");
@@ -100,6 +107,9 @@ async function main(): Promise<number> {
 	return verdict.report("e2e-dev");
 }
 
+// Captured before `main` launches the app, so restore hands focus back to whoever
+// the human was using rather than a fixed terminal.
+const frontmost = await captureFrontmost();
 let code: number;
 try {
 	code = await main();
@@ -111,6 +121,6 @@ try {
 	code = 1;
 } finally {
 	// Before the exit, because `process.exit` does not run a `finally`.
-	await restoreFocus();
+	await restoreFocus(frontmost);
 }
 process.exit(code);

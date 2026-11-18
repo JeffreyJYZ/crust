@@ -6,7 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
+import { captureFrontmost, clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { proof } from "./window/proof.ts";
 
 async function main(): Promise<number> {
@@ -19,6 +19,8 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
+	// Capture before the proof launches its window; passed to restoreFocus in `finally`.
+	const frontmost = await captureFrontmost();
 	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-window-"));
 	let binary: string | undefined;
 	try {
@@ -29,7 +31,7 @@ async function main(): Promise<number> {
 		if (binary !== undefined) await clearSurvivors(binary).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 
 	const gone = await stat(scratch)

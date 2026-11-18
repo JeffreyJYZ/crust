@@ -6,7 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
+import { captureFrontmost, clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { spawnLive } from "./lib/live-run.ts";
 import { CLI, GRACE_MS, REPO_ROOT } from "./dev-react/fixture.ts";
 import { editPhase } from "./dev-react/phases/edit.ts";
@@ -24,6 +24,8 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
+	// Captured before any phase opens a window; passed to restoreFocus in `finally`.
+	const frontmost = await captureFrontmost();
 	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dev-react-"));
 	try {
 		return await proof(verdict, scratch);
@@ -37,7 +39,7 @@ async function main(): Promise<number> {
 		await clearSurvivors(scratch).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 }
 

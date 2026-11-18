@@ -6,7 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
+import { captureFrontmost, clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { buildPhase } from "./dogear/phases/build.ts";
 import { finishPhase } from "./dogear/phases/finish.ts";
 import { runPhase } from "./dogear/phases/steps.ts";
@@ -21,6 +21,8 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
+	// Captured before the proof launches its window; passed to restoreFocus in `finally`.
+	const frontmost = await captureFrontmost();
 	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dogear-"));
 	/** The notes folder the app creates; inside the scratch tree, so cleanup covers it. */
 	const notes = join(scratch, "notes");
@@ -33,7 +35,7 @@ async function main(): Promise<number> {
 		if (binary !== undefined) await clearSurvivors(binary).catch(() => undefined);
 		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
-		await restoreFocus();
+		await restoreFocus(frontmost);
 	}
 
 	const gone = await stat(scratch)
