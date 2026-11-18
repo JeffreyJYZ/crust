@@ -4,6 +4,35 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.26] — 2026-11-18
+
+### Added
+
+- **Every Butter capability, closed and driven.** Typed IPC over a shared `InvokeMap`, `build.sidecars`, window material (vibrancy/mica/acrylic/tabbed), Svelte and Vue scaffolds, plain-HTML hot reload, lifecycle events with `app.info()`, screen listing, all six power events, devtools behind a dev-only flag, a page-facing SQLite surface, the OS keychain, `i18n.load(directory)`, and `app.icon` applied to the dock. Two premises in the parity briefs were wrong and are stated rather than papered over: dock badges are text-only in Butter too, and tray rows already replaced in place.
+- `accessibility.announce`/`title`/`focus` post `NSAccessibility` announcements and move assistive focus — platform accessibility was a namesake before, able to read whether the tree was exposed but unable to speak through it. Linux and Windows refuse `announce` by name rather than pretending `NotifyWinEvent` is speech.
+- `network.status`/`onChange` answer connectivity through `SCNetworkReachability`, beside the URL-scheme interceptor that answers a different question.
+- `crash-reporter.report`/`configure`: a caught error in the page now writes a record through the guard's own store, tagged `webview`. Butter's `crash:configure` also takes an upload URL and crust deliberately does not — a crash reporter that uploads is the app's privacy decision.
+- `sidecar.write`/`list`/`kill` with a real stdin pipe and a SIGTERM-then-SIGKILL grace; `fs.readBinary`/`writeBinary`/`mkdir` through the same scope check; `tray.setTooltip`; `store` named stores; `logging.configure({ file?, level? })`.
+- **A CSP nonce.** The bridge mints 16 random bytes per document and stamps its own bootstrap and any authored inline `<script>` with it, so `script-src` is `'self'` plus that nonce and an injected tag is refused. `style-src` keeps `'unsafe-inline'`: inline styles are not the script-injection door.
+- **A capability grant in every scaffold.** Each template's `crust.config.ts` grants its own `app:invoke`, and the test derives that from the page's own `invoke(…)` calls, so a template cannot drift from what it ships.
+- **A content world for the token.** The credential and the invoke implementation live in a `WKContentWorld` the page cannot read or replace; the page gets one function, `window.crustInvoke`. Linux, Windows and Vite keep the fetch path.
+
+### Changed
+
+- Live parity evidence replaces the table as the proof: 101 of 110 mapped commands are driven against the real darwin platform, and the nine that remain each carry a written reason a headless runner cannot act on them.
+- The parity page states the two settled differences outright — the loopback transport and the isolation pattern — with the reasoning that decided them.
+
+### Fixed
+
+- **`shim_keychain_get` never worked.** It built the class/service/account query and then a second dictionary holding only `kSecReturnData` and `kSecMatchLimit`, and searched with the second — a query naming no class says nothing about what to look for, so every read answered `-3` and a secret written by `set` could never be read back. The plugin suite passed because its fake adapter never ran the C.
+- **`shim_keychain_list` killed the process.** Without `kSecReturnAttributes` the result is an array of item refs, and `CFDictionaryGetValue` on a non-dictionary is not an error code but a C++ exception. `CFArrayGetCount` was also declared `void*`, truncating a `long` on any caller that reads it.
+- **`platform.quit()` left the process alive with every window gone for 40 s.** `applicationShouldTerminate:` defers with `NSTerminateLater` for a `before-quit` watcher — right for a user's Cmd-Q, wrong for a deliberate quit — so `quit()` now marks the termination deliberate and AppKit answers `NSTerminateNow`.
+- **The sidecar manifest sat in `Contents/MacOS`**, where it is nested code to `codesign`, so every packaged build failed the ad-hoc sign with "code object is not signed at all". It now lands in `Contents/Resources`; Linux and Windows keep the flat path.
+- **`tray.setTooltip` and `navigation.loadUrl` answered not-implemented on macOS** — both rows said `same` once the plugin half existed while the native setter did not.
+- **The page could not hear `app:activate` or `app:before-quit`** — nothing emitted them through the bridge; the lifecycle drain now publishes `app:*` to every armed sink from the same loop that awaits the backend listeners.
+- **The dev-react probe sent no window label**, so with templates declaring capabilities the bridge refused it as `app:invoke is not granted to a request with no window label`. That refusal was the gate working — a real dev page loads `?window=main` — so the probe now sends the field and the gate stayed as strict as it was.
+- Four defects the e2e runs caught and the unit suite could not: the bootstrap was passed a whole `<script>` element to a function that already wraps its snippet, so the document shipped `<script><script>` and the page threw before `window.crust` existed (0 of 61 answers); `webviewConfiguration()` is one shared object whose controller WebKit copies into each webview, so the content-world bridge installed twice and the second copy scrubbed the token the first needed (a 401 race); and single-file mode's dev poller called `location.reload()`, which now loses `?token=`, so it re-imports the rebuilt module cache-busted instead.
+
 ## [0.1.25] — 2026-11-17
 
 ### Added
