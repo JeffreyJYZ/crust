@@ -50,7 +50,9 @@ export interface WriteBindingsOptions extends RenderBindingsOptions {
 export const ABI_SYMBOL = "crust_extension_abi";
 
 function declaration(symbols: SymbolSpec[], abi?: number): string[] {
-	const lines = [`\tconst ffi = dlopen(DYLIB, {`];
+	// `as const` keeps each symbol's arg tuple and return type literal, so `dlopen` infers a precise
+	// `Library<typeof SPEC>`: every export below is a real typed call, not a nullable `unknown`.
+	const lines = [`\tconst SPEC = {`];
 	// Declaring the marker is what makes a stale dylib fail loudly: bun resolves every declared symbol
 	// when it opens the file, so a missing or renamed one is an error rather than a null call.
 	if (abi !== undefined) lines.push(`\t\t${ABI_SYMBOL}: { args: [], returns: FFIType.i32 },`);
@@ -58,7 +60,7 @@ function declaration(symbols: SymbolSpec[], abi?: number): string[] {
 		const args = symbol.args.map((arg) => FFI[arg]).join(", ");
 		lines.push(`\t\t${symbol.name}: { args: [${args}], returns: ${FFI[symbol.returns]} },`);
 	}
-	lines.push(`\t});`);
+	lines.push(`\t} as const;`, `\tconst ffi = dlopen(DYLIB, SPEC);`);
 	return lines;
 }
 
@@ -79,11 +81,7 @@ export function renderBindings(options: RenderBindingsOptions): string {
 		`const DYLIB = join(import.meta.dir, ${JSON.stringify(dylib)});`,
 	];
 	if (abi !== undefined) lines.push(`const ABI = ${abi};`);
-	lines.push(
-		"",
-		`function open(): ReturnType<typeof dlopen> {`,
-		...declaration(options.symbols, abi),
-	);
+	lines.push("", `function open() {`, ...declaration(options.symbols, abi));
 	if (abi !== undefined) {
 		lines.push(`\tconst abi = ffi.symbols.${ABI_SYMBOL}();`);
 		lines.push(

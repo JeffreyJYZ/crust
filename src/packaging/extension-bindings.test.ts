@@ -121,6 +121,49 @@ describe("renderBindings", () => {
 		expect(parses(renderBindings({ name: "empty", symbols: [] }))).toBe(true);
 		expect(parses(renderBindings({ name: "empty", symbols: [], abiVersion: 1 }))).toBe(true);
 	});
+
+	test("open() keeps the exact symbol types instead of an erased ReturnType", () => {
+		const text = renderBindings({ name: "math", symbols: [ADD], abiVersion: 3 });
+		expect(text).toContain("\tconst SPEC = {");
+		expect(text).toContain("\t} as const;");
+		expect(text).toContain("\tconst ffi = dlopen(DYLIB, SPEC);");
+		expect(text).toContain("function open() {");
+		expect(text).not.toContain("ReturnType<typeof dlopen>");
+		expect(text).not.toContain("ffi.symbols.add as ");
+	});
+
+	test("the generated module type-checks with the real checker", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "crust-bindings-check-"));
+		try {
+			const texts = [
+				renderBindings({
+					name: "math",
+					abiVersion: 3,
+					symbols: [
+						ADD,
+						{ name: "total", args: ["i64", "u64"], returns: "i64" },
+						{ name: "greet", args: ["cstring"], returns: "cstring" },
+						{ name: "reset", args: [], returns: "void" },
+					],
+				}),
+				renderBindings({ name: "empty", symbols: [] }),
+			];
+			for (const [index, text] of texts.entries()) {
+				await writeFile(join(dir, `mod${index}.ts`), text, "utf8");
+			}
+			const proc = Bun.spawn(
+				["bun", "check", "-p", join(import.meta.dir, "../../tsconfig.json"), dir],
+				{ stdout: "pipe", stderr: "pipe" },
+			);
+			const output =
+				(await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
+			const code = await proc.exited;
+			if (code !== 0) throw new Error(`generated module failed to type-check:\n${output}`);
+			expect(code).toBe(0);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("writeBindings", () => {
