@@ -57,10 +57,28 @@ export const POWER_COMMANDS = [
 ] as const;
 
 /**
+ * What a refusal names, per platform: each OS reads power from its own API, and only darwin has an
+ * adapter in-tree. Sources for the names: `IOPSCopyPowerSourcesInfo` is bound in
+ * `src/platform/darwin/shim/105_power.c`; `RegisterPowerSettingNotification` is a User32.dll export
+ * on Microsoft Learn's winuser.h page (Powrprof.dll exports the distinct
+ * `PowerSettingRegisterNotification`); `org.freedesktop.UPower` is UPower's D-Bus service per
+ * upower.freedesktop.org/docs/UPower.html.
+ */
+const REQUIRES: Record<string, string> = {
+	darwin: "IOPSCopyPowerSourcesInfo",
+	win32: "RegisterPowerSettingNotification in User32.dll",
+	linux: "UPower on D-Bus (org.freedesktop.UPower)",
+};
+
+/**
  * Build the plugin. `adapter` may be absent (the default export) or lack the notification methods
  * (a platform without them); either way the affected commands refuse instead of faking an answer.
+ * `platform` is injectable like in `createKeychainPlugin`, so a refusal can be pinned on any OS.
  */
-export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
+export function createPowerPlugin(
+	adapter?: PowerAdapter,
+	platform: string = process.platform,
+): PluginDefinition<
 	"power",
 	{
 		state: () => Promise<PowerStateResult | PowerFailure | NotImplemented>;
@@ -71,11 +89,13 @@ export function createPowerPlugin(adapter?: PowerAdapter): PluginDefinition<
 		sleepAllow: () => Promise<SleepAllowResult | PowerFailure | NotImplemented>;
 	} & PowerSubscribeHandlers
 > {
+	const requires = REQUIRES[platform] ?? "a platform power source";
+
 	const missing = (command: string) =>
 		notImplemented(
-			`power.${command} needs IOKit, which only macOS provides. Pass a PowerAdapter to ` +
-				"createPowerPlugin on a platform that has no power source.",
-			"IOPSCopyPowerSourcesInfo",
+			`power.${command} needs ${requires}. Pass a PowerAdapter to createPowerPlugin on a ` +
+				"platform that has no power source.",
+			requires,
 		);
 	return definePlugin({
 		name: "power",

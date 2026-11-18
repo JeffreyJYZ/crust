@@ -19,7 +19,7 @@ On Linux, `keychain` talks to libsecret with the synchronous `v` variants — `s
 ## Distribution
 
 <Accordion>
-  <AccordionItem title="Ad-hoc signing by default">
+  <AccordionItem title="Ad-hoc signing by default on macOS">
 
 `codesign --sign -` opens on the machine that built it. `spctl` rejects it with exit 3 and it cannot be notarised, so Gatekeeper refuses it on any other Mac until the recipient runs `xattr -dr com.apple.quarantine "my-app.app"` or right-click → Open.
 

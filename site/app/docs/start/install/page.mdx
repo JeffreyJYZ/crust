@@ -41,7 +41,7 @@ the [platforms page](/docs/reference/platforms).
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.1.26
+crust --version                 # 0.1.28
 ```
 
 macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or Windows use a [release binary](#download-a-binary) instead. It is a source install for darwin: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
@@ -71,7 +71,7 @@ bun run build:standalone        # writes dist/crust
 cd my-app && bun install && ./dist/crust dev
 ```
 
-One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (`build` and `sign` still want the Xcode command line tools for `codesign`, exactly as they do from a checkout.) This is the same file the [release page](https://github.com/JeffreyJYZ/crust/releases/latest) attaches per platform; building it yourself is how you get one for a target the workflow does not ship.
+One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (On macOS `build` and `sign` still want the Xcode command line tools for `codesign`; Linux and Windows builds sign nothing.) This is the same file the [release page](https://github.com/JeffreyJYZ/crust/releases/latest) attaches per platform; building it yourself is how you get one for a target the workflow does not ship.
 
   </TabPanel>
 </Tabs>
@@ -79,7 +79,7 @@ One file with the framework sources embedded — `src/`, `templates/`, `tsconfig
 ## A tag, without cloning
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.26 init my-app
+bunx github:JeffreyJYZ/crust#v0.1.28 init my-app
 cd my-app && bun install
 bun run dev
 ```
@@ -96,7 +96,7 @@ crust: unknown option --next
 run "crust --help" for usage
 ```
 
-Name a tag. `#v0.1.26` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
+Name a tag. `#v0.1.28` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
 
 ```sh
 rm -rf ~/.bun/install/cache/.bunx-501/crust@github@*

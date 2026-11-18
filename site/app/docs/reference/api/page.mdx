@@ -45,7 +45,7 @@ The package root, `src/index.ts`.
 | `command`     | `command(name: string, handler: (args: Record<string, unknown>) => unknown \| Promise<unknown>): this` |
 | `use`         | `use(plugin: PluginDefinition): this`                                                                  |
 | `plugins`     | `plugins(): readonly PluginDefinition[]`                                                               |
-| `on`          | `on(event: AppEvent, listener: () => void \| Promise<void>): this` — `AppEvent` is `ready`, `window-all-closed`, `activate`, `before-quit`, `will-quit`, `reopen` |
+| `on`          | `on(event: AppEvent, listener: (error?: Error) => void \| Promise<void>): this` — `AppEvent` is `ready`, `window-all-closed`, `activate`, `before-quit`, `will-quit`, `reopen`, `error` |
 | `run`         | `run(): Promise<void>`                                                                                 |
 | `quit`        | `quit(): void`                                                                                         |
 | `invoke`      | `invoke(name: string, args?: Record<string, unknown>): Promise<unknown>`                               |

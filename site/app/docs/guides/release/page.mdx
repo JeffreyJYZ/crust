@@ -31,7 +31,7 @@ bunx crust build --help      # no --target option
 
 ## Publish an update
 
-Nothing in crust writes the manifest `updater.check` reads, or signs the artifact. The artifact is a zip of the `.app` that `crust build` produced in `dist/` — `download` extracts a real zip and hands `install` the `.app` inside it (see `src/plugins/updater-artifact.ts`). The `.dmg`, AppImage and NSIS files from `crust package` are release downloads, not updater artifacts. These commands produce the manifest by hand; they use OpenSSL 3/4 and `shasum`, both present on macOS and Linux GitHub runners.
+Nothing in crust writes the manifest `updater.check` reads, or signs the artifact. On macOS the artifact is a zip of the `.app` that `crust build` produced in `dist/` — `download` extracts a real zip and hands `install` the `.app` inside it (see `src/plugins/updater-artifact.ts`). On Linux and Windows `build` produces a flat binary and `install`/`relaunch` refuse with `unsupported-platform`, so there is no updater artifact to publish. The `.dmg`, AppImage and NSIS files from `crust package` are release downloads, not updater artifacts. These commands produce the manifest by hand; they use OpenSSL 3/4 and `shasum`, both present on macOS and Linux GitHub runners.
 
 ```sh
 # once. Keep key.pem outside the repo; it is the signing identity.

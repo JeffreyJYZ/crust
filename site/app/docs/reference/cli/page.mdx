@@ -12,7 +12,7 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 | `crust init <dir> --svelte`      | the Svelte + Vite scaffold                                                                                                   |
 | `crust init <dir> --vue`         | the Vue + Vite scaffold                                                                                                      |
 | `crust dev [file]`               | watch the backend, restart it on change, keep the frontend with its own dev server                                           |
-| `crust build [file]`             | compile the binary, assemble `X.app` in `dist/`, ad-hoc sign it                                                              |
+| `crust build [file]`             | compile the binary; on macOS assemble `X.app` in `dist/` and ad-hoc sign it                                                  |
 | `crust sign`                     | Developer ID signing with hardened runtime and the two entitlements; needs `CRUST_SIGNING_IDENTITY`                          |
 | `crust dmg`                      | drag-to-Applications image at `dist/<name>-<version>.dmg`                                                                    |
 | `crust package [--format <fmt>]` | release artefacts for `dmg`, `appimage` or `nsis`; `--format` is repeatable and defaults to `dmg`                            |
@@ -43,7 +43,7 @@ The four init flags are different scaffolds; passing two is refused before anyth
 | command               | does                                               |
 | --------------------- | -------------------------------------------------- |
 | `crust dev app.tsx`   | run that one file as the whole app, with no config |
-| `crust build app.tsx` | build `dist/<basename>.app` from the same file     |
+| `crust build app.tsx` | build from the file; `dist/<basename>.app` on macOS |
 
 The config is built in memory: id `crust.single.<slug>`, name and window title from the basename, version `0.0.0`, one window at 900×700. The page is bundled to `<dir>/.crust/single` in dev and `<dir>/dist/single` in a build. The backend is the framework itself — `info` and `echo` are registered, so `invoke("info")` proves the round trip — and every plugin is still reachable in the three-argument form. A file whose source contains `export default` is mounted as a React component, so `react` and `react-dom` must be installed beside it; any other file is loaded for its own side effects. A `crust.config.ts` beside the file is refused rather than guessed at.
 

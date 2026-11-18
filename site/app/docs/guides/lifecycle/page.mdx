@@ -1,6 +1,6 @@
 # App lifecycle
 
-Six events an app can react to, plus one call that answers what it is.
+Seven events an app can react to, plus one call that answers what it is.
 
 ```ts
 import { app } from "crust";
@@ -13,12 +13,13 @@ app.on("before-quit", async () => {
 });
 app.on("will-quit", () => console.log("quitting"));
 app.on("reopen", () => console.log("clicked in the dock"));
+app.on("error", (error) => console.warn("lifecycle", error.message));
 
 const info = app.info();
 // { id, name, version, execPath, packaged }
 ```
 
-## The six events
+## The seven events
 
 | event               | when                                                                                |
 | ------------------- | ----------------------------------------------------------------------------------- |
@@ -28,8 +29,9 @@ const info = app.info();
 | `before-quit`       | termination was requested and has not happened yet — a listener may still do work     |
 | `will-quit`         | termination is committed; nothing can stop it now                                    |
 | `reopen`            | the dock icon (or the taskbar button) was clicked while the app had no window open    |
+| `error`             | a lifecycle source refused to yield events; the listener receives the real `CrustError` |
 
-`ready` and `window-all-closed` come from the app itself on every platform. The other four come from a platform lifecycle source.
+`ready` and `window-all-closed` come from the app itself on every platform. `activate`, `before-quit`, `will-quit` and `reopen` come from a platform lifecycle source. `error` is delivered by the watcher when that source refuses to yield events: on a platform with no lifecycle notifications the listener gets the real failure (`not-implemented`, with `requires`) once, polling stops, and no event is faked. With no `error` subscriber the refusal is logged instead, so it is never silent.
 
 `before-quit` is the only one that can defer. On macOS the app answers `NSTerminateLater` and replies
 when every listener has settled, so an `await` inside it really does run before the process ends. A
@@ -56,8 +58,9 @@ Synchronous, and the same values the bundle and `package.json` carry:
 macOS provides the four native events and the deferred quit. Windows and Linux answer
 `not-implemented` naming the notification they would need — Windows `WM_ACTIVATEAPP`, GTK focus
 events — rather than emitting an event that never fires. A listener registered on those platforms is
-not an error; it simply never hears anything, and the refusal comes from the platform call that would
-have supplied the event. `ready` and `window-all-closed` are unaffected: the app emits them itself on
+not an error; it simply never hears that event. The refusal reaches `app.on("error")` once with the
+real `CrustError` (or goes to the log with no subscriber), then polling stops. `ready` and
+`window-all-closed` are unaffected: the app emits them itself on
 every platform, and a `window-all-closed` listener that throws is named in the log before the app
 quits anyway.
 
