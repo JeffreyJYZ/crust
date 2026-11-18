@@ -23,10 +23,13 @@ const PAGE_DRIVER = `async function main() {
 	// ---- the page follows its own window ----------------------------------
 	// The driver's window is resized under it and it reports what it sees. Both
 	// directions are asked for: a webview pinned to one axis passes growing alone,
-	// and the frozen page this replaces reported its opening size for both.
+	// and the frozen page this replaces reported its opening size for both. The
+	// window's own frame is read too, so a runner that clamps the request is not
+	// mistaken for a page that ignored it.
+	await report("frame0", await ask("window", "getSize", { label: "other" }));
 	await report("viewport0", { how: "resolved", value: viewport() });
-	await report("resizelarge", await resize("other", ${LARGER.width}, ${LARGER.height}, 4000));
-	await report("resizesmall", await resize("other", ${SMALLER.width}, ${SMALLER.height}, 4000));
+	await report("resizelarge", await resize("other", ${LARGER.width}, ${LARGER.height}, 3000));
+	await report("resizesmall", await resize("other", ${SMALLER.width}, ${SMALLER.height}, 3000));
 
 	// ---- a created window is a real second NSWindow ----------------------
 	// Every create below runs while the pump is ticking: an invoke is delivered

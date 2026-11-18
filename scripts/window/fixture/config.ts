@@ -59,10 +59,18 @@ export const APPLIED_TITLE = "Renamed by the page";
 
 /**
  * The two sizes the resize proof asks the driver's own window for. Both differ clearly from the 900x640
- * it opens at, and both fit a 1280-wide display so a clamped `setFrame:` cannot pass as a pass.
+ * it opens at. They are requests, not facts: a runner's display can clamp `setSize`, so the proof reads
+ * the frame back with `getSize` and asserts the page followed *that*.
  */
 export const LARGER = { width: 1200, height: 760 };
 export const SMALLER = { width: 640, height: 460 };
+
+/**
+ * The titlebar is the only chrome between a window's frame and its page, and `window.setSize` sets the
+ * frame: 32 pt measured, and the allowance leaves room for a taller bar without letting a frozen page
+ * through. The width has no side chrome, so it is exact. The page and the check share this one number.
+ */
+export const TITLEBAR = 60;
 
 /**
  * A title that cannot be applied: the shim builds the NSString with

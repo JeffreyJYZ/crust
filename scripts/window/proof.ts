@@ -16,7 +16,14 @@ import { checkReopen } from "./checks/reopen.ts";
 import { checkResize } from "./checks/resize.ts";
 import { checkSpawns } from "./checks/spawn.ts";
 import { checkWindows } from "./checks/windows.ts";
-import { APP_TIMEOUT_MS, EXPECTED_TAGS, WAIT_FOR_EXIT, WINDOW_CHECKS } from "./expectations.ts";
+import {
+	APP_TIMEOUT_MS,
+	BUILD_TIMEOUT_MS,
+	CODESIGN_TIMEOUT_MS,
+	EXPECTED_TAGS,
+	WAIT_FOR_EXIT,
+	WINDOW_CHECKS,
+} from "./expectations.ts";
 import { APP_NAME } from "./fixture/config.ts";
 import { CLI, REPO_ROOT, sandbox } from "./sandbox.ts";
 
@@ -25,9 +32,16 @@ export async function proof(verdict: Verdict, scratch: string): Promise<string |
 	const bundle = join(scratch, "dist", `${APP_NAME}.app`);
 
 	// ---- 1. build through the CLI, as a user runs it ------------------------
-	const build = await runCommand([CLI, "build", "--dir", scratch], REPO_ROOT);
+	const build = await runCommand([CLI, "build", "--dir", scratch], REPO_ROOT, {
+		timeoutMs: BUILD_TIMEOUT_MS,
+	});
 	const namedBundle = build.stdout.includes(bundle);
 	const built = build.code === 0;
+	const buildWhy =
+		build.ended === "timeout"
+			? lastLine(build.stderr) ||
+				`crust build was killed at its ${BUILD_TIMEOUT_MS / 1000} s deadline`
+			: `crust build exited ${build.code} — ${lastLine(build.stderr) || lastLine(build.stdout) || "no output"}`;
 	const buildOk = verdict.check(
 		"build",
 		built && namedBundle,
@@ -35,7 +49,7 @@ export async function proof(verdict: Verdict, scratch: string): Promise<string |
 			? namedBundle
 				? "crust build exited 0 and named the bundle"
 				: `crust build exited 0 but never printed ${bundle}`
-			: `crust build exited ${build.code} — ${lastLine(build.stderr) || lastLine(build.stdout) || "no output"}`,
+			: buildWhy,
 	);
 	if (!buildOk) {
 		const why = "not checked — crust build failed";
@@ -65,7 +79,9 @@ export async function proof(verdict: Verdict, scratch: string): Promise<string |
 	);
 
 	// ---- 3. ad-hoc signed, which is what `crust build` promises -------------
-	const signature = await runCommand(["codesign", "-dv", "--verbose=4", bundle], REPO_ROOT);
+	const signature = await runCommand(["codesign", "-dv", "--verbose=4", bundle], REPO_ROOT, {
+		timeoutMs: CODESIGN_TIMEOUT_MS,
+	});
 	const signatureText = `${signature.stderr}${signature.stdout}`;
 	const adhoc = signature.code === 0 && /^Signature=adhoc$/m.test(signatureText);
 	verdict.check(

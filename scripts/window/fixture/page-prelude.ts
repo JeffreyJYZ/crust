@@ -4,7 +4,7 @@
  * document; this half is split only to keep both files inside the repo's line
  * cap, and the concatenation is byte-identical to one literal.
  */
-import { APPLIED_TITLE, IMPOSSIBLE_TITLE } from "./config.ts";
+import { APPLIED_TITLE, IMPOSSIBLE_TITLE, TITLEBAR } from "./config.ts";
 
 export const PAGE_PRELUDE = `var APPLIED = ${JSON.stringify(APPLIED_TITLE)};
 var IMPOSSIBLE = ${JSON.stringify(IMPOSSIBLE_TITLE)};
@@ -76,19 +76,39 @@ function viewport() {
 	return { width: window.innerWidth, height: window.innerHeight };
 }
 
-// Ask for a size and wait for the page to see it. The webview's new frame lands
-// on a later runloop turn, so this poll is the bound on the claim, not a delay;
-// it gives up with whatever the page last saw so the check can print it.
+// Ask for a size, then wait until the page's own viewport follows the frame the window actually
+// took. The frame is read back rather than assumed, because a runner's display can clamp setSize:
+// the claim is that the page follows its window, not that a number was granted. The poll is the
+// bound on that claim, not a delay — it returns the moment the page matches, and gives up with what
+// the page last saw so the check prints an observation instead of hanging.
+function follows(view, frame) {
+	return (
+		view.width === frame.width &&
+		view.height <= frame.height &&
+		view.height >= frame.height - ${TITLEBAR}
+	);
+}
+
 async function resize(label, width, height, timeoutMs) {
-	var answer = await ask("window", "setSize", { label: label, width: width, height: height });
-	if (answer.how !== "resolved") return answer;
+	var asked = await ask("window", "setSize", { label: label, width: width, height: height });
+	if (asked.how !== "resolved") return asked;
+	var sized = await ask("window", "getSize", { label: label });
+	if (sized.how !== "resolved") return sized;
+	var frame = sized.value;
 	var deadline = Date.now() + timeoutMs;
 	for (;;) {
-		var now = viewport();
-		if (now.width === width) return { how: "resolved", value: now };
-		if (Date.now() > deadline) return { how: "resolved", value: now };
-		await delay(50);
+		if (follows(viewport(), frame)) break;
+		if (Date.now() > deadline) break;
+		await delay(25);
 	}
+	return {
+		how: "resolved",
+		value: {
+			requested: { width: width, height: height },
+			frame: { width: frame.width, height: frame.height },
+			viewport: viewport(),
+		},
+	};
 }
 
 // list() reports only windows AppKit still holds, so a closed label is gone from

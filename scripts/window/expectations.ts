@@ -23,6 +23,7 @@ export const EXPECTED_TAGS = [
 	"badlabel",
 	"alive",
 	"viewport0",
+	"frame0",
 	"resizelarge",
 	"resizesmall",
 	"createrel",
@@ -147,3 +148,13 @@ export const WAIT_FOR_EXIT = /(?!)/;
  * only run long when something is already broken.
  */
 export const APP_TIMEOUT_MS = 40_000;
+
+/**
+ * `crust build` compiles the `.c` shim with TinyCC and then a ~90 MB binary: measured ~1 s here, and
+ * tens of seconds on a cold runner. It runs before the app exists, so nothing else in this proof
+ * bounds it — and a build whose helper keeps the stdout pipe open never returns at all.
+ */
+export const BUILD_TIMEOUT_MS = 180_000;
+
+/** `codesign -dv` is a read of the signature; seconds, never minutes. */
+export const CODESIGN_TIMEOUT_MS = 30_000;

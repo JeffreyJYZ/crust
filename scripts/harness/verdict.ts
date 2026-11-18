@@ -1,5 +1,5 @@
 /**
- * One PASS/FAIL line per assertion, and the one exit code a run reports — kept apart from the process plumbing so a script that only prints verdicts does not drag the probe in.
+ * One PASS/FAIL line per assertion, and the one exit code a run reports — kept apart from the process plumbing (`run.ts`, `probe.ts`) so a script that only prints verdicts does not drag a spawn in.
  */
 
 const LABEL_WIDTH = 14;
@@ -39,27 +39,4 @@ export class Verdict {
 		console.log(`${label}: FAIL  ${gaps.length} of ${total} assertions  ${seconds}s`);
 		return 1;
 	}
-}
-
-export interface RunResult {
-	code: number | null;
-	stdout: string;
-	stderr: string;
-}
-
-/** Run a command, capture both streams, never throw on a non-zero exit. */
-export async function runCommand(command: string[], cwd: string): Promise<RunResult> {
-	const child = Bun.spawn({
-		cmd: command,
-		cwd,
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr, code] = await Promise.all([
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
-		child.exited,
-	]);
-	return { code, stdout, stderr };
 }

@@ -3,7 +3,7 @@
  * nothing it started is still alive, and that nothing an *earlier* run started
  * is either.
  */
-import { runCommand } from "./verdict.ts";
+import { runCommand } from "./run.ts";
 
 /** PIDs whose argv matches `pattern`, via `pgrep -f`. Never throws. */
 async function matchingPids(pattern: string): Promise<number[]> {
