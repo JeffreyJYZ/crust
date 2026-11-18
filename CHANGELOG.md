@@ -4,6 +4,13 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.32] — 2026-11-18
+
+### Fixed
+
+- **A stopped app left its bridge token behind.** `startApp` recorded the token in a process-wide slot and `stop()` never cleared it, so a later `window.create` in the same process resolved a relative URL against a document that still carried the previous app's `&token=…` — a credential outliving the app that owned it. The handle now clears what it recorded on `stop()`, so the writer is the only code that has to remember and a stale token cannot survive a stop in production either. Found by a test that passed alone and failed when another file shared the process, and the first guess (the platform singleton) was wrong: the leak was the token, with the singleton a second, latent one.
+- **The `tray-tick` suite left a platform registered.** `createPlatform` registers its instance process-wide and that suite builds one per test, so leaving it set made a later file's `window` namespace answer over the fake platform instead of its own. Test-only, but the same class as the leak above.
+
 ## [0.1.31] — 2026-11-18
 
 ### Fixed
