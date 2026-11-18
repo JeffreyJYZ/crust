@@ -5,8 +5,9 @@ native build step: the backend is TypeScript Bun runs, the frontend is a page th
 and they talk over a loopback bridge with a bearer token. macOS 13+, Linux (GTK3 + WebKitGTK),
 Windows (WebView2), x64 and arm64.
 
-This file is the whole working surface. The full docs are at <https://crust.jyz.land/docs>; each
-claim below is one you can act on without opening them.
+This file is the working surface: everything here is enough to build, run and verify an app. It is
+not the full reference — when a table stops, the per-namespace command reference is at
+<https://crust.jyz.land/docs/reference/api>. The docs index is <https://crust.jyz.land/docs>.
 
 ## Quickstart
 
@@ -121,6 +122,38 @@ await app.run();
 
 Handlers run on the pump thread, so keep them fast. An async handler is awaited and does not block.
 
+### Verify it runs
+
+No `report` command exists — the scaffold reads stdout. In `main.ts`, log in `ready` and in a
+handler, then `bun run dev`: `window    open` means the window mounted, `page call answered` means
+the page's invoke reached your handler and came back.
+
+```ts
+app.command("greet", ({ name }) => {
+  console.log("  greet     answer (page call answered)");
+  return `hello ${name}`;
+});
+app.on("ready", () => console.log("  window    open"));
+await app.run();
+```
+
+## Built-ins and capabilities
+
+All 32 namespaces below are registered before your code runs — `app.use` is only for your own
+plugins, never a built-in, so a page may call `store.get` with no registration step.
+
+But once `security.capabilities` is present, **each namespace needs its own capability and grant**;
+granting one does not grant another. For `store.get`:
+
+```ts
+security: {
+  capabilities: [{ name: "store", actions: ["store:*"] }],
+  grants: { main: ["store"] },
+}
+```
+
+Without the `main` grant the same call returns `forbidden`.
+
 ## The page side
 
 ```js
@@ -138,17 +171,64 @@ const files  = await window.crust.invoke("fs", "list", { path: "." }); // plugin
 - In `next dev` there is no `window.crust`, because nothing injects the client into a document the
   Next dev server serves. A built app works.
 
-## Plugin namespaces (31)
+## Plugin namespaces (32)
 
-`window`, `window-state`, `positioner` · `fs`, `store`, `shell`, `stronghold` ·
-`dialog`, `notification`, `tray`, `menu`, `clipboard`, `shortcut` ·
-`theme`, `dock`, `power`, `accessibility`, `opener`, `os` ·
-`app`, `autostart`, `logging`, `i18n`, `single-instance`, `deep-link` ·
-`navigation`, `findinpage`, `downloads`, `network`, `crash-reporter` · `updater`
+<!-- skill:commands:begin -->
+- `accessibility` — trusted prompt elementCount announce title focus
+- `autostart` — enable disable isEnabled
+- `clipboard` — read write readImage writeImage
+- `crash-reporter` — last list report configure clear install uninstall
+- `database` — open close exec query get
+- `deep-link` — scheme url
+- `dialog` — openPanel savePanel cancel
+- `dock` — badge badgeLabel bounce progress
+- `downloads` — list start cancel directory setDirectory
+- `findinpage` — search next previous clear
+- `fs` — readTextFile writeTextFile list stat remove rename readBinary writeBinary mkdir scopeList
+  scopeAllow scopeRevoke
+- `i18n` — locale setLocale messages translate load
+- `keychain` — set get delete list
+- `logging` — setLevel level configure write tail
+- `menu` — setAppMenu showContext reset read isDefault
+- `navigation` — start stop state reload goBack goForward loadUrl
+- `network` — status onChange rules setRules log clearLog
+- `notification` — requestPermission notify
+- `opener` — openPath openUrl revealItem
+- `os` — info paths locale
+- `positioner` — center topLeft topRight bottomLeft bottomRight topCenter bottomCenter leftCenter
+  rightCenter
+- `power` — state idleSeconds sleepPrevent sleepAllow onSleep onLock onWake onScreenSleep
+  onScreenWake onUnlock
+- `screen` — list primary
+- `shell` — spawn output write close kill list
+- `shortcut` — register unregister unregisterAll isRegistered list
+- `sidecar` — spawn write list kill
+- `store` — get set delete keys clear save
+- `stronghold` — open close set get delete keys
+- `theme` — current set reset
+- `tray` — setTitle setTooltip setMenu show hide destroy
+- `window` — create close focus setTitle list isOpen label setSize getSize setPosition getPosition
+  setAlwaysOnTop isAlwaysOnTop setFullscreen isFullscreen minimize unminimize isMinimized maximize
+  isMaximized setDecorations isDecorated setOpacity opacity setCursor setCursorVisible
+- `window-state` — save restore forget saveAll restoreAll forgetAll
+<!-- skill:commands:end -->
 
 Each has commands with documented args, answers and failure codes — `fs.readBinary`,
 `tray.setTooltip`, `power.onSleep`, `updater.install`. A capability must grant the namespace before a
-page may call it.
+page may call it (see above). Every command is `invoke("<namespace>", "<command>", { args })`. The
+eight a first app reaches for are below — names and arg shapes only; answers and codes live in the
+/reference/api pages linked at the top.
+
+| namespace | commands → args |
+| --- | --- |
+| `store` | `get {key,name?}` · `set {key,value,name?}` · `delete {key,name?}` · `keys`/`clear`/`save {name?}`. `name` picks a separate `store.<name>.json`; omit it for the default store |
+| `fs` | `readTextFile {path}` · `writeTextFile {path,contents}` · `list`/`stat`/`readBinary {path}` · `writeBinary {path,bytes}` · `mkdir {path}` · `remove {path,recursive?}` · `rename {from,to}` · `scopeList` · `scopeAllow`/`scopeRevoke {path}` |
+| `dialog` | `openPanel {title?,multiple?,directory?,filters?}` · `savePanel {title?,suggestedName?,filters?}` · `cancel`. `{paths: []}` means the user cancelled |
+| `window` | `create {label,title?,width?,height?,url?}` · `list` · `label` · `close`/`focus`/`isOpen`/`minimize`/`unminimize`/`isMinimized`/`maximize`/`isMaximized`/`isDecorated`/`opacity`/`getSize`/`getPosition`/`isAlwaysOnTop`/`isFullscreen {label}` · `setTitle {label,title}` · `setSize {label,width,height}` · `setPosition {label,x,y}` · `setAlwaysOnTop`/`setFullscreen`/`setDecorations`/`setOpacity {label,value}` · `setCursor {cursor}` · `setCursorVisible {value}` |
+| `notification` | `notify {title,body?,id?,waitMs?}` · `requestPermission` |
+| `clipboard` | `read` · `write {text}` · `readImage` · `writeImage {png}` |
+| `shell` | `spawn {program,args?,cwd?,env?,stdin?}` (`stdin: "pipe"` to feed it) · `output`/`write`/`close`/`kill {id}` · `list` |
+| `tray` | `setTitle`/`setTooltip {text}` · `setMenu {items:[{label,onClick?}]}` · `show`/`hide`/`destroy` |
 
 ## CLI
 
