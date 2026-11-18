@@ -73,13 +73,15 @@ async function main(): Promise<number> {
 	// with a fresh identifier delivers from `~/dev` and answers code 1 from `/var/folders/…T`,
 	// twice each way. A notification-gated app has to live outside the system temp directory.
 	const cache = join(homedir(), ".cache");
-	await mkdir(cache, { recursive: true });
-	const root = await mkdtemp(join(cache, "crust-e2e-notify-"));
-	const appDir = join(root, "app");
 	const name = "Notify e2e";
-	const builtBinary = join(appDir, "dist", `${name}.app`, "Contents", "MacOS", "crust-app");
-
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here; the cache is made inside the try.
+	let root: string | undefined;
+	let builtBinary: string | undefined;
 	try {
+		await mkdir(cache, { recursive: true });
+		root = await mkdtemp(join(cache, "crust-e2e-notify-"));
+		const appDir = join(root, "app");
+		builtBinary = join(appDir, "dist", `${name}.app`, "Contents", "MacOS", "crust-app");
 		await mkdir(join(appDir, "public"), { recursive: true });
 		await mkdir(join(appDir, "node_modules"), { recursive: true });
 		await symlink(repo, join(appDir, "node_modules", "crust"), "dir");
@@ -182,8 +184,8 @@ export default {
 
 		return verdict.report("e2e-notify");
 	} finally {
-		await clearSurvivors(builtBinary);
-		await rm(root, { recursive: true, force: true });
+		if (builtBinary !== undefined) await clearSurvivors(builtBinary);
+		if (root !== undefined) await rm(root, { recursive: true, force: true });
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}

@@ -74,11 +74,14 @@ async function launch(binary: string, deadlineMs: number): Promise<{ code: numbe
 
 // Captured before the build launches a window; passed to restoreFocus in `finally`.
 const frontmost = await captureFrontmost();
-
-const workspace = await mkdtemp(join(tmpdir(), "crust-first-run-"));
-const app = join(workspace, "app");
+// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+// The scratch workspace is created inside the `try`, so a full temp directory cannot throw
+// between the capture above and the restore below.
+let workspace: string | undefined;
 
 try {
+	workspace = await mkdtemp(join(tmpdir(), "crust-first-run-"));
+	const app = join(workspace, "app");
 	const init = [crust, "init", app, ...(template === "plain" ? [] : [`--${template}`])];
 	const scaffold = await run("scaffold", init, workspace);
 	if (!scaffold.ok) throw new Error("scaffold failed");
@@ -129,7 +132,7 @@ try {
 } catch (error) {
 	fail("chain", error instanceof Error ? error.message : String(error));
 } finally {
-	await rm(workspace, { recursive: true, force: true });
+	if (workspace !== undefined) await rm(workspace, { recursive: true, force: true });
 	// Last, so a red run does not leave the human looking at the window it opened.
 	await restoreFocus(frontmost);
 }

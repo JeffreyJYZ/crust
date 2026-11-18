@@ -1,23 +1,21 @@
 /**
  * Hand focus back to whatever app the human was using before a probe launched or activated a GUI app. Every crust launch activates its app — AppKit only lists windows on the active Space, so the app has to be active to be in the accessibility tree — which means a harness that stops at its verdict leaves the person staring at a test window. That window is whoever was frontmost before the probe, not a fixed terminal.
  * Capture before the probe launches (`captureFrontmost()`), then pass the saved name to `restoreFocus(saved)` afterwards. A name that could not be captured falls back to the terminal the gates are run from; `restoreFocus()` with no argument keeps that fallback for old callers. Everything here is a courtesy, never an assertion: each spawn is timeboxed and every failure is swallowed, so a wedged System Events or a missing app cannot hang or fail a run.
+ * `guardFocus()` (see `guard.ts`, re-exported here) is the same courtesy for the case a suite cannot write itself: a Ctrl-C, a `kill` or a CI timeout runs no `finally`, so it captures once and restores from `exit` and the three signals.
  */
+import { COMMAND_TIMEOUT_MS, type CommandResult, FALLBACK_APP, FRONTMOST_SCRIPT } from "./guard.ts";
 
-/** The terminal to fall back to when the frontmost app could not be captured. */
-const FALLBACK_APP = "Ghostty";
-
-/** The name of the app the OS currently considers frontmost. */
-const FRONTMOST_SCRIPT =
-	'tell application "System Events" to get name of first process whose frontmost is true';
-
-/** Hard ceiling on either `osascript` capture or `open` restore: a wedged System Events must never hold a gate. */
-const COMMAND_TIMEOUT_MS = 3000;
-
-/** A command run to completion: its exit code and captured stdout. */
-export interface CommandResult {
-	code: number;
-	stdout: string;
-}
+export type { CommandResult } from "./guard.ts";
+export {
+	type GuardEvent,
+	type GuardHooks,
+	type GuardOptions,
+	type GuardSignal,
+	GUARD_SIGNALS,
+	guardFocus,
+	makeGuard,
+	type SyncRunner,
+} from "./guard.ts";
 
 /**
  * Injectable command runner. Defaults to a timeboxed `Bun.spawn`; tests pass their own so they

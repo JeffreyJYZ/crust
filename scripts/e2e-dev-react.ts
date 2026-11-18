@@ -26,8 +26,12 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before any phase opens a window; passed to restoreFocus in `finally`.
 	const frontmost = await captureFrontmost();
-	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dev-react-"));
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// The scratch directory is created inside the `try`, so a full temp directory cannot
+	// throw between the capture above and the restore below.
+	let scratch: string | undefined;
 	try {
+		scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dev-react-"));
 		return await proof(verdict, scratch);
 	} finally {
 		// The CLI (`dev --dir <scratch>`) and the runtime (`--config <scratch>/…`)
@@ -36,8 +40,10 @@ async function main(): Promise<number> {
 		// ./node_modules/.bin/vite` with the project as its cwd — which is why the
 		// survivor check also holds every child's pid: a `pgrep -f vite` would match
 		// every Vite on the machine, and a bare path pattern would miss this one.
-		await clearSurvivors(scratch).catch(() => undefined);
-		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		if (scratch !== undefined) {
+			await clearSurvivors(scratch).catch(() => undefined);
+			await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		}
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}

@@ -5,32 +5,48 @@
  */
 import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
+import { captureFrontmost, restoreFocus } from "./harness/focus.ts";
 
 const repo = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const example = join(repo, "examples", "dogear");
 const link = join(example, "node_modules", "crust");
 
-const install = Bun.spawnSync(["bun", "install"], {
-	cwd: example,
-	stdio: ["inherit", "inherit", "inherit"],
-});
-if (install.exitCode !== 0) process.exit(install.exitCode ?? 1);
+/** Point the example at this tree, then run it until its dev server exits. */
+async function main(): Promise<number> {
+	const install = Bun.spawnSync(["bun", "install"], {
+		cwd: example,
+		stdio: ["inherit", "inherit", "inherit"],
+	});
+	if (install.exitCode !== 0) return install.exitCode ?? 1;
 
-if (existsSync(link)) rmSync(link, { recursive: true, force: true });
-symlinkSync(repo, link, "dir");
-console.log(`  demo      example crust → ${repo}`);
+	if (existsSync(link)) rmSync(link, { recursive: true, force: true });
+	symlinkSync(repo, link, "dir");
+	console.log(`  demo      example crust → ${repo}`);
 
-const dev = Bun.spawn(
-	[
-		"bun",
-		"run",
-		join(repo, "src", "cli", "index.ts"),
-		"dev",
-		"--dir",
-		example,
-		"--entry",
-		"desktop/main.ts",
-	],
-	{ cwd: repo, stdio: ["inherit", "inherit", "inherit"] },
-);
-process.exit(await dev.exited);
+	const dev = Bun.spawn(
+		[
+			"bun",
+			"run",
+			join(repo, "src", "cli", "index.ts"),
+			"dev",
+			"--dir",
+			example,
+			"--entry",
+			"desktop/main.ts",
+		],
+		{ cwd: repo, stdio: ["inherit", "inherit", "inherit"] },
+	);
+	return await dev.exited;
+}
+
+// Captured before `crust dev` opens its window, so the exit hands focus back to whoever
+// was here rather than leaving the example frontmost.
+const frontmost = await captureFrontmost();
+// TODO(guard): a Ctrl-C during the dev server still skips this; `guardFocus()` in `harness/guard.ts` closes it.
+let code = 1;
+try {
+	code = await main();
+} finally {
+	await restoreFocus(frontmost);
+}
+process.exit(code);

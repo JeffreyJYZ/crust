@@ -26,17 +26,23 @@ async function main(): Promise<number> {
 	// Captured before any dev/build phase opens a window; restored in `finally`.
 	const frontmost = await captureFrontmost();
 
-	// The scratch directory is this run's project: it holds `app.tsx`, the dev
-	// bundle and `dist/`. A fresh temp directory also means no `crust.config.ts`
-	// exists above the file, which single-file mode refuses to guess around.
-	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-single-"));
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// The scratch directory is created inside the `try`, so a full temp directory cannot
+	// throw between the capture above and the restore below.
+	let scratch: string | undefined;
 	try {
+		// This run's project: it holds `app.tsx`, the dev bundle and `dist/`. A fresh temp
+		// directory also means no `crust.config.ts` exists above the file, which single-file
+		// mode refuses to guess around.
+		scratch = await mkdtemp(join(tmpdir(), "crust-e2e-single-"));
 		return await proof(verdict, scratch);
 	} finally {
-		// A leaked built app carries this run's scratch path in its argv, so it can
-		// be cleared by path; a dev process is stopped by pid inside its phase.
-		await clearSurvivors(scratch).catch(() => undefined);
-		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		if (scratch !== undefined) {
+			// A leaked built app carries this run's scratch path in its argv, so it can
+			// be cleared by path; a dev process is stopped by pid inside its phase.
+			await clearSurvivors(scratch).catch(() => undefined);
+			await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		}
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}

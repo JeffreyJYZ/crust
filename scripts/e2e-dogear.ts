@@ -23,22 +23,28 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before the proof launches its window; passed to restoreFocus in `finally`.
 	const frontmost = await captureFrontmost();
-	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dogear-"));
-	/** The notes folder the app creates; inside the scratch tree, so cleanup covers it. */
-	const notes = join(scratch, "notes");
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// The scratch tree is created inside the `try`, so a full temp directory cannot throw
+	// between the capture and the restore.
+	let scratch: string | undefined;
+	/** The binary the proof built, so cleanup can clear it without the proof returning. */
 	let binary: string | undefined;
 	try {
+		scratch = await mkdtemp(join(tmpdir(), "crust-e2e-dogear-"));
+		/** The notes folder the app creates; inside the scratch tree, so cleanup covers it. */
+		const notes = join(scratch, "notes");
 		binary = await proof(verdict, scratch, notes);
 	} finally {
 		// A leaked bundle carries the scratch path in its argv, so it is clearable,
 		// and the tree goes either way — a throw is not a reason to leave both.
 		if (binary !== undefined) await clearSurvivors(binary).catch(() => undefined);
-		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		if (scratch !== undefined)
+			await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}
 
-	const gone = await stat(scratch)
+	const gone = await stat(scratch!)
 		.then(() => false)
 		.catch(() => true);
 	verdict.check(

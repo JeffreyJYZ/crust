@@ -8,6 +8,9 @@
 set -u
 # Capture the human's current app before any launch activates a window.
 FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
+# Restore on every path, not only on the last line: the missing-binary `exit 1` below, a
+# kill and a Ctrl-C all end this script without reaching it otherwise.
+trap 'open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true' EXIT INT TERM
 APP="/tmp/crust-notif/dist/crust notif.app"
 BIN="$APP/Contents/MacOS/crust-app"
 LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -37,6 +40,3 @@ kill -TERM $pid 2>/dev/null
 wait $pid 2>/dev/null
 rg -o 'notify .*' /tmp/notif-after.out || print -r -- "no notify line"
 pkill -f 'crust notif' 2>/dev/null
-
-# Every crust launch activates its app, so hand focus back to whoever was here; Ghostty only if capture failed.
-open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true

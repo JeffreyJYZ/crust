@@ -39,19 +39,24 @@ async function main(): Promise<number> {
 	// Capture before the probe launches its window, so restore hands focus back to
 	// whoever the human was actually using rather than a fixed terminal.
 	const frontmost = await captureFrontmost();
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
 
-	// A survivor from an aborted run would make the last assertion meaningless,
-	// so clear ours before starting. The pattern is this bundle's own path.
-	await clearSurvivors(BINARY);
-
-	// A scratch directory, because the app writes `notes/` beside its cwd and the
-	// repo root is not a place to leave state. `finally` removes it either way.
-	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-notes-"));
+	// Everything that can throw sits inside the `try`, so a full temp directory or a
+	// wedged `pgrep` still reaches the restore below rather than skipping it.
+	let scratch: string | undefined;
 	try {
+		// A survivor from an aborted run would make the last assertion meaningless,
+		// so clear ours before starting. The pattern is this bundle's own path.
+		await clearSurvivors(BINARY);
+
+		// A scratch directory, because the app writes `notes/` beside its cwd and the
+		// repo root is not a place to leave state. `finally` removes it either way.
+		scratch = await mkdtemp(join(tmpdir(), "crust-e2e-notes-"));
 		if (!(await buildPhase(verdict))) return verdict.report("e2e-notes");
 		return await proof(verdict, scratch);
 	} finally {
-		await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+		if (scratch !== undefined)
+			await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}

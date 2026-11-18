@@ -37,69 +37,76 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before any `dev` run opens a window; passed to restoreFocus in `finally`.
 	const frontmost = await captureFrontmost();
-	const hasBinary = await Bun.file(BIN).exists();
-	verdict.check(
-		"binary",
-		hasBinary,
-		hasBinary ? `${BIN}` : `${BIN} is missing — run "bun run build:standalone" first`,
-	);
-	if (!hasBinary) return verdict.report("e2e-dev-binary");
-
-	const version = Bun.spawnSync([...bare(NO_BUN_PATH), "--version"])
-		.stdout.toString()
-		.trim();
-	const tree = join(tmpdir(), `crust-framework-${version}`);
-
-	// The fallback interpreter exists at all: the binary, told to be Bun, answers as one.
-	const beBun = Bun.spawnSync([
-		"/usr/bin/env",
-		"-i",
-		`PATH=${NO_BUN_PATH}`,
-		`BUN_BE_BUN=1`,
-		BIN,
-		"-e",
-		"process.stdout.write(Bun.version)",
-	]);
-	verdict.check(
-		"interpreter",
-		beBun.exitCode === 0 && beBun.stdout.toString().trim().length > 0,
-		beBun.exitCode === 0
-			? `BUN_BE_BUN=1 ${basename(BIN)} answers as Bun ${beBun.stdout.toString().trim()}`
-			: `BUN_BE_BUN=1 exited ${beBun.exitCode}: ${lastLine(beBun.stderr.toString()) || "no output"}`,
-	);
-
-	// `Bun.which` is what the CLI consults, so the empty answer is the premise of the
-	// no-Bun run rather than an assumption about what PATH contains.
-	const which = Bun.spawnSync([
-		"/usr/bin/env",
-		"-i",
-		`PATH=${NO_BUN_PATH}`,
-		"/usr/bin/which",
-		"bun",
-	]);
-	verdict.check(
-		"no bun on PATH",
-		which.exitCode !== 0,
-		which.exitCode !== 0
-			? `${NO_BUN_PATH} has no bun, so dev must use the binary itself`
-			: `bun is on ${NO_BUN_PATH}, so the fallback is not under test`,
-	);
-
-	const workspace = await mkdtemp(join(tmpdir(), "crust-e2e-dev-bin-"));
-	const single = join(workspace, "single");
-	const project = join(workspace, "project");
-	const page = join(single, "app.js");
-	await mkdir(single, { recursive: true });
-	await writeFile(page, SINGLE_PAGE, "utf8");
-
-	// Every process this script starts names one of these two paths on its own argv,
-	// which is what makes "nothing survives" a real assertion.
-	const patterns = [page, project];
-	/** The runner directory a single-file `dev` writes into; checked, never cleared. */
-	const RUNNER = join(tmpdir(), "crust-single-");
-	for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
-
+	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// Everything below can throw — a missing binary, a full temp directory, a `pgrep` that
+	// will not answer — so it all sits inside the `try` and the restore is reachable from
+	// each of those paths rather than only from the happy one.
+	let workspace: string | undefined;
+	/** Every path this script's own processes name on their argv; filled once known. */
+	const patterns: string[] = [];
 	try {
+		const hasBinary = await Bun.file(BIN).exists();
+		verdict.check(
+			"binary",
+			hasBinary,
+			hasBinary ? `${BIN}` : `${BIN} is missing — run "bun run build:standalone" first`,
+		);
+		if (!hasBinary) return verdict.report("e2e-dev-binary");
+
+		const version = Bun.spawnSync([...bare(NO_BUN_PATH), "--version"])
+			.stdout.toString()
+			.trim();
+		const tree = join(tmpdir(), `crust-framework-${version}`);
+
+		// The fallback interpreter exists at all: the binary, told to be Bun, answers as one.
+		const beBun = Bun.spawnSync([
+			"/usr/bin/env",
+			"-i",
+			`PATH=${NO_BUN_PATH}`,
+			`BUN_BE_BUN=1`,
+			BIN,
+			"-e",
+			"process.stdout.write(Bun.version)",
+		]);
+		verdict.check(
+			"interpreter",
+			beBun.exitCode === 0 && beBun.stdout.toString().trim().length > 0,
+			beBun.exitCode === 0
+				? `BUN_BE_BUN=1 ${basename(BIN)} answers as Bun ${beBun.stdout.toString().trim()}`
+				: `BUN_BE_BUN=1 exited ${beBun.exitCode}: ${lastLine(beBun.stderr.toString()) || "no output"}`,
+		);
+
+		// `Bun.which` is what the CLI consults, so the empty answer is the premise of the
+		// no-Bun run rather than an assumption about what PATH contains.
+		const which = Bun.spawnSync([
+			"/usr/bin/env",
+			"-i",
+			`PATH=${NO_BUN_PATH}`,
+			"/usr/bin/which",
+			"bun",
+		]);
+		verdict.check(
+			"no bun on PATH",
+			which.exitCode !== 0,
+			which.exitCode !== 0
+				? `${NO_BUN_PATH} has no bun, so dev must use the binary itself`
+				: `bun is on ${NO_BUN_PATH}, so the fallback is not under test`,
+		);
+
+		workspace = await mkdtemp(join(tmpdir(), "crust-e2e-dev-bin-"));
+		const single = join(workspace, "single");
+		const project = join(workspace, "project");
+		const page = join(single, "app.js");
+		await mkdir(single, { recursive: true });
+		await writeFile(page, SINGLE_PAGE, "utf8");
+
+		// Every process this script starts names one of these two paths on its own argv,
+		// which is what makes "nothing survives" a real assertion.
+		patterns.push(page, project);
+		/** The runner directory a single-file `dev` writes into; checked, never cleared. */
+		const RUNNER = join(tmpdir(), "crust-single-");
+		for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
+
 		await runOnce(verdict, "single, bun", [BIN, "dev", page], single, [INFO, ECHO]);
 		await runOnce(verdict, "single, no bun", [...bare(NO_BUN_PATH), "dev", page], single, [
 			INFO,
@@ -159,7 +166,8 @@ async function main(): Promise<number> {
 		);
 	} finally {
 		for (const pattern of patterns) await clearSurvivors(pattern).catch(() => undefined);
-		await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+		if (workspace !== undefined)
+			await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
 		// Last, so a red run does not leave the human looking at the window it opened.
 		await restoreFocus(frontmost);
 	}

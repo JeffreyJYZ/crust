@@ -5,6 +5,9 @@
 set -u
 # Capture the human's current app before any launch activates a window.
 FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
+# Restore on every path, not only on the last line: a kill or a Ctrl-C ends this script
+# without reaching the line at the bottom otherwise.
+trap 'open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true' EXIT INT TERM
 cd /Users/jyz/dev/crust
 bun run src/cli/index.ts dev --dir examples/vite > /tmp/vite3.out 2>&1 &
 pid=$!
@@ -27,6 +30,3 @@ cat /tmp/vite3.out
 kill -TERM $pid 2>/dev/null
 wait $pid
 pkill -f examples/vite 2>/dev/null
-
-# Every crust launch activates its app, so hand focus back to whoever was here; Ghostty only if capture failed.
-open -a "${FRONTMOST:-Ghostty}" 2>/dev/null || true
