@@ -118,9 +118,7 @@ export async function init(options: InitOptions): Promise<number> {
 		// A checkout pins the live directory; anything else (a `bunx` run, a
 		// registry install) has to name the package, because the directory it is
 		// running from is a cache path that will not survive.
-		"{{crust_dep}}": existsSync(join(crustRoot, ".git"))
-			? `link:${crustRoot}`
-			: "github:JeffreyJYZ/crust",
+		"{{crust_dep}}": crustDep(crustRoot, existsSync(join(crustRoot, ".git"))),
 	};
 
 	console.log(`crust init — ${target}`);
@@ -142,6 +140,19 @@ export async function init(options: InitOptions): Promise<number> {
 	if (hint) steps.push(`  ${hint}`);
 	console.log(`${steps.join("\n")}\n`);
 	return 0;
+}
+
+/**
+ * The dependency specifier a scaffold pins the crust package to. A checkout
+ * links the live directory; a registry/bunx run names the package instead.
+ * Bun resolves forward slashes on Windows, so a native `C:\a\crust` root is
+ * normalised to `C:/a/crust` before substitution: raw `\a` and `\c` are not
+ * valid JSON escapes and would make the scaffold's package.json unparseable.
+ * A checkout's `link:` still resolves to one realpath, the invariant
+ * `framework.ts:22` relies on to keep CLI and project on one module instance.
+ */
+export function crustDep(root: string, isCheckout: boolean): string {
+	return isCheckout ? `link:${root.replaceAll("\\", "/")}` : "github:JeffreyJYZ/crust";
 }
 
 /** Replace the template tokens in a UTF-8 file. Binary files never reach this. */

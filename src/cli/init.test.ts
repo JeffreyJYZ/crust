@@ -9,7 +9,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { init } from "./init";
+import { crustDep, init } from "./init";
 import { parse } from "./parse";
 import { USAGE } from "./usage";
 
@@ -80,6 +80,16 @@ describe("init framework flags", () => {
 	test("help lists all four scaffolds", () => {
 		for (const flag of ["--react", "--next", "--svelte", "--vue"])
 			expect(USAGE).toContain(flag);
+	});
+
+	test("a checkout path with backslashes still yields parseable package.json", () => {
+		// A native Windows root such as C:\a\crust must survive substitution into
+		// the JSON template: raw \a and \c are not valid JSON escapes.
+		const spec = crustDep("C:\\a\\crust", true);
+		// Raw substitution, the way applyTokens fills the template: no escaping.
+		const manifest = `{"devDependencies":{"crust":"${spec}"}}`;
+		expect(() => JSON.parse(manifest)).not.toThrow();
+		expect(JSON.parse(manifest).devDependencies.crust).toBe("link:C:/a/crust");
 	});
 
 	test("the standalone gate asserts these exact counts", async () => {
