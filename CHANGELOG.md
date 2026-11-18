@@ -4,6 +4,28 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.29] — 2026-11-18
+
+### Added
+
+- **`Platform.destroy(label)`, on all three platforms.** The seam had `createWindow`, `window` and `quit` but no way to close one window, so closing only worked on Linux — through a method on the concrete class — and every `quit()` had its own path. `destroy` is now required, all three implement it, and each platform's `quit` drives it, so quitting closes windows the same way a caller would.
+
+### Changed
+
+- **`crust dev` watches `native/`.** The watch covered the backend entry and the generated extension modules, but not the source those modules are compiled from, so editing `native/clock.c` restarted nothing and a rebuilt extension never reached the runtime. The filter takes `.c`, `.rs` and `.zig` as well as `.ts`, and stays non-recursive: compilers write into `target/` and `zig-out/` children, and a recursive watch would restart on every object file.
+- **`i18n.load` no longer blocks the pump.** It is a page-facing command that read its directory synchronously — `readdirSync` plus one `readFileSync` per locale file — on the same thread as the pump. It is async now. Measured: a 50-file catalogue goes 17.3 ms → 16.8 ms, which is inside one repaint tick either way, so there is no stall to see today; 3000 files under three concurrent loads goes 43–80 ms → 17.0 ms. The fix removes the class of stall, not an existing one. `JSON.parse` stays synchronous deliberately — it is microseconds at these sizes.
+
+### Fixed
+
+- **NSIS installers shipped no sidecars.** `nsisOptions()` passed no `sidecars`, so `buildNsis` fell back to manifest discovery from a directory that had none and the installer carried only the binary. `build.sidecars` is passed through now, and the installer emits `File /oname=bin\tool.sh "…"` plus `crust-sidecars.json` — the same shape AppImage already used.
+
+### Documentation
+
+- **The install page pinned `#v0.1.26`** — two releases behind, and the release whose Windows `init` writes an unparseable `package.json`. Both pins now say `v0.1.28`, each re-measured first: `bunx …#v0.1.28 --version` answers 0.1.28, a real `init` writes a parseable manifest, and the tap's remote formula names the `v0.1.28` tarball. The local tap clone still said 0.1.26 because it had not been fetched; the remote is what `brew install` reads.
+- **`crust build` assembles an `.app` only on macOS.** Six pages and the README described the bundle and its ad-hoc signature as the build's output on every platform. Off darwin it is the flat binary, and the updater artifact is therefore macOS-only. Corrected in `reference/cli`, `guides/package`, `guides/release`, `limits`, `start/install` and the README.
+- **`app.on("error")` is documented.** The lifecycle fix made it reachable — a platform with no lifecycle concept now answers there once instead of staying silent — and no page listed it.
+- **`power`'s refusal names the right API per platform**: `IOPSCopyPowerSourcesInfo`, `RegisterPowerSettingNotification` (User32 — Powrprof exports the differently-named `PowerSettingRegisterNotification`), and UPower over D-Bus. The claim was never false, only incomplete, and an incomplete `requires` sends someone looking for the wrong library.
+
 ## [0.1.28] — 2026-11-18
 
 ### Fixed
