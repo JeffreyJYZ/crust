@@ -118,9 +118,29 @@ export function watchLifecycle(
 		let events: AppEvent[];
 		try {
 			events = source.take();
-		} catch {
-			// A platform that reports no such concept simply yields nothing; the refusal is returned by
-			// `unsupportedLifecycle` when it is asked for.
+		} catch (cause) {
+			// A platform with no lifecycle concept throws the typed `unsupportedLifecycle` refusal on
+			// every `take`. The old bare `return` left every `app.on` listener waiting for an event that
+			// can never arrive, with no error anywhere. Chosen shape: surface it on the `error` channel
+			// `app.on` already routes, once, with the real refusal so its `code` and `requires` survive;
+			// then stop polling, because a source that cannot yield events must not spin. Registration
+			// stays legal on every platform, and a real lifecycle source never enters this branch.
+			clearInterval(handle);
+			const error = cause instanceof Error ? cause : new Error(String(cause));
+			const errorListeners = listeners.get("error");
+			if (errorListeners?.size) {
+				for (const listener of errorListeners) {
+					void Promise.resolve()
+						.then(() => listener(error))
+						.catch((thrown: unknown) => {
+							const text = thrown instanceof Error ? thrown.message : String(thrown);
+							console.warn(`  lifecycle an error listener threw: ${text}`);
+						});
+				}
+			} else {
+				// No subscriber to the channel: still never silent.
+				console.warn(`  lifecycle ${error.message}`);
+			}
 			return;
 		}
 		for (const event of events) {

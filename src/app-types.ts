@@ -45,8 +45,14 @@ export interface Platform {
 }
 
 export type AppEvent =
-	"ready" | "window-all-closed" | "activate" | "before-quit" | "will-quit" | "reopen";
-export type AppListener = () => void | Promise<void>;
+	"ready" | "window-all-closed" | "activate" | "before-quit" | "will-quit" | "reopen" | "error";
+/**
+ * The optional argument is the `error` event's payload: a lifecycle refusal is handed to listeners
+ * as the real `CrustError` (`not-implemented`, with `requires`), so a subscriber learns *why* its
+ * event can never arrive. Every other event calls the same listener with `undefined`, so an
+ * existing zero-argument listener stays valid.
+ */
+export type AppListener = (error?: Error) => void | Promise<void>;
 export type CommandHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
 
 /**

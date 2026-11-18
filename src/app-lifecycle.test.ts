@@ -8,7 +8,12 @@ import { describe, expect, test } from "bun:test";
 import { waitFor } from "../scripts/harness/wait.ts";
 
 import { createApp } from "@/app.ts";
-import { type AppEvent, type AppListener, type LifecycleSource } from "@/app-types.ts";
+import {
+	type AppEvent,
+	type AppListener,
+	type LifecycleSource,
+	unsupportedLifecycle,
+} from "@/app-types.ts";
 import { watchLifecycle } from "@/app-loop.ts";
 import type { CrustConfig } from "@/config";
 
@@ -68,21 +73,41 @@ describe("watchLifecycle", () => {
 		expect(warned.some((line) => line.includes("before-quit listener threw"))).toBe(true);
 	});
 
-	test("a platform source that throws is skipped, not fatal", async () => {
+	test("a throwing source tells a before-quit subscriber why on the error channel and stops", async () => {
 		const map = listeners();
-		listen(map, "activate", () => {
-			throw new Error("must never run");
-		});
+		const requires = "test lifecycle messages";
+		const refusal = unsupportedLifecycle(requires);
 		let takes = 0;
 		const source: LifecycleSource = {
 			take: () => {
 				takes += 1;
-				throw new Error("no such concept");
+				return refusal.take();
 			},
 		};
+		// The listener the user actually registered: it must never be woken for an event
+		// this platform cannot produce, and it must not learn nothing either.
+		const beforeQuit: AppEvent[] = [];
+		listen(map, "before-quit", () => void beforeQuit.push("before-quit"));
+		const errors: Error[] = [];
+		listen(map, "error", (error) => {
+			if (error) errors.push(error);
+		});
 		const handle = watchLifecycle(map, source, 10);
-		await waitFor(() => (takes >= 2 ? takes : null), 2000, "throwing source drain");
+		const heard = await waitFor(
+			() => (errors.length >= 1 ? errors : null),
+			2000,
+			"lifecycle refusal on the error channel",
+		);
+		// If the loop had kept polling, more takes would land in this window.
+		await Bun.sleep(60);
 		clearInterval(handle);
+
+		expect(heard[0]?.message).toBe(
+			`crust: lifecycle events need ${requires}, which this platform does not provide`,
+		);
+		expect((heard[0] as Error & { code: string }).code).toBe("not-implemented");
+		expect(beforeQuit).toEqual([]);
+		expect(takes).toBe(1);
 	});
 });
 
