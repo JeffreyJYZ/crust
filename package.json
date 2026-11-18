@@ -36,6 +36,8 @@
 		"e2e:dogear": "bun run scripts/e2e-dogear.ts",
 		"e2e:capability": "bun run scripts/e2e-capability.ts",
 		"check:lines": "bun run scripts/line-cap.ts",
+		"skill": "bun run scripts/skill.ts",
+		"skill:check": "bun run scripts/skill.ts --check",
 		"site:build": "cd site && bun run build",
 		"check:links": "bun run scripts/check-links.ts",
 		"check:parity": "bun run scripts/check-parity.ts",
@@ -62,5 +64,8 @@
 	"devDependencies": {
 		"@types/bun": "latest",
 		"vite": "^8.3.8"
+	},
+	"dependencies": {
+		"cac": "^7.1.0"
 	}
 }
