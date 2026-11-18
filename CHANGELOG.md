@@ -4,6 +4,24 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.30] — 2026-11-18
+
+### Changed
+
+- **The CLI is `cac`.** The 141-line hand-written argv parser, the hand-written help string and the dispatch switch are gone: one `cac("crust")` instance registers the ten options, the eight commands with their actions, and the help examples, and `cli.parse(argv, { run: false })` does the parsing. `crust --help` and `crust <command> --help` are now rendered by cac from that registration.
+
+  Four behaviours stay manual because cac's defaults fight them, each measured against cac 7.1.0 rather than its README: `--version` prints the bare version (cac appends platform and Bun version), no arguments and `crust nope --help` exit **1** (cac's help exits 0), and the error wording is unchanged (`unknown option --wat`, `--dir needs a value`). `src/cli/cli-contract.test.ts` pins all of it — 28 rows, one real-entry spawn each.
+
+### Added
+
+- **`SKILL.md` at <https://crust.jyz.land/SKILL.md>.** The docs are 58 pages and ~5000 lines, which is correct and far too much to load before writing a first app. This is the working surface in one file: scaffold, config, the page-side API, the capability model, the 32 namespaces with their commands, the CLI, the failure codes, and the gotchas that cost time.
+
+  Its command table is **generated** from the live plugin registry — `scripts/skill/registry.ts` enumerates every namespace and command, and `bun run skill:check` exits 1 with a diff when the committed file is stale. Written after a blind test: a lane given only that URL had to guess every plugin command and guessed wrong about `store`.
+
+### Fixed
+
+- **`crust init` from a release tag wrote an unpinned dependency.** The scaffold depended on `github:JeffreyJYZ/crust` with no version, so `bun install` resolved whatever `main` was at that moment — two people scaffolding a week apart got different code, and neither got the version they asked for. The specifier now names the running version (`#v0.1.30`); a development build has no such tag and stays unpinned, and a checkout keeps `link:<root>`.
+
 ## [0.1.29] — 2026-11-18
 
 ### Added
