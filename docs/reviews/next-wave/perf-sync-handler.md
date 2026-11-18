@@ -49,11 +49,17 @@ max gap `17.0 ms`.
 Both change the *execution model* plugins run under, which is a plugin-contract decision the user
 owns. This lane recommends only; it does not implement either.
 
-**Status: closed — not worth a contract change.** The measured freeze only happens if a handler blocks
-the pump, and no plugin crust ships does: the sync calls in-tree are `readFileSync` in `i18n.load`,
-which is a one-shot config read, not a request path. So no user hits this today. The number is a
-documented limit for a third-party plugin that writes a slow handler, and the two fixes below stay
-unimplemented because each moves the plugin contract for a case that does not occur.
+**Status: closed — no in-tree plugin blocks the pump.** The freeze only happens if a handler blocks
+the pump. One page-facing command did: `i18n.load` used `readdirSync`/`readFileSync`, so a page
+loading a catalogue stalled repaint for the duration of the disk read. It now reads through
+`node:fs/promises` and the bridge awaits the handler, so the pump keeps ticking. The other sync
+reads (`sidecar-locate.ts`, `single-instance-lock.ts`) run at construction/startup, never per call.
+A throwaway bridge probe (three concurrent `i18n.load` invokes) measured a max pump gap of 43–80 ms
+with the old sync loader versus 17 ms (one healthy tick) with the async one when the read is I/O-bound
+(3000 tiny files); with ~50 typical locale files the read is sub-tick in both paths, so the gap does
+not move. The number below stays a documented limit for a third-party plugin that writes a slow
+handler, and the two fixes remain unimplemented because each moves the plugin contract for a case
+that does not occur in-tree.
 
 ### 1. Per-plugin worker
 

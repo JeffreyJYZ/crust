@@ -20,8 +20,8 @@ export interface I18nAdapter {
 	preferredLocale(): string;
 }
 
-/** Reads a directory of `*.json` locale files into a catalogue. Injected so `load` is testable without disk. */
-export type CatalogueLoader = (directory: string) => MessageCatalogue;
+/** Reads a directory of `*.json` locale files into a catalogue. Injected so `load` is testable without disk. A sync loader still satisfies this; the default reads async so it never blocks the pump. */
+export type CatalogueLoader = (directory: string) => MessageCatalogue | Promise<MessageCatalogue>;
 
 export interface I18nOptions {
 	/** locale → key → text. Absent means `messages` and `translate` answer `not-implemented`. */
@@ -67,6 +67,6 @@ export type I18nPlugin = PluginDefinition<
 			key: string;
 			vars?: TranslateVars;
 		}) => TranslationResult | NotImplemented;
-		load: (args: { directory: string }) => LoadResult;
+		load: (args: { directory: string }) => LoadResult | Promise<LoadResult>;
 	}
 >;

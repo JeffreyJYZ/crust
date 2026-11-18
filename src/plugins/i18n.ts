@@ -117,8 +117,8 @@ export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 				};
 			},
 			/** Read `locales/*.json` from a directory into the catalogue, so no import is hand-written. */
-			load: (args: { directory: string }): LoadResult => {
-				Object.assign(catalogue, loader(args?.directory));
+			load: async (args: { directory: string }): Promise<LoadResult> => {
+				Object.assign(catalogue, await loader(args?.directory));
 				const available = Object.keys(catalogue);
 				const chosen = preferred() ?? available[0] ?? options.locale ?? "en";
 				return { ok: true, locale: chosen, dir: textDirection(chosen), available };

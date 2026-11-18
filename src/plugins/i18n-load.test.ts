@@ -1,7 +1,7 @@
 /**
  * `i18n.load`: a directory of `*.json` files becomes the catalogue without a hand-written import.
  * The pure loader is proven against real temp directories; the command is proven to merge what it
- * loads into an empty catalogue and to answer from it, with a fake loader for the merge cases.
+ * loads into an empty catalogue and to answer from it, with sync and async fake loaders.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -25,45 +25,45 @@ afterEach(() => {
 });
 
 describe("loadCatalogue", () => {
-	test("each *.json basename is a locale and other files are ignored", () => {
+	test("each *.json basename is a locale and other files are ignored", async () => {
 		const dir = localeDir({
 			"en.json": '{"greeting":"Hello","files_other":"{count} files"}',
 			"fr.json": '{"greeting":"Bonjour"}',
 			"notes.txt": "not a locale",
 		});
-		expect(loadCatalogue(dir)).toEqual({
+		expect(await loadCatalogue(dir)).toEqual({
 			en: { greeting: "Hello", files_other: "{count} files" },
 			fr: { greeting: "Bonjour" },
 		});
 	});
 
-	test("invalid JSON is refused by path, not silently skipped", () => {
+	test("invalid JSON is refused by path, not silently skipped", async () => {
 		const dir = localeDir({ "en.json": "{not json" });
-		expect(() => loadCatalogue(dir)).toThrow(CrustError);
-		expect(() => loadCatalogue(dir)).toThrow(/en\.json is not valid JSON/);
+		await expect(loadCatalogue(dir)).rejects.toThrow(CrustError);
+		await expect(loadCatalogue(dir)).rejects.toThrow(/en\.json is not valid JSON/);
 	});
 
-	test("a document that is not an object is refused", () => {
+	test("a document that is not an object is refused", async () => {
 		const dir = localeDir({ "en.json": '["not","a","table"]' });
-		expect(() => loadCatalogue(dir)).toThrow(/must hold an object of messages/);
+		await expect(loadCatalogue(dir)).rejects.toThrow(/must hold an object of messages/);
 	});
 
-	test("a missing directory is a bad-request naming it", () => {
+	test("a missing directory is a bad-request naming it", async () => {
 		const missing = join(tmpdir(), "crust-i18n-absent");
-		expect(() => loadCatalogue(missing)).toThrow(CrustError);
-		expect(() => loadCatalogue(missing)).toThrow(/cannot read/);
+		await expect(loadCatalogue(missing)).rejects.toThrow(CrustError);
+		await expect(loadCatalogue(missing)).rejects.toThrow(/cannot read/);
 	});
 
-	test("an empty directory yields an empty catalogue", () => {
-		expect(loadCatalogue(localeDir({}))).toEqual({});
+	test("an empty directory yields an empty catalogue", async () => {
+		expect(await loadCatalogue(localeDir({}))).toEqual({});
 	});
 });
 
 describe("i18n.load command", () => {
-	test("loads a real directory and translate answers from it", () => {
+	test("loads a real directory and translate answers from it", async () => {
 		const dir = localeDir({ "en.json": '{"greeting":"Hello {name}"}' });
 		const plugin = createI18nPlugin({ adapter });
-		expect(call(plugin, "load", { directory: dir })).toMatchObject({
+		expect(await call(plugin, "load", { directory: dir })).toMatchObject({
 			ok: true,
 			available: ["en"],
 		});
@@ -76,12 +76,12 @@ describe("i18n.load command", () => {
 		);
 	});
 
-	test("a second load merges without dropping locales already supplied", () => {
+	test("a sync fake loader still merges without dropping locales already supplied", async () => {
 		const plugin = createI18nPlugin({
 			messages: { en: { title: "Crust" } },
 			loader: () => ({ fr: { greeting: "Bonjour" } }),
 		});
-		const result = call(plugin, "load", { directory: "locales" }) as {
+		const result = (await call(plugin, "load", { directory: "locales" })) as {
 			available: string[];
 		};
 		expect(result.available.sort()).toEqual(["en", "fr"]);
@@ -90,7 +90,23 @@ describe("i18n.load command", () => {
 		expect(call(plugin, "translate", { key: "greeting" })).toMatchObject({ text: "Bonjour" });
 	});
 
-	test("the loader receives the directory the page passed", () => {
+	test("an async loader is awaited before the command answers", async () => {
+		const plugin = createI18nPlugin({
+			loader: async (directory) => {
+				await Bun.sleep(1);
+				return { es: { greeting: `Hola ${directory}` } };
+			},
+		});
+		const result = (await call(plugin, "load", { directory: "locales" })) as {
+			available: string[];
+		};
+		expect(result.available).toEqual(["es"]);
+		expect(call(plugin, "translate", { key: "greeting" })).toMatchObject({
+			text: "Hola locales",
+		});
+	});
+
+	test("the loader receives the directory the page passed", async () => {
 		let seen: string | undefined;
 		const plugin = createI18nPlugin({
 			loader: (directory) => {
@@ -98,18 +114,18 @@ describe("i18n.load command", () => {
 				return {};
 			},
 		});
-		call(plugin, "load", { directory: "i18n/locales" });
+		await call(plugin, "load", { directory: "i18n/locales" });
 		expect(seen).toBe("i18n/locales");
 	});
 
-	test("a missing directory argument is bad-request", () => {
+	test("a missing directory argument is bad-request", async () => {
 		const plugin = createI18nPlugin({ adapter });
-		expect(() => call(plugin, "load", {})).toThrow(/non-empty string/);
+		await expect(call(plugin, "load", {})).rejects.toThrow(/non-empty string/);
 	});
 
-	test("a directory with no JSON files answers with an empty list", () => {
+	test("a directory with no JSON files answers with an empty list", async () => {
 		const plugin = createI18nPlugin({ adapter, loader: () => ({}) });
-		expect(call(plugin, "load", { directory: "locales" })).toMatchObject({
+		expect(await call(plugin, "load", { directory: "locales" })).toMatchObject({
 			ok: true,
 			available: [],
 		});
