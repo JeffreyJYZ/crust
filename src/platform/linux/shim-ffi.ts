@@ -23,7 +23,13 @@ export interface LinuxShim {
 	shim_lib_error_text(): string | null;
 	shim_gtk_init(): number;
 	shim_pump(): number;
-	shim_window_new(title: Uint8Array, width: number, height: number, minWidth: number): number;
+	shim_window_new(
+		title: Uint8Array,
+		width: number,
+		height: number,
+		minWidth: number,
+		minHeight: number,
+	): number;
 	shim_window_attach(win: bigint, child: bigint): number;
 	shim_window_show(win: bigint): void;
 	shim_window_destroy(win: bigint): void;
@@ -93,7 +99,7 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 			shim_gtk_init: { args: [], returns: I32 },
 			shim_pump: { args: [], returns: I32 },
 
-			shim_window_new: { args: [CS, I32, I32, I32], returns: P },
+			shim_window_new: { args: [CS, I32, I32, I32, I32], returns: P },
 			shim_window_attach: { args: [P, P], returns: I32 },
 			shim_window_show: { args: [P], returns: V },
 			shim_window_destroy: { args: [P], returns: V },

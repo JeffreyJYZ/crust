@@ -61,16 +61,19 @@ int shim_window_alive(void *win) {
 	return 0;
 }
 
-void *shim_window_new(const char *title, int w, int h, int min_w) {
+void *shim_window_new(const char *title, int w, int h, int min_w, int min_h) {
 	if (!shim_window_new_fn) return 0;
 	// GTK_WINDOW_TOPLEVEL is 0.
 	void *win = shim_window_new_fn(0);
 	if (!win) return 0;
 	if (title && title[0] && shim_set_title) shim_set_title(win, title);
 	shim_set_default_size(win, w, h);
-	// minWidth arrives as a width request on the window itself, which is what
-	// stops a drag narrower than the config allows.
-	if (min_w > 0) shim_set_size_request(win, min_w, h);
+	// Each minimum arrives as a size request on the window itself, which is what
+	// stops a drag below what the config allows. -1 is GTK's "no request" on an
+	// axis: 0 would be a real floor of zero, which is not the same thing, and the
+	// opening height must never become a height floor.
+	if (min_w > 0 || min_h > 0)
+		shim_set_size_request(win, min_w > 0 ? min_w : -1, min_h > 0 ? min_h : -1);
 	if (shim_connect) shim_connect(win, "destroy", shim_on_destroy, 0, 0, 0);
 	// Reuse a released slot first; grow only while every slot is taken. A stale
 	// pointer no longer matches any slot, so `shim_window_alive` answers 0 for it.

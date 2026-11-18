@@ -17,6 +17,13 @@ export interface NativeWindow {
 }
 
 /**
+ * `minHeight` is validated on the config window and spread into `createWindow`, but
+ * `WindowOptions` has not caught up, so the backend widens it locally the way the darwin and
+ * windows lanes do rather than losing the height floor between the config and GTK.
+ */
+export type MinSizeOptions = WindowOptions & { minHeight?: number };
+
+/**
  * Every native call the platform makes, in one seam. The real one is
  * `createGtkBackend`; a test supplies a fake and never loads GTK.
  */
@@ -26,7 +33,7 @@ export interface LinuxBackend {
 	/** Run one native main-context iteration; true only when the shim actually called into GTK. */
 	iterate(): boolean;
 	/** Build the window and its webview, attach, show, then load `url`. */
-	createWindow(options: WindowOptions, url: string): NativeWindow;
+	createWindow(options: MinSizeOptions, url: string): NativeWindow;
 	/** Whether GTK still holds this window open — read from C, never from a freed widget. */
 	isOpen(win: bigint): boolean;
 	/** Destroy a window that is still open. */
@@ -104,6 +111,7 @@ export function createGtkBackend(
 						options.width ?? DEFAULT_WIDTH,
 						options.height ?? DEFAULT_HEIGHT,
 						options.minWidth ?? 0,
+						options.minHeight ?? 0,
 					) ?? 0,
 				),
 			);

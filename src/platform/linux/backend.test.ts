@@ -24,9 +24,9 @@ function fakeShim() {
 			return 1;
 		},
 		shim_pump: () => 1,
-		shim_window_new: (title, width, height, minWidth) => {
+		shim_window_new: (title, width, height, minWidth, minHeight) => {
 			calls.push("window_new");
-			args.window_new = [title, width, height, minWidth];
+			args.window_new = [title, width, height, minWidth, minHeight];
 			live.add(next);
 			return next++;
 		},
@@ -119,6 +119,21 @@ describe("FFI argument encoding", () => {
 		expect(title).toBeInstanceOf(Uint8Array);
 		expect((title as Uint8Array).length).toBe(1);
 		expect(decode(title)).toBe("\u0000");
+	});
+
+	test("both minimums reach the shim, and a width-only floor sends no height", () => {
+		const { symbols, args } = fakeShim();
+		const backend = createGtkBackend(
+			() => symbols,
+			() => [],
+		);
+		backend.load();
+		backend.createWindow({ label: "both", minWidth: 400, minHeight: 480 }, URL);
+		expect([args.window_new?.[3], args.window_new?.[4]]).toEqual([400, 480]);
+		backend.createWindow({ label: "width", minWidth: 400 }, URL);
+		// 0 is "no minimum" here: the shim turns it into GTK's -1 rather than a floor of
+		// zero, so a width-only config can still be dragged shorter than its opening height.
+		expect([args.window_new?.[3], args.window_new?.[4]]).toEqual([400, 0]);
 	});
 
 	test("the C entry points run in the order that builds a usable window", () => {

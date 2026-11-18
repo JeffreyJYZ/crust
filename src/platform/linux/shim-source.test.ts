@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { SHIM_PARTS, SHIM_PART_NAMES, SHIM_PART_PATHS, shimSource } from "./index.ts";
 
 describe("shim assembly", () => {
@@ -77,6 +79,22 @@ describe("native contracts", () => {
 		expect(webview).toContain('shim_sym_or_null(h, "g_error_free")');
 		expect(webview).toContain("if (shim_g_error_free) shim_g_error_free(error)");
 		expect(webview).toContain("if (value && shim_object_unref) shim_object_unref(value)");
+	});
+
+	test("the window takes both minimums, and an absent one is GTK's -1", () => {
+		expect(windowPart).toContain(
+			"void *shim_window_new(const char *title, int w, int h, int min_w, int min_h)",
+		);
+		expect(windowPart).toContain(
+			"shim_set_size_request(win, min_w > 0 ? min_w : -1, min_h > 0 ? min_h : -1)",
+		);
+		// The height request is the configured minimum, never the opening height, which
+		// would make a 900x600 window impossible to drag shorter.
+		expect(windowPart).not.toContain("shim_set_size_request(win, min_w, h)");
+		// The FFI declaration must carry the same arity as the prototype above: a
+		// four-argument `args` array drops `minHeight` before C ever sees it.
+		const ffi = readFileSync(join(import.meta.dir, "shim-ffi.ts"), "utf8");
+		expect(ffi).toContain("shim_window_new: { args: [CS, I32, I32, I32, I32], returns: P }");
 	});
 
 	test("the pump reports a native iteration, not whether events were dispatched", () => {
