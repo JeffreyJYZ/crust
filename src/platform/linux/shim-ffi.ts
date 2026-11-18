@@ -37,6 +37,38 @@ export interface LinuxShim {
 	shim_webview_new(): number;
 	shim_webview_load(web: bigint, url: Uint8Array): number;
 
+	/**
+	 * The `crust:window` half, every member optional because a fake shim need not carry it and an
+	 * older GTK answers 0 rather than failing the launch. `shim_window_api_ready` is the one gate:
+	 * when it answers 0, `shim_window_api_missing` names the entry point that was absent.
+	 */
+	shim_window_api_ready?(): number;
+	shim_window_api_missing?(): string | null;
+	/** 1 presented, 0 when the window is null or the API is absent. */
+	shim_window_present?(win: bigint): number;
+	shim_window_set_title?(win: bigint, title: Uint8Array): number;
+	/** The title GTK holds, read back after a write; the pointer belongs to the window. */
+	shim_window_title?(win: bigint): string | null;
+	shim_window_resize?(win: bigint, width: number, height: number): number;
+	/** Two ints written: width, height. 0 when GTK has allocated nothing yet. */
+	shim_window_size?(win: bigint, out: Int32Array): number;
+	/** 1 only on an X11 display: Wayland cannot place or report a toplevel origin. */
+	shim_window_placeable?(): number;
+	shim_window_move?(win: bigint, x: number, y: number): number;
+	/** Two ints written: x, y. 0 off X11, where the origin is not GTK's to know. */
+	shim_window_position?(win: bigint, out: Int32Array): number;
+	/** The GdkWindowState bitmask, or -1 before the widget has a GdkWindow. */
+	shim_window_state?(win: bigint): number;
+	/** 0 iconified, 1 maximized, 2 fullscreen; `on` picks the GTK pair. */
+	shim_window_flag?(win: bigint, flag: number, on: number): number;
+	shim_window_keep_above?(win: bigint, on: number): number;
+	shim_window_set_decorated?(win: bigint, on: number): number;
+	/** 1 decorated, 0 not, -1 when GTK cannot answer. */
+	shim_window_decorated?(win: bigint): number;
+	shim_widget_set_opacity?(win: bigint, value: number): number;
+	/** -1 when unavailable: 0 is a real opacity. */
+	shim_widget_opacity?(win: bigint): number;
+
 	/** 1 when GDK carries every entry point the display list needs; 0 names a GTK too old for it. */
 	shim_screen_ready?(): number;
 	/** How many displays GDK reports; 0 when it cannot be asked. */
@@ -107,6 +139,24 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 
 			shim_webview_new: { args: [], returns: P },
 			shim_webview_load: { args: [P, CS], returns: I32 },
+
+			shim_window_api_ready: { args: [], returns: I32 },
+			shim_window_api_missing: { args: [], returns: CS },
+			shim_window_present: { args: [P], returns: I32 },
+			shim_window_set_title: { args: [P, CS], returns: I32 },
+			shim_window_title: { args: [P], returns: CS },
+			shim_window_resize: { args: [P, I32, I32], returns: I32 },
+			shim_window_size: { args: [P, P], returns: I32 },
+			shim_window_placeable: { args: [], returns: I32 },
+			shim_window_move: { args: [P, I32, I32], returns: I32 },
+			shim_window_position: { args: [P, P], returns: I32 },
+			shim_window_state: { args: [P], returns: I32 },
+			shim_window_flag: { args: [P, I32, I32], returns: I32 },
+			shim_window_keep_above: { args: [P, I32], returns: I32 },
+			shim_window_set_decorated: { args: [P, I32], returns: I32 },
+			shim_window_decorated: { args: [P], returns: I32 },
+			shim_widget_set_opacity: { args: [P, FFIType.f64], returns: I32 },
+			shim_widget_opacity: { args: [P], returns: FFIType.f64 },
 
 			shim_screen_ready: { args: [], returns: I32 },
 			shim_screen_count: { args: [], returns: I32 },

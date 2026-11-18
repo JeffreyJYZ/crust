@@ -115,6 +115,23 @@ export class LinuxPlatform implements Platform {
 	}
 
 	/**
+	 * The tracked native window behind a label, for the `crust:window` adapter: the same map
+	 * `window()` reads, pruned the same way, so there is one answer to "which window is this
+	 * label". `win` is a `GtkWindow *` that GTK still holds — a destroyed widget is freed, so a
+	 * stale pointer never leaves here — and `url` is the document it was created with, which is
+	 * what a relative `window.create` resolves against.
+	 */
+	nativeWindow(label: string): NativeWindow | undefined {
+		const entry = this.#windows.get(label);
+		if (!entry) return undefined;
+		if (!this.#backend.isOpen(entry.win)) {
+			this.#windows.delete(label);
+			return undefined;
+		}
+		return { win: entry.win, web: entry.web, url: entry.url };
+	}
+
+	/**
 	 * Close one tracked window through GTK and forget its label; every other window stays open.
 	 * Unknown labels are a no-op. This is the shared `Platform.destroy` seam.
 	 */

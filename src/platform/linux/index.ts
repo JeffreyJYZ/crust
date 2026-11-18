@@ -4,6 +4,7 @@
  */
 export { createGtkBackend, type LinuxBackend, type NativeWindow } from "./backend.ts";
 export { createPlatform, LinuxPlatform } from "./platform.ts";
+export { linuxWindowAdapter } from "./window-adapter.ts";
 export {
 	dlopenProbe,
 	INSTALL_LINE,

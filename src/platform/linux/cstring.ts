@@ -5,3 +5,13 @@
 export function cstring(value: string): Uint8Array {
 	return Buffer.from(`${value}\0`, "utf8");
 }
+
+/**
+ * The text a `cstring` argument carried, without its terminator: the inverse of `cstring`, for a
+ * fake that has to read back what the FFI layer was handed. A value that is not a byte buffer is an
+ * error rather than a stringified surprise, because that is exactly the defect `cstring` exists for.
+ */
+export function uncstring(value: unknown): string {
+	if (!(value instanceof Uint8Array)) throw new Error(`not a byte buffer: ${typeof value}`);
+	return new TextDecoder().decode(value).replace(/\0$/, "");
+}
