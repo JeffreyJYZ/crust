@@ -1,6 +1,7 @@
 /**
  * The driver. Every answer is normalised to `resolved` with its value or `rejected` with the page-side error's fields, because the difference between a typed failure and a rejected invoke is what this proof documents. Helpers in `page-prelude.ts`.
  */
+import { LARGER, SMALLER } from "./config.ts";
 import { PAGE_PRELUDE } from "./page-prelude.ts";
 
 const PAGE_DRIVER = `async function main() {
@@ -18,6 +19,14 @@ const PAGE_DRIVER = `async function main() {
 	await report("unknown", await ask("window", "doesNotExist", {}));
 	await report("badlabel", await ask("window", "isOpen", { label: 42 }));
 	await report("alive", await ask("window", "list"));
+
+	// ---- the page follows its own window ----------------------------------
+	// The driver's window is resized under it and it reports what it sees. Both
+	// directions are asked for: a webview pinned to one axis passes growing alone,
+	// and the frozen page this replaces reported its opening size for both.
+	await report("viewport0", { how: "resolved", value: viewport() });
+	await report("resizelarge", await resize("other", ${LARGER.width}, ${LARGER.height}, 4000));
+	await report("resizesmall", await resize("other", ${SMALLER.width}, ${SMALLER.height}, 4000));
 
 	// ---- a created window is a real second NSWindow ----------------------
 	// Every create below runs while the pump is ticking: an invoke is delivered

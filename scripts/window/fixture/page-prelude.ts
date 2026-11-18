@@ -70,6 +70,27 @@ async function child() {
 	});
 }
 
+// The page's own viewport. This is the observation the resize proof rests on: a
+// window that grew while the webview stayed put reports its opening size here.
+function viewport() {
+	return { width: window.innerWidth, height: window.innerHeight };
+}
+
+// Ask for a size and wait for the page to see it. The webview's new frame lands
+// on a later runloop turn, so this poll is the bound on the claim, not a delay;
+// it gives up with whatever the page last saw so the check can print it.
+async function resize(label, width, height, timeoutMs) {
+	var answer = await ask("window", "setSize", { label: label, width: width, height: height });
+	if (answer.how !== "resolved") return answer;
+	var deadline = Date.now() + timeoutMs;
+	for (;;) {
+		var now = viewport();
+		if (now.width === width) return { how: "resolved", value: now };
+		if (Date.now() > deadline) return { how: "resolved", value: now };
+		await delay(50);
+	}
+}
+
 // list() reports only windows AppKit still holds, so a closed label is gone from
 // it at once. This poll is the bound on that claim, not a delay: the page waits
 // for the label to disappear before asking for it again, and gives up loudly.

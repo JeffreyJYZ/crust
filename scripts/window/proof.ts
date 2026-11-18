@@ -13,6 +13,7 @@ import { checkCreates } from "./checks/creates.ts";
 import { checkEnd } from "./checks/finish.ts";
 import { checkNegatives } from "./checks/negatives.ts";
 import { checkReopen } from "./checks/reopen.ts";
+import { checkResize } from "./checks/resize.ts";
 import { checkSpawns } from "./checks/spawn.ts";
 import { checkWindows } from "./checks/windows.ts";
 import { APP_TIMEOUT_MS, EXPECTED_TAGS, WAIT_FOR_EXIT, WINDOW_CHECKS } from "./expectations.ts";
@@ -127,6 +128,7 @@ export async function proof(verdict: Verdict, scratch: string): Promise<string |
 	}
 
 	checkWindows(verdict, byTag);
+	checkResize(verdict, byTag);
 	checkNegatives(verdict, byTag);
 	checkCreates(verdict, byTag);
 	checkCloseOfMain(verdict, byTag);

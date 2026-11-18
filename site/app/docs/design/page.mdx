@@ -22,7 +22,8 @@ survive; nothing else does.
 **Structs cannot cross.** `CGRect`, `CGSize` and `CGAffineTransform` are the danger zone. The
 shim builds them on the C stack and calls the initializer itself, so a window is created with
 `initWithContentRect:styleMask:backing:defer:` while no struct ever reaches JavaScript. Views are
-laid out with constraints; `setFrame:` appears nowhere.
+laid out with constraints — four edge pins on the webview, no size of its own — and `setFrame:`
+lives inside the shim, which is what `window.setSize` and `window.setPosition` reach.
 
 **Nothing is typed, and a bad selector kills the process.** A selector the receiver does not
 implement raises an Objective-C exception Bun cannot catch: `SIGABRT`, no JavaScript error. So

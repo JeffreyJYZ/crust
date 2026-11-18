@@ -10,6 +10,12 @@ export const BINARY_NAME = "crust-app";
 export const APP_NAME = "Window crust";
 
 /**
+ * The opening size of the driver's window, in one place: the config asks for it and the resize proof
+ * asserts the page reports it before anything is resized.
+ */
+export const OPENING = { width: 900, height: 640 };
+
+/**
  * The two configured windows. `other` serves the driver and `main` is the spare: `focus` on another label must reach a different `NSWindow`, and `create` is proved on `main` while the driver stays alive, since closing the driver kills the page mid-proof.
  * `main` loads `/spare/idle.html` so a path-relative `create` URL must resolve to `/spare/child/…`; at `/` the recorded base and this page's own would coincide and the resolution would be unobservable.
  */
@@ -19,7 +25,7 @@ export default {
 	app: { id: "land.jyz.e2e-window", name: ${JSON.stringify(APP_NAME)}, version: "0.1.0" },
 	windows: [
 		{ label: "main", url: "/spare/idle.html", width: 420, height: 280, title: "Spare" },
-		{ label: "other", url: "/", width: 900, height: 640, title: ${JSON.stringify(APP_NAME)} },
+		{ label: "other", url: "/", width: ${OPENING.width}, height: ${OPENING.height}, title: ${JSON.stringify(APP_NAME)} },
 	],
 } satisfies CrustConfig;
 `;
@@ -50,6 +56,13 @@ await app.run();
 
 /** A title AppKit can apply; the adapter reads it back and only then says ok. */
 export const APPLIED_TITLE = "Renamed by the page";
+
+/**
+ * The two sizes the resize proof asks the driver's own window for. Both differ clearly from the 900x640
+ * it opens at, and both fit a 1280-wide display so a clamped `setFrame:` cannot pass as a pass.
+ */
+export const LARGER = { width: 1200, height: 760 };
+export const SMALLER = { width: 640, height: 460 };
 
 /**
  * A title that cannot be applied: the shim builds the NSString with

@@ -86,18 +86,22 @@ export function createNativeWindow(
 	// resigns active, and the page keeps running while its pixels disappear — measured with
 	// a heartbeat page: six invokes arrived while the window was empty.
 	S.vb1(content, "setWantsLayer:", 1);
+	// The content view keeps its autoresizing behaviour on purpose: the window sizes it, and it has
+	// no constraint of its own, so turning that off leaves AppKit with nothing to size it by and it
+	// collapses to 0x0 (measured: content 0x0, webview 0x0).
 	S.vb1(web, "setTranslatesAutoresizingMaskIntoConstraints:", 0);
-	S.vb1(content, "setTranslatesAutoresizingMaskIntoConstraints:", 0);
 
-	// Auto Layout replaces setFrame:. Attributes: 3 top, 4 bottom, 5 leading,
-	// 6 trailing, 7 width, 8 height; relatedBy 0 is equal.
+	// Four edge pins and nothing else: the webview has no width or height of its own, so its size is
+	// the content view's size, and the content view's size is the window's. A fixed width/height pair
+	// here instead pins the webview to the size the window opened at — the window then grows while
+	// the page stays frozen (measured 2026-11-18: window 1400x840, content and webview 1100x760), which
+	// is what "apps can't be resized" looks like from the page. Attributes: 3 top, 4 bottom, 5
+	// leading, 6 trailing; relatedBy 0 is equal.
 	const constraints: unknown[] = [
 		shim().symbols.shim_constraint(web, 5n, 0n, content, 5n, 1, 0),
 		shim().symbols.shim_constraint(web, 6n, 0n, content, 6n, 1, 0),
 		shim().symbols.shim_constraint(web, 3n, 0n, content, 3n, 1, 0),
 		shim().symbols.shim_constraint(web, 4n, 0n, content, 4n, 1, 0),
-		shim().symbols.shim_constraint_simple(web, 7n, 0n, width),
-		shim().symbols.shim_constraint_simple(web, 8n, 0n, height),
 	];
 	for (const raw of constraints) {
 		const constraint = ptrValue(raw, "constraintWithItem:");
