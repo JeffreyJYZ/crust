@@ -24,6 +24,14 @@ export interface Served {
 	greeted: boolean;
 }
 
+/**
+ * The window label the probe claims, and the reason it must: the scaffold declares
+ * `security.capabilities`, which makes the bridge deny-by-default and grants `app:invoke` to
+ * `main` alone. A real dev page is navigated as `?window=main`, so its client sends this label on
+ * every call; a probe that omitted it would make a request no page makes, and the gate refuses it.
+ */
+const WINDOW_LABEL = "main";
+
 /** Returns the child tree captured while both children are known to exist. */
 export async function servePhase(verdict: Verdict, dev: LiveRun, scratch: string): Promise<Served> {
 	const isVite = (body: string): boolean =>
@@ -122,6 +130,12 @@ export async function servePhase(verdict: Verdict, dev: LiveRun, scratch: string
 					plugin: "app",
 					command: "invoke",
 					args: { name: "greet", args: { name: "curl" } },
+					// The field `src/bridge/client/invoke.ts` sends with every call: the dev page's
+					// own label, read from the `?window=main` the runtime appends to the Vite URL.
+					// The scaffold declares `security.capabilities`, so the bridge is deny-by-default
+					// and a request with no label holds no grant — exactly like a page, this probe
+					// names the window it is.
+					window: WINDOW_LABEL,
 				}),
 			],
 			REPO_ROOT,
