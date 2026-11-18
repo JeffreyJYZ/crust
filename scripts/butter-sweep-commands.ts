@@ -9,6 +9,7 @@
  */
 import {
 	AUTOSTART_ENABLE,
+	DB_HANDLE_MARKER,
 	DOWNLOADS_START,
 	LOCALES_DIR,
 	MENU_CONTEXT,
@@ -92,15 +93,19 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "logging.write", args: { level: "info", message: "sweep" } },
 	{ command: "logging.tail", args: {} },
 
-	// database — a file in the temp dir; open, one statement, one read, close.
+	// database — a file in the temp dir; open, one statement, one read, close. The handle is the one
+	// open returned, not the file name: naming "sweep" answers unknown-handle and proves no SQL.
 	{ command: "database.open", args: { name: "sweep" } },
 	{
 		command: "database.exec",
-		args: { handle: "sweep", sql: "CREATE TABLE IF NOT EXISTS t (v)" },
+		args: { handle: { __handle: DB_HANDLE_MARKER }, sql: "CREATE TABLE IF NOT EXISTS t (v)" },
 	},
-	{ command: "database.query", args: { handle: "sweep", sql: "SELECT 1" } },
-	{ command: "database.get", args: { handle: "sweep", sql: "SELECT 1" } },
-	{ command: "database.close", args: { handle: "sweep" } },
+	{
+		command: "database.query",
+		args: { handle: { __handle: DB_HANDLE_MARKER }, sql: "SELECT 1" },
+	},
+	{ command: "database.get", args: { handle: { __handle: DB_HANDLE_MARKER }, sql: "SELECT 1" } },
+	{ command: "database.close", args: { handle: { __handle: DB_HANDLE_MARKER } } },
 
 	// crash-reporter — the page-facing report and the reads it feeds.
 	{ command: "crash-reporter.report", args: { message: "sweep" } },
@@ -122,9 +127,11 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "sidecar.list", args: {} },
 	{ command: "menu.isDefault", args: {} },
 	{ command: "menu.read", args: {} },
-	{ command: "window-state.save", args: { label: "sweep" } },
-	{ command: "window-state.restore", args: { label: "sweep" } },
-	{ command: "window-state.forget", args: { label: "sweep" } },
+	// window-state resolves the label against the platform's real windows ("main", created in the
+	// child), so a made-up "sweep" answers unknown-window before any frame is read or written.
+	{ command: "window-state.save", args: { label: "main" } },
+	{ command: "window-state.restore", args: { label: "main" } },
+	{ command: "window-state.forget", args: { label: "main" } },
 	{ command: "tray.setTitle", args: { text: "sweep" } },
 	{ command: "tray.setTooltip", args: { text: "hover" } },
 	{ command: "tray.show", args: {} },

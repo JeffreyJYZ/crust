@@ -10,6 +10,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
 import { SWEEP } from "./butter-sweep-commands.ts";
+import { childScript } from "./butter-sweep-helpers.ts";
+import { captureFrontmost, restoreFocus } from "./harness/focus.ts";
 
 const REPO = new URL("..", import.meta.url).pathname;
 
@@ -19,101 +21,12 @@ interface Answer {
 	detail: string;
 }
 
-/**
- * The child: real platform, real plugins from `nativePlugins`, then one `handle()` per case. The
- * harness and the case table are written into the temp dir so the child needs no bundler.
- */
-function childScript(casesPath: string): string {
-	return `
-import { DarwinPlatform } from "./src/platform/darwin/platform.ts";
-import { nativePlugins } from "./src/runtime-plugins.ts";
-import { corePlugins } from "./src/plugins/core.ts";
-
-/** A 1x1 transparent PNG so the image write carries real bytes. */
-const SWEEP_PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
-const isRefusal = (answer) => {
-  if (typeof answer !== "object" || answer === null) return false;
-  if (answer.code === "not-implemented") return true;
-  return answer.code === undefined && typeof answer.message === "string" && answer.requires !== undefined;
-};
-
-// activate "always", because AppKit answers AXWindows only for a window on the active Space:
-// with "never" the app stays inactive, AX lists no windows, and elementCount correctly
-// refuses — a real answer, but it would read as a gap in the sweep.
-const platform = new DarwinPlatform({ appName: "crust-butter-sweep", activate: "always" });
-await platform.start();
-platform.createWindow({ label: "main", title: "sweep", url: "about:blank", width: 480, height: 320 });
-platform.pump(16);
-// The webview is built on the platform's own queue; without this a webview command answers
-// "no window" and would read like a gap rather than a wait.
-await Bun.sleep(500);
-
-const plugins = await nativePlugins(corePlugins, platform, {
-  app: "crust.butter.sweep",
-  shell: { allow: ["sh"] },
-});
-const byName = new Map(plugins.map((p) => [p.name, p]));
-const ctx = { emit: () => {} };
-const cases = JSON.parse(await Bun.file(${JSON.stringify(casesPath)}).text());
-
-for (const entry of cases) {
-  if (entry.skip) continue;
-  const dot = entry.command.indexOf(".");
-  const pluginName = entry.command.slice(0, dot);
-  const commandName = entry.command.slice(dot + 1);
-  const plugin = byName.get(pluginName);
-  if (!plugin) {
-    console.log(JSON.stringify({ command: entry.command, refusal: false, detail: "NO-PLUGIN" }));
-    continue;
-  }
-  const handler = plugin.commands[commandName];
-  if (typeof handler !== "function") {
-    console.log(JSON.stringify({ command: entry.command, refusal: false, detail: "NO-COMMAND" }));
-    continue;
-  }
-  /**
-   * The page-facing byte array for a command arg. The bridge revives a binary argument into a
-   * Uint8Array, and a case table written as JSON has no way to express one — so a case may name a
-   * marker string and the child substitutes it here.
-   */
-  const revive = (value) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      if (value.__bytes === "sweep-png") return SWEEP_PNG;
-      const out = {};
-      for (const [k, v] of Object.entries(value)) out[k] = revive(v);
-      return out;
-    }
-    if (Array.isArray(value)) return value.map(revive);
-    return value;
-  };
-
-  let answer;
-  try {
-    // The bridge attaches the caller's window to every request; a direct handler call has to add it
-    // itself, or window.label refuses for want of the identity it exists to report.
-    const request = entry.window === undefined ? ctx : { ...ctx, window: entry.window };
-    answer = await handler(revive(entry.args), request);
-  } catch (error) {
-    // A throw is a run: the command was reached and refused for a reason it named. The sweep's
-    // subject is a hollow row, which answers not-implemented instead of throwing.
-    console.log(JSON.stringify({ command: entry.command, refusal: false, detail: "threw" }));
-    continue;
-  }
-  console.log("ANSWER " + entry.command + " " + JSON.stringify(answer));
-  console.log(JSON.stringify({ command: entry.command, refusal: isRefusal(answer), detail: isRefusal(answer) ? JSON.stringify(answer).slice(0, 120) : "ok" }));
-}
-
-platform.stopPump();
-process.exit(0);
-`;
-}
-
 describe("butter sweep — every mapped command runs on the real platform", () => {
 	let answers: Answer[] = [];
 	let exitCode = -1;
 
 	afterAll(() => {
-		// Nothing to release: the child owned the platform and exited.
+		// Focus is restored in the spawn test's finally, which also covers a child crash.
 	});
 
 	test("the child drives every case and reports one answer each", async () => {
@@ -130,24 +43,45 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 		const casesPath = `${dir}/cases.json`;
 		await Bun.write(casesPath, JSON.stringify(SWEEP));
 
-		const child = Bun.spawn(["bun", "-e", childScript(casesPath)], {
-			cwd: REPO,
-			stdout: "pipe",
-			stderr: "pipe",
-			env: { ...process.env, CRUST_TEST_CHILD: "1", CRUST_DATA_DIR: dir, CRUST_SIDECARS_DIR: dir },
-		});
-		const out = await new Response(child.stdout).text();
-		console.log("DIAGNOSTIC ANSWERS:\n" + out.split("\n").filter((line) => line.startsWith("ANSWER")).join("\n"));
-		const err = await new Response(child.stderr).text();
-		await child.exited;
-		exitCode = child.exitCode ?? -1;
+		// The child starts a real AppKit platform with activate: "always", so it takes focus.
+		// Capture before it launches; the parent restores after it exits, because the child is a
+		// separate process and cannot hand focus back for itself (not even on a crash).
+		const frontmost = await captureFrontmost();
+		console.log(`frontmost before sweep child: ${frontmost ?? "(none)"}`);
+		let out = "";
+		let err = "";
+		try {
+			const child = Bun.spawn(["bun", "-e", childScript(casesPath)], {
+				cwd: REPO,
+				stdout: "pipe",
+				stderr: "pipe",
+				env: {
+					...process.env,
+					CRUST_TEST_CHILD: "1",
+					CRUST_DATA_DIR: dir,
+					CRUST_SIDECARS_DIR: dir,
+				},
+			});
+			out = await new Response(child.stdout).text();
+			err = await new Response(child.stderr).text();
+			await child.exited;
+			exitCode = child.exitCode ?? -1;
+		} finally {
+			await restoreFocus(frontmost);
+			// `open -a` returns before activation settles; let the app come forward, then read it back.
+			await Bun.sleep(200);
+			const after = await captureFrontmost();
+			console.log(`frontmost after sweep child:  ${after ?? "(none)"}`);
+		}
 
 		answers = out
 			.split("\n")
 			.filter((line) => line.startsWith("{"))
 			.map((line) => JSON.parse(line) as Answer);
 
-		const driven = SWEEP.filter((entry) => entry.skip === undefined).map((entry) => entry.command);
+		const driven = SWEEP.filter((entry) => entry.skip === undefined).map(
+			(entry) => entry.command,
+		);
 		expect(answers.map((answer) => answer.command).sort()).toEqual([...driven].sort());
 		// A crash in the child would leave answers empty and the equality above would fail; print
 		// the reason here so a red run says why instead of naming a missing command.
@@ -163,7 +97,11 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 	});
 
 	test("no driven command is missing from the runtime, and no command is missing from the table", () => {
-		expect(answers.filter((answer) => answer.detail === "NO-PLUGIN" || answer.detail === "NO-COMMAND")).toEqual([]);
+		expect(
+			answers.filter(
+				(answer) => answer.detail === "NO-PLUGIN" || answer.detail === "NO-COMMAND",
+			),
+		).toEqual([]);
 	});
 
 	test("every skip carries a reason that is not the capability itself", () => {
