@@ -3,10 +3,11 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import { buildApp, formatBytes } from "@/packaging/build";
+import { runOrThrow } from "@/packaging/exec";
 import { signApp } from "@/packaging/sign";
 import { detectSingle } from "../single.ts";
 import { assetsModuleSource } from "./build/assets.ts";
@@ -126,6 +127,10 @@ export async function build(options: CliOptions): Promise<number> {
 		entry: wrapperPath,
 		binaryName: "crust-app",
 		outDir,
+		// Without these, copySidecars runs with an empty list: the manifest is written as `[]`
+		// and every sidecar.spawn name is refused, so ship the declared binaries by name.
+		sidecars: config.build?.sidecars,
+		projectDir: options.dir,
 		app: {
 			id: config.app.id,
 			name: config.app.name,
@@ -141,7 +146,17 @@ export async function build(options: CliOptions): Promise<number> {
 	// `codesign` is macOS-only, and the `.app` is not what Linux or Windows ship: those
 	// hosts assemble the same bundle around the same binary and sign nothing.
 	const signed = process.platform === "darwin";
-	if (signed) await signApp({ appPath: result.appPath, mode: "adhoc" });
+	if (signed) {
+		// codesign treats every file in Contents/MacOS as nested code, so a sidecar copied there
+		// fails the bundle seal with "code object is not signed at all" unless it carries its own
+		// ad-hoc signature first. The manifest was moved to Resources for the same reason.
+		const sidecarDir = dirname(result.executablePath);
+		for (const name of config.build?.sidecars ?? []) {
+			const sidecar = resolve(sidecarDir, ...name.split(/[\\/]/));
+			await runOrThrow(["codesign", "--force", "--sign", "-", "--timestamp=none", sidecar]);
+		}
+		await signApp({ appPath: result.appPath, mode: "adhoc" });
+	}
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);
 	line("app", `${formatBytes(result.assembledBytes)}  ${result.appPath}`);

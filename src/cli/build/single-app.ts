@@ -7,6 +7,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { buildApp, formatBytes } from "@/packaging/build";
+import { signSidecars } from "@/packaging/installers-sidecars";
 import { signApp } from "@/packaging/sign";
 import { buildPage, type PageBuild, type SingleApp } from "@/single";
 import { frameworkRoot } from "../framework.ts";
@@ -52,6 +53,11 @@ export async function buildSingle(app: SingleApp, minimumSystemVersion: string):
 		entry: wrapperPath,
 		binaryName: "crust-app",
 		outDir,
+		// The same wiring `crust build` uses: a single-file config is built in memory, so
+		// today there are no declared sidecars, but the manifest must still name the set
+		// that was shipped instead of silently writing `[]` if one is ever declared.
+		sidecars: app.config.build?.sidecars,
+		projectDir: app.dir,
 		app: {
 			id: app.config.app.id,
 			name: app.config.app.name,
@@ -60,6 +66,7 @@ export async function buildSingle(app: SingleApp, minimumSystemVersion: string):
 		},
 	});
 
+	await signSidecars(result.executablePath, app.config.build?.sidecars ?? []);
 	await signApp({ appPath: result.appPath, mode: "adhoc" });
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);

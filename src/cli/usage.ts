@@ -50,3 +50,34 @@ notarize credentials come from the environment, never from argv:
 
 The published limits: ~85 MiB per app (Bun ships its runtime), macOS arm64 only,
 and no Developer ID signature yet, so Gatekeeper refuses builds on other machines.`;
+
+/**
+ * `crust <command> --help` answers one command instead of the whole wall. The
+ * command block and the shared options are read back out of `USAGE`, so the two
+ * stay in step: this file remains the only home for help wording.
+ */
+export function commandHelp(command: string): string {
+	const lines = USAGE.split("\n");
+	const start = lines.findIndex((line) => line.startsWith(`  crust ${command} `));
+	const block: string[] = [];
+	for (let index = start; index >= 0 && index < lines.length; index++) {
+		const line = lines[index];
+		if (line === undefined) break;
+		if (index > start && (line.startsWith("  crust ") || line.trim() === "")) break;
+		block.push(line);
+	}
+	const rest = (USAGE.split("\noptions:\n")[1] ?? "").split("\n");
+	const blank = rest.findIndex((line) => line.trim() === "");
+	const options = blank < 0 ? rest : rest.slice(0, blank);
+	return [
+		`crust ${command} — command help`,
+		"",
+		"usage:",
+		...block,
+		"",
+		"options:",
+		...options,
+		"",
+		'run "crust --help" for the full list of commands.',
+	].join("\n");
+}

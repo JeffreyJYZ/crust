@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import packageJson from "../../package.json";
+import { htmlModuleEntry } from "./dev.ts";
 import type { PackageFormat } from "./package/format.ts";
 
 /**
@@ -77,6 +78,10 @@ export async function runShell(command: string, cwd: string): Promise<number> {
  * otherwise `src/main.ts` and then `main.ts` are tried. Both are accepted so a
  * minimal app can be three files at the project root (`crust.config.ts`,
  * `main.ts`, `public/`), while a layered app keeps `src/main.ts`.
+ *
+ * The HTML module entry is skipped by the same rule `crust dev` applies: on Svelte and Vue
+ * scaffolds `src/main.ts` is the browser entry, so importing it as the backend dies before a
+ * window opens. `htmlModuleEntry` is shared with `devBackendEntry`, not copied here.
  */
 export async function resolveBackendEntry(
 	dir: string,
@@ -86,7 +91,10 @@ export async function resolveBackendEntry(
 		const path = resolve(dir, entry);
 		return (await exists(path)) ? { path, explicit: true } : undefined;
 	}
+	const pageEntry = await htmlModuleEntry(dir);
 	for (const candidate of ["src/main.ts", "main.ts"]) {
+		// A Vite scaffold names its frontend module here; it is not the backend.
+		if (pageEntry !== undefined && candidate === pageEntry) continue;
 		const path = resolve(dir, candidate);
 		if (await exists(path)) return { path, explicit: false };
 	}

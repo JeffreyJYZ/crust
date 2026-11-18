@@ -91,5 +91,8 @@ export const APP_NAMESPACE = "app";
  */
 export type BridgeFactory = (config: CrustConfig) => BridgeTarget;
 
-/** Cocoa pump tick, from `site/app/docs/design/page.mdx`: a 16 ms tick with a 0.25 ms slice holds. */
+/**
+ * Cocoa pump tick, from `site/app/docs/design/page.mdx`: JavaScript pumps on a 16 ms timer; the
+ * shim passes a 4 ms deadline with a 2 ms fallback, while the runloop sweep's best slice was 0.25 ms.
+ */
 export const PUMP_INTERVAL_MS = 16;

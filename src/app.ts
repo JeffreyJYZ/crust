@@ -23,7 +23,7 @@ import {
 	PUMP_INTERVAL_MS,
 	type Platform,
 } from "./app-types.ts";
-import { type PluginDefinition } from "./plugins/define.ts";
+import { invokeCommand, type PluginDefinition } from "./plugins/define.ts";
 
 export * from "./app-types.ts";
 export type { AppInfo } from "./app-info.ts";
@@ -122,7 +122,7 @@ export class App {
 	async invoke(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
 		const handler = this.#commands.get(name);
 		if (!handler) throw new Error(`crust: unknown command "${name}"`);
-		return await handler(args);
+		return await invokeCommand(handler, args);
 	}
 
 	/**

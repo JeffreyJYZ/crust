@@ -1,10 +1,14 @@
 /**
  * Compile the app's entry with Bun, then assemble the bundle around it. Measured (the design page (`site/app/docs/design/page.mdx`), `research/packaging.md` §1): stable 1.4.4 accepts `--trim` and strips nothing (byte-identical output), and 161 KiB of extra entry functions moved it that much — so the honest claim is "no bundled Chromium", not "small": the floor is Bun plus JavaScriptCore, roughly ten times Tauri's.
+ *
+ * `--aot` is a `bun build` flag, not a `bun compile` subcommand; stable 1.4.4 accepts it but
+ * produces a byte-identical binary (examples/hello: 89,820,386 B both ways), so it is kept free.
  */
 
 import { chmod, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { resolveSidecar, SIDECAR_MANIFEST } from "@/plugins/sidecar";
+import { supportsAot } from "./aot";
 import { assembleApp, type AssembleAppOptions, type AssembledApp } from "./app";
 import { runOrThrow } from "./exec";
 
@@ -56,30 +60,22 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 	await mkdir(outDir, { recursive: true });
 
 	// `--trim` always; whether it bites depends on the interpreter. Stable 1.4.4 strips
-	// nothing (byte-identical, measured), while a Bun carrying `bun compile` — canary
-	// 1.4.5 and 1.5 — is worth 85.27 MiB to 53.10 MiB on examples/hello. AOT is not
+	// nothing (byte-identical, measured). Canary bought 85.27 MiB -> 53.10 MiB on
+	// examples/hello, but stable 1.4.4 accepts `--aot` with no size change at all, so the
+	// flag is kept as a free future-proofing, not claimed as a win today. AOT is not
 	// faster (215.2 ms vs 211.9 ms on a 300M loop), so that buys size alone, and
 	// `--aot-allow-code-from-disk` costs 4.14 MiB so it is added only on the retry after
 	// AOT refuses a dynamic `import()` — the one case it exists for.
-	const aot =
-		Bun.spawnSync(["bun", "compile", "--help"], {
-			stdout: "ignore",
-			stderr: "ignore",
-		}).exitCode === 0;
+	// AOT is a `bun build --compile` flag, not a `bun compile` subcommand — the latter
+	// does not exist on stable 1.4.4 and was the whole reason the old probe failed.
+	const aot = supportsAot();
+	const args = ["bun", "build", "--compile", "--trim", ...(aot ? ["--aot"] : [])];
+	const out = ["--outfile", binaryPath, options.entry];
 
 	if (!aot) {
-		await runOrThrow([
-			"bun",
-			"build",
-			"--compile",
-			"--trim",
-			"--outfile",
-			binaryPath,
-			options.entry,
-		]);
+		await runOrThrow([...args, ...out]);
 	} else {
-		const args = ["compile", "--trim", "--outfile", binaryPath, options.entry];
-		const first = Bun.spawnSync(["bun", ...args], { stdout: "inherit", stderr: "pipe" });
+		const first = Bun.spawnSync([...args, ...out], { stdout: "inherit", stderr: "pipe" });
 		const complaint = first.stderr ? new TextDecoder().decode(first.stderr) : "";
 		if (first.exitCode === 0) {
 			// nothing further
@@ -87,17 +83,11 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 			console.log(
 				"  aot       the entry imports code at run time, so this build allows it from disk (+4.1 MiB)",
 			);
-			await runOrThrow([
-				"bun",
-				"compile",
-				"--trim",
-				"--aot-allow-code-from-disk",
-				"--outfile",
-				binaryPath,
-				options.entry,
-			]);
+			await runOrThrow([...args, "--aot-allow-code-from-disk", ...out]);
 		} else {
-			throw new Error(`bun compile failed (exit ${first.exitCode}):\n${complaint.trim()}`);
+			throw new Error(
+				`bun build --compile --aot failed (exit ${first.exitCode}):\n${complaint.trim()}`,
+			);
 		}
 	}
 

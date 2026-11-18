@@ -8,6 +8,7 @@ import { chmod, cp, mkdir, rm, stat, symlink, writeFile } from "node:fs/promises
 import { basename, join, resolve } from "node:path";
 import { formatBytes } from "./build";
 import { run } from "./exec";
+import { findInstallerSidecars, stageSidecars } from "./installers-sidecars";
 
 /** The command runner, injectable so a test needs no tool installed. */
 export type Exec = typeof run;
@@ -108,6 +109,11 @@ export async function buildAppImage(options: AppImageOptions): Promise<AppImageR
 	const target = join(binDir, options.binaryName);
 	await cp(source, target);
 	await chmod(target, 0o755);
+
+	// Same names, modes and manifest as the built bundle: the sidecar plugin looks next to
+	// the executable, which in an AppImage is AppDir/usr/bin, not the project's dist dir.
+	const sidecars = await findInstallerSidecars(options.appPath);
+	await stageSidecars(sidecars, binDir);
 
 	const desktop = `${options.id}.desktop`;
 	await writeFile(join(applications, desktop), desktopEntry(options), "utf8");

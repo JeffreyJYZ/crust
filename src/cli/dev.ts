@@ -11,7 +11,49 @@ import { detectSingle } from "@/single";
 import { bridgeEnv, waitForDevServer } from "./dev/frontend.ts";
 import { watchRuntime } from "./dev/runtime.ts";
 import { devSingle } from "./dev/single.ts";
-import { fail, line, missingInstall, resolveBackendEntry, type CliOptions } from "./util.ts";
+import { exists, fail, line, missingInstall, type CliOptions } from "./util.ts";
+
+/**
+ * The module script the page loads, as a project-relative path. A Vite scaffold names its
+ * *frontend* entry here — `src/main.ts` on Svelte and Vue — which collides with crust's own
+ * `src/main.ts` backend convention. Importing that browser entry in the runtime child throws
+ * `document is not defined` before a window opens (measured on both scaffolds).
+ */
+export async function htmlModuleEntry(dir: string): Promise<string | undefined> {
+	const html = await Bun.file(join(dir, "index.html"))
+		.text()
+		.catch(() => undefined);
+	if (html === undefined) return undefined;
+	for (const tag of html.match(/<script\b[^>]*>/g) ?? []) {
+		if (!/\btype=["']module["']/.test(tag)) continue;
+		const src = tag.match(/\bsrc=["']([^"']+)["']/)?.[1];
+		if (src) return src.replace(/^\/+/, "");
+	}
+	return undefined;
+}
+
+/**
+ * `resolveBackendEntry` plus one rule: when the page's own HTML names `src/main.ts` as its
+ * module, that file is the frontend, so the backend is `main.ts` at the project root. An
+ * explicit `--entry` still wins. This keeps the resolution in dev, before the runtime child
+ * is spawned, rather than letting the child import a browser module and die on `document`.
+ */
+export async function devBackendEntry(
+	dir: string,
+	explicit?: string,
+): Promise<{ path: string; explicit: boolean } | undefined> {
+	if (explicit) {
+		const path = resolve(dir, explicit);
+		return (await exists(path)) ? { path, explicit: true } : undefined;
+	}
+	const pageEntry = await htmlModuleEntry(dir);
+	for (const candidate of ["src/main.ts", "main.ts"]) {
+		if (pageEntry !== undefined && candidate === pageEntry) continue;
+		const path = resolve(dir, candidate);
+		if (await exists(path)) return { path, explicit: false };
+	}
+	return undefined;
+}
 
 export async function dev(options: CliOptions): Promise<number> {
 	const detected = await detectSingle(options);
@@ -26,7 +68,7 @@ export async function dev(options: CliOptions): Promise<number> {
 	console.log(`crust dev — ${loaded.path}`);
 	const config = loaded.config;
 
-	const backend = await resolveBackendEntry(options.dir, options.entry);
+	const backend = await devBackendEntry(options.dir, options.entry);
 	if (!backend) {
 		return fail(
 			"dev",

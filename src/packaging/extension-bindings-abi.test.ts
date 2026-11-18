@@ -81,23 +81,35 @@ describe("the generated module against a real dylib", () => {
 		}, 120_000);
 	}
 
-	test("a module with no abiVersion binds a dylib that exports no marker", async () => {
-		if (CLANG === undefined) return;
-		const dir = await mkdtemp(join(tmpdir(), "crust-abi-none-"));
-		try {
-			expect(await buildDylib(dir, source(11))).toBe(true);
-			// The module is named `plain` but the file on disk is `math`; the default suffix is the point
-			// here, and no abiVersion means no marker symbol is declared.
-			const plain = await writeBindings({
-				outDir: dir,
-				name: "plain",
-				symbols: [...ANSWER],
-				dylib: `math${dylibSuffix()}`,
-			});
-			const module = await importFresh(plain.path);
-			expect((module.answer as () => number)()).toBe(11);
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
+	// The sibling above registers a visible skip when clang is absent. A bare `return` inside this
+	// test instead reported pass with zero assertions, so absence now registers a skip the same way.
+	if (CLANG === undefined) {
+		test.skip(
+			"skipped: clang is not on PATH — a module with no abiVersion binds a markerless dylib",
+		);
+	} else {
+		test("a module with no abiVersion binds a dylib that exports no marker", async () => {
+			const dir = await mkdtemp(join(tmpdir(), "crust-abi-none-"));
+			try {
+				expect(await buildDylib(dir, source(11))).toBe(true);
+				// The module is named `plain` but the file on disk is `math`; the default suffix is the point
+				// here, and no abiVersion means no marker symbol is declared.
+				const plain = await writeBindings({
+					outDir: dir,
+					name: "plain",
+					symbols: [...ANSWER],
+					dylib: `math${dylibSuffix()}`,
+				});
+				const module = await importFresh(plain.path);
+				expect((module.answer as () => number)()).toBe(11);
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+	}
+
+	// A run where the tool vanished must not read green on skips alone.
+	test("coverage guard: clang is on PATH, so the dylib tests ran", () => {
+		expect(CLANG).toBeDefined();
 	});
 });
