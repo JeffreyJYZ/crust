@@ -96,18 +96,18 @@ this lane in `987f0bf` on top of `5d7502d`.
   still matching `crust.config.ts`; a metacharacter-free string is unchanged; and the native e2e's
   `SURVIVOR_PATTERNS` really calls `pgrepLiteral` (a helper nobody calls would fix nothing).
 
+## Closed since this report
+
+- **`site/app/docs/guides/native-extensions/page.mdx`** — the argv table now names `<ext>` as the
+  host's suffix with all three spelled out (`.dylib`, `.so`, `.dll`), the `clang` row says
+  `-dynamiclib on macOS, -shared elsewhere`, and `:29` documents `abiVersion`,
+  `crust_extension_abi` and `reload()`. Re-read against `src/packaging/extension-bindings.ts:55-63`
+  before writing this line.
+- **`scripts/native-extensions.ts`** — no longer names a `.dylib`: the suffix is left to
+  `writeBindings`, which uses the host's (`rg -n 'dylib:' scripts/native-extensions.ts` is empty).
+
 ## Not fixed / needs another lane
 
-- **`site/app/docs/guides/native-extensions/page.mdx:17-19,25`** still presents `.dylib` and
-  `-dynamiclib` as *the* command lines with no platform caveat (finding 2's docs half). `site/` is the
-  coordinator's; the page needs the suffix table (`.so` on Linux, `.dll` on Windows, `-shared` for
-  clang) and a note that `dylibName`/`dylibSuffix` are platform-aware. It also has no mention of
-  `abiVersion`/`reload()` or `crust_extension_abi`, which are the new opt-in ABI contract.
-- **`scripts/native-extensions.ts:37-40,51`** still hardcodes `dylib: "clock.dylib"` /
-  `"libclock.dylib"` in its `PLAN` table, so on Linux the compiler now emits `clock.so` while
-  `writeBindings` is told to dlopen `clock.dylib`. That script is not in this lane's file list; it needs
-  `dylib: \`clock${dylibSuffix()}\`` and `\`libclock${dylibSuffix()}\``, or better, no explicit name at
-  all now that `writeBindings` defaults to the platform suffix.
 - **`examples/native/README.md:36-41`** says a native extension's dylib is never in a standalone bundle
   (finding 1's evidence path) — unchanged and correct, finding 1 was not mine.
 - **`src/cli/dev/runtime.ts:132-137`** gets no change from me: it is the `runtime`/`cli` lane's file, and
