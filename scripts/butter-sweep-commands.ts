@@ -4,36 +4,27 @@
  * reason and is asserted to be skipped for that reason, so an exclusion is a decision somebody made
  * rather than a silent hole.
  *
- * Split from `butter-sweep.test.ts` for the 200-line cap, and because the table is data: the runner
- * reads it, the test asserts it covers every command the plugins expose.
+ * The shapes and skip constants live in `butter-sweep-helpers.ts`; the runner reads this table and
+ * the test asserts it covers every command the plugins expose.
  */
-export interface SweepCase {
-	/** `plugin.command`, exactly as a page would invoke it. */
-	command: string;
-	/** Arguments, or undefined for a command that takes none. */
-	args?: unknown;
-	/**
-	 * The window label the bridge would attach to this request. `window.label` is the one command
-	 * whose whole answer *is* that label, so it needs one or it refuses for a reason that says so.
-	 */
-	window?: string;
-	/** Set only when the command must not be driven; the text is why. */
-	skip?: string;
-}
-
-const NO_PERSON =
-	"needs a person in front of the machine (a permission prompt or a system dialog), so a runner " +
-	"cannot answer it; the plugin suite covers its refusal path instead";
-
-/** Where the sweep writes its i18n catalogue; the runner creates it beside the case table. */
-export const LOCALES_DIR = ".sweep-tmp/locales";
-
-/**
- * `clipboard.writeImage` takes real bytes, and a JSON case table cannot carry a Uint8Array — so a
- * case names this marker and the child substitutes a 1×1 transparent PNG. The smallest real PNG is
- * what makes the write a pasteboard write rather than a shape check.
- */
-export const PNG_MARKER = "sweep-png";
+import {
+	AUTOSTART_ENABLE,
+	DOWNLOADS_START,
+	LOCALES_DIR,
+	MENU_CONTEXT,
+	NO_PERSON,
+	NOTIFICATION_PERMISSION,
+	OPENER_PATH,
+	OPENER_REVEAL,
+	OPENER_URL,
+	PNG_MARKER,
+	SINGLE_INSTANCE,
+	SWEEP_BUNDLE_ID,
+	SWEEP_SHORTCUT,
+	UPDATER_INSTALL,
+	UPDATER_RELAUNCH,
+	type SweepCase,
+} from "./butter-sweep-helpers.ts";
 
 export const SWEEP: readonly SweepCase[] = [
 	// fs — every path inside a temp dir the runner owns.
@@ -103,7 +94,10 @@ export const SWEEP: readonly SweepCase[] = [
 
 	// database — a file in the temp dir; open, one statement, one read, close.
 	{ command: "database.open", args: { name: "sweep" } },
-	{ command: "database.exec", args: { handle: "sweep", sql: "CREATE TABLE IF NOT EXISTS t (v)" } },
+	{
+		command: "database.exec",
+		args: { handle: "sweep", sql: "CREATE TABLE IF NOT EXISTS t (v)" },
+	},
 	{ command: "database.query", args: { handle: "sweep", sql: "SELECT 1" } },
 	{ command: "database.get", args: { handle: "sweep", sql: "SELECT 1" } },
 	{ command: "database.close", args: { handle: "sweep" } },
@@ -163,6 +157,20 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "sidecar.list", args: {} },
 	// clipboard image — a real 1×1 PNG through the real pasteboard, then read back.
 	{ command: "clipboard.writeImage", args: { png: { __bytes: "sweep-png" } } },
+
+	// shortcut — a real Carbon hot key on the darwin adapter, registered then released. Order matters:
+	// isRegistered and list read what register took; unregister and unregisterAll give it back.
+	{ command: "shortcut.register", args: { accelerator: SWEEP_SHORTCUT } },
+	{ command: "shortcut.isRegistered", args: { accelerator: SWEEP_SHORTCUT } },
+	{ command: "shortcut.list", args: {} },
+	{ command: "shortcut.unregister", args: { accelerator: SWEEP_SHORTCUT } },
+	{ command: "shortcut.unregisterAll", args: {} },
+
+	// autostart — only the two commands that cannot add a login item. A sweep-only bundle id makes
+	// the read answer false and the removal a no-op, so neither touches the person's LaunchAgents.
+	{ command: "autostart.isEnabled", args: { bundleId: SWEEP_BUNDLE_ID } },
+	{ command: "autostart.disable", args: { bundleId: SWEEP_BUNDLE_ID } },
+
 	// tray.destroy runs last: it removes the item every earlier tray command needed.
 	{ command: "tray.destroy", args: {} },
 
@@ -170,14 +178,15 @@ export const SWEEP: readonly SweepCase[] = [
 	{ command: "dialog.openPanel", skip: NO_PERSON },
 	{ command: "dialog.savePanel", skip: NO_PERSON },
 	{ command: "notification.notify", skip: NO_PERSON },
-	{ command: "notification.requestPermission", skip: "by design the notification itself raises the prompt, so this command refuses on purpose and always" },
+	{ command: "notification.requestPermission", skip: NOTIFICATION_PERMISSION },
 	{ command: "accessibility.prompt", skip: NO_PERSON },
-	{ command: "opener.openUrl", skip: "launches the default browser, which a headless runner must not do" },
-	{ command: "opener.revealItem", skip: "opens a Finder window and steals focus from the person using the machine" },
-	{ command: "opener.openPath", skip: "hands a path to LaunchServices, which may open any registered app" },
-	{ command: "updater.install", skip: "replaces the running bundle on disk, which would leave the sweep swapping its own app" },
-	{ command: "updater.relaunch", skip: "re-executes the app, which kills the test runner before it can report" },
-	{ command: "menu.showContext", skip: "opens a modal context menu that blocks until a person dismisses it" },
-	{ command: "downloads.start", skip: "starts a real network download into the app data root, which a runner must not touch" },
-	{ command: "single-instance.release", skip: "the runtime claims this lock at launch and the runner holds it; a release here would free the harness's own claim" },
+	{ command: "opener.openUrl", skip: OPENER_URL },
+	{ command: "opener.revealItem", skip: OPENER_REVEAL },
+	{ command: "opener.openPath", skip: OPENER_PATH },
+	{ command: "updater.install", skip: UPDATER_INSTALL },
+	{ command: "updater.relaunch", skip: UPDATER_RELAUNCH },
+	{ command: "menu.showContext", skip: MENU_CONTEXT },
+	{ command: "downloads.start", skip: DOWNLOADS_START },
+	{ command: "single-instance.release", skip: SINGLE_INSTANCE },
+	{ command: "autostart.enable", skip: AUTOSTART_ENABLE },
 ];

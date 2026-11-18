@@ -99,6 +99,7 @@ for (const entry of cases) {
     console.log(JSON.stringify({ command: entry.command, refusal: false, detail: "threw" }));
     continue;
   }
+  console.log("ANSWER " + entry.command + " " + JSON.stringify(answer));
   console.log(JSON.stringify({ command: entry.command, refusal: isRefusal(answer), detail: isRefusal(answer) ? JSON.stringify(answer).slice(0, 120) : "ok" }));
 }
 
@@ -136,6 +137,7 @@ describe("butter sweep — every mapped command runs on the real platform", () =
 			env: { ...process.env, CRUST_TEST_CHILD: "1", CRUST_DATA_DIR: dir, CRUST_SIDECARS_DIR: dir },
 		});
 		const out = await new Response(child.stdout).text();
+		console.log("DIAGNOSTIC ANSWERS:\n" + out.split("\n").filter((line) => line.startsWith("ANSWER")).join("\n"));
 		const err = await new Response(child.stderr).text();
 		await child.exited;
 		exitCode = child.exitCode ?? -1;

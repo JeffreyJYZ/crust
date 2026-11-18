@@ -2,10 +2,10 @@
  * The `keychain` plugin for whichever platform is running, split out of `runtime-plugins.ts` when that
  * file passed the 200-line cap.
  *
- * macOS answers with `Security.framework` and Windows with `advapi32`; every other platform gets the
- * plugin with no adapter, so each command refuses by name instead of the name being unknown. Linux is
- * deliberately `not-implemented`: libsecret needs a running keyring daemon and a GLib main loop crust
- * does not bind, and a plaintext file called secure is the one lie worse than a refusal.
+ * macOS answers with `Security.framework`, Windows with `advapi32`, and Linux with libsecret's
+ * synchronous API over the dlopen'd C shim — no GLib main loop is needed because libsecret spins its
+ * own for `*_sync`. An unrecognised platform gets the plugin with no adapter, so each command refuses
+ * by name instead of the name being unknown; a plaintext file called secure is the one lie worse.
  */
 
 import type { PluginDefinition } from "@/plugins";
@@ -20,6 +20,10 @@ export async function platformKeychainPlugin(): Promise<PluginDefinition> {
 	if (process.platform === "darwin") {
 		const { darwinKeychainAdapter } = await import("@/platform/darwin/keychain");
 		return createKeychainPlugin(darwinKeychainAdapter());
+	}
+	if (process.platform === "linux") {
+		const { linuxKeychainAdapter } = await import("@/platform/linux/keychain");
+		return createKeychainPlugin(linuxKeychainAdapter());
 	}
 	return createKeychainPlugin();
 }

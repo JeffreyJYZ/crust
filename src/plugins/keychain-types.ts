@@ -55,7 +55,7 @@ export interface KeychainSetArgs extends KeychainKeyArgs {
  */
 export interface KeychainAdapter {
 	/** Which platform answers; only used to word a refusal. */
-	readonly platform: "darwin" | "win32";
+	readonly platform: "darwin" | "win32" | "linux";
 	set(service: string, account: string, secret: string): void;
 	/** The secret, or `null` when no such credential is stored. */
 	get(service: string, account: string): string | null;

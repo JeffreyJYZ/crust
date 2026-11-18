@@ -40,6 +40,18 @@ export interface LinuxShim {
 	 * then 1 when it is the primary. 1 written, 0 when the index names nothing.
 	 */
 	shim_screen_info(index: number, out: Float64Array): number;
+
+	/** Resolve libsecret's synchronous API; 1 ready, 0 with a named error in `shim_lib_error_text`. */
+	shim_keyring_open(): number;
+	/** 1 stored, 0 refused with a named error. */
+	shim_keyring_set(service: Uint8Array, account: Uint8Array, secret: Uint8Array): number;
+	/**
+	 * The secret, or null. `status[0]`: 1 found, 0 not stored, -1 refused, -2 too long.
+	 * The returned string is a static C buffer, so no GLib allocation crosses bun:ffi.
+	 */
+	shim_keyring_get(service: Uint8Array, account: Uint8Array, status: Int32Array): string | null;
+	/** 1 removed, 0 nothing stored, -1 refused with a named error. */
+	shim_keyring_delete(service: Uint8Array, account: Uint8Array): number;
 }
 
 /**
@@ -93,6 +105,11 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 			shim_screen_ready: { args: [], returns: I32 },
 			shim_screen_count: { args: [], returns: I32 },
 			shim_screen_info: { args: [I32, P], returns: I32 },
+
+			shim_keyring_open: { args: [], returns: I32 },
+			shim_keyring_set: { args: [CS, CS, CS], returns: I32 },
+			shim_keyring_get: { args: [CS, CS, P], returns: CS },
+			shim_keyring_delete: { args: [CS, CS], returns: I32 },
 
 			shim_webview_title: { args: [P], returns: CS },
 			shim_webview_load_state: { args: [], returns: I32 },

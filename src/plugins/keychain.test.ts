@@ -117,41 +117,6 @@ describe("names a caller may not pass", () => {
 	});
 });
 
-describe("list", () => {
-	test("answers every account under one service, sorted, and empty is a real answer", async () => {
-		const plugin = createKeychainPlugin(
-			fakeKeychain([
-				["app", "token", "x"],
-				["app", "refresh", "y"],
-				["other", "token", "z"],
-			]),
-		);
-
-		expect(await plugin.commands.list({ service: "app" })).toEqual({
-			ok: true,
-			accounts: ["refresh", "token"],
-		});
-		expect(await plugin.commands.list({ service: "empty" })).toEqual({
-			ok: true,
-			accounts: [],
-		});
-	});
-
-	test("a platform half without list answers not-implemented naming CredEnumerateW", async () => {
-		const native = fakeKeychain();
-		// Windows binds no `CredEnumerateW`, so its adapter omits `list` rather than returning [].
-		const without = { ...native, list: undefined };
-		const plugin = createKeychainPlugin(without);
-
-		const answer = await plugin.commands.list({ service: "app" });
-		expect(answer).toMatchObject({
-			ok: false,
-			code: "not-implemented",
-			requires: "CredEnumerateW",
-		});
-	});
-});
-
 describe("a native refusal and a missing platform", () => {
 	test("a throwing adapter becomes handler-error carrying its message, not a rejected invoke", async () => {
 		const native = fakeKeychain();

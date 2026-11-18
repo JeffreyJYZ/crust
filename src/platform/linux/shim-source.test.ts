@@ -3,7 +3,7 @@ import { SHIM_PARTS, SHIM_PART_NAMES, SHIM_PART_PATHS, shimSource } from "./inde
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(5);
+		expect(SHIM_PARTS).toHaveLength(6);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -41,6 +41,7 @@ describe("shim assembly", () => {
 			"40_window.c",
 			"50_pump.c",
 			"60_screen.c",
+			"70_keyring.c",
 		]);
 	});
 
@@ -80,5 +81,16 @@ describe("native contracts", () => {
 
 	test("the pump reports a native iteration, not whether events were dispatched", () => {
 		expect(pump).toContain("shim_context_iterate(0, 0);\n\treturn 1;");
+	});
+
+	test("the keychain binds the synchronous API and never hands GLib memory to Bun", () => {
+		const keyring = SHIM_PARTS[5];
+		expect(keyring).toContain('shim_open("libsecret-1.so.0")');
+		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_storev_sync"');
+		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_lookupv_sync"');
+		// The lookup copies into a static buffer before returning; no GLib pointer crosses FFI.
+		expect(keyring).toContain("static char shim_keyring_value[SHIM_KEYRING_MAX]");
+		expect(keyring).toContain("((fn_secret_free)shim_secret_free)(value)");
+		expect(keyring).toContain("return truncated ? 0 : shim_keyring_value");
 	});
 });

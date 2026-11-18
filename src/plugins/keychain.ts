@@ -12,8 +12,8 @@
  * **A missing credential is `{ found: false }`, not an error.** "You have not stored this" is a normal
  * answer, and a refusal that a caller must catch would make a first launch look broken.
  *
- * A platform with no adapter refuses by name: Linux answers `not-implemented` naming
- * libsecret/gnome-keyring rather than writing a plaintext file and calling it secure.
+ * A platform with no adapter refuses by name rather than writing a plaintext file and calling it
+ * secure. macOS, Windows and Linux (libsecret's synchronous API) each supply a real adapter.
  */
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
@@ -34,14 +34,21 @@ export * from "./keychain-types";
 export const KEYCHAIN_COMMANDS = ["set", "get", "delete", "list"] as const;
 
 /**
- * What a refusal names, per platform. Linux has no OS keychain in this project's scope: libsecret
- * needs a running keyring daemon and a GLib main loop, and a plaintext fallback would be a lie in the
- * one place lying is worst.
+ * What a refusal names, per platform. These are the fallbacks when no adapter is passed; the three
+ * supported platforms supply one. libsecret's `*_sync` API creates its own main loop, so Linux needs
+ * no loop from crust — only libsecret and a Secret Service provider on the session bus.
  */
 const REQUIRES: Record<string, string> = {
 	darwin: "SecItemAdd, SecItemCopyMatching and SecItemDelete in Security.framework",
 	win32: "CredWriteW, CredReadW and CredDeleteW in advapi32",
-	linux: "libsecret and a running keyring daemon (gnome-keyring or KWallet), which crust does not bind",
+	linux: "libsecret-1.so.0 and a Secret Service provider (libsecret-1-0 and gnome-keyring) on the session bus",
+};
+
+/** The enumeration API `list` needs, per platform, so its refusal never names the wrong OS. */
+const REQUIRES_LIST: Record<string, string> = {
+	darwin: "SecItemCopyMatching in Security.framework",
+	win32: "CredEnumerateW in advapi32",
+	linux: "secret_service_search_sync in libsecret",
 };
 
 function reasonOf(error: unknown): string {
@@ -63,7 +70,14 @@ function badRequest(message: string): KeychainFailure {
 	return { ok: false, code: "bad-request", message };
 }
 
-export function createKeychainPlugin(adapter?: KeychainAdapter): PluginDefinition<
+/**
+ * `platform` is injectable so a refusal can be pinned on any OS: the real caller uses the host, and a
+ * test on macOS can still assert what Windows and Linux name without a CI matrix.
+ */
+export function createKeychainPlugin(
+	adapter?: KeychainAdapter,
+	platform: string = process.platform,
+): PluginDefinition<
 	"keychain",
 	{
 		set: (args?: KeychainSetArgs) => KeychainSetResult | KeychainFailure | NotImplemented;
@@ -74,7 +88,7 @@ export function createKeychainPlugin(adapter?: KeychainAdapter): PluginDefinitio
 		}) => KeychainListResult | KeychainFailure | NotImplemented;
 	}
 > {
-	const requires = REQUIRES[process.platform] ?? "an OS credential store";
+	const requires = REQUIRES[platform] ?? "an OS credential store";
 
 	const missing = (command: string): NotImplemented =>
 		notImplemented(
@@ -158,10 +172,11 @@ export function createKeychainPlugin(adapter?: KeychainAdapter): PluginDefinitio
 				// "nothing is stored", which is the one answer a credential store must never
 				// invent. Windows needs `CredEnumerateW`, which its half does not bind.
 				if (typeof adapter.list !== "function") {
+					const needs = REQUIRES_LIST[platform] ?? "a credential enumeration API";
 					return notImplemented(
-						"keychain.list needs CredEnumerateW, which this platform half does not bind. " +
+						`keychain.list needs ${needs}, which this platform half does not bind. ` +
 							"get, set and delete work; enumerate from the app's own index instead.",
-						"CredEnumerateW",
+						needs,
 					);
 				}
 				try {

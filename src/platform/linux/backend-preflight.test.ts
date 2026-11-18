@@ -25,6 +25,10 @@ function fakeSymbols() {
 		shim_webview_load: () => 1,
 		shim_screen_count: () => 0,
 		shim_screen_info: () => 0,
+		shim_keyring_open: () => 0,
+		shim_keyring_set: () => 0,
+		shim_keyring_get: () => null,
+		shim_keyring_delete: () => 0,
 	};
 	return { symbols, calls };
 }

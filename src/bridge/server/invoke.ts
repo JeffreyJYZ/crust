@@ -10,6 +10,7 @@ import { asWindowLabel } from "../window-identity.ts";
 import { CrustError, toCrustError } from "../errors";
 import { candidateActions, effectiveAction } from "./actions.ts";
 import { encodeResult } from "./bytes.ts";
+import { resultStatus } from "./failure-status.ts";
 import {
 	type CompiledCapabilities,
 	compileCapabilities,
@@ -141,12 +142,10 @@ export async function invokeRequest(
 			const bytes = await readCappedBody(request);
 			// The binary form has no JSON body to carry a field, so the routing hint rides in the query.
 			const routing = asWindowLabel(url.searchParams.get("window"));
+			const result = await run(plugin, command, bytes, routing, authority);
 			return jsonResponse(
-				{
-					ok: true,
-					result: encodeResult(await run(plugin, command, bytes, routing, authority)),
-				},
-				200,
+				{ ok: true, result: encodeResult(result) },
+				resultStatus(result),
 				cors,
 			);
 		}
@@ -173,7 +172,7 @@ export async function invokeRequest(
 			asWindowLabel(parsed.window),
 			authority,
 		);
-		return jsonResponse({ ok: true, result: encodeResult(result) }, 200, cors);
+		return jsonResponse({ ok: true, result: encodeResult(result) }, resultStatus(result), cors);
 	} catch (error) {
 		return errorResponse(error, cors);
 	}
