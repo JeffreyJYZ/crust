@@ -7,6 +7,7 @@
  * invoke half is handed to `installCrust` as an argument.
  */
 
+import { installPageA11y } from "./a11y-page.ts";
 import { installCrust } from "./install.ts";
 import { installInvoke } from "./invoke.ts";
 import type { CrustConfig } from "./types.ts";
@@ -65,7 +66,7 @@ function jsonForScript(value: unknown): string {
  */
 export function bootstrapSource(config: CrustConfig): string {
 	const served = `Object.assign({ window: ${PAGE_WINDOW}, token: ${PAGE_TOKEN} }, ${jsonForScript(config)})`;
-	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()});`;
+	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()}, ${installPageA11y.toString()});`;
 }
 
 /**
@@ -79,5 +80,5 @@ export function bootstrapSource(config: CrustConfig): string {
  */
 export function pageClientSource(): string {
 	const dev = `Object.assign({ window: ${PAGE_WINDOW} }, window.__CRUST__)`;
-	return `(${installCrust.toString()})(${dev}, window, ${installInvoke.toString()});`;
+	return `(${installCrust.toString()})(${dev}, window, ${installInvoke.toString()}, ${installPageA11y.toString()});`;
 }

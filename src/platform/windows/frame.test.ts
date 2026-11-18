@@ -10,6 +10,19 @@ import { describe, expect, test } from "bun:test";
 import { FRAME_LIMIT, localArrays, offences, unitArrays } from "./frames.ts";
 import { readShimPart } from "./shim-source.ts";
 
+/**
+ * `48_keychain.c` is its own translation unit (`keychain-ffi.ts` compiles it alone), so
+ * `unitArrays()` never sees it. `kc_wchar` is `unsigned short`, the same 2-byte width as the
+ * scanner's `shim_wchar`, so normalising the typedef name lets the same rule measure this file.
+ */
+const keychain = (source: string) => {
+	const max = /#define SHIM_KC_TARGET_MAX (\d+)/.exec(source)?.[1] ?? "?";
+	return localArrays(
+		"48_keychain.c",
+		source.replaceAll("kc_wchar", "shim_wchar").replaceAll("SHIM_KC_TARGET_MAX", max),
+	);
+};
+
 describe("frame size", () => {
 	test("no local array in the unit reaches 4096 bytes", () => {
 		expect(offences(unitArrays())).toEqual([]);
@@ -80,5 +93,26 @@ describe("frame size", () => {
 		const probe = readShimPart("36_probe.c");
 		expect(probe).toContain("int shim_frame_probe_small(void)");
 		expect(probe).not.toContain("shim_frame_probe_large");
+	});
+
+	test("the separately-compiled keychain unit obeys the same frame rule", () => {
+		const source = readShimPart("48_keychain.c");
+		expect(source).toContain("static kc_wchar target[SHIM_KC_TARGET_MAX]");
+		expect(offences(keychain(source))).toEqual([]);
+		// The guard is real: drop `static` on the four scratch buffers and the same scan catches all
+		// four 4096-byte frames that used to emit the unresolved `call __chkstk`.
+		const asLocals = source.replace(/\bstatic kc_wchar (target|prefix)\[/g, "kc_wchar $1[");
+		const caught = keychain(asLocals);
+		expect(caught.length).toBe(4);
+		expect(caught.every((entry) => entry.bytes === FRAME_LIMIT)).toBe(true);
+	});
+
+	test("the keychain scan bites at 4096 bytes on that file's 2-byte type", () => {
+		const probe = (bound: number): string =>
+			`int shim_keychain_probe(void) {\n\tkc_wchar buf[${bound}];\n\treturn buf[0];\n}\n`;
+		const large = keychain(probe(2048));
+		expect(large[0]?.bytes).toBe(FRAME_LIMIT);
+		expect(offences(large).length).toBe(1);
+		expect(offences(keychain(probe(2047)))).toEqual([]);
 	});
 });

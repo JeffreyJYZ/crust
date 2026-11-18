@@ -56,7 +56,9 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 
 	const executableName = basename(options.binary);
 	if (!executableName) {
-		throw new Error(`binary path ${options.binary} has no filename`);
+		throw new Error(
+			`binary path ${options.binary} has no filename — pass a path ending in a file name, e.g. dist/crust-app`,
+		);
 	}
 
 	const sourceStat = await stat(options.binary).catch(() => undefined);
@@ -86,7 +88,9 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 	if (options.iconPath) {
 		const iconStat = await stat(options.iconPath).catch(() => undefined);
 		if (!iconStat?.isFile()) {
-			throw new Error(`icon ${options.iconPath} does not exist`);
+			throw new Error(
+				`icon ${options.iconPath} does not exist — create the PNG or fix app.icon in crust.config.ts`,
+			);
 		}
 		const icnsPath = join(resources, "icon.icns");
 		if (options.iconPath.toLowerCase().endsWith(".icns")) {

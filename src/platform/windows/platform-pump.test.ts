@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { waitFor } from "../../../scripts/harness/wait.ts";
 import { fakeBackend } from "./fake-backend.ts";
 import { fakeShim } from "./fake-shim.ts";
 import { createPlatform } from "./platform.ts";
@@ -14,8 +15,7 @@ describe("pump", () => {
 		expect(platform.pumping).toBe(true);
 		expect(platform.ticks).toBeGreaterThan(0);
 
-		await Bun.sleep(60);
-		expect(platform.ticks).toBeGreaterThan(1);
+		await waitFor(() => (platform.ticks > 1 ? platform.ticks : null), 2000, "pump ticks");
 		expect(backend.calls.filter((call) => call === "pump")).toHaveLength(platform.ticks);
 
 		platform.stopPump();
@@ -59,7 +59,7 @@ describe("pump", () => {
 		await platform.start();
 		platform.pump(5);
 		expect(platform.nativeMessages).toBe(0);
-		await Bun.sleep(40);
+		await waitFor(() => (attempts > 2 ? attempts : null), 2000, "shim pump dispatches");
 		platform.stopPump();
 		expect(attempts).toBeGreaterThan(2);
 		expect(platform.nativeMessages).toBe((attempts - 2) * 3);
@@ -70,8 +70,11 @@ describe("pump", () => {
 		const backend = fakeBackend();
 		const platform = createPlatform(CONFIG, backend);
 		platform.pump(10);
-		await Bun.sleep(40);
-		expect(platform.ticks).toBeGreaterThan(1);
+		await waitFor(
+			() => (platform.ticks > 1 ? platform.ticks : null),
+			2000,
+			"shimless pump ticks",
+		);
 		expect(backend.calls).not.toContain("pump");
 		platform.stopPump();
 	});

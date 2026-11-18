@@ -1,0 +1,138 @@
+name: windows-arm-runtime
+
+# The arm64 release leg proves only the binary's format and `--version`/init/doctor
+# (release.yml's `bun-windows-arm64` job). Nothing there opens a window or calls a COM
+# method, so it cannot prove the Win32 + WebView2 shim works on arm64 silicon: the shim
+# is compiled by TinyCC at launch on the machine that runs the app, and `put_Bounds`
+# crosses the ABI with a 16-byte RECT whose passing rule differs from x64.
+#
+# This job closes that gap. It scaffolds with `crust init`, installs, builds, then runs
+# the built binary on `windows-11-arm` and asserts two lines from the scaffold's own
+# trivial page: "window open" (the ready event fired after openWindows) and the greet
+# answer (the page's invoke crossed the bridge and the backend handler ran). The second
+# line is the load-bearing one: a page can only invoke if WebView2 created a real view,
+# navigated to the bridge URL and executed the page's JavaScript.
+#
+# Gated to workflow_dispatch plus release tags, not every PR: `windows-11-arm` is a GA
+# GitHub-hosted runner, but it is not available on every plan/PR (notably private repos
+# and fork PRs), and a windowed WebView2 proof costs a full install plus a 90 MB compile
+# on arm silicon. The release tag is where arm64 actually ships, and manual dispatch
+# lets anyone re-run the proof without cutting a tag.
+
+on:
+    push:
+        tags: ["v*"]
+    workflow_dispatch:
+
+concurrency:
+    group: windows-arm-runtime-${{ github.ref_name }}
+    cancel-in-progress: false
+
+permissions:
+    contents: read
+
+jobs:
+    windows-arm-runtime:
+        name: runtime proof (windows-11-arm)
+        runs-on: windows-11-arm
+        timeout-minutes: 25
+        steps:
+            - uses: actions/checkout@v7
+
+            # Same pin as release.yml's build leg: the runtime shim must be compiled by
+            # the toolchain that produced the shipped binary, not a floating current Bun.
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.4
+
+            - name: assert the runner is really arm64
+              shell: pwsh
+              run: |
+                  $arch = $env:PROCESSOR_ARCHITECTURE
+                  Write-Host "PROCESSOR_ARCHITECTURE=$arch"
+                  if ($arch -ne 'ARM64') {
+                    throw "this job must run on windows-11-arm, but the runner reports $arch"
+                  }
+                  bun --version
+
+            - run: bun install --frozen-lockfile
+
+            # A fresh scaffold is the whole application under test. No flag means
+            # templates/default: its public/app.js calls `invoke("greet", {name:"crust"})`
+            # and main.ts prints the two proving lines. Nothing is copied from examples/,
+            # so the proof cannot drift away from what a new user gets.
+            - name: crust init
+              shell: pwsh
+              run: |
+                  $project = Join-Path $env:RUNNER_TEMP 'crust-arm-runtime'
+                  if (Test-Path $project) { Remove-Item -Recurse -Force $project }
+                  bun run src/cli/index.ts init $project
+                  if ($LASTEXITCODE -ne 0) { throw "crust init exited $LASTEXITCODE" }
+                  Write-Host "project=$project"
+
+            # `init` writes the dependency as link:<checkout>, so this installs the very
+            # source whose shim is being proven, not a registry copy.
+            - name: bun install in the scaffold
+              shell: pwsh
+              run: |
+                  $project = Join-Path $env:RUNNER_TEMP 'crust-arm-runtime'
+                  Push-Location $project
+                  try {
+                    bun install
+                    if ($LASTEXITCODE -ne 0) { throw "bun install exited $LASTEXITCODE" }
+                  } finally { Pop-Location }
+
+            - name: crust build
+              shell: pwsh
+              run: |
+                  bun run src/cli/index.ts build --dir (Join-Path $env:RUNNER_TEMP 'crust-arm-runtime')
+                  if ($LASTEXITCODE -ne 0) { throw "crust build exited $LASTEXITCODE" }
+                  Get-ChildItem -Path (Join-Path $env:RUNNER_TEMP 'crust-arm-runtime\dist') -Recurse | Select-Object FullName, Length
+
+            # Run the binary directly (never `Start-Process` with a shell: the .exe itself
+            # is the process under test). stdout is captured to a file and polled for the
+            # two proving lines; the app pumps forever until stopped, so a match ends it.
+            # `taskkill /T` takes the WebView2 helpers with it, leaving no runner residue.
+            - name: run the built binary and assert the round trip
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+                  $project = Join-Path $env:RUNNER_TEMP 'crust-arm-runtime'
+                  $exes = @(Get-ChildItem -Path (Join-Path $project 'dist') -Recurse -Filter 'crust-app*.exe')
+                  if ($exes.Count -ne 1) { throw "expected one crust-app.exe under dist, found $($exes.Count)" }
+                  $exe = $exes[0].FullName
+                  Write-Host "running $exe"
+
+                  $out = Join-Path $env:RUNNER_TEMP 'arm-runtime.out'
+                  $err = Join-Path $env:RUNNER_TEMP 'arm-runtime.err'
+                  $proc = Start-Process -FilePath $exe -WorkingDirectory $env:RUNNER_TEMP -PassThru `
+                    -RedirectStandardOutput $out -RedirectStandardError $err
+
+                  $opened = $false
+                  $greeted = $false
+                  $deadline = (Get-Date).AddSeconds(60)
+                  while ((Get-Date) -lt $deadline) {
+                    if (Test-Path $out) {
+                      try { $text = Get-Content -Raw $out } catch { $text = '' }
+                      if ($text -match 'window\s+open') { $opened = $true }
+                      if ($text -match 'greet\s+hello crust \(page call answered\)') { $greeted = $true }
+                    }
+                    if ($opened -and $greeted) { break }
+                    if ($proc.HasExited) { break }
+                    Start-Sleep -Milliseconds 250
+                  }
+
+                  if (-not $proc.HasExited) {
+                    & taskkill /PID $proc.Id /T /F | Out-Null
+                  }
+                  Start-Sleep -Milliseconds 500
+                  try { $text = Get-Content -Raw $out } catch { $text = '' }
+                  try { $errText = Get-Content -Raw $err } catch { $errText = '' }
+                  Write-Host '--- stdout ---'
+                  Write-Host $text
+                  Write-Host '--- stderr ---'
+                  Write-Host $errText
+
+                  if (-not $opened) { throw "window never opened: no 'window open' line within 60 s" }
+                  if (-not $greeted) { throw "invoke never round-tripped: no greet answer line within 60 s" }
+                  Write-Host 'windows-arm-runtime: PASS window opened and greet invoke round-tripped on arm64'

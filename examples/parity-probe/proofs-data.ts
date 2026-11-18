@@ -13,6 +13,7 @@ import {
 	createStrongholdPlugin,
 	STORE_FILE,
 } from "crust/plugin";
+import { darwinOsAdapter } from "../../src/platform/darwin/os-info.ts";
 import config from "./crust.config.ts";
 import { mark, reason, skip } from "./proofs.ts";
 
@@ -20,7 +21,10 @@ const STORE_VALUE = '{"n":1}';
 
 /** `echo` answers on the allowlist; `sh` is not on it and must be refused before a process exists. */
 export async function proveShell(): Promise<boolean> {
-	const { appData } = createOsPlugin({ appId: config.app.id }).commands.paths();
+	const { appData } = createOsPlugin({
+		...darwinOsAdapter(),
+		appId: config.app.id,
+	}).commands.paths();
 	try {
 		mkdirSync(appData, { recursive: true });
 	} catch (error) {

@@ -19,7 +19,7 @@ export interface PackageInputs {
 	/** Project directory. */
 	dir: string;
 	config: CrustConfig;
-	/** The assembled `.app` `findAppBundle` found. */
+	/** Artefact this build wrote: the `.app` on macOS, the flat binary elsewhere. */
 	bundle: string;
 	/** The directory holding the built binary, which is the bundle's parent. */
 	dist: string;

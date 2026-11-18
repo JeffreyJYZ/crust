@@ -108,7 +108,7 @@ int shim_keychain_set(const char *service, long long slen, const char *account, 
                       const char *secret, long long vlen) {
 	if (!shim_keychain_available()) return -1;
 	if (!secret || vlen < 0 || vlen > SHIM_KC_BLOB_MAX) return -2;
-	kc_wchar target[SHIM_KC_TARGET_MAX];
+	static kc_wchar target[SHIM_KC_TARGET_MAX];
 	if (kc_target(service, slen, account, alen, target, SHIM_KC_TARGET_MAX) != 0) return -2;
 	shim_credential credential;
 	credential.Flags = 0;
@@ -132,7 +132,7 @@ long long shim_keychain_get(const char *service, long long slen, const char *acc
                             char *dst, long long cap) {
 	if (!shim_keychain_available()) return -1;
 	if (!dst || cap <= 0) return -2;
-	kc_wchar target[SHIM_KC_TARGET_MAX];
+	static kc_wchar target[SHIM_KC_TARGET_MAX];
 	if (kc_target(service, slen, account, alen, target, SHIM_KC_TARGET_MAX) != 0) return -2;
 	void *found = 0;
 	if (!CredReadW(target, 1, 0, &found)) {
@@ -154,7 +154,7 @@ long long shim_keychain_get(const char *service, long long slen, const char *acc
 // 1 removed, 0 nothing was stored, -1 refused, -2 a name was unusable.
 int shim_keychain_delete(const char *service, long long slen, const char *account, long long alen) {
 	if (!shim_keychain_available()) return -1;
-	kc_wchar target[SHIM_KC_TARGET_MAX];
+	static kc_wchar target[SHIM_KC_TARGET_MAX];
 	if (kc_target(service, slen, account, alen, target, SHIM_KC_TARGET_MAX) != 0) return -2;
 	if (CredDeleteW(target, 1, 0)) return 1;
 	// Only ERROR_NOT_FOUND means the entry was already gone. Any other code — access denied above
@@ -168,7 +168,7 @@ int shim_keychain_delete(const char *service, long long slen, const char *accoun
 long long shim_keychain_list(const char *service, long long slen, kc_dword index, char *dst, long long cap) {
 	if (!shim_keychain_available()) return SHIM_KC_REFUSED;
 	if (!service || slen <= 0 || slen > SHIM_KC_TARGET_MAX - 2 || !dst || cap < 2) return -2;
-	kc_wchar prefix[SHIM_KC_TARGET_MAX];
+	static kc_wchar prefix[SHIM_KC_TARGET_MAX];
 	int head = MultiByteToWideChar(SHIM_KC_UTF8, 0, service, (int)slen, prefix, SHIM_KC_TARGET_MAX - 2);
 	if (head <= 0) return -2;
 	prefix[head] = (kc_wchar)'\\';

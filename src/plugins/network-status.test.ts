@@ -107,7 +107,9 @@ describe("network status", () => {
 	});
 
 	test("a refusal names the call the platform is missing, not a generic gap", () => {
-		expect(platformRequires("linux")).toBe("NetworkChangeNotifier from Gdk");
+		expect(platformRequires("linux")).toBe(
+		"GNetworkMonitor in GIO (libgio-2.0.so.0, loaded through libgtk-3)",
+	);
 		expect(platformRequires("win32")).toBe("INetworkListManager in NetworkListManager");
 		expect(platformRequires("freebsd")).toBe("an OS network status API");
 	});

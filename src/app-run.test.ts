@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { waitFor } from "../scripts/harness/wait.ts";
 
 import { createApp } from "@/app.ts";
 import { watchWindows } from "@/app-loop.ts";
@@ -18,6 +19,8 @@ const CONFIG: CrustConfig = {
 interface Fake extends Platform {
 	quits: number;
 	open: Set<string>;
+	/** How many times the watch called `windowLabels`: a positive signal that a tick ran. */
+	reads: number;
 }
 
 /** A platform with no native half: labels it holds are whatever `open` says. */
@@ -26,6 +29,7 @@ function fakePlatform(): Fake {
 	const platform: Fake = {
 		quits: 0,
 		open,
+		reads: 0,
 		start: async () => {},
 		pump: () => {},
 		createWindow: (options) => {
@@ -36,15 +40,22 @@ function fakePlatform(): Fake {
 		quit: () => {
 			platform.quits += 1;
 		},
-		windowLabels: () => [...open],
+		windowLabels: () => {
+			platform.reads += 1;
+			return [...open];
+		},
 	};
 	open.add("main");
 	return platform;
 }
 
-/** Wait for the 250 ms watch tick plus the emit that follows it. */
-async function tick(): Promise<void> {
-	await Bun.sleep(600);
+/** Wait until the watch has actually read the window set `count` times, not a fixed 600 ms. */
+async function ticks(platform: Fake, count = 2): Promise<void> {
+	await waitFor(
+		() => (platform.reads >= count ? platform.reads : null),
+		2000,
+		`${count} window watch ticks`,
+	);
 }
 
 describe("app.run()", () => {
@@ -61,7 +72,7 @@ describe("app.run()", () => {
 
 		await app.run();
 		platform.open.clear();
-		await tick();
+		await waitFor(() => (platform.quits >= 1 ? platform.quits : null), 2000, "closed quit");
 
 		expect(platform.quits).toBe(1);
 		app.quit();
@@ -77,7 +88,8 @@ describe("app.run()", () => {
 
 		await app.run();
 		platform.open.clear();
-		await tick();
+		await waitFor(() => (heard >= 1 ? heard : null), 2000, "closed listener");
+		await waitFor(() => (platform.quits >= 1 ? platform.quits : null), 2000, "closed quit");
 
 		expect(heard).toBe(1);
 		expect(platform.quits).toBe(1);
@@ -99,11 +111,12 @@ describe("watchWindows", () => {
 			closed += 1;
 		});
 
-		await tick();
+		// Prove the watch ran twice while the extra window was open, then assert it stayed silent.
+		await ticks(platform);
 		expect(closed).toBe(0);
 
 		platform.open.clear();
-		await tick();
+		await waitFor(() => (closed >= 1 ? closed : null), 2000, "last window closed");
 		expect(closed).toBe(1);
 		clearInterval(handle);
 	});
@@ -121,7 +134,7 @@ describe("watchWindows", () => {
 		const handle = watchWindows(CONFIG, platform, () => {
 			closed += 1;
 		});
-		await tick();
+		await waitFor(() => (closed >= 1 ? closed : null), 2000, "config fallback close");
 		expect(closed).toBe(1);
 		clearInterval(handle);
 	});

@@ -1,14 +1,15 @@
 /**
- * The updater proof: a manifest served by a real loopback server, a real Ed25519 key pinned for this
- * instance, and a real sha256-verified swap between two temp bundles. The adapter is the shipped node
- * one with `download` widened to land a directory, because `Bun.write` writes one file while
- * `install` accepts only an `.app` directory — the plugin's own "extract it first" case.
+ * The updater proof: a manifest read from a real `file:` URL, a real Ed25519 key pinned for this
+ * instance, and a real sha256-verified swap between two temp bundles. A `file:` endpoint needs
+ * `updater.allowFileUrl` (set below) because `check` now applies the download URL policy — an http
+ * loopback is refused. The adapter is the shipped node one with `download` widened to land a
+ * directory, because `Bun.write` writes one file while `install` accepts only an `.app` directory.
  */
 import { generateKeyPairSync, sign } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createUpdaterPlugin, nodeUpdaterAdapter, type UpdaterAdapter } from "crust/plugin";
 import { mark, reason } from "./proofs.ts";
 
@@ -62,7 +63,6 @@ function directoryAdapter(): UpdaterAdapter {
  */
 export async function proveUpdater(): Promise<boolean> {
 	let root: string | undefined;
-	let server: ReturnType<typeof Bun.serve> | undefined;
 	try {
 		root = await mkdtemp(join(tmpdir(), "crust-parity-update-"));
 		const appPath = await bundle(root, "Old", OLD_MARKER);
@@ -79,18 +79,19 @@ export async function proveUpdater(): Promise<boolean> {
 		const signature = sign(null, await readFile(payload), privateKey).toString("base64");
 		const digest = await node.sha256(payload);
 
-		server = Bun.serve({
-			port: 0,
-			fetch: () =>
-				Response.json({
-					version: NEXT,
-					url: `file://${fresh}`,
-					sha256: treeDigest,
-					signature,
-					pubkey: pinned,
-					notes: "parity probe",
-				}),
-		});
+		const manifest = join(root, "latest.json");
+		await writeFile(
+			manifest,
+			JSON.stringify({
+				version: NEXT,
+				url: pathToFileURL(fresh).href,
+				sha256: treeDigest,
+				signature,
+				pubkey: pinned,
+				notes: "parity probe",
+			}),
+			"utf8",
+		);
 
 		const updater = createUpdaterPlugin(
 			directoryAdapter(),
@@ -100,7 +101,7 @@ export async function proveUpdater(): Promise<boolean> {
 			join(appPath, "Contents", "MacOS", "Old"),
 		);
 		const found = await updater.commands.check({
-			endpoint: server.url.href,
+			endpoint: pathToFileURL(manifest).href,
 			currentVersion: CURRENT,
 		});
 		const announced =
@@ -138,7 +139,6 @@ export async function proveUpdater(): Promise<boolean> {
 		console.log(`updater   failed: ${reason(error)}`);
 		return mark("updater", false);
 	} finally {
-		server?.stop(true);
 		if (root !== undefined) {
 			await rm(root, { recursive: true, force: true }).catch(() => undefined);
 		}

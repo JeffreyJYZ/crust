@@ -41,7 +41,10 @@ export async function proveDialog(): Promise<boolean> {
 
 /** A reveal selects the file in Finder: allowed, and the one visible thing this proof does. */
 export async function proveOpener(): Promise<boolean> {
-	const { appData } = createOsPlugin({ appId: config.app.id }).commands.paths();
+	const { appData } = createOsPlugin({
+		...darwinOsAdapter(),
+		appId: config.app.id,
+	}).commands.paths();
 	const dir = join(appData, `parity-opener-${process.pid}-${Date.now()}`);
 	const file = join(dir, "reveal-me.txt");
 	try {

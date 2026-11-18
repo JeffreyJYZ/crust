@@ -39,7 +39,7 @@ export const NETWORK_CHANGE_EVENT = "network:change";
 const REQUIRES: Record<string, string> = {
 	darwin: "SCNetworkReachability in SystemConfiguration",
 	win32: "INetworkListManager in NetworkListManager",
-	linux: "NetworkChangeNotifier from Gdk",
+	linux: "GNetworkMonitor in GIO (libgio-2.0.so.0, loaded through libgtk-3)",
 };
 
 export function platformRequires(platform: string = process.platform): string {

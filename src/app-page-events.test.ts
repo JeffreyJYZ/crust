@@ -7,6 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { waitFor } from "../scripts/harness/wait.ts";
 
 import { createApp } from "@/app.ts";
 import type { AppEvent, AppListener, LifecycleSource } from "@/app-types.ts";
@@ -26,11 +27,6 @@ function listen(map: Listeners, event: AppEvent, fn: AppListener): void {
 	const set = map.get(event) ?? new Set<AppListener>();
 	set.add(fn);
 	map.set(event, set);
-}
-
-/** Let a few drain ticks run. */
-async function ticks(): Promise<void> {
-	await Bun.sleep(120);
 }
 
 const disarms: Array<() => void> = [];
@@ -67,7 +63,11 @@ describe("app: events reach a page sink", () => {
 		listen(map, "reopen", () => void backend.push("reopen"));
 
 		const handle = watchLifecycle(map, source, 10);
-		await ticks();
+		await waitFor(
+			() => (page.length >= 2 && backend.length >= 2 ? page : null),
+			2000,
+			"page lifecycle frames",
+		);
 		clearInterval(handle);
 
 		expect(backend).toEqual(["activate", "reopen"]);
@@ -100,7 +100,11 @@ describe("app: events reach a page sink", () => {
 		};
 
 		const handle = watchLifecycle(map, source, 10);
-		await ticks();
+		await waitFor(
+			() => (backend.length >= 1 && good.length >= 1 && warned.length >= 1 ? backend : null),
+			2000,
+			"throwing page sink delivery",
+		);
 		clearInterval(handle);
 		console.warn = warn;
 

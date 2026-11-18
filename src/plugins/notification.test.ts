@@ -116,12 +116,19 @@ describe("notification plugin", () => {
 		}
 	});
 
-	test("a real adapter has no separate permission probe and says so", async () => {
+	test("a post-only adapter names the unbound permission probe, not a missing API", async () => {
 		const adapter: NotificationAdapter = {
 			post: () => ({ status: NOTIFICATION_STATUS.delivered, reason: "accepted" }),
 		};
 		const permission = await createNotificationPlugin(adapter).commands.requestPermission();
 		expect(isNotImplemented(permission)).toBe(true);
+		if (isNotImplemented(permission)) {
+			expect(permission.requires).toBe(
+				"-[UNUserNotificationCenter getAuthorizationStatusWithCompletionHandler:]",
+			);
+			expect(permission.message).toContain("does not bind it");
+			expect(permission.message).not.toContain("There is no separate probe");
+		}
 	});
 
 	test("the plugin takes an async adapter too", async () => {

@@ -45,9 +45,9 @@ export async function proveAutostart(): Promise<boolean> {
 			bundleId: BUNDLE_ID,
 		});
 		const written = enabled.ok === true && existsSync(plist);
-		const status = await autostart.commands.isEnabled();
+		const status = await autostart.commands.isEnabled({ bundleId: BUNDLE_ID });
 		const live = status.ok === true && status.enabled === true;
-		const off = await autostart.commands.disable();
+		const off = await autostart.commands.disable({ bundleId: BUNDLE_ID });
 		const gone = off.ok === true && !existsSync(plist);
 		console.log(
 			`autostart plist=${written ? "written" : "missing"} enabled=${live} removed=${gone}`,

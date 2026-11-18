@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { waitFor } from "../scripts/harness/wait.ts";
 
 import { createApp } from "@/app.ts";
 import { type AppEvent, type AppListener, type LifecycleSource } from "@/app-types.ts";
@@ -28,11 +29,6 @@ function listen(map: Listeners, event: AppEvent, fn: AppListener): void {
 	map.set(event, set);
 }
 
-/** Let a few 50 ms drain ticks run. */
-async function ticks(): Promise<void> {
-	await Bun.sleep(220);
-}
-
 describe("watchLifecycle", () => {
 	test("each drained event wakes only its own listeners", async () => {
 		const map = listeners();
@@ -43,7 +39,7 @@ describe("watchLifecycle", () => {
 		const queue: AppEvent[] = ["activate", "reopen", "will-quit", "before-quit"];
 		const source: LifecycleSource = { take: () => queue.splice(0) };
 		const handle = watchLifecycle(map, source, 10);
-		await ticks();
+		await waitFor(() => (heard.length >= 4 ? heard : null), 2000, "lifecycle listeners");
 		clearInterval(handle);
 
 		expect(heard).toEqual(["activate", "reopen", "will-quit", "before-quit"]);
@@ -64,7 +60,7 @@ describe("watchLifecycle", () => {
 		const warned: string[] = [];
 		console.warn = (message: string) => void warned.push(message);
 		const handle = watchLifecycle(map, source, 10);
-		await ticks();
+		await waitFor(() => (settled >= 1 ? settled : null), 2000, "deferred quit settle");
 		clearInterval(handle);
 		console.warn = warn;
 
@@ -77,13 +73,15 @@ describe("watchLifecycle", () => {
 		listen(map, "activate", () => {
 			throw new Error("must never run");
 		});
+		let takes = 0;
 		const source: LifecycleSource = {
 			take: () => {
+				takes += 1;
 				throw new Error("no such concept");
 			},
 		};
 		const handle = watchLifecycle(map, source, 10);
-		await ticks();
+		await waitFor(() => (takes >= 2 ? takes : null), 2000, "throwing source drain");
 		clearInterval(handle);
 	});
 });

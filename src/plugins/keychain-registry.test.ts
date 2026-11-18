@@ -26,7 +26,7 @@ describe("the keychain plugin reaches a page", () => {
 		expect(builder).toContain('process.platform === "win32"');
 		expect(builder).toContain("@/platform/windows/keychain");
 		expect(builder).toContain("@/platform/darwin/keychain");
-		// The fallback is the bare plugin, which answers not-implemented naming libsecret on Linux.
+		// The fallback is the bare plugin for an unrecognised platform; each command refuses by name.
 		expect(builder).toContain("return createKeychainPlugin()");
 	});
 
@@ -38,7 +38,7 @@ describe("the keychain plugin reaches a page", () => {
 		expect(Object.keys(keychainPlugin.commands).sort()).toEqual([...KEYCHAIN_COMMANDS].sort());
 	});
 
-	test("a guide page and a parity row both exist, and the row says Linux is not-implemented", () => {
+	test("a guide page and a parity row both exist, and the row says Linux works except `list`", () => {
 		const guide = read("site/app/docs/guides/keychain/page.mdx");
 		for (const command of KEYCHAIN_COMMANDS) {
 			// Every command is named in the guide, so a new one added to the plugin cannot ship with

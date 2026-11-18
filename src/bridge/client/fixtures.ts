@@ -41,6 +41,8 @@ export interface PageOptions {
 	/** `"served"` is the bridge's document snippet; `"dev"` is the one `crust/vite` injects. */
 	source?: "served" | "dev";
 	stream?: boolean;
+	/** The page's document, for page-local commands such as `crust.a11y`. */
+	document?: unknown;
 }
 
 export interface Installed {
@@ -71,6 +73,7 @@ export function installPage(bridge: BridgeHandle, options: PageOptions = {}): In
 			});
 		},
 	};
+	if (options.document !== undefined) target.document = options.document;
 	if (options.stream !== false) {
 		FakeEventSource.last = null;
 		target.EventSource = FakeEventSource;

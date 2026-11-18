@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { waitFor } from "../../scripts/harness/wait.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assetBody } from "./server/assets.ts";
@@ -143,7 +144,9 @@ describe("invoke body guards", () => {
 			() => {},
 		);
 		try {
-			await Bun.sleep(500);
+			// The refusal is asynchronous: it arrives when the bridge reads the first chunk, not on a
+			// fixed clock. Wait for the promise to settle rather than sleeping 500 ms and hoping.
+			await waitFor(() => answered || null, 2000, "chunked-body refusal");
 			expect(answered).toBe(true);
 		} finally {
 			openGate();

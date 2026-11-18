@@ -6,6 +6,16 @@
 export { bootstrapSource, pageClientSource } from "./client/bootstrap.ts";
 export { installCrust } from "./client/install.ts";
 export { installInvoke } from "./client/invoke.ts";
+export { installPageA11y } from "./client/a11y-page.ts";
+export type {
+	A11yNode,
+	PageA11y,
+	PageA11yRefusal,
+	PageFocusAnswer,
+	PageFocusResult,
+	PageTreeAnswer,
+	PageTreeResult,
+} from "./client/a11y-page-types.ts";
 export type {
 	CrustApi,
 	CrustConfig,

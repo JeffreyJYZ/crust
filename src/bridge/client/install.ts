@@ -2,16 +2,21 @@
  * The client body: `installCrust`. Everything it needs is inside the function, because the served bootstrap is `installCrust.toString()` and a module-scope reference would arrive undefined in the page; only types live outside, as `T.`, plus the invoke half which `bootstrap.ts` passes in the same way. Called with a config it uses that; called with none (`crust/vite`) it installs from the pre-set `window.__CRUST__`.
  *
  * The transport — the POST, the event stream and which of the two carries the credential — lives in
- * the invoke half beside this one. This half owns the page's API surface and nothing else, so a
- * page whose token sits in a JavaScript world it cannot read installs the same client unchanged.
+ * the invoke half beside this one. The page's own DOM view — `pageTree` and `focusElement` — lives in
+ * the a11y half; both are passed in and serialised with this function, so neither may reach module
+ * scope. This half owns the page's API surface and nothing else, so a page whose token sits in a
+ * JavaScript world it cannot read installs the same client unchanged.
  */
 import type * as T from "./types";
 import type { installInvoke } from "./invoke.ts";
+import type { installPageA11y } from "./a11y-page.ts";
+import type { PageA11y } from "./a11y-page-types.ts";
 
 export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	config?: T.CrustConfig,
 	target: T.CrustTarget = globalThis as unknown as T.CrustTarget,
 	invokeFactory?: typeof installInvoke,
+	a11yFactory?: typeof installPageA11y,
 ): T.CrustApi<Schema> {
 	const scope = target as unknown as Record<string, any>;
 	// A page that already has a client keeps it: a second install would open a
@@ -91,6 +96,10 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		},
 	);
 
+	// The page's own DOM view. Absent only for a hand-built install that did not pass the factory;
+	// the bridge's two injected sources always pass it, so a real page always has `crust.a11y`.
+	const a11y: PageA11y | undefined = typeof a11yFactory === "function" ? a11yFactory(scope) : undefined;
+
 	const listen = <T = unknown>(event: string, fn: (payload: T) => void): (() => void) => {
 		const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();
 		listeners.set(event, set);
@@ -139,6 +148,7 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		...(hasRealm ? {} : { token }),
 		ready,
 		invoke: invoke as T.TypedInvoke<Schema> & T.LooseInvoke,
+		...(a11y ? { a11y } : {}),
 		listen,
 		once,
 	};

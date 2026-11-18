@@ -101,13 +101,68 @@ export async function resolveBackendEntry(
 	return undefined;
 }
 
-/** The first `.app` directory in `<dir>/dist`, if any. */
-export async function findAppBundle(dir: string): Promise<string | undefined> {
-	const dist = resolve(dir, "dist");
-	if (!(await exists(dist, "dir"))) return undefined;
-	const entries = await readdir(dist, { withFileTypes: true });
+/** Directory the CLI reads build output from when the caller names no other one. */
+export const DEFAULT_OUT_DIR = "dist";
+
+export interface BundleLookup {
+	/** Configured app name; the bundle is `<name>.app`. Enables exact-identity lookup. */
+	appName?: string;
+	/** Output directory relative to the project. Defaults to `dist`. */
+	outDir?: string;
+}
+
+/**
+ * The `.app` this build wrote: `<outDir>/<appName>.app`.
+ *
+ * When `appName` is set the lookup asserts identity — a stale bundle left in the
+ * same directory under a different name is never returned, and a missing expected
+ * bundle never falls back to one that happens to be there. Without a name the scan
+ * is a best-effort fallback and can pick a stale bundle, so callers that know the
+ * configured name must pass it.
+ */
+export async function findAppBundle(
+	dir: string,
+	options: BundleLookup = {},
+): Promise<string | undefined> {
+	const outDir = resolve(dir, options.outDir ?? DEFAULT_OUT_DIR);
+	if (!(await exists(outDir, "dir"))) return undefined;
+	if (options.appName) {
+		const name = options.appName.endsWith(".app") ? options.appName : `${options.appName}.app`;
+		const candidate = join(outDir, name);
+		return (await exists(candidate, "dir")) ? candidate : undefined;
+	}
+	const entries = await readdir(outDir, { withFileTypes: true });
 	const bundle = entries.find((entry) => entry.isDirectory() && entry.name.endsWith(".app"));
-	return bundle ? join(dist, bundle.name) : undefined;
+	return bundle ? join(outDir, bundle.name) : undefined;
+}
+
+export interface ArtifactLookup extends BundleLookup {
+	/** Platform whose artefact to find. Defaults to `process.platform`. */
+	platform?: NodeJS.Platform;
+	/** Non-darwin executable filename. Defaults to `crust-app`. */
+	binaryName?: string;
+}
+
+/**
+ * The artefact this build produced for `platform`: the `.app` on macOS, the flat
+ * compiled binary elsewhere. Callers that only need "did the build produce something"
+ * use this so a stale `.app` or a wrong-platform guess cannot satisfy the gate.
+ */
+export async function findBuildArtifact(
+	dir: string,
+	options: ArtifactLookup = {},
+): Promise<string | undefined> {
+	const platform = options.platform ?? process.platform;
+	if (platform === "darwin") return findAppBundle(dir, options);
+	const outDir = resolve(dir, options.outDir ?? DEFAULT_OUT_DIR);
+	if (!(await exists(outDir, "dir"))) return undefined;
+	const binaryName = options.binaryName ?? "crust-app";
+	const names = platform === "win32" ? [`${binaryName}.exe`, binaryName] : [binaryName];
+	for (const name of names) {
+		const candidate = join(outDir, name);
+		if (await exists(candidate)) return candidate;
+	}
+	return undefined;
 }
 
 /**

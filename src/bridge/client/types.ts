@@ -3,6 +3,7 @@
  */
 
 import type { ArgsOf, CommandSchema, ResultOf } from "../../plugins/define";
+import type { PageA11y } from "./a11y-page-types.ts";
 
 export type { CommandSchema } from "../../plugins/define";
 
@@ -64,6 +65,12 @@ export interface CrustApi<Schema extends CommandSchema = CommandSchema> {
 	/** Resolves after the first handshake: the SSE stream opened, or an invoke answered. */
 	readonly ready: Promise<void>;
 	invoke: TypedInvoke<Schema> & LooseInvoke;
+	/**
+	 * The page's own DOM view: `pageTree(selector?)` and `focusElement(selector)`. Page-local — no
+	 * bridge call, no native half — and a report of the DOM, not of the OS accessibility tree.
+	 * Absent only for a hand-built install that did not pass the factory.
+	 */
+	a11y?: PageA11y;
 	/** Subscribe to a pushed event. Returns the unsubscribe function. */
 	listen<T = unknown>(event: string, fn: (payload: T) => void): () => void;
 	/** Resolve with the next payload of that event. */

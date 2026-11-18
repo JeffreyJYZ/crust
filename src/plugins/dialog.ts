@@ -76,7 +76,7 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 			): Promise<OpenPanelResult | NotImplemented> => {
 				if (!native) {
 					return notImplemented(
-						"dialog.openPanel needs NSOpenPanel, which the AppKit shim does not expose yet. Pass a DialogNative adapter to createDialogPlugin once it does.",
+						"dialog.openPanel needs a DialogNative adapter: none was passed. The darwin half binds NSOpenPanel; pass darwinDialogAdapter() or another adapter that picks a file.",
 						"NSOpenPanel",
 					);
 				}
@@ -93,7 +93,7 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 			): Promise<SavePanelResult | NotImplemented> => {
 				if (!native?.pickSave) {
 					return notImplemented(
-						"dialog.savePanel needs NSSavePanel, which the AppKit shim does not expose yet. Pass a DialogNative adapter with pickSave to createDialogPlugin once it does.",
+						"dialog.savePanel needs a DialogNative adapter with pickSave: none was passed. The darwin half binds NSSavePanel; pass darwinDialogAdapter() or another adapter that picks a save path.",
 						"NSSavePanel",
 					);
 				}
@@ -108,7 +108,7 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 			cancel: async (): Promise<CancelPanelResult | NotImplemented> => {
 				if (!native?.cancel) {
 					return notImplemented(
-						"dialog.cancel needs -[NSPanel cancel:], which the AppKit shim does not expose yet. Pass a DialogNative adapter with cancel to createDialogPlugin once it does.",
+						"dialog.cancel needs a DialogNative adapter with cancel: none was passed. The darwin half binds -[NSPanel cancel:]; pass darwinDialogAdapter() or another adapter that can end a sheet.",
 						"cancel:",
 					);
 				}

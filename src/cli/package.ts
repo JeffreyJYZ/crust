@@ -11,7 +11,7 @@ import { buildDmg, describeDmg } from "@/packaging/dmg";
 import { type Exec, buildNsis, describeNsis } from "@/packaging/nsis";
 import type { PackageFormat } from "./package/format.ts";
 import { appImageOptions, dmgOptions, nsisOptions, type PackageInputs } from "./package/options.ts";
-import { exists, fail, findAppBundle, line, type CliOptions } from "./util.ts";
+import { exists, fail, findBuildArtifact, line, type CliOptions } from "./util.ts";
 
 /** The tool runner, injected by a test so no builder shells out. */
 export interface PackageSeams {
@@ -63,11 +63,11 @@ export async function packageCommand(
 	console.log(`crust package — ${loaded.path}`);
 	const config = loaded.config;
 
-	const bundle = await findAppBundle(options.dir);
+	const bundle = await findBuildArtifact(options.dir, { appName: config.app.name });
 	if (!bundle) {
 		return fail(
 			"package",
-			`no .app in ${resolve(options.dir, "dist")} — run crust build first`,
+			`no build artefact in ${resolve(options.dir, "dist")} — run crust build first`,
 		);
 	}
 

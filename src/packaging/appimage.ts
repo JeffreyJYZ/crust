@@ -86,7 +86,9 @@ export async function buildAppImage(options: AppImageOptions): Promise<AppImageR
 	}
 	const iconStat = await stat(options.iconPath).catch(() => undefined);
 	if (!iconStat?.isFile()) {
-		throw new Error(`icon ${options.iconPath} does not exist`);
+		throw new Error(
+			`icon ${options.iconPath} does not exist — create the PNG or fix app.icon in crust.config.ts`,
+		);
 	}
 
 	// Default beside the binary, inside `appPath`: the AppImage is build output,

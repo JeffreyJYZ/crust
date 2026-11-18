@@ -1,0 +1,189 @@
+/**
+ * The page's own view of its DOM: `pageTree` and `focusElement`, installed on `window.crust.a11y`.
+ *
+ * This is the web half the OS cannot give us. `accessibility.elementCount` walks the app's AX
+ * element in a process that is not trusted by default, so it says nothing about web content — and
+ * reading another process's tree needs a trust this app does not have. These two commands do not
+ * cross the bridge and do not call a native half: they read and focus the DOM the page already owns.
+ * The `note` on a tree answer keeps that distinction explicit — a green tree is the DOM's report,
+ * not evidence that a screen reader can reach the page.
+ *
+ * Serialised with `Function.prototype.toString()` beside `installInvoke`, so everything it needs
+ * lives inside this function. Types are erased before the page sees the source; no runtime value
+ * may come from module scope.
+ */
+
+import type {
+	A11yNode,
+	PageA11y,
+	PageA11yRefusal,
+	PageFocusAnswer,
+	PageTreeAnswer,
+} from "./a11y-page-types.ts";
+
+export function installPageA11y(scope: Record<string, any>): PageA11y {
+	// Kept inside the function because its source is injected: no module-scope value survives.
+	const domNote =
+		"This is the page's own view of its DOM, not the operating system's accessibility tree; " +
+		"it does not prove a screen reader can reach the page.";
+	const doc = (): any => scope.document;
+
+	const attr = (el: any, name: string): string => {
+		const get = el?.getAttribute;
+		const value = typeof get === "function" ? get.call(el, name) : null;
+		return typeof value === "string" ? value : "";
+	};
+
+	const text = (el: any): string => {
+		const value = el?.textContent;
+		return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+	};
+
+	const tagOf = (el: any): string =>
+		String(el?.tagName ?? el?.nodeName ?? "").toLowerCase();
+
+	const roleOf = (el: any): string => {
+		const explicit = attr(el, "role");
+		if (explicit) return explicit;
+		const tag = tagOf(el);
+		if (tag === "a") return attr(el, "href") ? "link" : "generic";
+		if (tag === "button") return "button";
+		if (tag === "input") {
+			const type = attr(el, "type").toLowerCase();
+			if (type === "checkbox") return "checkbox";
+			if (type === "radio") return "radio";
+			if (type === "button" || type === "submit" || type === "reset") return "button";
+			return "textbox";
+		}
+		if (tag === "select") return "combobox";
+		if (tag === "textarea") return "textbox";
+		if (tag === "img") return "img";
+		if (/^h[1-6]$/.test(tag)) return "heading";
+		if (tag === "nav") return "navigation";
+		if (tag === "main") return "main";
+		if (tag === "ul" || tag === "ol") return "list";
+		if (tag === "li") return "listitem";
+		if (tag === "table") return "table";
+		if (tag === "dialog") return "dialog";
+		if (tag === "div" || tag === "span") return "generic";
+		return tag || "generic";
+	};
+
+	const labelOf = (el: any): string => {
+		const aria = attr(el, "aria-label");
+		if (aria) return aria;
+		const by = attr(el, "aria-labelledby");
+		if (by) {
+			const parts: string[] = [];
+			for (const id of by.split(/\s+/)) {
+				const d = doc();
+				const ref = id && typeof d?.getElementById === "function" ? d.getElementById(id) : null;
+				if (ref) parts.push(text(ref));
+			}
+			const joined = parts.filter(Boolean).join(" ");
+			if (joined) return joined;
+		}
+		const alt = attr(el, "alt");
+		if (alt) return alt;
+		const title = attr(el, "title");
+		if (title) return title;
+		return text(el).slice(0, 120);
+	};
+
+	const focusableOf = (el: any): boolean => {
+		const ti = attr(el, "tabindex");
+		if (ti !== "") {
+			const n = Number(ti);
+			return Number.isFinite(n) && n >= 0;
+		}
+		const tag = tagOf(el);
+		if (tag === "a") return attr(el, "href") !== "";
+		return (
+			tag === "button" ||
+			tag === "input" ||
+			tag === "select" ||
+			tag === "textarea" ||
+			attr(el, "contenteditable") === "true"
+		);
+	};
+
+	const describe = (el: any, order: number): A11yNode => ({
+		role: roleOf(el),
+		label: labelOf(el),
+		focusable: focusableOf(el),
+		readingOrder: order,
+	});
+
+	const noDocument = (command: string): PageA11yRefusal => ({
+		ok: false,
+		code: "no-document",
+		message: `a11y.${command}: this page has no document to read or focus`,
+	});
+
+	return {
+		pageTree(selector?: string): PageTreeAnswer {
+			const d = doc();
+			if (!d || typeof d.querySelector !== "function") return noDocument("pageTree");
+			const rootSelector = typeof selector === "string" && selector.trim() ? selector.trim() : "body";
+			const root = rootSelector === "body" ? d.body ?? d.querySelector("body") : d.querySelector(rootSelector);
+			if (!root) {
+				return {
+					ok: false,
+					code: "not-found",
+					message: `a11y.pageTree: no element matches ${rootSelector}`,
+				};
+			}
+			const nodes: A11yNode[] = [];
+			let order = 0;
+			const walk = (el: any): void => {
+				nodes.push(describe(el, order++));
+				const kids = el?.children;
+				if (kids && typeof kids.length === "number") {
+					for (let i = 0; i < kids.length; i++) walk(kids[i]);
+				}
+			};
+			walk(root);
+			return { ok: true, source: "dom", note: domNote, root: rootSelector, nodes };
+		},
+
+		focusElement(selector: string): PageFocusAnswer {
+			const d = doc();
+			if (!d || typeof d.querySelector !== "function") return noDocument("focusElement");
+			const sel = typeof selector === "string" ? selector.trim() : "";
+			if (!sel) {
+				return { ok: false, code: "bad-request", message: "a11y.focusElement needs a non-empty selector" };
+			}
+			const el = d.querySelector(sel);
+			if (!el) {
+				return { ok: false, code: "not-found", message: `a11y.focusElement: no element matches ${sel}` };
+			}
+			let called = true;
+			try {
+				if (typeof el.focus === "function") el.focus();
+				else called = false;
+			} catch (error) {
+				return {
+					ok: false,
+					code: "handler-error",
+					message: `a11y.focusElement: focus() threw — ${error instanceof Error ? error.message : String(error)}`,
+				};
+			}
+			const active = d.activeElement;
+			if (active !== el) {
+				return {
+					ok: false,
+					code: "not-focusable",
+					message:
+						`a11y.focusElement: ${called ? "focus() was called but nothing took focus" : "the element has no focus()"} ` +
+						`for ${sel}; a browser only focuses natively focusable elements or ones with tabindex`,
+				};
+			}
+			return {
+				ok: true,
+				selector: sel,
+				focused: true,
+				active: { role: roleOf(active), label: labelOf(active) },
+			};
+		},
+	};
+}

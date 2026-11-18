@@ -88,6 +88,20 @@ describe("dialog plugin", () => {
 		expect(isNotImplemented(result)).toBe(true);
 	});
 
+	test("the refusals name the adapter to pass, not a shim that already exposes the panel", async () => {
+		const plugin = createDialogPlugin();
+		const results = [
+			await plugin.commands.openPanel({}),
+			await plugin.commands.savePanel({}),
+			await plugin.commands.cancel(),
+		];
+		for (const result of results) {
+			if (!isNotImplemented(result)) throw new Error("expected a not-implemented refusal");
+			expect(result.message).toContain("DialogNative adapter");
+			expect(result.message).not.toContain("does not expose yet");
+		}
+	});
+
 	test("forwards the options to the native half unchanged", async () => {
 		const seen: OpenPanelOptions[] = [];
 		const plugin = createDialogPlugin({

@@ -13,7 +13,7 @@ export async function dmg(options: CliOptions): Promise<number> {
 	console.log(`crust dmg — ${loaded.path}`);
 	const config = loaded.config;
 
-	const bundle = await findAppBundle(options.dir);
+	const bundle = await findAppBundle(options.dir, { appName: config.app.name });
 	if (!bundle) {
 		return fail("dmg", `no .app in ${resolve(options.dir, "dist")} — run crust build first`);
 	}

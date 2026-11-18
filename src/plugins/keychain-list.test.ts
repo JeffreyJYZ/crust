@@ -4,6 +4,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { windowsKeychainAdapter } from "@/platform/windows/keychain.ts";
+import type { WindowsKeychainShim } from "@/platform/windows/keychain-ffi.ts";
 import { createKeychainPlugin } from "./keychain.ts";
 import { fakeKeychain } from "./keychain-fake.ts";
 
@@ -69,6 +71,25 @@ describe("list", () => {
 			code: "not-implemented",
 			requires: needs,
 			message: expect.stringContaining(`keychain.list needs ${needs}`),
+		});
+	});
+
+	test("the Windows half binds CredEnumerateW, so its old list refusal is false", async () => {
+		// The adapter now supplies list; the refusal above is only the fallback for an adapter
+		// that omits it. This pins the change so the "Windows list is not-implemented" claim
+		// cannot come back.
+		const accounts = ["alpha", "beta"];
+		const fake: WindowsKeychainShim = {
+			available: () => true,
+			set: () => 1,
+			get: () => -1,
+			delete: () => 1,
+			list: (_service, index) => accounts[index] ?? null,
+		};
+		const plugin = createKeychainPlugin(windowsKeychainAdapter(fake), "win32");
+		expect(await plugin.commands.list({ service: "app" })).toEqual({
+			ok: true,
+			accounts,
 		});
 	});
 });

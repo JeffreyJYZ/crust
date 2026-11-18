@@ -65,7 +65,7 @@ export async function proveNetwork(): Promise<boolean> {
 /** Nothing is downloaded: the destination is read and an unknown id must be refused by name. */
 export async function proveDownloads(): Promise<boolean> {
 	const root = defaultStateRoot(config.app.id);
-	const plugin = createDownloadsPlugin(darwinDownloadsAdapter({ webview: () => undefined }), {
+	const plugin = createDownloadsPlugin(darwinDownloadsAdapter({ webview: () => null }), {
 		app: config.app.id,
 	});
 	const ctx = { emit: () => {} };

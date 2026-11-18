@@ -98,8 +98,8 @@ export function createNotificationPlugin(
 				if (!adapter) return missing("requestPermission");
 				if (isPostAdapter(adapter)) {
 					return notImplemented(
-						"notification.requestPermission: authorization is requested by notification.notify itself, and the OS answers only through a completion handler. There is no separate probe to report.",
-						"UNUserNotificationCenter",
+						"notification.requestPermission: authorization is requested by notification.notify itself. A separate probe exists — -[UNUserNotificationCenter getAuthorizationStatusWithCompletionHandler:] — but this native half does not bind it. Pass a NotificationAdapter that binds that selector to report the state.",
+						"-[UNUserNotificationCenter getAuthorizationStatusWithCompletionHandler:]",
 					);
 				}
 				return adapter.requestPermission();

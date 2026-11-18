@@ -62,9 +62,10 @@ export interface KeychainAdapter {
 	/** `true` when an entry was removed, `false` when there was none. */
 	delete(service: string, account: string): boolean;
 	/**
-	 * Every account stored under `service`. Optional because the Windows credential store needs
-	 * `CredEnumerateW`, which this half does not bind; absent answers `not-implemented` naming it
-	 * rather than an empty list, which would read as "nothing is stored".
+	 * Every account stored under `service`. Optional because Linux's libsecret half does not bind
+	 * `secret_service_search_sync`; the darwin and Windows halves bind theirs. Absent answers
+	 * `not-implemented` naming the missing API rather than an empty list, which would read as
+	 * "nothing is stored".
 	 */
 	list?(service: string): string[];
 }

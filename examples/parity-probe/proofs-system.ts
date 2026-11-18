@@ -13,6 +13,7 @@ import {
 	currentStatusBar,
 	type StatusBar,
 } from "../../src/platform/darwin/status-bar.ts";
+import { darwinOsAdapter } from "../../src/platform/darwin/os-info.ts";
 import config from "./crust.config.ts";
 import { mark, reason, skip } from "./proofs.ts";
 
@@ -21,7 +22,10 @@ const URL = "probe://open/42?tab=notes";
 
 /** A real temp dir under this app's own data root, plus that root when the probe created it. */
 export async function proveFs(): Promise<boolean> {
-	const { appData } = createOsPlugin({ appId: config.app.id }).commands.paths();
+	const { appData } = createOsPlugin({
+		...darwinOsAdapter(),
+		appId: config.app.id,
+	}).commands.paths();
 	const rootExisted = existsSync(appData);
 	try {
 		mkdirSync(appData, { recursive: true });

@@ -37,7 +37,7 @@ export async function sign(options: CliOptions): Promise<number> {
 		);
 	}
 
-	const bundle = await findAppBundle(options.dir);
+	const bundle = await findAppBundle(options.dir, { appName: loaded.config.app.name });
 	if (!bundle) {
 		return fail("sign", `no .app in ${options.dir}/dist — run crust build first`);
 	}

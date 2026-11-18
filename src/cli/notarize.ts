@@ -55,7 +55,7 @@ export async function notarizeCommand(
 		return 1;
 	}
 
-	const bundle = await findAppBundle(options.dir);
+	const bundle = await findAppBundle(options.dir, { appName: loaded.config.app.name });
 	if (!bundle) {
 		return fail(
 			"notarize",

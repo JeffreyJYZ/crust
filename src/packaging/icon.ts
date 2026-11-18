@@ -45,11 +45,15 @@ export interface IcnsResult {
  */
 function readPngSize(data: Uint8Array, source: string): { width: number; height: number } {
 	if (data.byteLength < 24) {
-		throw new Error(`${source} is not a PNG: only ${data.byteLength} bytes`);
+		throw new Error(
+			`${source} is not a PNG: only ${data.byteLength} bytes — supply a real PNG for app.icon`,
+		);
 	}
 	const wrong = PNG_SIGNATURE.findIndex((byte, index) => data[index] !== byte);
 	if (wrong !== -1) {
-		throw new Error(`${source} is not a PNG: bad signature byte ${wrong}`);
+		throw new Error(
+			`${source} is not a PNG: bad signature byte ${wrong} — supply a real PNG for app.icon`,
+		);
 	}
 	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 	return { width: view.getUint32(16), height: view.getUint32(20) };

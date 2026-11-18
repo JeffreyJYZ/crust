@@ -7,10 +7,10 @@
  * hands it to this handler as `ctx.window`, so the answer is the label the *calling* request
  * carried — never the first open window, the focused one, or the only one.
  *
- * A client-supplied label is a hint, not a security boundary. The page says which window it is;
- * the bridge cannot verify that and does not need to, because a label only routes a command to a
- * window and grants nothing. The bearer token is the only credential, so a page that claims
- * another label can mislabel itself and nothing else.
+ * A client-supplied label is a routing hint, never the authority. The bridge binds a label to each
+ * document token when it serves the page and gates capabilities on that bound label, so a page that
+ * writes another label into its invoke body can misdirect routing but cannot inherit that window's
+ * grants. This command answers the routing label this request carried, not the authority label.
  *
  * Why the page sends it rather than the bridge reading `Referer`: the served document carries
  * `referrer-policy: no-referrer`, and in dev the page's origin is the Vite server, so a

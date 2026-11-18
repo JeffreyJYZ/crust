@@ -44,7 +44,11 @@ const REQUIRES: Record<string, string> = {
 	linux: "libsecret-1.so.0 and a Secret Service provider (libsecret-1-0 and gnome-keyring) on the session bus",
 };
 
-/** The enumeration API `list` needs, per platform, so its refusal never names the wrong OS. */
+/**
+ * The enumeration API `list` needs, per platform, so its refusal never names the wrong OS. The real
+ * darwin and Windows halves bind theirs; only `linux` is still a live refusal, the others are the
+ * named fallback for a caller-supplied adapter that omits `list`.
+ */
 const REQUIRES_LIST: Record<string, string> = {
 	darwin: "SecItemCopyMatching in Security.framework",
 	win32: "CredEnumerateW in advapi32",
@@ -170,7 +174,8 @@ export function createKeychainPlugin(
 				}
 				// A platform half without `list` says so: an empty array would read as
 				// "nothing is stored", which is the one answer a credential store must never
-				// invent. Windows needs `CredEnumerateW`, which its half does not bind.
+				// invent. Windows now binds `CredEnumerateW` and supplies list; only Linux's
+				// secret_service_search_sync remains unbound, so that is the one live refusal.
 				if (typeof adapter.list !== "function") {
 					const needs = REQUIRES_LIST[platform] ?? "a credential enumeration API";
 					return notImplemented(
