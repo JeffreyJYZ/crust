@@ -22,13 +22,19 @@ export interface WindowHandle {
 }
 
 /**
- * The whole native surface crust depends on, one implementation per OS: `start` brings up the application, `pump` runs the Cocoa run loop on a timer, `createWindow` opens a window, `window` returns it or undefined once closed, `quit` ends the application.
+ * The whole native surface crust depends on, one implementation per OS: `start` brings up the application, `pump` runs the Cocoa run loop on a timer, `createWindow` opens a window, `window` returns it or undefined once closed, `destroy` closes one window and forgets its label, `quit` ends the application.
  */
 export interface Platform {
 	start(): Promise<void>;
 	pump(intervalMs: number): void;
 	createWindow(options: WindowOptions): WindowHandle;
 	window(label: string): WindowHandle | undefined;
+	/**
+	 * Close one window and forget its label. Every platform holds windows by label, so a platform
+	 * that cannot close one is a defect, not an optional extra; `quit()` drives this for every
+	 * open label. Closing leaves every other window open.
+	 */
+	destroy(label: string): void;
 	quit(): void;
 	/**
 	 * Every label the platform still holds open. Optional because it is the honest answer to "is

@@ -32,7 +32,8 @@ installed as `$INSTDIR/crust-sidecars.json`, which is where `declaredSidecars` l
 ## Not fixed / outside this lane
 - `src/cli/build.ts` still carries F4's inline codesign loop; it cannot be shared without editing
   that file, which F4/F9b own.
-- `src/cli/package/options.ts` passes no sidecar list to the installers; discovery from the built
-  manifest makes that unnecessary, but a build with no manifest ships no sidecars.
+- `src/cli/package/options.ts` now threads `build.sidecars` into `NsisOptions.sidecars`, and
+  `buildNsis` also discovers from the built manifest as a fallback (the AppImage pattern); the
+  installer script names each sidecar with `File /oname=` plus the manifest.
 - `findAppBundle` in `src/cli/util.ts` (first `.app` in dist) is still naive; F4's doc names the
   backend resolver as the defect in this file, so it was left alone.

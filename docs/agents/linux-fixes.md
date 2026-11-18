@@ -9,8 +9,9 @@ Scope: `src/platform/linux/**`, `scripts/linux-smoke.ts`, `scripts/linux/**`. Re
 3. **Slot table reclaims** — `src/platform/linux/shim/40_window.c:40-54,83-99`. `shim_slot_release` clears `win` and `alive`; `shim_on_destroy` and `shim_window_destroy` both call it. `shim_window_new` reuses the first clear slot, then grows up to 32. The ceiling is now simultaneous windows, not cumulative ones. A stale pointer no longer matches any slot, so `shim_window_alive` answers 0 for it.
 4. **No dlopen leak on retry** — `src/platform/linux/shim/10_prelude.c:94-123`. Added `extern int dlclose` and `shim_close_libraries()`, called on both failure branches (WebKit open failed, any resolve failed). Handles are zeroed, so a retry opens fresh ones. Cached function pointers from a closed library are never called: `shim_ready` stays 0 and the JS backend keeps `opened = false` until a full open succeeds.
 5. **GError freed on script failure** — `src/platform/linux/shim/30_webview.c:31,105-112,135`. Resolve `g_error_free` optionally and free the caller-owned `GError` in the error branch; unref a `value` returned alongside an error. Uses GLib's own free, never the shim's `free` (Bun's mimalloc export faults on a GLib block — measured earlier at `0xA6D0`).
-6. **`destroy` has a production caller** — `src/platform/linux/platform.ts:103-108,119`. Added `LinuxPlatform.destroy(label)` (native close + forget), called for every tracked window from `quit()` before `backend.quit()`. This is a Linux-only method, not a change to the `Platform` interface in `src/app-types.ts` (another lane's file).
+6. **`destroy` has a production caller** — `src/platform/linux/platform.ts:103-108,119`. Added `LinuxPlatform.destroy(label)` (native close + forget), called for every tracked window from `quit()` before `backend.quit()`. Since handed over, `Platform.destroy(label)` is required on all three platforms (item 8); Linux keeps this implementation.
 7. **Pump counts native slices** — `src/platform/linux/shim/50_pump.c:26-31`, `src/platform/linux/backend.ts:86-90`, `src/platform/linux/platform.ts:52-57`. `shim_pump` now returns 1 when it actually called `g_main_context_iteration` (an idle context that dispatches nothing still counts as a slice), 0 only when the function pointer is absent. `LinuxBackend.iterate()` returns a boolean; `#ticks` advances only on true. The smoke's `${ticks} g_main_context_iteration slices` is now a native count, not a `setTimeout` count.
+8. **Close seam shared** — `src/app-types.ts` adds required `destroy(label)` to `Platform`; darwin and windows implement it, `quit()` drives it on all three, and each platform has a fake-backed test that closes `main`, drops its label and leaves the other window open.
 
 ## Tests added
 
@@ -22,7 +23,6 @@ Scope: `src/platform/linux/**`, `scripts/linux-smoke.ts`, `scripts/linux/**`. Re
 ## Not fixed / handed over
 
 - `docs/agents/linux-platform.md:8` and `:10` still describe the two-symbol preflight and a 32-slot cumulative ceiling. That file is not in this lane's ownership; the coordinator owns the update.
-- `src/app-types.ts` has no close method, so programmatic window close is exposed on `LinuxPlatform` only, not through the shared `Platform` seam.
 
 ## Verification
 

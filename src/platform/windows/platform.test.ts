@@ -156,3 +156,21 @@ describe("createWindow", () => {
 		expect(platform.nativeWindow("main")).toBeUndefined();
 	});
 });
+
+describe("destroy", () => {
+	test("closes main, removes its label and leaves the other window open", async () => {
+		const backend = fakeBackend();
+		const platform = createPlatform(CONFIG, backend);
+		await platform.start();
+		platform.createWindow({ label: "main" });
+		platform.createWindow({ label: "other" });
+		platform.destroy("main");
+		// The fake shim records the native calls and drops the hwnd from its open set, so the
+		// registry prunes the label on read without a second map.
+		expect(backend.calls.filter((call) => call === "webview_close")).toHaveLength(1);
+		expect(backend.calls.filter((call) => call === "window_destroy")).toHaveLength(1);
+		expect(platform.window("main")).toBeUndefined();
+		expect(platform.window("other")).toEqual({ label: "other" });
+		expect(platform.windowLabels()).toEqual(["other"]);
+	});
+});

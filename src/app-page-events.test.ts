@@ -144,6 +144,7 @@ describe("app.info() from a page", () => {
 				pump: () => {},
 				createWindow: (options) => ({ label: options.label }),
 				window: () => undefined,
+				destroy: () => {},
 				quit: () => {},
 			},
 			{ app: { id: "land.jyz.events", name: "events", version: "0.4.1" }, windows: [] },

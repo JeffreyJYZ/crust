@@ -10,7 +10,9 @@ import { shim } from "./index.ts";
 import { applyDockIcon } from "./dock-icon.ts";
 import { ptrValue, S } from "./objc.ts";
 import { createNativeWindow } from "./window-create.ts";
-import { WindowRegistry } from "./windows.ts";
+import { type DarwinWindowStore, createWindowStore } from "./window-store.ts";
+
+type DarwinOptions = { appName?: string; activate?: Activation["mode"]; icon?: string };
 
 /** The macOS `Platform`: the pump and its timer are testable without a window. */
 export class DarwinPlatform implements Platform {
@@ -25,15 +27,13 @@ export class DarwinPlatform implements Platform {
 	#pumping = false;
 	#pumpTimer: ReturnType<typeof setTimeout> | undefined;
 	#ticks = 0;
-	readonly #registry: WindowRegistry;
+	readonly #windows: DarwinWindowStore;
 
-	constructor(
-		options: { appName?: string; activate?: Activation["mode"]; icon?: string } = {},
-	) {
+	constructor(options: DarwinOptions = {}, windows?: DarwinWindowStore) {
 		this.#appName = options.appName ?? "crust";
 		this.#activateMode = options.activate ?? "always";
 		this.#icon = options.icon;
-		this.#registry = new WindowRegistry(() => this.#app);
+		this.#windows = windows ?? createWindowStore(() => this.#app);
 	}
 
 	/**
@@ -97,7 +97,7 @@ export class DarwinPlatform implements Platform {
 	createWindow(options: WindowOptions): WindowHandle {
 		const label = options.label;
 		if (!label) throw new Error("createWindow: label must not be empty");
-		if (this.#registry.has(label))
+		if (this.#windows.has(label))
 			throw new Error(`createWindow: window "${label}" already exists`);
 
 		const handle: WindowHandle = { label };
@@ -106,7 +106,7 @@ export class DarwinPlatform implements Platform {
 			once: () => this.activateOnce(),
 		};
 		const pointers = createNativeWindow(label, options, activation);
-		this.#registry.track(handle, pointers);
+		this.#windows.track(handle, pointers);
 		return handle;
 	}
 
@@ -117,17 +117,21 @@ export class DarwinPlatform implements Platform {
 
 	/** The absolute URL a tracked window was asked to load. */
 	windowUrl(label: string): string | undefined {
-		return this.#registry.url(label);
+		return this.#windows.url(label);
 	}
 
 	/** The handle while the window is still open; closed entries are pruned. */
 	window(label: string): WindowHandle | undefined {
-		return this.#registry.handle(label);
+		return this.#windows.handle(label);
 	}
 
 	/** The labels this platform still tracks, in creation order. */
 	windowLabels(): string[] {
-		return this.#registry.labels();
+		return this.#windows.labels();
+	}
+
+	destroy(label: string): void {
+		this.#windows.destroy(label);
 	}
 
 	/** Lifecycle events recorded by the app delegate deep-link already installs. */
@@ -137,7 +141,7 @@ export class DarwinPlatform implements Platform {
 
 	/** The native `NSWindow *` behind a tracked label; undefined when never created. */
 	nativeWindow(label: string): number | undefined {
-		return this.#registry.native(label);
+		return this.#windows.native(label);
 	}
 
 	/**
@@ -146,12 +150,12 @@ export class DarwinPlatform implements Platform {
 	 * command's `label` against, so it acts on that window rather than the first one.
 	 */
 	webview(label: string): number | undefined {
-		return this.#registry.webview(label);
+		return this.#windows.webview(label);
 	}
 
 	/** The window device number while open, 0 once closed, undefined when unknown. */
 	windowNumber(label: string): number | undefined {
-		return this.#registry.number(label);
+		return this.#windows.number(label);
 	}
 
 	/** Activate the app at most once per process; a failure is cosmetic and never loses a window. */
@@ -159,9 +163,10 @@ export class DarwinPlatform implements Platform {
 		activateAppOnce(this.#app);
 	}
 
-	/** Stop the pump, mark the quit as deliberate, ask AppKit to terminate, then leave. */
+	/** Stop the pump, close every window through `destroy`, mark the quit deliberate, then leave. */
 	quit(): void {
 		this.stopPump();
+		for (const label of this.#windows.labels()) this.destroy(label);
 		// `-terminate:` runs `applicationShouldTerminate:`, which defers with NSTerminateLater when a
 		// before-quit watcher exists — right for a user's ⌘Q, wrong here: this path IS the decision, and
 		// deferring spins a nested run loop for a reply nothing sends (a windowless process alive 40 s).
@@ -192,4 +197,3 @@ export class DarwinPlatform implements Platform {
 
 /** `createPlatform` lives in `platform-factory.ts`; re-exported so every caller keeps its import. */
 export { createPlatform } from "./platform-factory.ts";
-

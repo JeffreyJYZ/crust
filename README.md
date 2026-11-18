@@ -86,7 +86,7 @@ comes back as a rejected promise with a `code`, never a crashed process.
 
 - **No other architectures or mobile targets.** The six release binaries cover x64 and arm64 on
   macOS 13+, Linux and Windows (WebView2); there is no riscv64 build and no iOS or Android path.
-- **Ad-hoc by default.** `crust build` signs with `codesign --sign -`, which opens on the machine that
+- **Ad-hoc by default on macOS.** On macOS `crust build` signs with `codesign --sign -`, which opens on the machine that
   built it and is refused by Gatekeeper on any other, so a recipient needs `xattr -dr
 com.apple.quarantine "my-app.app"` or right-click → Open. `crust sign` swaps in a Developer ID from
   `CRUST_SIGNING_IDENTITY`; no certificate ships with this repository.

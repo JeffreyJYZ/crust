@@ -119,6 +119,7 @@ describe("app.info()", () => {
 				pump: () => {},
 				createWindow: (options) => ({ label: options.label }),
 				window: () => undefined,
+				destroy: () => {},
 				quit: () => {},
 			},
 			CONFIG,

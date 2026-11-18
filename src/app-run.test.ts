@@ -37,6 +37,9 @@ function fakePlatform(): Fake {
 			return { label: options.label };
 		},
 		window: (label) => (open.has(label) ? { label } : undefined),
+		destroy: (label) => {
+			open.delete(label);
+		},
 		quit: () => {
 			platform.quits += 1;
 		},
@@ -128,6 +131,7 @@ describe("watchWindows", () => {
 			pump: () => {},
 			createWindow: (options) => ({ label: options.label }),
 			window: () => undefined,
+			destroy: () => {},
 			quit: () => {},
 		};
 		let closed = 0;

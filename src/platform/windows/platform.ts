@@ -9,9 +9,9 @@ import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import { unsupportedLifecycle } from "@/app-types.ts";
 import { type WindowsBackend, type WindowsShim, defaultBackend } from "./backend.ts";
 import { cstring } from "./cstring.ts";
+import { destroyWindow } from "./destroy.ts";
 import { type WindowsPlatformConfig, hresult } from "./platform-config.ts";
 import { preflightError } from "./preflight.ts";
-import { teardown } from "./teardown.ts";
 import { openWindow } from "./window-open.ts";
 import { WindowsRegistry } from "./windows-registry.ts";
 
@@ -157,6 +157,11 @@ export class WindowsPlatform implements Platform {
 		return this.#windows.get(label)?.handle;
 	}
 
+	/** Close one window by label; its label is pruned once Win32 confirms the handle is gone. */
+	destroy(label: string): void {
+		destroyWindow(this.#windows, this.#shim, label);
+	}
+
 	/** The labels this platform still tracks, in creation order. */
 	windowLabels(): string[] {
 		return this.#windows.labels();
@@ -178,7 +183,7 @@ export class WindowsPlatform implements Platform {
 		this.#quit = true;
 		this.stopPump();
 		if (this.#shim) {
-			teardown(this.#windows, this.#shim);
+			for (const label of this.#windows.labels()) this.destroy(label);
 			this.#shim.shim_post_quit();
 		}
 		this.#windows.clear();
@@ -191,10 +196,5 @@ export class WindowsPlatform implements Platform {
 	}
 }
 
-/** Build the Windows platform. `appName` names the window class and every failure. */
-export function createPlatform(
-	config: WindowsPlatformConfig = {},
-	backend: WindowsBackend = defaultBackend(),
-): WindowsPlatform {
-	return new WindowsPlatform(config, backend);
-}
+/** `createPlatform` lives in `platform-factory.ts`; re-exported so every caller keeps its import. */
+export { createPlatform } from "./platform-factory.ts";

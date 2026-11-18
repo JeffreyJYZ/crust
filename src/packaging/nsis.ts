@@ -13,7 +13,7 @@ import { findInstallerSidecars, sidecarFileLines, stageSidecars } from "./instal
 export type Exec = typeof run;
 
 export interface NsisOptions {
-	/** Directory holding the built Windows binary; only that binary is installed. */
+	/** Directory holding the built Windows binary and the sidecars the build declared. */
 	appPath: string;
 	/** Installed executable filename, and the shortcut's target. */
 	binaryName: string;
@@ -27,6 +27,8 @@ export interface NsisOptions {
 	publisher?: string;
 	/** Destination `.exe`. Defaults to `<appPath>/<id>-<version>-setup.exe`. */
 	out?: string;
+	/** Sidecar names from `build.sidecars`; when absent, read the built manifest instead. */
+	sidecars?: readonly string[];
 	exec?: Exec;
 }
 
@@ -158,7 +160,7 @@ export async function buildNsis(options: NsisOptions): Promise<NsisResult> {
 			version: options.version,
 			publisher: options.publisher,
 			out: outPath,
-			sidecars: sidecars.names,
+			sidecars: options.sidecars ?? sidecars.names,
 		}),
 		"utf8",
 	);

@@ -158,13 +158,16 @@ describe("pump", () => {
 });
 
 describe("destroy", () => {
-	test("closes a tracked window through the native backend and forgets it", () => {
+	test("closes main, removes its label and leaves the other window open", () => {
 		const { backend, calls } = fakeBackend();
 		const platform = new LinuxPlatform(backend);
 		platform.createWindow({ label: "main", url: "http://127.0.0.1:1234/" });
+		platform.createWindow({ label: "other", url: "http://127.0.0.1:1234/" });
 		platform.destroy("main");
+		expect(calls.destroyed).toEqual([100n]); // only main reached GTK
 		expect(platform.window("main")).toBeUndefined();
-		expect(calls.destroyed).toEqual([100n]);
+		expect(platform.window("other")).toEqual({ label: "other" });
+		expect(platform.windowLabels()).toEqual(["other"]);
 		// A second call is a no-op: no second native destroy, no throw.
 		platform.destroy("main");
 		expect(calls.destroyed).toEqual([100n]);

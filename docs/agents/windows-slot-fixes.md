@@ -27,11 +27,12 @@
 
 ## Not fixed
 
-- **02-windows #5** (`userDataDir`) — outside this lane's ownership. `WindowsPlatformConfig` and
-  `WindowsPlatform` already carry the field; the break is upstream: `CrustConfig` has no
-  `userDataDir` key (`src/config/types.ts:90-102`) and `loadPlatform` passes only
-  `{ ...config, appName }` (`src/app-loop.ts:78`). Needs a config-schema key plus the app-loop
-  pass-through. No code changed.
+- **02-windows #5** (`userDataDir`) — already fixed in the current tree; the report is stale.
+  `src/app-loop.ts:98` passes `userDataDir: defaultStateRoot(config.app.id)` beside `appName`, so no
+  config-schema key is needed — the folder is derived from the app id. The comment at `:90-93` gives
+  the reason: two crust apps built under one executable name would otherwise share one WebView2
+  profile. `app-loop-platform.test.ts` now captures the config at `createPlatform` and asserts that
+  two different ids yield two different paths, each ending in its own id.
 
 - **11-probes #3** ("still open") — already fixed in the current tree; the report is stale.
   `platform.window()` calls `WindowsRegistry.get()` (`windows-registry.ts:37-45`), which calls

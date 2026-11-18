@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { buildNsis, describeNsis, type Exec } from "./nsis";
+import { dirname, join } from "node:path";
+import { SIDECAR_MANIFEST } from "@/plugins/sidecar";
+import { buildNsis, describeNsis, nsisScript, type Exec } from "./nsis";
 
 const ID = "land.jyz.example";
 const NAME = "Example";
@@ -41,6 +42,12 @@ async function fixture(): Promise<string> {
 	await mkdir(join(root, "dist", "app"), { recursive: true });
 	await writeFile(join(root, "dist", "app", BINARY), "MZ\n");
 	return root;
+}
+
+async function addSidecar(appPath: string, name = "bin/tool.sh"): Promise<void> {
+	const target = join(appPath, ...name.split("/"));
+	await mkdir(dirname(target), { recursive: true });
+	await writeFile(target, "#!/bin/sh\n", { mode: 0o755 });
 }
 
 /** `which` answers with a path; makensis writes its output so `stat` sees a file. */
@@ -121,6 +128,59 @@ describe("buildNsis", () => {
 			expect(result.tool).toBe("makensis");
 			expect(calls.some((command) => command.includes(result.scriptPath))).toBe(true);
 			expect(describeNsis(result)).toContain(result.scriptPath);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("nsisScript sidecars", () => {
+	test("emits a File /oname= line per sidecar and one for the manifest", () => {
+		const appPath = "/dist";
+		const script = nsisScript({
+			...OPTIONS,
+			appPath,
+			out: join(appPath, "setup.exe"),
+			sidecars: ["bin/tool.sh"],
+		});
+		expect(script).toContain(`  File /oname=bin\\tool.sh "${join(appPath, "bin", "tool.sh")}"`);
+		expect(script).toContain(`  File "${join(appPath, SIDECAR_MANIFEST)}"`);
+	});
+});
+
+describe("buildNsis sidecars", () => {
+	test("installs the sidecars declared in build.sidecars", async () => {
+		const root = await fixture();
+		const appPath = join(root, "dist", "app");
+		try {
+			await addSidecar(appPath);
+			await buildNsis({
+				...OPTIONS,
+				appPath,
+				sidecars: ["bin/tool.sh"],
+				exec: fakeExec(false),
+			});
+			const script = await readFile(join(appPath, `${ID}.nsi`), "utf8");
+			expect(script).toContain(
+				`  File /oname=bin\\tool.sh "${join(appPath, "bin", "tool.sh")}"`,
+			);
+			expect(script).toContain(`  File "${join(appPath, SIDECAR_MANIFEST)}"`);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("falls back to the built manifest when no list is passed", async () => {
+		const root = await fixture();
+		const appPath = join(root, "dist", "app");
+		try {
+			await addSidecar(appPath);
+			await writeFile(join(appPath, SIDECAR_MANIFEST), '["bin/tool.sh"]', "utf8");
+			await buildNsis({ ...OPTIONS, appPath, exec: fakeExec(false) });
+			const script = await readFile(join(appPath, `${ID}.nsi`), "utf8");
+			expect(script).toContain(
+				`  File /oname=bin\\tool.sh "${join(appPath, "bin", "tool.sh")}"`,
+			);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

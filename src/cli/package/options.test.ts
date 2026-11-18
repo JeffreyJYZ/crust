@@ -55,5 +55,12 @@ describe("package option builders", () => {
 			name: "Example",
 			version: "1.2.3",
 		});
+		expect(options.sidecars).toBeUndefined();
+	});
+
+	test("nsis passes the declared build.sidecars through to the installer", () => {
+		const sidecars = ["bin/tool.sh", "tools/helper"];
+		const options = nsisOptions({ ...INPUTS, config: { ...CONFIG, build: { sidecars } } });
+		expect(options.sidecars).toEqual(sidecars);
 	});
 });

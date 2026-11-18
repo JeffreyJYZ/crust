@@ -57,6 +57,7 @@ function fakePlatform(): Platform {
 		pump: () => {},
 		createWindow: (options) => ({ label: options.label }),
 		window: () => undefined,
+		destroy: () => {},
 		quit: () => {},
 	};
 }

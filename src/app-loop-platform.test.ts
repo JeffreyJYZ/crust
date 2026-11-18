@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { basename } from "node:path";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { loadPlatform } from "@/app-loop.ts";
 import type { CrustConfig } from "@/config";
 import { LinuxPlatform } from "@/platform/linux";
+import type { WindowsPlatformConfig } from "@/platform/windows";
+import { WindowsPlatform } from "@/platform/windows/platform.ts";
 
 const CONFIG: CrustConfig = {
 	app: { id: "land.jyz.dispatch", name: "dispatch", version: "0.0.0" },
@@ -14,6 +17,20 @@ const real = process.platform;
 function asPlatform(name: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", { value: name, configurable: true });
 }
+
+/**
+ * `WindowsPlatform` keeps `userDataDir` in a private field, so the only way to see what
+ * `loadPlatform` hands it is to intercept `createPlatform`. The real class is still returned,
+ * so the dispatch-by-constructor test keeps its meaning.
+ */
+const windowsConfigs: WindowsPlatformConfig[] = [];
+mock.module("@/platform/windows", () => ({
+	WindowsPlatform,
+	createPlatform: (config: WindowsPlatformConfig) => {
+		windowsConfigs.push(config);
+		return new WindowsPlatform(config);
+	},
+}));
 
 afterEach(() => {
 	asPlatform(real);
@@ -44,6 +61,36 @@ describe("loadPlatform dispatch", () => {
 		asPlatform("win32");
 		const platform = await loadPlatform(CONFIG);
 		expect(platform.constructor.name).toBe("WindowsPlatform");
+	});
+
+	/**
+	 * The profile folder must be per-app: two crust apps built under one executable name
+	 * would otherwise share one WebView2 profile and each other's cookies and state.
+	 */
+	test("win32 derives a per-app userDataDir from the app id", async () => {
+		const override = process.env.CRUST_DATA_DIR;
+		delete process.env.CRUST_DATA_DIR;
+		try {
+			const first = { ...CONFIG, app: { ...CONFIG.app, id: "land.jyz.first" } };
+			const second = { ...CONFIG, app: { ...CONFIG.app, id: "land.jyz.second" } };
+			windowsConfigs.length = 0;
+			asPlatform("win32");
+			await loadPlatform(first);
+			await loadPlatform(second);
+			expect(windowsConfigs).toHaveLength(2);
+			// `?? ""` keeps a missing field visible as a failure, not a type error.
+			const firstDir = windowsConfigs[0]?.userDataDir ?? "";
+			const secondDir = windowsConfigs[1]?.userDataDir ?? "";
+			expect(firstDir).not.toBe("");
+			expect(secondDir).not.toBe("");
+			expect(firstDir).not.toBe(secondDir);
+			// The last path segment is the id, so no two apps land on one profile.
+			expect(basename(firstDir)).toBe(first.app.id);
+			expect(basename(secondDir)).toBe(second.app.id);
+		} finally {
+			if (override === undefined) delete process.env.CRUST_DATA_DIR;
+			else process.env.CRUST_DATA_DIR = override;
+		}
 	});
 
 	test("an unsupported platform names itself instead of loading a shim", async () => {

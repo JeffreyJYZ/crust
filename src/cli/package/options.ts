@@ -62,6 +62,7 @@ export function nsisOptions(inputs: PackageInputs, exec?: AppImageExec): NsisOpt
 		id,
 		name,
 		version,
+		sidecars: inputs.config.build?.sidecars,
 		exec,
 	};
 }

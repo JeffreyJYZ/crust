@@ -114,7 +114,10 @@ export class LinuxPlatform implements Platform {
 		return live.sort();
 	}
 
-	/** Close one tracked window through GTK and forget its label. Unknown labels are a no-op. */
+	/**
+	 * Close one tracked window through GTK and forget its label; every other window stays open.
+	 * Unknown labels are a no-op. This is the shared `Platform.destroy` seam.
+	 */
 	destroy(label: string): void {
 		const entry = this.#windows.get(label);
 		if (!entry) return;
