@@ -4,6 +4,19 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.28] — 2026-11-18
+
+### Fixed
+
+- **`crust init` on Windows wrote a `package.json` that could not be parsed.** The checkout path was substituted straight into the template's manifest, so the dependency read `link:C:\a\crust\crust` — and `\a` and `\c` are not valid JSON escapes, so `bun install` failed with "failed to parse package.json" before reading anything else. Every Windows checkout produced a scaffold that could not install. The path is normalised to forward slashes, which Bun resolves on Windows.
+- **`crust build` assembled a macOS `.app` on Windows and Linux.** `assembleApp` ran unconditionally, so a Windows build produced the flat binary *and* a bundle around a second copy of it — 96.78 MiB twice — then told the user to `open …X.app`. The bundle is the shipping unit on macOS and nowhere else; `bundlesApp(platform)` now decides, `BuildResult.assembled` is optional, and every consumer handles the flat case.
+- **`crust init` was never exercised on Windows before.** Both defects above were found by dispatching a runtime proof on `windows-11-arm` — scaffolding, installing, building, running, and asserting that a window opened and an invoke round-tripped. That proof now passes on arm64 silicon.
+- **A platform with no lifecycle answered with silence.** `watchLifecycle` swallowed the typed refusal on every tick, so `app.on("before-quit", …)` registered a listener that was never called and never told why. The refusal surfaces once on the `error` channel with its `code` and `requires`, the poll stops, and no subscriber means a warning rather than nothing.
+- **The crash-guard test wrapped a 5000 ms wait in a 5000 ms test timeout**, so a slower CI runner could never reach the inner deadline. The wait gets 15 s and the three spawn-and-compile tests declare 30 s.
+- **The generated native-extension module did not type-check.** The spec was passed to `dlopen` as an untyped literal, so `ffi.symbols` degraded to `Record<string, Function | undefined>` and every export was "possibly undefined" returning `unknown` — 18 errors in a scaffold. `const SPEC = { … } as const` lets `dlopen` infer a precise `Library<typeof SPEC>`.
+- **Three failures named nothing a person could act on.** A bridge that cannot bind now says which port range it tried and how to find the holder; a build with no entry names the path and the two places it can live; a plugin handler that throws names the plugin, the command, and that the fault is the handler's rather than the bridge's.
+- **Windows `keychain.list` was documented as not-implemented** on three pages while the shim had bound `CredEnumerateW` and the adapter enumerated accounts. Only Linux has no enumerator.
+
 ## [0.1.27] — 2026-11-18
 
 ### Added
