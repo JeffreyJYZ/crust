@@ -1,7 +1,9 @@
 # Autostart
 
-Launch at login, as a LaunchAgent: `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`.
-Registered on macOS under `autostart`, so a page can call it.
+Launch at login, in the form the running OS reads: a LaunchAgent at
+`~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad` on macOS, an XDG autostart entry at
+`$XDG_CONFIG_HOME/autostart/<bundle-id>.desktop` on Linux. Registered under `autostart`, so a page
+can call it.
 
 ## enable
 
@@ -9,40 +11,54 @@ Registered on macOS under `autostart`, so a page can call it.
 const result = await window.crust.invoke("autostart", "enable", {
 	appPath: "/Applications/Notes.app",
 });
-// { ok: true, enabled: true, plistPath: "/Users/you/Library/LaunchAgents/land.jyz.notes.plist" }
+// { ok: true, enabled: true, path: "/Users/you/Library/LaunchAgents/land.jyz.notes.plist" }
 ```
 
-| argument   | notes                                                    |
-| ---------- | -------------------------------------------------------- |
-| `appPath`  | required; the absolute path of the `.app` bundle         |
-| `bundleId` | optional; defaults to the app's own `CFBundleIdentifier` |
+| argument   | notes                                                              |
+| ---------- | ------------------------------------------------------------------ |
+| `appPath`  | required; the absolute path of the `.app` bundle, or the executable |
+| `bundleId` | optional; defaults to the app's own `CFBundleIdentifier`            |
 
 The id is read from the bundle's `Contents/Info.plist` when it is not passed, so a built app needs no
 second copy of its identifier. A bare executable has no bundle to read, so it needs an explicit
-`bundleId`.
+`bundleId` — which is also what names the Linux entry, so pass one there.
 
-The plist is written to a sibling temp file and renamed into place, so launchd never reads a half
-plist. Nothing calls `launchctl`: the file takes effect at the next login.
+`path` in the answer is the file that was written, whichever OS it is. The entry is written to a
+sibling temp file and renamed into place, so the OS never reads a half-written one. Nothing calls
+`launchctl`: the plist takes effect at the next login.
 
 ## disable and isEnabled
 
 ```js
 await window.crust.invoke("autostart", "disable", {});
-// { ok: true, enabled: false, plistPath: "…/land.jyz.notes.plist" }
+// { ok: true, enabled: false, path: "…/land.jyz.notes.plist" }
 
 const { enabled } = await window.crust.invoke("autostart", "isEnabled", {});
 ```
 
 Both take an optional `{ bundleId }`. After one `enable` the plugin remembers the id it used, so a
-page that enabled at first launch needs no argument later. `isEnabled` is a file existence test on
-that plist, which is exactly what launchd reads.
+page that enabled at first launch needs no argument later.
+
+`isEnabled` reads the mechanism back instead of repeating what `enable` asked for: on macOS whether
+the plist exists, and on Linux whether the entry is a `Type=Application` file that is neither
+`Hidden=true` nor `X-GNOME-Autostart-enabled=false`. `disable` answers `enabled: false` only after the
+file is gone; a delete that left it behind is `handler-error`, not a quiet success.
+
+## Windows
+
+`autostart` refuses with `unsupported-platform` and names the registry value it would need
+(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). crust writes no Win32 registry entry, so an
+`enabled: true` there would be a claim nothing backs — an app that believed it would start at login
+and would not. Branch on the code, or keep the feature off that platform.
 
 ## Failure codes
 
-| code            | when                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------ |
-| `bad-request`   | `appPath` empty or not a string, no bundle id known yet, or the bundle declares none |
-| `not-found`     | nothing exists at `appPath`                                                          |
-| `handler-error` | the write or the delete failed; the message is the filesystem's                      |
+| code                   | when                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `bad-request`          | `appPath` empty or not a string, no bundle id known yet, the bundle declares none, or an id holding a path separator |
+| `not-found`            | nothing exists at `appPath`                                                                      |
+| `handler-error`        | the write, the delete or the read-back failed; the message is the filesystem's                   |
+| `unsupported-platform` | this OS has no login-item mechanism here (Windows today)                                         |
 
-Every command answers a typed object rather than throwing, and a refusal names the path it refused.
+Every command answers a typed object rather than throwing, and a refusal names the path or the
+mechanism it refused.

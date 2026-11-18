@@ -43,6 +43,15 @@ export const PREFLIGHT: readonly PreflightEntry[] = [
 	{ library: GTK, symbol: "gtk_widget_destroy", pkg: GTK_PKG },
 	{ library: GTK, symbol: "g_signal_connect_data", pkg: GTK_PKG },
 	{ library: WEBKIT, symbol: "webkit_web_view_load_uri", pkg: WEBKIT_PKG },
+	// The three namespaces a normal app reaches first. All of these are GLib/GIO/GTK, which
+	// libgtk-3.so.0 already depends on — so a machine that has GTK at all has them, and a machine
+	// without GTK fails the two window symbols above first.
+	{ library: GTK, symbol: "gtk_clipboard_get", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_clipboard_set_text", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_clipboard_wait_for_text", pkg: GTK_PKG },
+	{ library: GTK, symbol: "g_filename_to_uri", pkg: GTK_PKG },
+	{ library: GTK, symbol: "g_app_info_launch_default_for_uri", pkg: GTK_PKG },
+	{ library: GTK, symbol: "g_get_language_names", pkg: GTK_PKG },
 ];
 
 /** The one line a person needs when a probe fails, on both families crust documents. */

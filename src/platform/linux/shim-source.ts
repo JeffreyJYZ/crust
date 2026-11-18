@@ -10,6 +10,11 @@ import windowStateApi from "./shim/46_window_state_api.c" with { type: "text" };
 import pump from "./shim/50_pump.c" with { type: "text" };
 import screen from "./shim/60_screen.c" with { type: "text" };
 import keyring from "./shim/70_keyring.c" with { type: "text" };
+import dialog from "./shim/83_dialog.c" with { type: "text" };
+import dialogCalls from "./shim/84_dialog_calls.c" with { type: "text" };
+import clipboard from "./shim/80_clipboard.c" with { type: "text" };
+import opener from "./shim/81_opener.c" with { type: "text" };
+import osInfo from "./shim/82_osinfo.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
@@ -21,6 +26,13 @@ export const SHIM_PARTS = [
 	pump,
 	screen,
 	keyring,
+	// The three namespaces a normal app reaches first. Last, because each resolves its own entry
+	// points lazily from the handle the prelude opened — nothing here is needed before a command.
+	clipboard,
+	opener,
+	osInfo,
+	dialog,
+	dialogCalls,
 ] as const;
 
 /**
@@ -39,6 +51,11 @@ export const SHIM_PART_PATHS = [
 	"src/platform/linux/shim/50_pump.c",
 	"src/platform/linux/shim/60_screen.c",
 	"src/platform/linux/shim/70_keyring.c",
+	"src/platform/linux/shim/80_clipboard.c",
+	"src/platform/linux/shim/81_opener.c",
+	"src/platform/linux/shim/82_osinfo.c",
+	"src/platform/linux/shim/83_dialog.c",
+	"src/platform/linux/shim/84_dialog_calls.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

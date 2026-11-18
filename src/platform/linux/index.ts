@@ -3,8 +3,17 @@
  * UNPROVEN ON REAL GTK — written on macOS, where the libraries do not exist. What the tests prove is the shape: the five methods, the pump interval, the preflight text and the guarded load.
  */
 export { createGtkBackend, type LinuxBackend, type NativeWindow } from "./backend.ts";
+export { linuxClipboardAdapter } from "./clipboard.ts";
+export { linuxOpenerAdapter, NO_REVEAL, OPENER_STATUS } from "./opener.ts";
+export { bcp47, linuxOsAdapter, OS_RELEASE, parseOsRelease } from "./os-info.ts";
 export { createPlatform, LinuxPlatform } from "./platform.ts";
 export { linuxWindowAdapter } from "./window-adapter.ts";
+export {
+	DIALOG_POLL_INTERVAL_MS,
+	LINUX_DIALOG_START,
+	LINUX_DIALOG_STATUS,
+	linuxDialogAdapter,
+} from "./dialog.ts";
 export {
 	dlopenProbe,
 	INSTALL_LINE,

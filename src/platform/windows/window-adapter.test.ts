@@ -8,14 +8,16 @@
  * `windows-arm-runtime` workflow runs against a real HWND.
  *
  * The optional members (state and chrome) are driven through the plugin's own commands, which is the
- * surface a page sees, so an absent member answers its typed failure instead of throwing here.
+ * surface a page sees, so an absent member answers its typed failure instead of throwing here. The
+ * states this file does not cover — minimised, maximised, unreadable frame — are
+ * `window-state-adapter.test.ts`, and the style members are `window-style-adapter.test.ts`.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import { createWindowPlugin } from "@/plugins/window.ts";
 import { setActiveWindowsPlatform } from "./active-platform.ts";
 import { type FakeBackend, fakeBackend } from "./fake-backend.ts";
-import { type WindowsPlatform, createPlatform } from "./platform.ts";
+import { createPlatform, type WindowsPlatform } from "./platform.ts";
 import { windowsWindowAdapter } from "./window-adapter.ts";
 
 /** The plugin's command table: every command is required, unlike the adapter's optional members. */
@@ -33,12 +35,7 @@ async function started(options: Parameters<typeof fakeBackend>[0] = {}): Promise
 	await platform.start();
 	platform.createWindow({ label: "main", url: "http://127.0.0.1:4123/?window=main" });
 	const adapter = windowsWindowAdapter(() => platform);
-	return {
-		platform,
-		backend,
-		adapter,
-		commands: createWindowPlugin(adapter).commands as unknown as Commands,
-	};
+	return { platform, backend, adapter, commands: createWindowPlugin(adapter).commands as never };
 }
 
 /** The typed code an adapter throw carries; a plain Error would be a contract defect. */
@@ -158,8 +155,8 @@ describe("the Windows window adapter", () => {
 		});
 	});
 
-	/** The refusals are absences, so the plugin answers `unknown-adapter` naming the member. */
-	test("the members Windows cannot honestly answer are absent, not faked", async () => {
+	/** The refusals are gone: every member the plugin's `WINDOW_COMMANDS` names is answered here. */
+	test("the members that used to refuse are wired, and each answers through the plugin", async () => {
 		const { adapter, commands } = await started();
 		for (const member of [
 			"setAlwaysOnTop",
@@ -167,20 +164,19 @@ describe("the Windows window adapter", () => {
 			"setFullscreen",
 			"isFullscreen",
 			"setDecorations",
+			"isDecorated",
 			"setOpacity",
+			"opacity",
 			"setCursor",
 			"setCursorVisible",
 		] as const) {
-			expect(adapter[member]).toBeUndefined();
+			expect(adapter[member]).toBeTypeOf("function");
 		}
 		expect(commands.setAlwaysOnTop?.({ label: "main", value: true })).toMatchObject({
-			ok: false,
-			code: "unknown-adapter",
+			ok: true,
 		});
-		expect(commands.setOpacity?.({ label: "main", value: 0.5 })).toMatchObject({
-			ok: false,
-			code: "unknown-adapter",
-		});
+		expect(commands.setOpacity?.({ label: "main", value: 0.5 })).toMatchObject({ ok: true });
+		expect(commands.setCursor?.({ cursor: "text" })).toMatchObject({ ok: true });
 	});
 
 	test("no platform attached is a named refusal, not a crash", () => {

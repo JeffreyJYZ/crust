@@ -15,6 +15,8 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WindowsShim } from "./backend.ts";
+import { coreSymbols } from "./ffi-core.ts";
+import { dialogSymbols } from "./ffi-dialog.ts";
 import { shimSource } from "./shim-source.ts";
 
 const P = FFIType.ptr;
@@ -92,16 +94,37 @@ export function compile(): WindowsShim {
 				shim_window_destroy: { args: [P], returns: I32 },
 				shim_window_set_min: { args: [P, I32, I32], returns: V },
 				shim_window_client_num: { args: [P, I32], returns: I32 },
-				shim_window_frame_num: { args: [P, I32], returns: I32 },
-				shim_window_set_frame: { args: [P, I32, I32, I32, I32], returns: I32 },
+				shim_window_frame: { args: [P, P], returns: I32 },
+				shim_window_normal_frame: { args: [P, P], returns: I32 },
+				shim_window_monitor_num: { args: [P, I32], returns: I32 },
+				shim_window_set_frame: {
+					args: [P, I32, I32, I32, I32],
+					returns: I32,
+				},
 				shim_window_show: { args: [P, I32], returns: I32 },
 				shim_window_is_minimized: { args: [P], returns: I32 },
 				shim_window_is_maximized: { args: [P], returns: I32 },
 				shim_window_focus: { args: [P], returns: I32 },
 				shim_window_set_material: { args: [P, I32], returns: I32 },
+				// The style members. Every style value is an `int`: GWL_STYLE and GWL_EXSTYLE hold a
+				// DWORD even though the call that reads them is pointer-sized.
+				shim_window_set_topmost: { args: [P, I32], returns: I32 },
+				shim_window_is_topmost: { args: [P], returns: I32 },
+				shim_window_set_decorated: { args: [P, I32], returns: I32 },
+				shim_window_is_decorated: { args: [P], returns: I32 },
+				shim_window_set_alpha: { args: [P, I32], returns: I32 },
+				shim_window_alpha: { args: [P], returns: I32 },
+				shim_window_style: { args: [P, P], returns: I32 },
+				shim_window_set_style: { args: [P, I32], returns: I32 },
+				// The pointer. No hwnd: `SetCursor`/`ShowCursor` are the thread's, not a window's.
+				shim_cursor_set: { args: [I32], returns: I32 },
+				shim_cursor_show: { args: [I32], returns: I32 },
 
-				shim_screen_count: { args: [], returns: I32 },
-				shim_screen_info: { args: [I32, P], returns: I32 },
+				// screen, clipboard, opener and `os.info`: their own table, spread in at the line cap.
+				...coreSymbols,
+
+				// The file panels: their own table, on the same rule.
+				...dialogSymbols,
 
 				shim_webview_new: { args: [P, CS, CS], returns: I32 },
 				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
@@ -162,6 +185,8 @@ export function compile(): WindowsShim {
 		}) as unknown as ShimLibrary;
 		return shimSymbols(library);
 	} catch (error) {
-		throw new Error([reason(error), tccCommand(source)].join("\n"), { cause: error });
+		throw new Error([reason(error), tccCommand(source)].join("\n"), {
+			cause: error,
+		});
 	}
 }

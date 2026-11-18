@@ -62,12 +62,11 @@ describe("what the unit imports", () => {
 
 	test("every Win32 entry point is a pointer, never a call to an unresolved symbol", () => {
 		const pointers = declaredPointers();
-		// 32 in all: 8 kernel32 (MultiByteToWideChar, GetLastError, GetCurrentThreadId, GetTickCount64,
-		// VirtualQuery, Sleep, LoadLibraryW, GetModuleHandleW), 22 user32 — including the two the
-		// monitor enumeration needs and the five the window adapter's geometry, state and focus calls
-		// need — and ole32's CoInitializeEx + CoGetApartmentType. Each one is bound in `12_win32.c`;
-		// none is an `extern`.
-		expect(pointers.length).toBe(32);
+		// A floor, not a fixed count: every namespace a lane adds brings its own pointers, and
+		// three lanes were adding them at once (2026-11-18). What keeps the table honest is the
+		// exhaustive half of `abi-width.test.ts` and the bind-exactly-once test below, not this
+		// number — so this asserts the table never *shrinks* under the window/WebView2 layer.
+		expect(pointers.length).toBeGreaterThanOrEqual(32);
 		expect(pointers).toContain("SetWindowPos");
 		expect(pointers).toContain("GetWindowRect");
 		expect(pointers).toContain("SetForegroundWindow");
@@ -77,6 +76,20 @@ describe("what the unit imports", () => {
 		expect(pointers).toContain("PeekMessageW");
 		expect(pointers).toContain("CoInitializeEx");
 		expect(pointers).toContain("LoadLibraryW");
+		// The clipboard/opener/`os.info` table, resolved the same way and from three more modules.
+		expect(pointers).toContain("OpenClipboard");
+		expect(pointers).toContain("ShellExecuteW");
+		expect(pointers).toContain("RtlGetVersion");
+		// The style, placement and pointer table, all user32.
+		expect(pointers).toContain("GetWindowLongPtrW");
+		expect(pointers).toContain("SetWindowLongPtrW");
+		expect(pointers).toContain("GetWindowPlacement");
+		expect(pointers).toContain("SetLayeredWindowAttributes");
+		expect(pointers).toContain("SetCursor");
+		expect(pointers).toContain("ShowCursor");
+		expect(pointers).toContain("MonitorFromWindow");
+		// `GetWindowLongW` is 32-bit and must never be bound: the pointer-sized call is the only one.
+		expect(pointers).not.toContain("GetWindowLongW");
 		for (const name of RESOLVERS) expect(pointers).not.toContain(name);
 	});
 
@@ -103,7 +116,10 @@ describe("the modules the preflight promises", () => {
 		const expected = [...new Set(PREFLIGHT.map((entry) => entry.module))].filter(
 			(module) => module !== "WebView2Loader.dll",
 		);
-		expect(loaded.sort()).toEqual(expected.sort());
+		// Set equality, not multiset: two parts may load the same module for their own entry points
+		// (shell32 is both the file panels' and `ShellExecuteW`'s), and what the preflight promises is
+		// that a module is loaded at all.
+		expect([...new Set(loaded)].sort()).toEqual(expected.sort());
 	});
 });
 

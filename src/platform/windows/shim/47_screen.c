@@ -79,6 +79,25 @@ int shim_screen_count(void) {
 	return g_screen_count;
 }
 
+// The monitor a window is on, one component of its full rect: 0 x, 1 y, 2 width, 3 height.
+// MONITOR_DEFAULTTONEAREST, so a window straddling two displays answers the nearer one rather than
+// nothing — which is what a fullscreen toggle needs, since "the monitor it is mostly on" is the one
+// it should cover.
+int shim_window_monitor_num(shim_h hwnd, int component) {
+	shim_monitor_info info;
+	shim_h monitor;
+	if (!hwnd || !shim_win32_load()) return 0;
+	monitor = MonitorFromWindow(hwnd, SHIM_MONITOR_DEFAULTTONEAREST);
+	if (!monitor) return 0;
+	info.cbSize = (unsigned int)sizeof(shim_monitor_info);
+	if (!GetMonitorInfoW(monitor, &info)) return 0;
+	if (component == 0) return info.rcMonitor.left;
+	if (component == 1) return info.rcMonitor.top;
+	if (component == 2) return info.rcMonitor.right - info.rcMonitor.left;
+	if (component == 3) return info.rcMonitor.bottom - info.rcMonitor.top;
+	return 0;
+}
+
 // Ten doubles for one display; 1 written, 0 when `index` names nothing this enumeration saw.
 int shim_screen_info(int index, double *out) {
 	if (out == 0 || index < 0) return 0;

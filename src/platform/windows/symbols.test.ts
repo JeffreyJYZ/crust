@@ -20,25 +20,49 @@ const DIR = import.meta.dir;
  * Method names declared on `WindowsShim`. That interface is the whole contract: `platform.ts`,
  * `window-open.ts`, `teardown.ts` and `windows-registry.ts` all take a `WindowsShim`, so a symbol
  * outside it cannot be called and a member without a declaration cannot be reached.
+ *
+ * `WindowsShim` now extends its two halves (`backend-webview.ts`, `backend-namespaces.ts`) rather
+ * than carrying every member inline, so the members are collected along that chain: reading only
+ * `backend.ts` would find nothing and pass for the wrong reason.
  */
 function interfaceMembers(): string[] {
-	const source = lf(readFileSync(join(DIR, "backend.ts"), "utf8"));
-	const start = source.indexOf("export interface WindowsShim {");
-	expect(start).toBeGreaterThan(-1);
-	const end = source.indexOf("\n}", start);
-	expect(end).toBeGreaterThan(start);
-	const block = source.slice(start, end);
-	return [...block.matchAll(/^\t([a-z_][\w]*)\(/gm)].map((match) => match[1] ?? "");
+	const root = lf(readFileSync(join(DIR, "backend.ts"), "utf8"));
+	const head = /export interface WindowsShim([^{]*)\{/.exec(root)?.[1] ?? "";
+	const inherited = [...head.matchAll(/(Windows\w+Shim)/g)].flatMap((match) =>
+		membersOf(match[1] ?? ""),
+	);
+	return [...membersOf("WindowsShim"), ...inherited];
+}
+
+/** The body of one interface, from whichever of the three files declares it. */
+function membersOf(name: string): string[] {
+	for (const file of ["backend.ts", "backend-webview.ts", "backend-namespaces.ts"]) {
+		const source = lf(readFileSync(join(DIR, file), "utf8"));
+		const at = source.indexOf(`export interface ${name}`);
+		if (at < 0) continue;
+		// `extends` sits between the name and the brace, so the body starts at the next `{`.
+		const start = source.indexOf("{", at);
+		const end = source.indexOf("\n}", start);
+		expect(end).toBeGreaterThan(start);
+		const block = source.slice(start, end);
+		return [...block.matchAll(/^\t([a-z_][\w]*)\(/gm)].map((match) => match[1] ?? "");
+	}
+	return [];
 }
 
 /** Keys of the `symbols: { … }` map handed to `cc()`, matched by their `args:` entry. */
 function declaredSymbols(): string[] {
-	const source = lf(readFileSync(join(DIR, "ffi.ts"), "utf8"));
-	const start = source.indexOf("symbols: {");
-	expect(start).toBeGreaterThan(-1);
-	return [...source.slice(start).matchAll(/([a-z_][\w]*):\s*\{\s*args:/g)].map(
-		(match) => match[1] ?? "",
-	);
+	// Three files declare the map: `ffi.ts` carries the window/WebView2 table, `ffi-core.ts` the
+	// clipboard, opener and `os.info` symbols, and `ffi-dialog.ts` the file panels. All are read,
+	// because a table in one file only would let this cross-check pass while half the map went
+	// unexamined.
+	return ["ffi.ts", "ffi-core.ts", "ffi-dialog.ts"].flatMap((name) => {
+		const source = lf(readFileSync(join(DIR, name), "utf8"));
+		const start = source.indexOf("symbols: {");
+		// `ffi-core.ts` exports the table itself, so the whole file is the block.
+		const block = start >= 0 ? source.slice(start) : source;
+		return [...block.matchAll(/([a-z_][\w]*):\s*\{\s*args:/g)].map((match) => match[1] ?? "");
+	});
 }
 
 describe("the cc() symbol map", () => {

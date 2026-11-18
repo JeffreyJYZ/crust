@@ -41,6 +41,11 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 			if (minh > 0) pt[7] = minh;
 		}
 	}
+	if (msg == SHIM_WM_SETCURSOR) {
+		// The pointer is the thread's, and DefWindowProcW would put the class arrow back on the next
+		// move. 1 means a shape was set for this process, so the procedure answers TRUE (handled).
+		if (shim_cursor_apply()) return 1;
+	}
 	if (msg == SHIM_WM_CLOSE) {
 		DestroyWindow(hwnd);
 		return 0;

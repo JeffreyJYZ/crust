@@ -9,6 +9,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import prelude from "./shim/10_prelude.c" with { type: "text" };
+import pointerCore from "./shim/11_pointer_core.c" with { type: "text" };
+import styleDecls from "./shim/11_win32_style.c" with { type: "text" };
 import win32 from "./shim/12_win32.c" with { type: "text" };
 import guard from "./shim/14_guard.c" with { type: "text" };
 import windowClass from "./shim/20_class.c" with { type: "text" };
@@ -19,8 +21,16 @@ import probe from "./shim/36_probe.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import webview from "./shim/42_webview.c" with { type: "text" };
 import minsize from "./shim/44_minsize.c" with { type: "text" };
+import styleMembers from "./shim/45_style.c" with { type: "text" };
+import cursorMembers from "./shim/49_cursor.c" with { type: "text" };
 import material from "./shim/46_material.c" with { type: "text" };
 import screen from "./shim/47_screen.c" with { type: "text" };
+import clipboard from "./shim/50_clipboard.c" with { type: "text" };
+import opener from "./shim/51_opener.c" with { type: "text" };
+import osInfo from "./shim/52_osinfo.c" with { type: "text" };
+import dialog from "./shim/48_dialog.c" with { type: "text" };
+import dialogPaths from "./shim/48_dialog_paths.c" with { type: "text" };
+import dialogCalls from "./shim/49_dialog.c" with { type: "text" };
 
 /**
  * LF, always. A Windows checkout can hand back CRLF, and the source-scanning assertions in this
@@ -47,6 +57,10 @@ export function readShimSource(): string {
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
 	lf(prelude),
+	// The clipboard/opener/`os.info` pointer table, which `12_win32.c` binds — it must precede it.
+	lf(pointerCore),
+	// The style/opacity/placement/pointer table, on the same rule: before `12_win32.c` binds it.
+	lf(styleDecls),
 	lf(win32),
 	lf(guard),
 	lf(windowClass),
@@ -57,8 +71,20 @@ export const SHIM_PARTS = [
 	lf(window),
 	lf(webview),
 	lf(minsize),
+	lf(styleMembers),
 	lf(material),
 	lf(screen),
+	lf(dialog),
+	lf(dialogPaths),
+	lf(dialogCalls),
+	// The three namespaces a normal app reaches first: `50`–`52`, over the pointer table above.
+	// Last, because `52_osinfo.c` calls `shim_utf8` from `50_clipboard.c` and needs no other order.
+	lf(clipboard),
+	lf(opener),
+	lf(osInfo),
+	// The pointer: no hwnd, so no place in `40_window.c`'s table — but `20_class.c`'s WM_SETCURSOR
+	// re-applies it, and the prelude's forward declaration is what keeps its position free.
+	lf(cursorMembers),
 ] as const;
 
 /**
@@ -70,6 +96,8 @@ export const shimSource = SHIM_PARTS.join("\n");
 /** Repo-relative paths, in the same order, for a doctor's on-disk and embedded checks. */
 export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/10_prelude.c",
+	"src/platform/windows/shim/11_pointer_core.c",
+	"src/platform/windows/shim/11_win32_style.c",
 	"src/platform/windows/shim/12_win32.c",
 	"src/platform/windows/shim/14_guard.c",
 	"src/platform/windows/shim/20_class.c",
@@ -80,8 +108,16 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/40_window.c",
 	"src/platform/windows/shim/42_webview.c",
 	"src/platform/windows/shim/44_minsize.c",
+	"src/platform/windows/shim/45_style.c",
 	"src/platform/windows/shim/46_material.c",
 	"src/platform/windows/shim/47_screen.c",
+	"src/platform/windows/shim/48_dialog.c",
+	"src/platform/windows/shim/48_dialog_paths.c",
+	"src/platform/windows/shim/49_dialog.c",
+	"src/platform/windows/shim/50_clipboard.c",
+	"src/platform/windows/shim/51_opener.c",
+	"src/platform/windows/shim/52_osinfo.c",
+	"src/platform/windows/shim/49_cursor.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

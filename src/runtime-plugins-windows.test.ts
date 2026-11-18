@@ -85,13 +85,18 @@ describe("the window adapter the registry picks", () => {
 		});
 	});
 
-	/** The one namespace Windows still refuses, and it says why rather than crashing. */
-	test("positioner keeps its named refusal on win32", async () => {
+	/**
+	 * `positioner` is wired for Windows now: the placements are converted into Win32's y-down work
+	 * area by `window-positioner.ts`. A ghost label proves the real plugin is registered — a bare
+	 * `positionerPlugin` would answer `not-implemented` before it ever looked at the label — without
+	 * touching a monitor, which on this machine would compile the shim.
+	 */
+	test("positioner is the adapted one on win32, and still answers unknown-window", async () => {
 		await windowsWindow();
 		const positioner = await commandsOf("win32", "positioner");
-		expect(await positioner.center?.({ label: "main" })).toMatchObject({
+		expect(await positioner.center?.({ label: "ghost" })).toMatchObject({
 			ok: false,
-			code: "not-implemented",
+			code: "unknown-window",
 		});
 	});
 

@@ -2,23 +2,21 @@
  * Compiling the shipped C shim, once per process. `cc()` compiles C only, and this unit links nothing beyond libc — GTK and WebKit are reached through `dlopen` inside the shim — so there are no `-l` flags and no `-dev` headers are needed. Linking libc still wants the `libc.so` **linker script**, which only the C development package ships: that one package is the whole reason a machine with GTK and WebKitGTK can still fail here, so a `library c not found` from TinyCC is translated by `linkError` instead of escaping raw.
  * Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file does not exist, so the source travels in the binary as text and is materialised to a temp file before `cc()` is called.
  */
-import { cc, FFIType } from "bun:ffi";
+import { cc } from "bun:ffi";
 import { createHash } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LinuxDialogShim } from "./dialog-ffi.ts";
 import { linkError } from "./preflight.ts";
 import { shimSource } from "./shim-source.ts";
-
-const P = FFIType.ptr;
-const I32 = FFIType.i32;
-const V = FFIType.void;
-const CS = FFIType.cstring;
+import { shimSymbols } from "./shim-symbols.ts";
 
 /**
  * The entry points this shim exports, as JS sees them. Declared by hand because the argument types are the contract a fake has to satisfy: every `cstring` argument is a NUL-terminated byte buffer, never a JavaScript string — bun:ffi throws `a JavaScript string is not valid here` on one, measured against real GTK.
+ * The file panels' optional members come from `dialog-ffi.ts`, split out at the line cap and because they are the one namespace that can be absent on an older GTK.
  */
-export interface LinuxShim {
+export interface LinuxShim extends LinuxDialogShim {
 	shim_lib_open(): number;
 	shim_lib_error_text(): string | null;
 	shim_gtk_init(): number;
@@ -79,6 +77,21 @@ export interface LinuxShim {
 	 */
 	shim_screen_info(index: number, out: Float64Array): number;
 
+	/**
+	 * The clipboard, the opener and `os.info`, each resolved lazily so an older GTK fails one
+	 * namespace by name instead of refusing the launch. `shim_clipboard_read` copies UTF-8 into a
+	 * caller buffer and answers the full length — 0 for no text, -1 for no clipboard.
+	 */
+	shim_clipboard_ready?(): number;
+	shim_clipboard_read?(dst: Uint8Array, cap: number): number;
+	shim_clipboard_write?(text: Uint8Array, length: number): number;
+	shim_opener_ready?(): number;
+	shim_opener_open_path?(path: Uint8Array, length: number): number;
+	shim_opener_open_url?(url: Uint8Array, length: number): number;
+	shim_opener_reason_text?(): string | null;
+	shim_os_locale_ready?(): number;
+	shim_os_locale?(): string | null;
+
 	/** Resolve libsecret's synchronous API; 1 ready, 0 with a named error in `shim_lib_error_text`. */
 	shim_keyring_open(): number;
 	/** 1 stored, 0 refused with a named error. */
@@ -122,59 +135,7 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 	const path = join(tmpdir(), `crust-linux-shim-${hash}.c`);
 	if (!existsSync(path)) writeFileSync(path, shimSource);
 
-	const options = {
-		source: path,
-		symbols: {
-			shim_lib_open: { args: [], returns: I32 },
-			shim_lib_error_text: { args: [], returns: CS },
-
-			shim_gtk_init: { args: [], returns: I32 },
-			shim_pump: { args: [], returns: I32 },
-
-			shim_window_new: { args: [CS, I32, I32, I32, I32], returns: P },
-			shim_window_attach: { args: [P, P], returns: I32 },
-			shim_window_show: { args: [P], returns: V },
-			shim_window_destroy: { args: [P], returns: V },
-			shim_window_alive: { args: [P], returns: I32 },
-
-			shim_webview_new: { args: [], returns: P },
-			shim_webview_load: { args: [P, CS], returns: I32 },
-
-			shim_window_api_ready: { args: [], returns: I32 },
-			shim_window_api_missing: { args: [], returns: CS },
-			shim_window_present: { args: [P], returns: I32 },
-			shim_window_set_title: { args: [P, CS], returns: I32 },
-			shim_window_title: { args: [P], returns: CS },
-			shim_window_resize: { args: [P, I32, I32], returns: I32 },
-			shim_window_size: { args: [P, P], returns: I32 },
-			shim_window_placeable: { args: [], returns: I32 },
-			shim_window_move: { args: [P, I32, I32], returns: I32 },
-			shim_window_position: { args: [P, P], returns: I32 },
-			shim_window_state: { args: [P], returns: I32 },
-			shim_window_flag: { args: [P, I32, I32], returns: I32 },
-			shim_window_keep_above: { args: [P, I32], returns: I32 },
-			shim_window_set_decorated: { args: [P, I32], returns: I32 },
-			shim_window_decorated: { args: [P], returns: I32 },
-			shim_widget_set_opacity: { args: [P, FFIType.f64], returns: I32 },
-			shim_widget_opacity: { args: [P], returns: FFIType.f64 },
-
-			shim_screen_ready: { args: [], returns: I32 },
-			shim_screen_count: { args: [], returns: I32 },
-			shim_screen_info: { args: [I32, P], returns: I32 },
-
-			shim_keyring_open: { args: [], returns: I32 },
-			shim_keyring_set: { args: [CS, CS, CS], returns: I32 },
-			shim_keyring_get: { args: [CS, CS, P], returns: CS },
-			shim_keyring_delete: { args: [CS, CS], returns: I32 },
-
-			shim_webview_title: { args: [P], returns: CS },
-			shim_webview_load_state: { args: [], returns: I32 },
-			shim_webview_load_text: { args: [], returns: CS },
-			shim_webview_eval: { args: [P, CS], returns: I32 },
-			shim_webview_eval_state: { args: [], returns: I32 },
-			shim_webview_eval_text: { args: [], returns: CS },
-		},
-	};
+	const options = { source: path, symbols: shimSymbols };
 
 	try {
 		return cc(options) as unknown as { symbols: LinuxShim & LinuxProofShim };

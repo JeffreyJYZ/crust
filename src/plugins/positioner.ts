@@ -39,11 +39,19 @@ export interface PositionerResult {
 	readonly placed: true;
 }
 
+/** Which way `y` grows: AppKit's up, Win32's and GDK's down. */
+export type ScreenAxis = "up" | "down";
+
 export interface PositionerOptions {
 	/** The platform's move calls; absent answers `not-implemented`, as `crust:window` does. */
 	native?: PositionerNative;
 	/** The main screen's visible frame, from `-[NSScreen visibleFrame]`. */
 	screen?: ScreenSource;
+	/**
+	 * `"up"` (the default) or `"down"`: which end of the frame is `top`. The plugin computes the answer
+	 * rather than letting a platform flip it, because a command returns the point it moved the window to.
+	 */
+	axis?: ScreenAxis;
 }
 
 /** The placements Tauri names, in the order this plugin declares them. */
@@ -80,19 +88,24 @@ function usable(bounds: ScreenBounds | undefined): ScreenBounds | undefined {
 /**
  * Where a window of `size` lands for `placement`, rounded to whole points because a move takes points.
  * A window larger than the screen keeps the negative offset: clamping would report a success the user cannot see.
+ * `axis` decides which end of the frame is `top`; `middle` is the same arithmetic either way.
  */
 function place(
 	placement: Placement,
 	screen: ScreenBounds,
 	size: { width: number; height: number },
+	axis: ScreenAxis = "up",
 ): { x: number; y: number } {
 	const left = Math.round(screen.x);
 	const right = Math.round(screen.x + screen.width - size.width);
-	const bottom = Math.round(screen.y);
-	const top = Math.round(screen.y + screen.height - size.height);
+	const near = Math.round(screen.y);
+	const far = Math.round(screen.y + screen.height - size.height);
+	// `top` is the far edge when `y` grows up and the near one when it grows down.
+	const top = axis === "down" ? near : far;
+	const bottom = axis === "down" ? far : near;
 	// One half-up `Math.round` on the slack, offset from the near edge, so every centred axis agrees.
 	const middleX = left + Math.round((screen.width - size.width) / 2);
-	const middleY = bottom + Math.round((screen.height - size.height) / 2);
+	const middleY = near + Math.round((screen.height - size.height) / 2);
 	switch (placement) {
 		case "topLeft":
 			return { x: left, y: top };
@@ -162,7 +175,7 @@ export function createPositionerPlugin(
 				);
 			}
 			// `.call` keeps `this` on a platform whose adapter is a class.
-			const { x, y } = place(placement, screen, getSize.call(native, label));
+			const { x, y } = place(placement, screen, getSize.call(native, label), options.axis);
 			setPosition.call(native, label, { x, y });
 			return { ok: true as const, label, x, y, placed: true as const };
 		});

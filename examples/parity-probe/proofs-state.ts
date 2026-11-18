@@ -37,7 +37,7 @@ export async function proveAutostart(): Promise<boolean> {
 	let home: string | undefined;
 	try {
 		home = await tempRoot("autostart");
-		const autostart = createAutostartPlugin({ home, bundleId: BUNDLE_ID });
+		const autostart = createAutostartPlugin({ home, bundleId: BUNDLE_ID, platform: "darwin" });
 		const plist = join(home, "Library", "LaunchAgents", `${BUNDLE_ID}.plist`);
 		// The running binary stands in for the `.app` bundle: it exists, which is what `enable` checks.
 		const enabled = await autostart.commands.enable({

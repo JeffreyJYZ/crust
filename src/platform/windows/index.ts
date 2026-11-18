@@ -4,6 +4,9 @@
  * has to be able to replace it. Nothing here runs on macOS — see `platform.ts`.
  */
 export { defaultBackend, type WindowsBackend, type WindowsShim } from "./backend.ts";
+export { windowsClipboardAdapter } from "./clipboard.ts";
+export { OPENER_STATUS, windowsOpenerAdapter } from "./opener.ts";
+export { windowsOsAdapter } from "./os-info.ts";
 export { createPlatform, WindowsPlatform } from "./platform.ts";
 export {
 	DEFAULT_HEIGHT,
@@ -21,3 +24,11 @@ export {
 	type WindowsRuntimeReport,
 } from "./preflight.ts";
 export { SHIM_PART_NAMES, SHIM_PART_PATHS, SHIM_PARTS, shimSource } from "./shim-source.ts";
+export {
+	DIALOG_MAX_PATHS,
+	DIALOG_STATUS,
+	defaultDialogOwner,
+	filterSpec,
+	windowsDialogAdapter,
+	type WindowsDialogShim,
+} from "./dialog.ts";

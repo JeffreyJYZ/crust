@@ -62,7 +62,10 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 	const { core, scoped, os } = parts;
 	const window = await windowPlugins(os);
 	return [
-		...core.filter((plugin) => plugin.name !== "window").map(scoped),
+		...core
+			.filter((plugin) => plugin.name !== "window")
+			.filter((plugin) => !replacesCoreNamespace(plugin.name, os))
+			.map(scoped),
 		...window.plugins,
 		parts.power,
 		// Displays have a working half on both platforms; the selector wires the right one.

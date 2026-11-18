@@ -29,6 +29,11 @@ static void *shim_webkit;
 static int shim_ready;
 static char shim_error[512];
 
+// GLib's own free, for a string a later part reads back and owns. Bun links mimalloc and exports its
+// own `free`, so a GLib block handed to `free` above faults (measured at 0xA6D0); each part that
+// needs it resolves `g_free` lazily, because none of them is needed before a command runs.
+static void (*shim_core_g_free)(void *block);
+
 // Bounded copy, always NUL-terminated: this buffer crosses bun:ffi as a
 // cstring, and an unterminated one there is a read past the end.
 static void shim_set_error(const char *what, const char *detail) {

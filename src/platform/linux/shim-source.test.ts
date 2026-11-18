@@ -5,7 +5,7 @@ import { SHIM_PARTS, SHIM_PART_NAMES, SHIM_PART_PATHS, shimSource } from "./inde
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(8);
+		expect(SHIM_PARTS).toHaveLength(13);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -46,6 +46,11 @@ describe("shim assembly", () => {
 			"50_pump.c",
 			"60_screen.c",
 			"70_keyring.c",
+			"80_clipboard.c",
+			"81_opener.c",
+			"82_osinfo.c",
+			"83_dialog.c",
+			"84_dialog_calls.c",
 		]);
 	});
 
@@ -94,8 +99,9 @@ describe("native contracts", () => {
 		// would make a 900x600 window impossible to drag shorter.
 		expect(windowPart).not.toContain("shim_set_size_request(win, min_w, h)");
 		// The FFI declaration must carry the same arity as the prototype above: a
-		// four-argument `args` array drops `minHeight` before C ever sees it.
-		const ffi = readFileSync(join(import.meta.dir, "shim-ffi.ts"), "utf8");
+		// four-argument `args` array drops `minHeight` before C ever sees it. The map lives in
+		// `shim-symbols.ts`, split out of `shim-ffi.ts` at the line cap.
+		const ffi = readFileSync(join(import.meta.dir, "shim-symbols.ts"), "utf8");
 		expect(ffi).toContain("shim_window_new: { args: [CS, I32, I32, I32, I32], returns: P }");
 	});
 

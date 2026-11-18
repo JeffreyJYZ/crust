@@ -54,15 +54,35 @@ int shim_window_client_num(shim_h hwnd, int component) {
 //
 // 0 = x, 1 = y, 2 = width, 3 = height, of the *window* rect (title bar and borders included), which
 // is the same frame `SetWindowPos` moves and resizes.
-int shim_window_frame_num(shim_h hwnd, int component) {
+// All four components in one call, into a caller-owned `int[4]`: 1 written, 0 when `GetWindowRect`
+// failed. One at a time could not report failure — a component of 0 is a legal x, y, width or height,
+// so a closed handle answered `0x0` and a caller could not tell that from a zero-sized window.
+int shim_window_frame(shim_h hwnd, int *out) {
 	int rect[4];
-	if (!hwnd) return 0;
+	if (!hwnd || !out) return 0;
 	if (!GetWindowRect(hwnd, rect)) return 0;
-	if (component == 0) return rect[0];
-	if (component == 1) return rect[1];
-	if (component == 2) return rect[2] - rect[0];
-	if (component == 3) return rect[3] - rect[1];
-	return 0;
+	out[0] = rect[0];
+	out[1] = rect[1];
+	out[2] = rect[2] - rect[0];
+	out[3] = rect[3] - rect[1];
+	return 1;
+}
+
+// The rect the window goes back to when it is un-minimised or un-maximised:
+// `WINDOWPLACEMENT.rcNormalPosition`. `GetWindowRect` answers the iconic off-screen rect for a
+// minimised window (classically -32000,-32000) and the whole monitor for a maximised one, so neither
+// is a frame a caller can save and restore. 1 written, 0 when the call failed.
+int shim_window_normal_frame(shim_h hwnd, int *out) {
+	shim_window_placement wp;
+	if (!hwnd || !out) return 0;
+	if (!shim_win32_load()) return 0;
+	wp.length = (unsigned int)sizeof(shim_window_placement);
+	if (!GetWindowPlacement(hwnd, &wp)) return 0;
+	out[0] = wp.normalLeft;
+	out[1] = wp.normalTop;
+	out[2] = wp.normalRight - wp.normalLeft;
+	out[3] = wp.normalBottom - wp.normalTop;
+	return 1;
 }
 
 // Geometry only: SWP_NOZORDER | SWP_NOACTIVATE, so a resize never raises or focuses the window.

@@ -13,15 +13,17 @@ The namespace behind a two-argument call: `window.crust.invoke("greet", { name: 
 
 ## `autostart`
 
-| command     | arguments                | answer                                    |
-| ----------- | ------------------------ | ----------------------------------------- |
-| `enable`    | `{ appPath, bundleId? }` | `{ ok: true, enabled: true, plistPath }`  |
-| `disable`   | `{ bundleId? }`          | `{ ok: true, enabled: false, plistPath }` |
-| `isEnabled` | `{ bundleId? }`          | `{ ok: true, enabled, plistPath }`        |
+| command     | arguments                | answer                               |
+| ----------- | ------------------------ | ------------------------------------ |
+| `enable`    | `{ appPath, bundleId? }` | `{ ok: true, enabled: true, path }`  |
+| `disable`   | `{ bundleId? }`          | `{ ok: true, enabled: false, path }` |
+| `isEnabled` | `{ bundleId? }`          | `{ ok: true, enabled, path }`        |
 
-Launch at login, through a LaunchAgent at `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`. The plist is written to a sibling temp file and renamed, so launchd never reads a half-written one. `enable` falls back to the bundle id inside the app's `Info.plist`, and remembers it, so `disable` and `isEnabled` need no argument after one `enable`. `isEnabled` asks whether the plist exists.
+Launch at login, in the form the running OS actually reads. On macOS that is a LaunchAgent at `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`; on Linux an XDG autostart entry at `$XDG_CONFIG_HOME/autostart/<bundle-id>.desktop` (default `~/.config/autostart`). Both are written to a sibling temp file and renamed, so the OS never reads a half-written one, and `path` is the file the answer is about. `enable` falls back to the bundle id inside the app's `Info.plist`, and remembers it, so `disable` and `isEnabled` need no argument after one `enable`. `isEnabled` reads the mechanism back rather than repeating what `enable` asked for: the plist's existence on macOS, and on Linux the entry's `Type`, `Hidden` and `X-GNOME-Autostart-enabled` keys.
 
-Failure codes: `bad-request` (no `appPath`, no bundle id known, or a bundle with no `CFBundleIdentifier`), `not-found` (nothing at `appPath`), `handler-error` (the write or delete failed).
+Windows is refused with `unsupported-platform`, naming the registry value it would need (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`): crust writes no Win32 registry entry, so answering `enabled: true` there would be a claim nothing backs.
+
+Failure codes: `bad-request` (no `appPath`, no bundle id known, a bundle with no `CFBundleIdentifier`, or an id holding a path separator), `not-found` (nothing at `appPath`), `handler-error` (the write, the delete or the read-back failed), `unsupported-platform` (this OS has no login-item mechanism here).
 
 ## `logging`
 

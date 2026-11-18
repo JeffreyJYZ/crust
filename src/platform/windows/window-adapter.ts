@@ -6,20 +6,22 @@
  *
  * **Coordinates are Win32's**: origin at the primary display's top-left, `y` growing downward,
  * matching `crust:screen`'s Windows half (whose own comment says the flip lives in the darwin half).
- * That is also why `positioner` is *not* wired here — its nine placements are computed in AppKit's
- * bottom-left space, so a y-down adapter would put a `topLeft` window at the bottom of the screen.
+ * `positioner` is wired separately in `window-positioner.ts`, which converts the nine placements into
+ * that axis; a page asking for `topLeft` still gets the top-left of the work area.
  *
- * A member this file omits — always-on-top, fullscreen, decorations, opacity and the pointer — is a
- * refusal by name (`unknown-adapter`, naming the member) from `window-state.ts` and
- * `window-chrome.ts`. Each needs a read-back Win32 does not give the shim in one call: `GWL_EXSTYLE`
- * for always-on-top, a style save/restore plus monitor geometry for fullscreen, a layered-window
- * alpha for opacity. A toggle that cannot be read back is the fake this adapter must not ship.
+ * The rest of the contract lives in two sibling modules on the same `require`: the geometry and the
+ * four window-level toggles in `window-state-adapter.ts`, the style-driven members — always-on-top,
+ * fullscreen, decorations, opacity — in `window-style-adapter.ts`, and the process-wide pointer in
+ * `window-cursor-adapter.ts`, which needs the shim rather than a label.
  */
 import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import { activeWindowsPlatform } from "./active-platform.ts";
-import type { WindowsPlatform } from "./platform.ts";
 import { cstring } from "./cstring.ts";
+import type { WindowsPlatform } from "./platform.ts";
+import { windowsCursorAdapter } from "./window-cursor-adapter.ts";
+import { windowsFullscreenAdapter } from "./window-fullscreen-adapter.ts";
 import { type WindowsNativeWindow, windowsWindowStateAdapter } from "./window-state-adapter.ts";
+import { windowsWindowStyleAdapter } from "./window-style-adapter.ts";
 
 export function windowsWindowAdapter(
 	platform: () => WindowsPlatform | undefined = activeWindowsPlatform,
@@ -65,9 +67,7 @@ export function windowsWindowAdapter(
 			if (url === undefined || !/^https?:/i.test(url)) continue;
 			try {
 				return new URL(url);
-			} catch {
-				continue;
-			}
+			} catch {}
 		}
 		throw new WindowAdapterError(
 			"handler-error",
@@ -149,7 +149,11 @@ export function windowsWindowAdapter(
 			return Number(native.shim.shim_window_is_open(native.hwnd)) === 1;
 		},
 
-		// Size, position, minimize and maximize live in their own module, on the same `require`.
+		// Size, position, minimize and maximize live in their own module, on the same `require`; so do
+		// the style-driven members, fullscreen's saved frame, and the process-wide pointer.
 		...windowsWindowStateAdapter(require),
+		...windowsWindowStyleAdapter(require),
+		...windowsFullscreenAdapter(require),
+		...windowsCursorAdapter(() => attached().shim()),
 	};
 }

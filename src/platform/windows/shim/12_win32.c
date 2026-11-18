@@ -10,6 +10,10 @@
 static shim_h g_kernel32;
 static shim_h g_user32;
 static shim_h g_ole32;
+// The two modules only the clipboard/opener/`os.info` table needs: shell32 for the association
+// lookup, ntdll for the version call that does not lie without a manifest.
+static shim_h g_shell32;
+static shim_h g_ntdll;
 
 // `__typeof__` keeps each pointer's exact prototype, so no cast is written twice and no call site
 // is retyped here. It is the one GNU extension in this unit; TinyCC and clang both accept it.
@@ -62,6 +66,39 @@ int shim_win32_load(void) {
 	SHIM_BIND(g_user32, GetWindowThreadProcessId);
 	SHIM_BIND(g_user32, EnumDisplayMonitors);
 	SHIM_BIND(g_user32, GetMonitorInfoW);
+	// `11_win32_style.c`: the style, opacity, placement and pointer calls the window plugin's chrome
+	// and fullscreen members make. All user32, all resolved here like every other pointer.
+	SHIM_BIND(g_user32, GetWindowLongPtrW);
+	SHIM_BIND(g_user32, SetWindowLongPtrW);
+	SHIM_BIND(g_user32, SetLayeredWindowAttributes);
+	SHIM_BIND(g_user32, GetLayeredWindowAttributes);
+	SHIM_BIND(g_user32, GetWindowPlacement);
+	SHIM_BIND(g_user32, SetCursor);
+	SHIM_BIND(g_user32, ShowCursor);
+	SHIM_BIND(g_user32, MonitorFromWindow);
+	// The clipboard half of `11_pointer_core.c`. user32 owns the clipboard itself.
+	SHIM_BIND(g_user32, OpenClipboard);
+	SHIM_BIND(g_user32, CloseClipboard);
+	SHIM_BIND(g_user32, EmptyClipboard);
+	SHIM_BIND(g_user32, GetClipboardData);
+	SHIM_BIND(g_user32, SetClipboardData);
+
+	// kernel32 also owns the global heap, the UTF-8 direction and the user's locale.
+	SHIM_BIND(g_kernel32, GlobalAlloc);
+	SHIM_BIND(g_kernel32, GlobalLock);
+	SHIM_BIND(g_kernel32, GlobalUnlock);
+	SHIM_BIND(g_kernel32, GlobalFree);
+	SHIM_BIND(g_kernel32, WideCharToMultiByte);
+	SHIM_BIND(g_kernel32, GetUserDefaultLocaleName);
+
+	// shell32 answers the double-click association lookup, ntdll the real build number.
+	g_shell32 = LoadLibraryA("shell32.dll");
+	if (!g_shell32) return 0;
+	SHIM_BIND(g_shell32, ShellExecuteW);
+
+	g_ntdll = LoadLibraryA("ntdll.dll");
+	if (!g_ntdll) return 0;
+	SHIM_BIND(g_ntdll, RtlGetVersion);
 
 	g_ole32 = LoadLibraryA("ole32.dll");
 	if (!g_ole32) return 0;

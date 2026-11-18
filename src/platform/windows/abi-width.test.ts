@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { hresult } from "./platform-config.ts";
 import { readShimPart } from "./shim-source.ts";
 
-const PRELUDE = readShimPart("10_prelude.c");
+const PRELUDE = `${readShimPart("10_prelude.c")}\n${readShimPart("11_pointer_core.c")}\n${readShimPart("11_win32_style.c")}`;
 const BINDING = readFileSync(join(import.meta.dir, "ffi.ts"), "utf8");
 
 /** `static <ret> (*Name)(` — the return type with its line breaks collapsed to single spaces. */
@@ -52,6 +52,20 @@ const THIRTY_TWO: Record<string, string> = {
 	GetLastError: "unsigned int", // DWORD
 	GetCurrentThreadId: "unsigned int", // DWORD
 	GetWindowThreadProcessId: "unsigned int", // DWORD
+	// The style and pointer calls: BOOL returns. `GetWindowLongPtrW` is NOT here — it is
+	// pointer-sized, which is the whole reason the `…Ptr` call exists.
+	SetLayeredWindowAttributes: "int", // BOOL
+	GetLayeredWindowAttributes: "int", // BOOL
+	GetWindowPlacement: "int", // BOOL
+	ShowCursor: "int", // int — the count, not a boolean
+	// `11_pointer_core.c`: the clipboard, the locale and the version call.
+	OpenClipboard: "int", // BOOL
+	CloseClipboard: "int", // BOOL
+	EmptyClipboard: "int", // BOOL
+	GlobalUnlock: "int", // BOOL
+	WideCharToMultiByte: "int", // int — the UTF-8 length, or 0
+	RtlGetVersion: "int", // LONG/NTSTATUS — 0 is success, and it is 32-bit even at x64
+	GetUserDefaultLocaleName: "int", // int — characters written, 0 on failure
 };
 
 /** A 16-bit return, which zero-extends and must still not be declared wide. */
@@ -71,6 +85,19 @@ const SIXTY_FOUR: Record<string, string> = {
 	GetModuleHandleW: "shim_h", // HMODULE
 	LoadCursorW: "shim_h", // HCURSOR
 	CreateWindowExW: "shim_h", // HWND
+	// `11_pointer_core.c`: handles and the shell's HINSTANCE, none of them an int.
+	GetClipboardData: "shim_h", // HANDLE
+	SetClipboardData: "shim_h", // HANDLE
+	GlobalAlloc: "shim_h", // HGLOBAL
+	GlobalLock: "shim_h", // LPVOID
+	GlobalFree: "shim_h", // HGLOBAL
+	ShellExecuteW: "shim_h", // HINSTANCE — compared against 32, never read as an HRESULT
+	// `11_win32_style.c`: the pointer-sized `…Ptr` call and the three handle returns. Declaring
+	// `GetWindowLongPtrW` as `int` truncates a LONG_PTR; declaring it wide is the whole point.
+	GetWindowLongPtrW: "shim_i64", // LONG_PTR
+	SetWindowLongPtrW: "shim_i64", // LONG_PTR — the previous value
+	SetCursor: "shim_h", // HCURSOR — the previous cursor
+	MonitorFromWindow: "shim_h", // HMONITOR
 };
 
 /** No return at all, so no width to get wrong. */

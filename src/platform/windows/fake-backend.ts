@@ -4,8 +4,8 @@
  * only way the five `Platform` methods are testable at all.
  */
 import type { WindowsBackend } from "./backend.ts";
-import type { WindowsRuntimeReport } from "./preflight.ts";
 import { fakeShim } from "./fake-shim.ts";
+import type { WindowsRuntimeReport } from "./preflight.ts";
 
 export interface FakeOptions {
 	/** Override any probe field, so one fake covers a healthy and a broken machine. */
@@ -26,12 +26,40 @@ export interface FakeOptions {
 	materialResult?: number;
 	/** Return 0 from `shim_window_set_frame`, as a refused `SetWindowPos` does. */
 	failFrame?: boolean;
+	/** Return 0 from `shim_window_frame`, as `GetWindowRect` on a closed handle does. */
+	failFrameRead?: boolean;
+	/** Return 0 from `shim_window_set_topmost`, as a refused `SetWindowPos` does. */
+	failTopmost?: boolean;
+	/** Return 0 from the style write, as a refused `SetWindowLongPtrW` does. */
+	failStyle?: boolean;
+	/** Return 0 from `shim_window_set_alpha`, as a refused layered call does. */
+	failAlpha?: boolean;
+	/** Refuse both pointer calls, so the adapter's own count check is what fails. */
+	failCursor?: boolean;
 	/** Return 0 from `shim_window_focus`, as Windows' foreground lock does. */
 	failFocus?: boolean;
 	/** What `shim_window_is_minimized` answers. */
 	minimized?: boolean;
 	/** What `shim_window_is_maximized` answers. */
 	maximized?: boolean;
+	/** The text the fake clipboard holds; the read writes it into the caller's buffer. */
+	clipboard?: string;
+	/** What `shim_clipboard_ready` answers; 0 is a machine whose clipboard calls did not resolve. */
+	clipboardReady?: number;
+	/** What `shim_clipboard_write` answers: 1 written, 0 refused, -1 could not open. */
+	clipboardWrite?: number;
+	/** What `shim_clipboard_read` answers instead of a length, to fake a refused open. */
+	clipboardRead?: number;
+	/** What the opener calls answer: 1 handed to the shell, 0 a `SE_ERR_*` refusal. */
+	openerResult?: number;
+	/** The reason `shim_opener_reason_text` carries after a refusal. */
+	openerReason?: string;
+	/** Override one `shim_os_version` component; -1 is a version that could not be read. */
+	osVersion?: readonly [number, number, number];
+	/** What `shim_os_locale` answers. */
+	osLocale?: string;
+	/** What `shim_os_uptime` answers, in seconds. */
+	osUptime?: number;
 }
 
 export interface FakeBackend extends WindowsBackend {

@@ -60,7 +60,57 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 	],
 	["user32.dll", "EnumDisplayMonitors", "the display list cannot be enumerated"],
 	["user32.dll", "GetMonitorInfoW", "a display is enumerated with no bounds"],
+	// The window style, opacity, placement and pointer calls (`11_win32_style.c`, `45`/`49`). Each is
+	// one member of `window` and `positioner`: a machine missing one refuses that member by name.
+	[
+		"user32.dll",
+		"GetWindowLongPtrW",
+		"always-on-top, decorations and fullscreen cannot be read back",
+	],
+	["user32.dll", "SetWindowLongPtrW", "decorations and fullscreen cannot change the style"],
+	["user32.dll", "SetLayeredWindowAttributes", "window.setOpacity cannot set an alpha"],
+	["user32.dll", "GetLayeredWindowAttributes", "window.opacity cannot read the alpha back"],
+	[
+		"user32.dll",
+		"GetWindowPlacement",
+		"a minimised or maximised window has no restore frame to read",
+	],
+	["user32.dll", "SetCursor", "window.setCursor cannot change the pointer"],
+	["user32.dll", "ShowCursor", "window.setCursorVisible cannot hide the pointer"],
+	[
+		"user32.dll",
+		"MonitorFromWindow",
+		"window.setFullscreen cannot find the monitor the window covers",
+	],
 	["WebView2Loader.dll", "CreateCoreWebView2EnvironmentWithOptions", "no WebView2 environment"],
+	// The three namespaces a normal app reaches first: `11_pointer_core.c` plus `50`–`52`. Each one
+	// fails its own command by name rather than the whole launch, so a machine missing one is a
+	// sentence and not a crash.
+	[
+		"user32.dll",
+		"OpenClipboard",
+		"clipboard.read and clipboard.write cannot reach the clipboard",
+	],
+	["user32.dll", "CloseClipboard", "the clipboard stays locked, so no other process can copy"],
+	["user32.dll", "EmptyClipboard", "a write leaves the previous text on the clipboard"],
+	["user32.dll", "GetClipboardData", "clipboard.read has no text to read"],
+	["user32.dll", "SetClipboardData", "clipboard.write cannot put text on the clipboard"],
+	["kernel32.dll", "GlobalAlloc", "clipboard.write has no block to hand to the clipboard"],
+	["kernel32.dll", "GlobalLock", "the clipboard block can be neither read nor filled"],
+	["kernel32.dll", "GlobalUnlock", "the clipboard block stays locked after every call"],
+	["kernel32.dll", "GlobalFree", "a refused clipboard write leaks its block"],
+	["kernel32.dll", "GetUserDefaultLocaleName", "os.info cannot report the user's locale"],
+	["shell32.dll", "ShellExecuteW", "opener.openPath and opener.openUrl cannot reach the shell"],
+	["ntdll.dll", "RtlGetVersion", "os.info cannot report the Windows version"],
+	// The file panels. Only a pick needs them, and a machine missing one still launches an app:
+	// `shim_dialog_missing` names it and `dialog` refuses that namespace alone.
+	["comdlg32.dll", "GetOpenFileNameW", "dialog.openPanel has no file panel"],
+	["comdlg32.dll", "GetSaveFileNameW", "dialog.savePanel has no save panel"],
+	["comdlg32.dll", "CommDlgExtendedError", "a refused panel cannot be told from a cancel"],
+	["shell32.dll", "SHBrowseForFolderW", "dialog.openPanel cannot pick a folder"],
+	["shell32.dll", "SHGetPathFromIDListW", "a picked folder has no path to read"],
+	["kernel32.dll", "WideCharToMultiByte", "no panel answer reaches JavaScript as text"],
+	["ole32.dll", "CoTaskMemFree", "every picked folder leaks its PIDL"],
 ];
 
 /** Every entry point the shim calls, checked before a window is attempted. */

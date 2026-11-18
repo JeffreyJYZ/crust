@@ -12,11 +12,12 @@
  */
 import { createClipboardPlugin, createOpenerPlugin, createOsPlugin } from "@/plugins";
 import type { PluginDefinition } from "@/plugins/define";
+import { nonDarwinDialogPlugin } from "@/runtime-dialog";
 
 /** The namespaces this module replaces, per OS. Empty means the bare plugins stay registered. */
 const REPLACED: Readonly<Record<string, readonly string[]>> = {
-	win32: ["clipboard", "opener", "os"],
-	linux: ["clipboard", "opener", "os"],
+	win32: ["clipboard", "opener", "os", "dialog"],
+	linux: ["clipboard", "opener", "os", "dialog"],
 };
 
 /** Whether `name` is registered from this module on `os`, so the bare one must be dropped. */
@@ -34,6 +35,7 @@ export async function coreNamespacePlugins(os: string): Promise<PluginDefinition
 			createClipboardPlugin(windowsClipboardAdapter()),
 			createOpenerPlugin(windowsOpenerAdapter()),
 			createOsPlugin(windowsOsAdapter()),
+			await nonDarwinDialogPlugin(os),
 		];
 	}
 	if (os === "linux") {
@@ -44,6 +46,7 @@ export async function coreNamespacePlugins(os: string): Promise<PluginDefinition
 			createClipboardPlugin(linuxClipboardAdapter()),
 			createOpenerPlugin(linuxOpenerAdapter()),
 			createOsPlugin(linuxOsAdapter()),
+			await nonDarwinDialogPlugin(os),
 		];
 	}
 	return [];
