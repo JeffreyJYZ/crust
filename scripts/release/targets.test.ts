@@ -8,6 +8,20 @@
 import { describe, expect, test } from "bun:test";
 import { artifactName, hostTarget, TARGETS, VERSION } from "./targets.ts";
 
+/** Override the two process facts `hostTarget` reads, restoring them even if an expect throws. */
+function withHost(platform: string, arch: string, check: () => void): void {
+	const realPlatform = process.platform;
+	const realArch = process.arch;
+	try {
+		Object.defineProperty(process, "platform", { value: platform, configurable: true });
+		Object.defineProperty(process, "arch", { value: arch, configurable: true });
+		check();
+	} finally {
+		Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+		Object.defineProperty(process, "arch", { value: realArch, configurable: true });
+	}
+}
+
 describe("hostTarget", () => {
 	test("names a target for this platform and arch", () => {
 		const host = hostTarget();
@@ -16,9 +30,20 @@ describe("hostTarget", () => {
 	});
 
 	test("win32 is spelled windows, the way the table spells it", () => {
-		// The whole bug: `bun-win32-x64` is not a key, `bun-windows-x64` is.
-		const key = `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
-		expect(hostTarget()).toBe(key as never);
+		// The whole bug: `bun-win32-x64` is not a key, `bun-windows-x64` is. The expected values are
+		// literals: rebuilding them with `hostTarget`'s own conditional let this test pass on darwin
+		// and linux runners without ever evaluating the win32 arm (2026-11-18).
+		const cases = [
+			["win32", "x64", "bun-windows-x64"],
+			["win32", "arm64", "bun-windows-arm64"],
+			["darwin", "arm64", "bun-darwin-arm64"],
+			["linux", "x64", "bun-linux-x64"],
+		] as const;
+		for (const [platform, arch, expected] of cases) {
+			withHost(platform, arch, () => {
+				expect(hostTarget()).toBe(expected);
+			});
+		}
 	});
 
 	test("every target is a key this platform could plausibly answer", () => {
@@ -26,6 +51,26 @@ describe("hostTarget", () => {
 			expect(target.startsWith("bun-")).toBe(true);
 			expect(target).not.toContain("win32");
 		}
+	});
+});
+
+describe("the target table", () => {
+	test("covers six targets, including a Windows arm64 one", () => {
+		const keys = Object.keys(TARGETS);
+		expect(keys).toHaveLength(6);
+		expect(keys).toContain("bun-windows-arm64");
+		expect(TARGETS["bun-windows-arm64"]).toEqual({
+			os: "windows",
+			arch: "arm64",
+			magic: ["4d5a"],
+		});
+	});
+
+	test("every Windows target is a PE image, arm64 magic included", () => {
+		// Literals, not borrowed from TARGETS: the magic is what a verifier checks on a
+		// binary this machine cannot execute, so a typo here would be invisible elsewhere.
+		expect(TARGETS["bun-windows-x64"].magic).toEqual(["4d5a"]);
+		expect(TARGETS["bun-windows-arm64"].magic).toEqual(["4d5a"]);
 	});
 });
 
@@ -37,6 +82,7 @@ describe("artifactName", () => {
 
 	test("windows carries an .exe suffix and nothing else does", () => {
 		expect(artifactName("bun-windows-x64")).toBe(`crust-${VERSION}-windows-x64.exe`);
+		expect(artifactName("bun-windows-arm64")).toBe(`crust-${VERSION}-windows-arm64.exe`);
 		for (const target of ["bun-darwin-arm64", "bun-linux-x64"] as const) {
 			expect(artifactName(target).endsWith(".exe")).toBe(false);
 		}

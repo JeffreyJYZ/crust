@@ -1,8 +1,10 @@
 /**
- * The five targets a release ships, named once: `build-standalone.ts` compiles them and
+ * The six targets a release ships, named once: `build-standalone.ts` compiles them and
  * `scripts/release/assets.ts` checks them, and two copies of this table drift the first
  * time one of them gains a platform. `magic` is a binary's first bytes, which is the only
- * way to prove the OS of an asset this machine cannot execute.
+ * way to prove the OS of an asset this machine cannot execute. Windows arm64 is a PE image
+ * like its x64 sibling — `4d5a` (MZ) — measured from a real `bun build --compile
+ * --target=bun-windows-arm64` on 2026-11-18, which printed `bun-windows-aarch64-v1.4.4`.
  */
 import packageJson from "../../package.json";
 
@@ -12,6 +14,7 @@ export const TARGETS = {
 	"bun-linux-x64": { os: "linux", arch: "x64", magic: ["7f454c46"] },
 	"bun-linux-arm64": { os: "linux", arch: "arm64", magic: ["7f454c46"] },
 	"bun-windows-x64": { os: "windows", arch: "x64", magic: ["4d5a"] },
+	"bun-windows-arm64": { os: "windows", arch: "arm64", magic: ["4d5a"] },
 } as const;
 
 export type Target = keyof typeof TARGETS;
@@ -27,10 +30,11 @@ export function artifactName(target: Target): string {
 
 /** The target this machine builds natively and can therefore also execute. */
 export function hostTarget(): Target | undefined {
-	// `process.platform` says `win32` and the release table says `bun-windows-x64`, so the
+	// `process.platform` says `win32` and the release table says `bun-windows-*`, so the
 	// key is not always `bun-<platform>-<arch>`: Windows was the one that never lined up, and
 	// a release job passing `--target bun-windows-x64` died on "no release target for
-	// win32-x64" before it compiled anything (2026-11-17).
+	// win32-x64" before it compiled anything (2026-11-17). The same remap covers a Windows
+	// arm64 host: `win32` + `arm64` now resolves to the sixth key, `bun-windows-arm64`.
 	const platform = process.platform === "win32" ? "windows" : process.platform;
 	const key = `bun-${platform}-${process.arch}`;
 	return key in TARGETS ? (key as Target) : undefined;

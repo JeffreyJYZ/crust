@@ -1,0 +1,31 @@
+# Scaffolded by crust init. Tag v<app.version> to build and publish a release.
+# crust builds for the host only, so a job runs on the OS it ships. Add a Linux
+# job for --format appimage and a Windows job for --format nsis; dmg/sign/
+# notarize stay on a mac host.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Build the app
+        run: bun run build
+      - name: Package the disk image
+        run: bunx crust package --format dmg
+      - name: Upload to the tagged release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --generate-notes ||
+            gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber

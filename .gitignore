@@ -13,6 +13,9 @@ research/*/repo/
 # Throwaway probe output
 research/*/probe/
 
+# JUnit report written by `bun run test:no-skips`
+.junit-skips.xml
+
 # Runtime handshake between the bridge and a dev server
 .crust/
 

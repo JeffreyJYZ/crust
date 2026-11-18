@@ -4,10 +4,11 @@
  *
  * `--target bun-<os>-<arch>` compiles for another platform, which is what a release needs: one machine per OS emits that OS's binaries. The assets are embedded either way, but a binary for another OS cannot be *executed* here, so the version/init/doctor half is host-only and says so instead of pretending. `--expect-version v0.1.22` is the release's own assertion: the tag must name `package.json`'s version, which is what the binary embeds and what `--version` prints.
  */
-import { mkdtemp, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { supportsAot } from "../src/packaging/aot.ts";
+import { proveStandalone } from "./release/standalone-prove.ts";
 import { artifactName, hostTarget, TARGETS, type Target, VERSION } from "./release/targets.ts";
 
 const root = resolve(import.meta.dir, "..");
@@ -16,19 +17,14 @@ const outdir = join(root, "dist");
 /** Everything crust reads from its own package at runtime. */
 const ASSETS = ["src", "templates", "tsconfig.json", "package.json"] as const;
 
-/** The bare environment a user's machine has, so nothing leaks in from this one. */
-const BARE_ENV = {
-	PATH: process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
-};
-
-/**
- * The doctor lines this platform's binary must satisfy. `doctor` is a macOS command today:
- * `platform`, `shim` and `window` refuse every other OS by design (`doctor/environment.ts`
- * prints `macOS only — this is linux`), so elsewhere `templates` is the only claim a binary
- * can meet — and the one that proves the templates are inside the executable.
- */
-const DOCTOR_CHECKS: readonly string[] =
-	process.platform === "darwin" ? ["shim", "templates", "window", "platform"] : ["templates"];
+/** Scaffold file counts the binary must write; `init.test.ts` reads these exact literals. */
+const SCAFFOLD_COUNTS = [
+	["--next", 8],
+	["--react", 6],
+	["--svelte", 7],
+	["--vue", 7],
+	["", 6],
+] as const;
 
 let failures = 0;
 
@@ -75,73 +71,6 @@ function assertExpectedVersion(argv: string[]): void {
 	pass("tag", `${value} is package.json ${VERSION}`);
 }
 
-/** Drive the compiled binary the way a user does. Only possible for the host's own target. */
-async function prove(outfile: string): Promise<void> {
-	// 1. It starts, and knows its version with no package.json beside it.
-	const version = Bun.spawnSync([outfile, "--version"], { env: BARE_ENV });
-	const printed = version.stdout.toString().trim();
-	if (version.exitCode === 0 && printed === VERSION)
-		pass("version", `${printed} with PATH=/usr/bin:/bin`);
-	else
-		fail(
-			"version",
-			`exited ${version.exitCode}, printed ${JSON.stringify(printed)}, wanted ${VERSION}`,
-		);
-
-	// 2. It scaffolds, which means the templates are inside the executable.
-	const workspace = await mkdtemp(join(tmpdir(), "crust-standalone-"));
-	try {
-		for (const [flag, count] of [
-			["--next", 8],
-			["--react", 6],
-			["--svelte", 7],
-			["--vue", 7],
-			["", 6],
-		] as const) {
-			const name = `app${flag === "" ? "-plain" : flag}`;
-			const target = join(workspace, name);
-			const args = [outfile, "init", target, ...(flag === "" ? [] : [flag])];
-			const init = Bun.spawnSync(args, { cwd: workspace, env: BARE_ENV });
-			// The glob misses dotfiles, so .gitignore is checked separately — the file a scaffold most often loses.
-			const listed = [...new Bun.Glob("**/*").scanSync({ cwd: target, onlyFiles: true })];
-			const ignore = Bun.file(join(target, ".gitignore")).size > 0;
-			if (init.exitCode === 0 && listed.length === count && ignore)
-				pass("init", `${flag || "(no flag)"} wrote ${listed.length + 1} files`);
-			else
-				fail(
-					"init",
-					`${flag || "(no flag)"} exited ${init.exitCode} with ${listed.length} files ` +
-						`and .gitignore ${ignore ? "present" : "missing"}: ` +
-						init.stderr.toString().trim().slice(0, 120),
-				);
-		}
-
-		// 3. Doctor reaches the shim, the platform and the templates from inside the
-		// binary. It is allowed to fail on the frontend checks — nothing is built yet.
-		const scaffold = join(workspace, "app-next");
-		const doctor = Bun.spawnSync([outfile, "doctor", "--dir", scaffold], {
-			cwd: workspace,
-			env: BARE_ENV,
-		});
-		const text = `${doctor.stdout.toString()}${doctor.stderr.toString()}`;
-		for (const check of DOCTOR_CHECKS) {
-			const line = text.split("\n").find((row) => row.trim().startsWith(check));
-			if (line?.includes("[ok]")) pass(`doctor ${check}`, line.trim().slice(0, 80));
-			else fail(`doctor ${check}`, line?.trim() ?? "no line printed");
-		}
-		// Said out loud: on a non-macOS host doctor exits 1 on those checks; the binary is not the reason.
-		const skipped = ["shim", "window", "platform"].filter(
-			(check) => !DOCTOR_CHECKS.includes(check),
-		);
-		if (skipped.length > 0)
-			console.log(
-				`  SKIP  doctor            ${skipped.join(", ")} are macOS-only checks on ${process.platform}`,
-			);
-	} finally {
-		await rm(workspace, { recursive: true, force: true });
-	}
-}
-
 async function main(): Promise<void> {
 	const argv = Bun.argv.slice(2);
 	const requested = readTarget(argv);
@@ -161,6 +90,8 @@ async function main(): Promise<void> {
 			"bun",
 			"build",
 			"--compile",
+			// Free on stable 1.4.4 (byte-identical), a size win on toolchains that implement AOT.
+			...(supportsAot() ? ["--aot"] : []),
 			...(requested ? [`--target=${target}`] : []),
 			"--outfile",
 			outfile,
@@ -178,7 +109,7 @@ async function main(): Promise<void> {
 	pass("compile", `${outfile}  ${size.toLocaleString()} bytes  ${target}`);
 
 	if (target === host) {
-		await prove(outfile);
+		await proveStandalone(outfile, { pass, fail }, SCAFFOLD_COUNTS);
 	} else {
 		// Honest, not silent: the assets are embedded and the container is for `target`,
 		// but this machine cannot run it, so nothing here claims the binary works.

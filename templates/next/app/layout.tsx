@@ -8,9 +8,11 @@ export const metadata: Metadata = {
 // `colorScheme: "dark light"` is the whole theme: dark is the first preference,
 // the system flips it to light, and Canvas/CanvasText follow it in both. No
 // stylesheet, and nothing to read the media query.
+// A static export bakes <html> at build time and `crust.config.ts` is not in
+// Next's graph, so both pages bind lang and dir after hydration instead.
 export default function RootLayout({ children }: { children: ReactNode }) {
 	return (
-		<html lang="en" style={{ colorScheme: "dark light" }}>
+		<html style={{ colorScheme: "dark light" }}>
 			<body
 				style={{
 					margin: 0,

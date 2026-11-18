@@ -19,6 +19,17 @@ export default function Page() {
 	const [answer, setAnswer] = useState("asking the backend…");
 	const [status, setStatus] = useState('window.crust.invoke("greet", { name: "crust" })');
 
+	// The export bakes <html> at build time, so bind language and direction on the
+	// client: `lang` drives pronunciation, `dir` flips RTL layout. The set is the
+	// RTL base languages from the locale rule; an unknown tag stays LTR.
+	useEffect(() => {
+		const locale = navigator.language;
+		document.documentElement.lang = locale;
+		document.documentElement.dir = /^(ar|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(?:-|$)/i.test(locale)
+			? "rtl"
+			: "ltr";
+	}, []);
+
 	// After mount, never during render: the export is static, and the bridge is
 	// only reachable from a client.
 	useEffect(() => {

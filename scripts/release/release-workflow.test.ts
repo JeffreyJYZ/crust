@@ -31,6 +31,14 @@ test("a publish job alone makes the release public, and only after build and ver
 	expect(publish).not.toMatch(/^\s+if:/m);
 });
 
+test("the build matrix ships a Windows arm64 asset on a native arm runner", () => {
+	const build = job("build");
+	expect(build).toContain("- target: bun-windows-arm64");
+	expect(build).toContain("runner: windows-11-arm");
+	// windows-latest is x64: a cross-compile there would only SKIP the run-and-prove half.
+	expect(build).not.toMatch(/bun-windows-arm64\s*\n\s*runner: windows-latest/);
+});
+
 test("the verifier runs even when a build leg failed, and the failure is flagged", () => {
 	expect(job("verify")).toMatch(/needs:\s*\[create-release, build\]/);
 	expect(job("verify")).toContain("always()");

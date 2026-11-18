@@ -26,7 +26,7 @@ permissions:
 
 jobs:
     # One release per tag, created before any asset exists. Five build jobs uploading to a
-    # release that may not exist yet is five chances to race on `gh release create`, and a
+    # release that may not exist yet is six chances to race on `gh release create`, and a
     # second creator fails on the duplicate. It is a DRAFT until every leg and the verifier
     # pass: a failed matrix leg must never leave a public "Latest" holding a subset of the
     # binaries (measured once already — a win32-x64 target error shipped four assets).
@@ -37,6 +37,8 @@ jobs:
         steps:
             - uses: actions/checkout@v7
             - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.4
 
             # A tag that disagrees with package.json would publish assets whose embedded
             # version is not the tag's, so it stops here before a release exists at all.
@@ -68,7 +70,7 @@ jobs:
         name: build (${{ matrix.target }})
         needs: create-release
         strategy:
-            # Five assets on five runners: a red Linux build must neither mask nor be masked
+            # Six assets on six runners: a red Linux build must neither mask nor be masked
             # by a green macOS one, and each lane's log is its own.
             fail-fast: false
             matrix:
@@ -83,15 +85,30 @@ jobs:
                       runner: ubuntu-latest
                     - target: bun-windows-x64
                       runner: windows-latest
+                    # A native arm runner, not `windows-latest` with a cross-compile:
+                    # `build-standalone` executes its own binary on the host target
+                    # (`--version`, init counts, `doctor`), and the app's TinyCC shim is
+                    # compiled at runtime on the machine that runs it, so the proof has
+                    # to happen on real Windows arm64 silicon. `windows-11-arm` is a
+                    # standard GA GitHub-hosted runner (arm64, Windows 11), so this leg
+                    # can prove what an x64 runner would only print as SKIP.
+                    - target: bun-windows-arm64
+                      runner: windows-11-arm
         runs-on: ${{ matrix.runner }}
         timeout-minutes: 20
         steps:
             - uses: actions/checkout@v7
 
-            # Bun is the whole toolchain, and no version is pinned here: the major tag tracks
-            # the current release, and a remembered number silently stops tracking what a
-            # contributor actually runs.
+            # Bun is the whole toolchain, so its version decides the binary's bytes. Pin it:
+            # an unpinned setup-bun silently tracks whatever is current that week, and the
+            # released artefact would change size without a source change. Stable 1.4.4 is
+            # deliberate: `--aot` is accepted but byte-identical here (examples/hello
+            # 89,820,386 B with and without it), so there is no size win to chase with a
+            # floating canary; a future canary can be pinned by revision once it actually
+            # buys the documented 85.27 -> 53.10 MiB.
             - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.4
 
             - run: bun install --frozen-lockfile
 
@@ -134,6 +151,8 @@ jobs:
         steps:
             - uses: actions/checkout@v7
             - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.4
 
             # No `bun install`: the verifier imports package.json and nothing else, and it
             # reads the release's bytes rather than anything this clone built.
