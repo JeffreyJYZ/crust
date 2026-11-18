@@ -128,6 +128,10 @@ export async function dev(options: CliOptions): Promise<number> {
 		});
 	}
 
+	// `native/` is the source a native extension compiles from, not a config key. Watch it only
+	// when it exists: fs.watch throws ENOENT on a missing dir, and a project with no native
+	// extensions has nothing to restart for.
+	const nativeDir = resolve(projectDir, "native");
 	const runtime = {
 		entry,
 		projectDir,
@@ -135,6 +139,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		devUrl,
 		env,
 		extensionFiles: extensions.loaded,
+		nativeDir: (await exists(nativeDir, "dir")) ? nativeDir : undefined,
 	};
 
 	// The window loads `dev.url` once, when it is created, with no retry. On a cold
