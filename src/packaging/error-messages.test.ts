@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { assembleApp } from "./app";
 import { buildAppImage } from "./appimage";
+import { buildApp } from "./build";
 import { pngToIcns } from "./icon";
 
 let dir: string;
@@ -102,5 +103,26 @@ describe("packaging errors name the file, the key and the fix", () => {
 		);
 		expect(message).toContain(icon);
 		expect(message).toContain("app.icon in crust.config.ts");
+	});
+
+	test("a missing build entry names the path and the file or flag that supplies it", async () => {
+		const entry = join(dir, "crust-entry.ts");
+		const message = await failure(() =>
+			buildApp({
+				entry,
+				binaryName: "crust-app",
+				outDir: join(dir, "out"),
+				app: {
+					id: "land.jyz.example",
+					name: "Example",
+					version: "1.0.0",
+					minimumSystemVersion: "13.0",
+				},
+			}),
+		);
+		expect(message).toContain(entry);
+		expect(message).toContain("src/main.ts");
+		expect(message).toContain("main.ts");
+		expect(message).toContain("--entry");
 	});
 });

@@ -126,7 +126,10 @@ describe("invoke", () => {
 		expect(response.status).toBe(500);
 		const body = await readJson(response);
 		expect(body.error.code).toBe("handler-error");
-		expect(body.error.message).toBe("handler blew up");
+		expect(body.error.message).toContain("handler blew up");
+		expect(body.error.message).toContain("test.boom");
+		expect(body.error.message).toContain("plugin handler threw");
+		expect(body.error.message).toContain("not the bridge");
 	});
 });
 

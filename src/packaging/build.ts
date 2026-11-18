@@ -57,7 +57,10 @@ export async function buildApp(options: BuildOptions): Promise<BuildResult> {
 
 	const entryStat = await stat(options.entry).catch(() => undefined);
 	if (!entryStat?.isFile()) {
-		throw new Error(`entry ${options.entry} does not exist`);
+		throw new Error(
+			`crust: build entry ${options.entry} does not exist — create the backend entry ` +
+				`src/main.ts or main.ts, or pass --entry <path>`,
+		);
 	}
 	await mkdir(outDir, { recursive: true });
 

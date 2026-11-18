@@ -26,6 +26,22 @@ export function preferredPortFor(appId: string): number {
 	return 45000 + ((hash >>> 0) % 4000);
 }
 
+/**
+ * The message when every bridge bind fails. The loop in `startApp` tries the app's
+ * preferred port and the 19 above it, then an OS-assigned port; naming the range
+ * and the two next actions turns the failure into something the author can fix.
+ */
+export function bridgeBindFailure(preferred: number, cause?: unknown): Error {
+	const reason =
+		cause instanceof Error ? cause.message : cause === undefined ? "" : String(cause);
+	return new Error(
+		`crust: the bridge could not bind a port — tried ${preferred}-${preferred + 19} ` +
+			`and an OS-assigned port${reason ? ` (last error: ${reason})` : ""}. ` +
+			`Free the port or use another one: check what holds ${preferred} with ` +
+			`\`lsof -nP -iTCP:${preferred}\`, or change app.id in crust.config.ts to shift the preferred port`,
+	);
+}
+
 export async function isDirectory(path: string): Promise<boolean> {
 	try {
 		return (await Bun.file(path).stat()).isDirectory();

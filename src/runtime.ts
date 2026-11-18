@@ -11,6 +11,7 @@ import { type CrustConfig, loadConfig, validateConfig } from "@/config";
 import { type DarwinPlatform } from "@/platform/darwin";
 import { PluginRegistry } from "@/plugins";
 import {
+	bridgeBindFailure,
 	isDirectory,
 	preferredPortFor,
 	readIndex,
@@ -25,8 +26,6 @@ import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 import { setBridgeToken } from "@/bridge/window-identity.ts";
 import type { StartAppOptions } from "./runtime-options.ts";
-
-export type { StartAppOptions } from "./runtime-options.ts";
 
 /**
  * Start a crust app. Resolves once the user's entry has run and `app.run()`
@@ -120,7 +119,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 				bindError = error;
 			}
 		}
-		if (!bridge) throw bindError ?? new Error("crust: the bridge could not bind a port");
+		if (!bridge) throw bridgeBindFailure(preferred, bindError);
 		// The handshake only exists for a dev server, which a built app never has.
 		// A built app runs with cwd `/`, so writing it there would throw and kill
 		// `run()` before a window exists — measured as e2e's missing greet.
@@ -197,4 +196,4 @@ if (import.meta.main) {
 	});
 }
 
-export type { BridgeHandle, CommandHandler, App };
+export type { App, BridgeHandle, CommandHandler, StartAppOptions };

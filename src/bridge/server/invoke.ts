@@ -70,7 +70,15 @@ export function createRunner(
 		try {
 			result = await handler(args, request);
 		} catch (error) {
-			throw toCrustError(error);
+			// Keep the code, status and `requires` the handler's error carried; only the text grows.
+			// Without the key and this origin note the page sees a bare failure with no clue whether
+			// the plugin refused, the bridge refused, or a command simply died.
+			const failure = toCrustError(error);
+			throw new CrustError(
+				failure.code,
+				`${key} plugin handler threw: ${failure.message} (the error came from the handler, not the bridge)`,
+				{ requires: failure.requires, status: failure.status },
+			);
 		}
 		if (isNotImplemented(result)) {
 			throw new CrustError("not-implemented", result.message, { requires: result.requires });

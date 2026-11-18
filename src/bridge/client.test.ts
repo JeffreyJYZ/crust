@@ -70,7 +70,7 @@ describe("invoke", () => {
 		const { api } = installPage(bridge);
 		await expect(api.invoke("test", "boom")).rejects.toMatchObject({
 			code: "handler-error",
-			message: "page saw the handler throw",
+			message: expect.stringContaining("page saw the handler throw"),
 		});
 	});
 
