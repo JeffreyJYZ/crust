@@ -74,8 +74,9 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 			(plugin) =>
 				!window.replaced.has(plugin.name) && !replacesCoreNamespace(plugin.name, os),
 		),
-		// `clipboard`, `opener` and `os.info` with the platform's own adapter where one exists;
-		// `runtime-adapters-other.ts` owns that choice, so a reconciliation touches these two lines.
+		// `clipboard`, `opener`, `os.info`, `notification` and `tray` with the platform's own adapter
+		// where one exists; `runtime-adapters-other.ts` owns that choice, so a reconciliation touches
+		// these two lines.
 		...(await coreNamespacePlugins(os)),
 		parts.store,
 		parts.database,

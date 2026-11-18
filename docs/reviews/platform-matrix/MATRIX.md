@@ -9,6 +9,11 @@ cell, plus the exact failure and the smallest fix for every cell that is not `wo
 `src/platform/linux/*`, the new `src/platform/linux/shim/4*_window*.c`). Both window adapters are
 **in flight and uncommitted**; §3 states exactly how far each one reaches.
 
+`notification` and `tray` were wired after that read: both now reach a platform adapter
+(`src/runtime-adapters-other.ts`), and the pump polls the tray once per slice
+(`src/platform/{windows,linux}/tray-tick.ts`). The two rows below and §3 record the after-measurement;
+every other verdict is unchanged.
+
 ## How each verdict was established
 
 - **`measured`** — a probe built the registry the OS would get and invoked every command of every
@@ -65,8 +70,8 @@ probe on this machine cannot reach the Windows or Linux arm at all.
 | `opener` | works | refuses | refuses | measured |
 | `shortcut` | works | partial | partial | measured |
 | `dialog` | works | refuses | refuses | measured |
-| `notification` | partial | refuses | refuses | measured |
-| `tray` | works | refuses | refuses | measured |
+| `notification` | partial | partial | partial | measured |
+| `tray` | works | partial | partial | measured |
 | `menu` | works | refuses | refuses | measured |
 | `theme` | works | refuses | refuses | measured |
 | `dock` | works | n/a | n/a | measured |
@@ -87,9 +92,14 @@ section (`src/runtime-plugins.ts:72`), so it is not part of the 32.
 
 **Counts of `works` (or `works*`)**: macOS 29 of 32, Windows 10 of 32, Linux 8 of 32. macOS's three
 non-`works` cells are `notification`, `findinpage` and `deep-link`, each `partial` for a documented
-reason. Windows and Linux now differ in only three rows — `keychain` (`list`), `window` and
-`window-state` — and the last two are exactly where the uncommitted Windows window adapter lands. No
-cell is `absent` on either OS: both arms register all 32 namespaces (measured).
+reason. Windows and Linux differ in only three rows — `keychain` (`list`), `window` and
+`window-state`. No cell is `absent` on either OS: both arms register all 32 namespaces (measured).
+
+- **Counts of `refuses`** (every command of the namespace returns a typed `not-implemented`):
+  Windows 12 of 32, Linux 13 of 32 — down from 14 and 15 before `notification` and `tray` were wired.
+- **Both changed rows are `partial`, not `works`**, and for the same reason macOS's `notification`
+  is: `notification.requestPermission` refuses, and `tray.setTitle` refuses by name on both OSes
+  because neither a notification-area icon nor a `GtkStatusIcon` carries a text label.
 
 ## 2. Ranked: what a normal app hits first
 
@@ -125,12 +135,16 @@ non-`works` cell with its file, its exact answer, and the smallest fix.
 
 ### Tier 2 — a normal app wants it
 
-6. **`notification` on Windows and Linux.** `src/plugins/notification.ts:83`, requires
-   `UNUserNotificationCenter`; measured `not-implemented`, both commands. Fix: `Shell_NotifyIconW`
-   balloon or the WinRT toast API on Windows, `libnotify`/`g_notification` on Linux. The macOS cell is
-   `partial` for a different reason: `notify` delivers in a bundled app (an unbundled `crust dev`
-   process cannot), and `requestPermission` refuses by design (`notification.ts:100`) because the
-   darwin half does not bind the status selector.
+6. **`notification` on Windows and Linux — partial, now wired.** It was `refuses` with
+   `UNUserNotificationCenter`; `src/runtime-adapters-other.ts` now registers
+   `windowsNotificationAdapter()` / `linuxNotificationAdapter()`, so `notify` reaches the OS. Measured
+   on this machine through the registry: Linux answers `{"delivered":false,"reason":"libnotify.so.4
+   did not resolve"}`, Windows `"the notification C unit could not be compiled, so no balloon was
+   posted"` — the missing-library path, not the AppKit refusal. Two limits keep it `partial`:
+   `requestPermission` still refuses, and its message still names `UNUserNotificationCenter`, because
+   the plugin's post-adapter branch (`src/plugins/notification.ts:100`) is darwin-shaped and was not
+   part of this wiring; and delivery itself is UNPROVEN on both OSes, which each adapter's header
+   says. macOS stays `partial` for its own reason (an unbundled `crust dev` cannot deliver).
 7. **`shortcut` on Windows and Linux — partial.** `src/plugins/shortcuts.ts:80`, requires
    `RegisterEventHotKey`; `register`, `unregister` and `unregisterAll` were measured `not-implemented`.
    `isRegistered` and `list` answer from the plugin's own map (`shortcuts.ts:153-160`), so they return
@@ -144,8 +158,17 @@ non-`works` cell with its file, its exact answer, and the smallest fix.
 9. **`menu` on Windows and Linux.** `src/plugins/menu.ts:76`, requires `NSMenu`; measured
    `not-implemented`. Lowest-effort honest option is to declare it `n/a` in docs and keep the refusal;
    the real fix is `SetMenu`/`CreateMenu` on Win32 and a GTK menubar on Linux.
-10. **`tray` on Windows and Linux.** `src/plugins/tray.ts:44`, requires `NSStatusBar`; measured
-    `not-implemented`. Fix: `Shell_NotifyIconW` (the same call notification needs) and `GtkStatusIcon`.
+10. **`tray` on Windows and Linux — partial, now wired.** It was `refuses` with `NSStatusBar`; the
+    same registration now builds `windowsTrayAdapter()` / `linuxTrayAdapter()` over
+    `Shell_NotifyIconW` and `GtkStatusIcon`. Measured through the registry: `setTooltip`, `setMenu`
+    and `show` answer `handler-error` naming `libgtk-3.so.0` or the uncompiled Win32 unit — the
+    library-missing path, not AppKit. `setTitle` refuses by name on purpose: neither a
+    notification-area icon nor a `GtkStatusIcon` carries a text label, so `setTooltip` is the member
+    that takes text. A click reaches the page only because the pump now polls: `platform.ts` calls
+    `pollTrayTick()` once per slice on both OSes, and `tray-tick.ts` holds the adapter the registry
+    wired — without that call a click is recorded and never relayed, which is the `autostart` bug in
+    a new costume. Proven through the fakes on both platforms (`tray-tick.test.ts`); no icon was
+    created and no menu was shown.
 11. **`theme` on Windows and Linux.** `src/plugins/theme.ts:48`, requires `NSAppearance`; measured
     `not-implemented`. Fix: `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)` on Windows and
     `gtk_settings_set_property(GTK_SETTINGS_GTK_APPLICATION_PREFER_DARK_THEME)` on Linux.
@@ -210,8 +233,25 @@ All four are darwin adapters over WebKit with no non-darwin half, and all four w
     refuse off macOS with `unsupported-platform` (`src/plugins/updater.ts:114,163`). This is honest —
     there is no installer to write — and needs no fix.
 
-## 3. The in-flight window work: how far each adapter reaches
+## 3. The in-flight native work: how far each adapter reaches
 
+- **`notification` and `tray` are wired, and the tray has its pump tick.**
+  `src/runtime-adapters-other.ts` replaces both namespaces on `win32` and `linux` — the same
+  `REPLACED` set `clipboard`, `opener`, `os` and `dialog` use — so the bare plugins are dropped and no
+  namespace is registered twice (the registry refuses a duplicate rather than shadowing one).
+- **The tick is one call, not a second loop.** `src/platform/windows/platform.ts` calls
+  `pollTrayTick()` beside `shim_pump()`, and `src/platform/linux/platform.ts` calls it beside
+  `backend.iterate()`. `src/platform/{windows,linux}/tray-tick.ts` is a one-slot module in the shape
+  of `active-platform.ts`: the registry fills it with the adapter it built, the pump drains it, and
+  with no tray wired a tick is one `undefined` check. No new message loop — the Win32 unit reuses the
+  existing one because `DispatchMessageW` is thread-wide, and GTK's `activate` signal arrives on the
+  context the window shim already iterates.
+- **`src/platform/{windows,linux}/notification-adapter.ts` is the live adapter, not a superseded
+  draft** — they were referenced by nothing before this wiring. The C is a separate layer, not a
+  rival implementation: `notify-tray-source.ts` assembles the unit, `notify-tray-ffi.ts` compiles it
+  into the symbol table, and the notification adapter is the TypeScript half that maps
+  `shim_notify_post`'s status onto the plugin's contract. `tray-adapter.ts` sits beside it on the same
+  table. Each adapter's header now says so, so a later fix cannot land in a dead twin.
 - **Windows `window` is now adapted, uncommitted.** `src/runtime-plugins-other.ts:62-66` wires
   `windowsWindowAdapter()` when `os === "win32"`, so `create`, `close`, `focus`, `setTitle`, `list`,
   `isOpen`, `setSize`/`getSize`, `setPosition`/`getPosition`, `minimize`, `maximize` and their

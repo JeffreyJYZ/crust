@@ -12,6 +12,11 @@
  * nothing gates delivery. The plugin only calls it on the deprecated adapter contract; it is exposed
  * here so a caller can see the truth rather than a `notImplemented` borrowed from macOS.
  *
+ * **This is the live adapter, and the only one.** `runtime-adapters-other.ts` registers it as
+ * `notification` on win32. The C it calls is a different layer, not a rival: `notify-tray-source.ts`
+ * assembles the unit, `notify-tray-ffi.ts` compiles it into this symbol table, and this file is the
+ * TypeScript half that maps `shim_notify_post`'s status onto the plugin's contract.
+ *
  * UNPROVEN ON WINDOWS — written on macOS. The shape, the status mapping and every refusal are
  * measured through `notify-tray-fake.ts`; the Win32 calls are not.
  */

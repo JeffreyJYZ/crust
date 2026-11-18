@@ -10,6 +10,11 @@
  * **`requestPermission` has no equivalent.** Linux has no notification authorization model: the
  * daemon either exists on the session bus or it does not, and nothing gates delivery on consent.
  *
+ * **This is the live adapter, and the only one.** `runtime-adapters-other.ts` registers it as
+ * `notification` on linux. The C it calls is a different layer, not a rival: `notify-tray-source.ts`
+ * assembles the unit, `notify-tray-ffi.ts` compiles it into this symbol table, and this file is the
+ * TypeScript half that maps `shim_notify_post`'s status onto the plugin's contract.
+ *
  * UNPROVEN ON LINUX — written on macOS. The shape, the status mapping and every refusal are measured
  * through `notify-tray-fake.ts`; the libnotify calls are not.
  */

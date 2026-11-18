@@ -11,6 +11,7 @@ import { type WindowsBackend, type WindowsShim, defaultBackend } from "./backend
 import { destroyWindow } from "./destroy.ts";
 import { type WindowsPlatformConfig } from "./platform-config.ts";
 import { startWindows } from "./startup.ts";
+import { pollTrayTick } from "./tray-tick.ts";
 import { openWindow } from "./window-open.ts";
 import { WindowsRegistry } from "./windows-registry.ts";
 
@@ -96,6 +97,9 @@ export class WindowsPlatform implements Platform {
 			// The timer proves Bun ran, not Win32. Keep both: `ticks` is the cadence, and
 			// `nativeMessages` is the only one a real-pump assertion may trust.
 			this.#nativeMessages += Number(this.#shim?.shim_pump() ?? 0);
+			// A tray click is recorded by the hidden window's procedure and reaches JavaScript only
+			// here, so a slice that skips this records a click nobody hears. One int read, no loop.
+			pollTrayTick();
 			this.#ticks++;
 			this.#timer = setTimeout(tick, intervalMs);
 		};

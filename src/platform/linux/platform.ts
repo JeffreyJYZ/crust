@@ -7,6 +7,7 @@ import { unsupportedLifecycle } from "@/app-types.ts";
 import type { CrustConfig } from "@/config";
 import { setActiveLinuxPlatform } from "./active-platform.ts";
 import { createGtkBackend, type LinuxBackend, type NativeWindow } from "./backend.ts";
+import { pollTrayTick } from "./tray-tick.ts";
 
 /**
  * The Linux `Platform`. Construct through `createPlatform()`; the class is
@@ -56,6 +57,9 @@ export class LinuxPlatform implements Platform {
 			// A JS timer firing is not proof GTK ran. Count only the iterations the
 			// native pump reports, so `ticks` means what the smoke's detail says.
 			if (this.#backend.iterate()) this.#ticks++;
+			// A tray click is recorded by GTK's `activate` signal and reaches JavaScript only here,
+			// so a slice that skips this records a click nobody hears. One int read, no second loop.
+			pollTrayTick();
 			this.#pumpTimer = setTimeout(tick, intervalMs);
 		};
 		tick();

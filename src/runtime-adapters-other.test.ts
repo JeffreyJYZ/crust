@@ -7,9 +7,11 @@
  * off Linux: the refusal now names GTK and `libgtk-3.so.0`, not `NSPasteboard`.
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { setActiveLinuxTray } from "@/platform/linux/tray-tick";
 import { setActiveWindowsPlatform } from "@/platform/windows/active-platform";
 import { fakeBackend } from "@/platform/windows/fake-backend";
 import { createPlatform } from "@/platform/windows/platform-factory";
+import { setActiveWindowsTray } from "@/platform/windows/tray-tick";
 import type { PluginDefinition } from "@/plugins/define";
 import { replacesCoreNamespace } from "@/runtime-adapters-other.ts";
 import { nativePlugins } from "@/runtime-plugins.ts";
@@ -40,6 +42,8 @@ async function windowsPlatform(clipboard: string): Promise<void> {
 
 afterEach(() => {
 	setActiveWindowsPlatform(undefined);
+	setActiveWindowsTray(undefined);
+	setActiveLinuxTray(undefined);
 });
 
 describe("win32: the three namespaces answer from the Win32 shim", () => {
@@ -113,8 +117,8 @@ describe("linux: the three namespaces answer from GTK", () => {
 });
 
 describe("which bare plugins are dropped", () => {
-	test("the three names are replaced on both OSes and nowhere else", () => {
-		for (const name of ["clipboard", "opener", "os"]) {
+	test("the five names are replaced on both OSes and nowhere else", () => {
+		for (const name of ["clipboard", "opener", "os", "notification", "tray"]) {
 			expect(replacesCoreNamespace(name, "win32")).toBe(true);
 			expect(replacesCoreNamespace(name, "linux")).toBe(true);
 			expect(replacesCoreNamespace(name, "darwin")).toBe(false);
