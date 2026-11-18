@@ -26,8 +26,9 @@ Homebrew is macOS-only; on Linux or Windows download the matching release binary
 Not on npm, and not going to be: `crust` on npm is an unrelated 2020 package, and `crust init` pins the dependency as `link:` to the CLI's own tree, so `bun add crust` fetches the wrong thing. Without Homebrew, work from a checkout —
 `git clone https://github.com/JeffreyJYZ/crust && cd crust && bun install && bun run start init my-app` — or run `bun run build:standalone` for one executable that scaffolds with no checkout at all.
 
-`crust dev` starts Vite on 5173 and points the window at it. `bun run build` then produces
-`dist/my-app.app`, ad-hoc signed and double-clickable.
+`crust dev` starts Vite on 5173 and points the window at it. On macOS `bun run build` then produces
+`dist/my-app.app`, ad-hoc signed and double-clickable; on Linux and Windows it produces the flat
+compiled binary, with no bundle and no signing.
 
 No scaffold wanted? `crust init my-app` is plain HTML with no bundler, `crust init my-app --next` is
 a Next.js static export, and `crust dev app.tsx` runs a single component file with no config at all.
@@ -77,7 +78,7 @@ comes back as a rejected promise with a `code`, never a crashed process.
 | `window`                       | create, focus, close, set the title, and ask whether one is open                                 | [windows](https://crust.jyz.land/docs/guides/window)              |
 | `tray`                         | a menu-bar item with rows that fire into your page                                               | [tray](https://crust.jyz.land/docs/guides/tray)                   |
 | `notification`                 | delivered ad-hoc; refused from the temp dir, and a denied id stays denied until you re-enable it | [notifications](https://crust.jyz.land/docs/guides/notifications) |
-| `crust build` / `dmg` / `sign` | `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY`          | [packaging](https://crust.jyz.land/docs/guides/package)           |
+| `crust build` / `dmg` / `sign` | macOS `.app` assembly, a disk image, and a Developer ID when you set `CRUST_SIGNING_IDENTITY`    | [packaging](https://crust.jyz.land/docs/guides/package)           |
 | `crust dev`                    | a loopback bridge, or your own dev server with `beforeDevCommand`                                | [dev server](https://crust.jyz.land/docs/guides/dev)              |
 | frontend                       | embedded asset directory, client-side routes served from `index.html`                            | [frontend](https://crust.jyz.land/docs/guides/frontend)           |
 
