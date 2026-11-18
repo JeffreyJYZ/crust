@@ -15,11 +15,18 @@
  * A label is a routing hint, never authority: the page states which window it is, the bridge cannot
  * verify that, and it does not need to. The bearer token is the credential; a label only decides
  * which window a command is addressed to, so a page that claims another label can mislabel itself
- * and nothing else. Nothing about a label is a security boundary.
+ * and nothing else. Nothing about a label is a security boundary. Authority is the label the bridge
+ * bound to that token when it served the document, never the label the page sends in a request.
  */
 
 /** The query parameter that names a window. */
 export const WINDOW_PARAM = "window";
+
+/**
+ * The label a token is bound to when no document labeled it: the process token serves the
+ * dev-server path, where Vite — not the bridge — served the page and no `?window=` was observed.
+ */
+export const DEFAULT_WINDOW_LABEL = "main";
 
 /**
  * The query parameter that carries the bridge token on the *document* URL.

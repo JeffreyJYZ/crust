@@ -93,21 +93,24 @@ describe("present capabilities deny by default", () => {
 		expect((await readJson(response)).error.code).toBe("forbidden");
 	});
 
-	test("a request with no window label holds nothing once capabilities exist", async () => {
+	test("a label-less document holds only the default label's grants", async () => {
 		const bridge = start(
-			withSecurity({ capabilities: CAPABILITIES, grants: { main: ["panels"] } }),
+			withSecurity({ capabilities: CAPABILITIES, grants: { admin: ["panels"] } }),
 		);
+		// With no `?window=` the document route binds the token to the default label `main`, which
+		// holds nothing here. The body claiming `admin` must not become authority — it only routes.
+		const served = await fetch(`${bridge.url}/?token=${bridge.token}`, { redirect: "manual" });
+		const location = served.headers.get("location");
+		if (location === null) throw new Error("the document route did not mint a token");
+		const documentToken = new URL(location, bridge.url).searchParams.get("token");
+		expect(documentToken).not.toBeNull();
 		const response = await invoke(
 			bridge,
-			headers(bridge, { authorization: `Bearer ${bridge.token}` }),
-			{
-				plugin: "test",
-				command: "echo",
-				args: 1,
-			},
+			headers(bridge, { authorization: `Bearer ${documentToken}` }),
+			{ plugin: "test", command: "echo", args: 1, window: "admin" },
 		);
 		expect(response.status).toBe(403);
-		expect((await readJson(response)).error.message).toContain("no window label");
+		expect((await readJson(response)).error.message).toContain('window "main"');
 	});
 
 	test("a granted label reaches one plugin and is refused another", async () => {

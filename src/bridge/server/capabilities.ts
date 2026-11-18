@@ -9,8 +9,9 @@
  *    this existed keeps working with no config change.
  * 2. **Present and non-empty means deny by default.** A label with no entry in `grants` holds
  *    nothing, so it may call nothing.
- * 3. **A grant is per window label** — the only thing the bridge knows about a request — so a page
- *    can no longer *become* another window's authority.
+ * 3. **A grant is per window label** — the label bound to the token when its document was served,
+ *    not the `window` field a page puts in its own invoke body — so a page cannot *become* another
+ *    window's authority by naming it.
  *
  * Matching is `patternMatches` from the network plugin, with case folding off: a command name is
  * case-sensitive, and `*` stays the one metacharacter so no regular expression reaches the main

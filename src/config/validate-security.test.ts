@@ -62,6 +62,20 @@ describe("security capabilities config", () => {
 		).toThrow(/security\.capabilities\[0\]\.actions\[0\]/);
 	});
 
+	test("accepts app:notes.save so one app command can be granted on its own", () => {
+		// The colon makes this a `plugin:command` action, not the refused dotted `notes.save`
+		// spelling. The dotted command name is the app.command name, not a second key spelling.
+		const config = validateConfig(
+			withSecurity({
+				capabilities: [{ name: "save", actions: ["app:notes.save"] }],
+				grants: { main: ["save"] },
+			}),
+		);
+		expect(config.security?.capabilities).toEqual([
+			{ name: "save", actions: ["app:notes.save"] },
+		]);
+	});
+
 	test("refuses a grant naming a capability that does not exist", () => {
 		expect(() =>
 			validateConfig(

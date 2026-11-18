@@ -13,7 +13,12 @@
  */
 
 import { CrustError } from "../errors";
-import { tokenFromSearch, windowLabelFromSearch } from "../window-identity.ts";
+import {
+	DEFAULT_WINDOW_LABEL,
+	TOKEN_PARAM,
+	tokenFromSearch,
+	windowLabelFromSearch,
+} from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
 import type { Events } from "./events.ts";
@@ -31,6 +36,13 @@ export interface BridgeState {
 	token: string;
 	devOrigins: readonly string[];
 	events: Events;
+	/**
+	 * token -> the label it was issued for. The process token is bound to the default label for the
+	 * dev-server path; each served document gets a fresh token bound to its own `?window=`. Both the
+	 * document route and the invoke route accept only tokens in this map, and capability authority
+	 * comes from the bound label — never from a request field.
+	 */
+	labels: Map<string, string | undefined>;
 	/** The bound port. An ephemeral bind only knows it after `serve` returns. */
 	port(): number;
 	run: Run;
@@ -50,17 +62,34 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		// answers `401` instead of the HTML. That is what keeps the credential out of the reach of
 		// a local process that merely fetches `/`.
 		const serveDocument = async (): Promise<Response> => {
-			if (tokenFromSearch(url.search) !== token) {
+			const presented = tokenFromSearch(url.search);
+			if (presented === undefined || !state.labels.has(presented)) {
 				return errorResponse(
 					new CrustError("unauthorized", "missing or bad document token"),
 					cors,
 				);
 			}
+			const label = windowLabelFromSearch(url.search);
+			// Only the process token may seed a document, and only on a real navigation (a top-level
+			// GET carries no Origin; a page's `fetch` does). Minting from a token the bridge already
+			// bound would let a page holding its own `main` token ask for `?window=admin` and read the
+			// admin token out of the redirect. A document token therefore only ever re-serves its own
+			// document; its binding cannot be changed.
+			if (presented === token && origin === null) {
+				const documentToken = crypto.randomUUID();
+				state.labels.set(documentToken, label ?? DEFAULT_WINDOW_LABEL);
+				const location = new URL(request.url);
+				location.searchParams.set(TOKEN_PARAM, documentToken);
+				return new Response(null, {
+					status: 302,
+					headers: { location: `${location.pathname}${location.search}${location.hash}` },
+				});
+			}
 			return await documentResponse({
 				options,
 				csp,
 				port: state.port(),
-				windowLabel: windowLabelFromSearch(url.search),
+				windowLabel: label,
 			});
 		};
 
@@ -118,7 +147,12 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		const headerToken = bearer(request.headers.get("authorization"));
 		// EventSource cannot set headers, so the stream also accepts `?token=`.
 		const queryToken = url.pathname === EVENTS_PATH ? url.searchParams.get("token") : null;
-		if (headerToken !== token && queryToken !== token) {
+		// Only tokens the bridge issued are credentials: the process token for a dev-server page,
+		// or a per-document token minted by `serveDocument`. A token that was never issued is refused
+		// even when it is a well-formed UUID a page invented.
+		const issued = (value: string | null): value is string =>
+			value !== null && state.labels.has(value);
+		if (!issued(headerToken) && !issued(queryToken)) {
 			return errorResponse(
 				new CrustError("unauthorized", "missing or bad bearer token"),
 				cors,
@@ -130,7 +164,10 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		}
 
 		if (url.pathname === INVOKE_PATH && request.method === "POST") {
-			return await invokeRequest(request, url, state.run, cors);
+			// The label bound to the credential is the only authority for the capability gate.
+			// `invokeRequest` still reads the body/query label as a routing hint for `ctx.window`.
+			const authority = state.labels.get(headerToken ?? queryToken ?? token);
+			return await invokeRequest(request, url, state.run, cors, authority);
 		}
 
 		return errorResponse(new CrustError("not-found", url.pathname), cors);

@@ -12,6 +12,7 @@ import { createHandler, EVENTS_PATH, INVOKE_PATH } from "./server/handler.ts";
 import { compileCapabilities } from "./server/capabilities.ts";
 import { createRunner } from "./server/invoke.ts";
 import type { BridgeHandle, StartBridgeOptions } from "./server/types.ts";
+import { DEFAULT_WINDOW_LABEL } from "./window-identity.ts";
 
 export { HOST, EVENTS_PATH, INVOKE_PATH };
 export type { AssetTable, BridgeHandle, BridgeTarget, StartBridgeOptions } from "./server/types.ts";
@@ -46,6 +47,12 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 	// costs one map lookup plus up to a few literal compares, and the config cannot be mutated
 	// underneath a running bridge.
 	const capabilities = compileCapabilities(options.security);
+	// A token's authority is fixed when it is issued. The process token is bound to the default
+	// window for the dev-server path (Vite served that page, so the bridge saw no `?window=`); the
+	// document route binds a fresh token per document because one shared token would let any page
+	// claim another window's grants. Labels are never taken from an invoke body.
+	const labels = new Map<string, string | undefined>();
+	labels.set(token, DEFAULT_WINDOW_LABEL);
 	const state = {
 		options,
 		// Only the app's own override: the document route builds the default policy per response so
@@ -54,6 +61,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 		token,
 		devOrigins,
 		events,
+		labels,
 		port: () => port,
 		run: createRunner(handlers, ctx, capabilities),
 	};

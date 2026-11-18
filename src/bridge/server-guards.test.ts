@@ -104,6 +104,55 @@ describe("invoke body guards", () => {
 		expect((await readJson(response)).error.code).toBe("too-large");
 	});
 
+	test("a chunked body over the cap is refused before the rest of the stream arrives", async () => {
+		const bridge = start();
+		// A streamed POST carries `transfer-encoding: chunked` and no content-length, so the
+		// header fast path cannot see the size. The old code buffered to the end before applying
+		// the cap; the fix counts raw bytes while streaming and refuses as soon as it crosses.
+		let openGate!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			openGate = resolve;
+		});
+		let first = true;
+		const body = new ReadableStream<Uint8Array>({
+			async pull(controller) {
+				try {
+					if (first) {
+						first = false;
+						controller.enqueue(new Uint8Array(MAX_BODY_BYTES + 1));
+						return;
+					}
+					await gate;
+					controller.enqueue(new TextEncoder().encode("tail"));
+					controller.close();
+				} catch {
+					// The bridge cancelled the stream after refusing the first chunk.
+				}
+			},
+		});
+		const pending = fetch(`${bridge.url}/_crust/invoke`, {
+			method: "POST",
+			headers: headers(bridge, { authorization: `Bearer ${bridge.token}` }),
+			body,
+		});
+		let answered = false;
+		void pending.then(
+			() => {
+				answered = true;
+			},
+			() => {},
+		);
+		try {
+			await Bun.sleep(500);
+			expect(answered).toBe(true);
+		} finally {
+			openGate();
+		}
+		const response = await pending;
+		expect(response.status).toBe(413);
+		expect((await readJson(response)).error.code).toBe("too-large");
+	});
+
 	test("a multibyte body under the character count but over the byte cap is 413", async () => {
 		const bridge = start();
 		// `length` counts UTF-16 units, so this measures ~700 k units and ~2.1 MB on the wire.
