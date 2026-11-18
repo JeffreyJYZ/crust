@@ -1,0 +1,9 @@
+# Lane L1 — `fix-template-locale`
+
+- Chose a **client effect**, not scaffold-time substitution. `crust.config.ts` is not in Next's build graph, `init.ts` has no locale token (and is not owned here), and adding a client component file would move the `--next` count of 8 in `scripts/build-standalone.ts`. Both routes bind `navigator.language` after hydration; the RTL set is copied from `src/plugins/i18n-locale.ts` (`textDirection`), matching F7's react/vue/svelte entries.
+- `templates/next/app/layout.tsx`: dropped hardcoded `lang="en"`; `<html>` keeps only `colorScheme`. Both `app/page.tsx` and `app/about/page.tsx` set `document.documentElement.lang`/`dir` — the second route needs its own effect for a direct `/about` load.
+- `templates/default/public/index.html` had no `lang` at all; `public/app.js` now binds both attributes before the invoke call. No static `lang="en"`/`dir="ltr"` was added: the brief forbids the literal hardcode.
+- SSR tradeoff: Next's static export has no `lang`/`dir` until hydration; an inline script would be blocked by the bridge nonce CSP (`src/bridge/server/document-inline.test.ts`), so a client effect is the only self-contained option.
+- Test: extended `src/plugins/i18n-template.test.ts` (F7's template test) with two cases over the leftovers — no literal `lang="en"`/`dir="ltr"`, and each entry binds `lang`/`dir` from `navigator.language` with the RTL codes present.
+- Proof: `bun test src/plugins/i18n-template.test.ts` 5 pass; `bun check` clean; `bun run e2e:single` 27/27; `bun run e2e:notes` 9/9.
+- Out of scope, left alone: `scripts/build-standalone.ts` at 202 lines (another lane) reddens `bun run check:lines`, and `src/cli/init.test.ts`'s "standalone gate asserts these exact counts" fails against that same in-flight file — neither is from this lane.

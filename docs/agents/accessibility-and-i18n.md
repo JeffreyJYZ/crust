@@ -1,0 +1,9 @@
+# Lane 11 — accessibility and i18n (measured 2026-11-18)
+
+- `i18n` returns text only. Repo code never writes HTML `dir` or `lang` from locale: `rg -n 'dir=|document\.documentElement|\.lang\s*=|setAttribute\(["'\'']lang|rtl' src templates examples site/app/docs` found none. React/Vue/Svelte/Next templates hardcode `lang="en"`; default template no `lang`. `setLocale("ar")` still renders LTR, VoiceOver reads English.
+- `pluralCategory` (`src/plugins/i18n-messages.ts:24-30`) maps every non-`one` `Intl.PluralRules` result to `other`; `messageFor:85` tries only `_one`/`_other`. Probe `bun -e ... PluralRules("ar")`: `zero,one,two,few,many,other`. Counts 0/2/3/11 collapse to `_other`. Wrong Arabic output, not a missing feature.
+- Two locale orders in one plugin: `i18n.ts:57` `locale` = override → native → configured; `i18n.ts:50` `preferred()` (messages/translate) = override → configured → native. Probe with configured `de`, adapter `en`: `locale` reports `en`, `translate` answers `Hallo`. Guide `i18n/page.mdx:33` states one order only.
+- `elementCount` reads the app's own AX tree, not WKWebView content (`src/platform/darwin/accessibility.ts:114-120`). No crust command reads/names/focuses an element in the page tree. Green count is not proof of a screen-reader-accessible page. Page tree is WebKit/VoiceOver's — OS limit.
+- `accessibility.focus` = AX assistive focus (`shim/106_accessibility_page.c:185-191`); `window.focus` = `makeKeyAndOrderFront:` (`window-adapter.ts:74-75`). No DOM-focus or tab-order API. Menu bar and Tab are AppKit/WebKit's — OS limit.
+- Untrusted `announce` posting is deliberate and honest; docs say "reports the post", tests never claim VoiceOver spoke. Don't re-flag it.
+- Report: `docs/reviews/next-wave/accessibility-and-i18n.md`. Own two files only; source untouched.
