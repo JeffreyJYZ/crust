@@ -3,7 +3,9 @@
  * the logic itself. `makeFocus` takes the command runner as a parameter: these tests never touch
  * the real frontmost app and never activate one, they replay results from an injected runner.
  */
+import { readdir } from "node:fs/promises";
 import { expect, test } from "bun:test";
+import { EXEMPT, harnessImports, LAUNCHERS } from "./focus-callers.ts";
 import { makeFocus, type CommandResult, type Runner } from "./focus.ts";
 
 interface Call {
@@ -89,28 +91,43 @@ test("restore is a no-op off macOS", async () => {
 	expect(calls).toHaveLength(0);
 });
 
-/** Every e2e caller must save the frontmost app before it restores one. */
-const CALLERS = [
-	"e2e.ts",
-	"e2e-dev.ts",
-	"e2e-dev-binary.ts",
-	"e2e-dev-react.ts",
-	"e2e-dogear.ts",
-	"e2e-native.ts",
-	"e2e-notes.ts",
-	"e2e-notify.ts",
-	"e2e-parity.ts",
-	"e2e-single.ts",
-	"e2e-window.ts",
-	"first-run.ts",
-];
-
-test("no caller restores focus without first capturing it", async () => {
-	for (const file of CALLERS) {
+/**
+ * The classification lives in `focus-callers.ts`; what is asserted here is that it is total.
+ * `captureFrontmost` plus a `finally` covers a normal or thrown return, and only `guardFocus()`
+ * covers `exit` and the three signals — so a suite with the first and not the second still steals
+ * focus when the human presses Ctrl-C. The set is read from disk, so a new suite fails until it is
+ * wired: the old list only checked that twelve named files still contained a string, which is why
+ * a suite calling neither capture nor restore was invisible to it.
+ */
+test("every GUI-launching script arms the focus guard, not only the finally", async () => {
+	for (const file of LAUNCHERS) {
 		const text = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
+		expect(text, `${file} calls guardFocus()`).toContain("guardFocus();");
+		expect(harnessImports(text), `${file} imports guardFocus from the harness`).toContain(
+			"guardFocus",
+		);
 		expect(text, `${file} captures the frontmost app`).toContain("captureFrontmost()");
 		expect(text, `${file} restores that app`).toContain("restoreFocus(frontmost)");
 		expect(text, `${file} has no bare restoreFocus()`).not.toMatch(/await restoreFocus\(\);/);
+	}
+});
+
+test("every top-level script is classified: a launcher, or an exemption with its reason", async () => {
+	const onDisk = (await readdir(new URL("../", import.meta.url)))
+		.filter((name) => name.endsWith(".ts"))
+		.sort();
+	const exempt = EXEMPT.flatMap((group) => group.files);
+	// Both directions in one equality: an unclassified file fails, and so does a stale entry that
+	// names nothing on disk. A file in both lists shows up as a length mismatch, not a silent pass.
+	expect([...LAUNCHERS, ...exempt].sort()).toEqual(onDisk);
+	for (const group of EXEMPT) {
+		expect(group.reason.length, `${group.files[0]} says why it is exempt`).toBeGreaterThan(40);
+	}
+	for (const file of exempt) {
+		const text = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
+		expect(text, `${file} is exempt, so it must not arm the guard too`).not.toContain(
+			"guardFocus()",
+		);
 	}
 });
 

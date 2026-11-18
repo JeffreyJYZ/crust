@@ -9,6 +9,7 @@ import { basename, join } from "node:path";
 import {
 	captureFrontmost,
 	clearSurvivors,
+	guardFocus,
 	restoreFocus,
 	survivorsOf,
 	Verdict,
@@ -37,7 +38,9 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before any `dev` run opens a window; passed to restoreFocus in `finally`.
 	const frontmost = await captureFrontmost();
-	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+	// `exit` and the three signals; the `finally` below still covers a normal return.
+	guardFocus();
 	// Everything below can throw — a missing binary, a full temp directory, a `pgrep` that
 	// will not answer — so it all sits inside the `try` and the restore is reachable from
 	// each of those paths rather than only from the happy one.

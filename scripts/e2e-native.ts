@@ -14,6 +14,7 @@ import { dylibSuffix } from "../src/packaging/extension-tools.ts";
 import {
 	captureFrontmost,
 	clearSurvivors,
+	guardFocus,
 	probe,
 	restoreFocus,
 	runCommand,
@@ -152,6 +153,9 @@ async function main(): Promise<number> {
 // Captured before `main` compiles and launches the app, so restore hands focus back
 // to whoever the human was using rather than a fixed terminal.
 const frontmost = await captureFrontmost();
+// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+// `exit` and the three signals; the `finally` below still covers a normal return.
+guardFocus();
 let code: number;
 try {
 	code = await main();

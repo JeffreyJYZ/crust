@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
 	captureFrontmost,
 	clearSurvivors,
+	guardFocus,
 	probe,
 	restoreFocus,
 	survivorsOf,
@@ -39,7 +40,9 @@ async function main(): Promise<number> {
 	// Capture before the probe launches its window, so restore hands focus back to
 	// whoever the human was actually using rather than a fixed terminal.
 	const frontmost = await captureFrontmost();
-	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+	// `exit` and the three signals; the `finally` below still covers a normal return.
+	guardFocus();
 
 	// Everything that can throw sits inside the `try`, so a full temp directory or a
 	// wedged `pgrep` still reaches the restore below rather than skipping it.

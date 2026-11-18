@@ -6,7 +6,13 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureFrontmost, clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	guardFocus,
+	restoreFocus,
+	Verdict,
+} from "./e2e-harness.ts";
 import { buildPhase } from "./dogear/phases/build.ts";
 import { finishPhase } from "./dogear/phases/finish.ts";
 import { runPhase } from "./dogear/phases/steps.ts";
@@ -23,7 +29,9 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before the proof launches its window; passed to restoreFocus in `finally`.
 	const frontmost = await captureFrontmost();
-	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
+	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+	// `exit` and the three signals; the `finally` below still covers a normal return.
+	guardFocus();
 	// The scratch tree is created inside the `try`, so a full temp directory cannot throw
 	// between the capture and the restore.
 	let scratch: string | undefined;

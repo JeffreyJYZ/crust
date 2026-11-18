@@ -6,7 +6,7 @@
  * took the label from the body, so A's spoof answered 200 — this proves it does
  * not. Browser focus is captured before the first launch and restored in finally.
  */
-import { captureFrontmost, restoreFocus, Verdict } from "./e2e-harness.ts";
+import { captureFrontmost, guardFocus, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { close, run, SESSION } from "./capability/browser.ts";
 import {
 	documentUrl,
@@ -25,6 +25,9 @@ function probeOf(text: string): PageProbe {
 async function main(): Promise<number> {
 	const verdict = new Verdict();
 	const frontmost = await captureFrontmost();
+	// Armed at the same point: the browser daemon is launched below, and a Ctrl-C runs no
+	// `finally`, so the guard is what restores on `exit` and the three signals.
+	guardFocus();
 	const encoded = Buffer.from(PAGE_PROBE_SOURCE).toString("base64");
 	let closed = false;
 	try {

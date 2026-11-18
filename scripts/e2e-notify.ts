@@ -9,52 +9,18 @@ import { join, resolve } from "node:path";
 import {
 	captureFrontmost,
 	clearSurvivors,
+	guardFocus,
 	restoreFocus,
 	runCommand,
 	survivorsOf,
 	Verdict,
 } from "./e2e-harness";
+import { entry, page } from "./notify/fixture.ts";
 
 const argv = Bun.argv.slice(2);
 const crustIndex = argv.indexOf("--crust");
 const crust = crustIndex >= 0 ? resolve(argv[crustIndex + 1] ?? "crust") : "crust";
 const repo = resolve(import.meta.dir, "..");
-
-const page = `<!doctype html>
-<title>notify e2e</title>
-<p>notify e2e
-<script type="module">
-	const wait = setInterval(async () => {
-		if (!window.crust) return;
-		clearInterval(wait);
-		let text;
-		try {
-			const answer = await window.crust.invoke("notification", "notify", {
-				title: "crust e2e",
-				body: "delivery is asserted, not assumed",
-				waitMs: 60000,
-			});
-			text = JSON.stringify(answer);
-		} catch (error) {
-			text = \`THREW \${error && error.message ? error.message : String(error)}\`;
-		}
-		await window.crust.invoke("report", { text });
-	}, 100);
-</script>
-`;
-
-const entry = `import { app } from "crust";
-
-app.command("report", ({ text }) => {
-	console.log(\`  page      \${typeof text === "string" ? text : JSON.stringify(text)}\`);
-	// Quit from the app rather than from the harness: the run then ends on the app's own
-	// terms, and an app that never answers is a timeout rather than a hang.
-	setTimeout(() => app.quit(), 100);
-	return { ok: true };
-});
-
-await app.run();
-`;
 
 async function main(): Promise<number> {
 	const verdict = new Verdict();
@@ -74,7 +40,9 @@ async function main(): Promise<number> {
 	// twice each way. A notification-gated app has to live outside the system temp directory.
 	const cache = join(homedir(), ".cache");
 	const name = "Notify e2e";
-	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here; the cache is made inside the try.
+	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+	// `exit` and the three signals; the `finally` below still covers a normal return.
+	guardFocus();
 	let root: string | undefined;
 	let builtBinary: string | undefined;
 	try {

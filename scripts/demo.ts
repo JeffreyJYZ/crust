@@ -5,7 +5,7 @@
  */
 import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { captureFrontmost, restoreFocus } from "./harness/focus.ts";
+import { captureFrontmost, guardFocus, restoreFocus } from "./e2e-harness.ts";
 
 const repo = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const example = join(repo, "examples", "dogear");
@@ -42,7 +42,9 @@ async function main(): Promise<number> {
 // Captured before `crust dev` opens its window, so the exit hands focus back to whoever
 // was here rather than leaving the example frontmost.
 const frontmost = await captureFrontmost();
-// TODO(guard): a Ctrl-C during the dev server still skips this; `guardFocus()` in `harness/guard.ts` closes it.
+// Armed at the same point, because the dev server outlives a Ctrl-C: the `finally` below
+// never runs on a signal, and the guard is what hands focus back then.
+guardFocus();
 let code = 1;
 try {
 	code = await main();

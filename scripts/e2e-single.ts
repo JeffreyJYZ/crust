@@ -6,7 +6,13 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureFrontmost, clearSurvivors, restoreFocus, Verdict } from "./e2e-harness.ts";
+import {
+	captureFrontmost,
+	clearSurvivors,
+	guardFocus,
+	restoreFocus,
+	Verdict,
+} from "./e2e-harness.ts";
 import { pageSource, pathsOf } from "./single/fixture.ts";
 import { htmlPhase } from "./single/html-phase.ts";
 import { buildPhase } from "./single/phases/build.ts";
@@ -25,8 +31,10 @@ async function main(): Promise<number> {
 	const verdict = new Verdict();
 	// Captured before any dev/build phase opens a window; restored in `finally`.
 	const frontmost = await captureFrontmost();
+	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
+	// `exit` and the three signals; the `finally` below still covers a normal return.
+	guardFocus();
 
-	// TODO(guard): call `guardFocus()` from `./harness/guard.ts` here, so a signal restores too.
 	// The scratch directory is created inside the `try`, so a full temp directory cannot
 	// throw between the capture above and the restore below.
 	let scratch: string | undefined;
