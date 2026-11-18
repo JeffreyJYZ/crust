@@ -39,9 +39,10 @@ static obj_t net_number(long long value) {
 // never read a `crust-net:` body — its `fetch` is cross-origin. The MIME type has to arrive the same
 // way, because WebKit refuses to execute a `<script src>` whose Content-Type is not JavaScript.
 static int net_serve(obj_t task, obj_t url) {
-	obj_t data, response, mime, headers, version;
+	obj_t data = 0, response = 0, mime = 0, headers, version = 0, temp, value;
 	long long length;
 	long mime_len;
+	int answer = 0;
 	length = net_fill ? (long long)((long (*)(char *, int, char *, int))net_fill)(
 	                        net_body, NET_BODY, net_mime, NET_MIME)
 	                  : -1;
@@ -51,6 +52,8 @@ static int net_serve(obj_t task, obj_t url) {
 	// `alloc`/`initWithBytes:` and not `+dataWithBytes:`: the convenience constructor autoreleases,
 	// so a body handed to WebKit could be freed by the next pool drain before the content process
 	// consumed it — which reads as a served request that renders nothing (measured 2026-11-16).
+	// That choice makes every object here +1: WebKit retains what it needs, so we release our own
+	// reference after the sends and on every early return (measured leak, 2026-11-18).
 	data = ((obj_t (*)(void *, void *, char *, unsigned long))objc_msgSend)(
 	    ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSData"), sel_registerName("alloc")),
 	    sel_registerName("initWithBytes:length:"), net_body, (unsigned long)length);
@@ -58,34 +61,56 @@ static int net_serve(obj_t task, obj_t url) {
 	mime_len = net_len(net_mime);
 	mime = net_nsstring(net_mime, mime_len);
 	version = net_nsstring("HTTP/1.1", 8);
-	if (!mime || !version) return 0;
+	if (!mime || !version) goto done;
 	headers = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSMutableDictionary"),
 	                                                    sel_registerName("dictionary"));
-	if (!headers) return 0;
-	((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
-	    headers, sel_registerName("setObject:forKey:"), mime, net_nsstring("Content-Type", 12));
-	((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
-	    headers, sel_registerName("setObject:forKey:"), net_number(length),
-	    net_nsstring("Content-Length", 14));
+	if (!headers) goto done;
+	// The dictionary copies its keys and values, so balance each +1 temporary right after the send.
+	// `mime` and `version` are balanced in `done` because the response also holds them.
+	temp = net_nsstring("Content-Type", 12);
+	if (temp) {
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    headers, sel_registerName("setObject:forKey:"), mime, temp);
+		net_release(temp);
+	}
+	temp = net_nsstring("Content-Length", 14);
+	value = net_number(length);
+	if (temp && value)
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    headers, sel_registerName("setObject:forKey:"), value, temp);
+	net_release(value);
+	net_release(temp);
 	// Required, measured: a page on the bridge's `http://127.0.0.1:<port>` origin reads a
 	// `crust-net:` body through `fetch` with this header and fails `TypeError: Load failed` without
 	// it, so the scheme is cross-origin to the page and WebKit does enforce CORS here.
-	((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
-	    headers, sel_registerName("setObject:forKey:"), net_nsstring("*", 1),
-	    net_nsstring("Access-Control-Allow-Origin", 27));
+	temp = net_nsstring("Access-Control-Allow-Origin", 27);
+	value = net_nsstring("*", 1);
+	if (temp && value)
+		((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
+		    headers, sel_registerName("setObject:forKey:"), value, temp);
+	net_release(value);
+	net_release(temp);
 	response = ((obj_t (*)(void *, void *, obj_t, long long, obj_t, obj_t))objc_msgSend)(
 	    ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSHTTPURLResponse"),
 	                                              sel_registerName("alloc")),
 	    sel_registerName("initWithURL:statusCode:HTTPVersion:headerFields:"), url, 200LL, version,
 	    headers);
-	if (!response) return 0;
+	if (!response) goto done;
 	((void (*)(void *, void *, obj_t))objc_msgSend)(task, sel_registerName("didReceiveResponse:"),
 	                                                response);
 	((void (*)(void *, void *, obj_t))objc_msgSend)(task, sel_registerName("didReceiveData:"), data);
 	((void (*)(void *, void *))objc_msgSend)(task, sel_registerName("didFinish"));
 	net_served_bytes += length;
 	net_task_count++;
-	return 1;
+	answer = 1;
+done:
+	// One cleanup for success and every failure after `data` exists. `headers` is an autoreleased
+	// convenience object (+0) and is never released; the other four are our +1 references.
+	net_release(response);
+	net_release(version);
+	net_release(mime);
+	net_release(data);
+	return answer;
 }
 
 long long net_served(void) { return net_served_bytes; }

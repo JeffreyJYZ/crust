@@ -24,26 +24,38 @@ void dl_answer(const char *bytes, long len) {
 // One runtime class per process, and one delegate instance: -setDelegate: is unretained, so the
 // instance has to outlive every download, which is what static storage gives it.
 int dl_install(void *sink) {
-	obj_t super, allocated;
+	obj_t super, allocated, cls;
 	if (!sink) return 0;
 	dl_sink = sink;
 	if (dl_delegate) return 1;
-	super = objc_getClass("NSObject");
-	if (!super || !objc_getClass("WKDownload")) return 0;
-	dl_delegate_class = objc_allocateClassPair(super, "CrustDownloadDelegate", 0);
-	if (!dl_delegate_class) return 0;
-	if (!class_addMethod(dl_delegate_class,
-	                     sel_registerName("download:decideDestinationUsingResponse:"
-	                                      "suggestedFilename:completionHandler:"),
-	                     (void *)dl_decide, "v@:@@@@"))
-		return 0;
-	if (!class_addMethod(dl_delegate_class, sel_registerName("download:didFinishToURL:"),
-	                     (void *)dl_finished, "v@:@@"))
-		return 0;
-	if (!class_addMethod(dl_delegate_class, sel_registerName("download:didFailWithError:"),
-	                     (void *)dl_failed, "v@:@@"))
-		return 0;
-	objc_registerClassPair(dl_delegate_class);
+	if (!dl_delegate_class) {
+		super = objc_getClass("NSObject");
+		if (!super || !objc_getClass("WKDownload")) return 0;
+		cls = objc_allocateClassPair(super, "CrustDownloadDelegate", 0);
+		if (!cls) return 0;
+		// A half-built class must be disposed before returning: the cache stays empty so a retry can
+		// build it again, instead of being wedged forever by the first failed selector
+		// (native-surface.md §5, measured 2026-11-18).
+		if (!class_addMethod(cls,
+		                     sel_registerName("download:decideDestinationUsingResponse:"
+		                                      "suggestedFilename:completionHandler:"),
+		                     (void *)dl_decide, "v@:@@@@")) {
+			objc_disposeClassPair(cls);
+			return 0;
+		}
+		if (!class_addMethod(cls, sel_registerName("download:didFinishToURL:"),
+		                     (void *)dl_finished, "v@:@@")) {
+			objc_disposeClassPair(cls);
+			return 0;
+		}
+		if (!class_addMethod(cls, sel_registerName("download:didFailWithError:"),
+		                     (void *)dl_failed, "v@:@@")) {
+			objc_disposeClassPair(cls);
+			return 0;
+		}
+		objc_registerClassPair(cls);
+		dl_delegate_class = cls;
+	}
 	allocated = ((obj_t (*)(void *, void *))objc_msgSend)(dl_delegate_class,
 	                                                      sel_registerName("alloc"));
 	if (!allocated) return 0;
@@ -53,23 +65,26 @@ int dl_install(void *sink) {
 
 // A token > 0 for the caller to hold, 0 when any step refused; the request never leaves C.
 long long dl_start(obj_t web, const char *bytes, long len) {
-	obj_t text, url, request;
+	obj_t text, url, request, block;
 	long long token;
-	if (!web || !dl_delegate || dl_pending_count >= DL_SLOTS) return 0;
+	if (!web || !dl_delegate || dl_started_count >= DL_SLOTS) return 0;
 	text = dl_nsstring(bytes, len);
 	if (!text) return 0;
 	url = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(objc_getClass("NSURL"),
 	                                                       sel_registerName("URLWithString:"), text);
+	// NSURL copied the string; balance the +1 from dl_nsstring on every path, including a nil URL.
+	dl_release(text);
 	if (!url) return 0;
 	request = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(objc_getClass("NSURLRequest"),
 	                                                          sel_registerName("requestWithURL:"),
 	                                                          url);
 	if (!request) return 0;
 	token = ++dl_next_token;
-	dl_pending[dl_pending_count++] = token;
+	block = dl_start_block_for(token);
+	if (!block) return 0;
+	dl_started_count++;
 	((void (*)(void *, void *, obj_t, void *))objc_msgSend)(
-	    web, sel_registerName("startDownloadUsingRequest:completionHandler:"), request,
-	    &dl_start_block);
+	    web, sel_registerName("startDownloadUsingRequest:completionHandler:"), request, block);
 	return token;
 }
 

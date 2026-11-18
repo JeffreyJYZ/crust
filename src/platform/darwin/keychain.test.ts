@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	darwinKeychainAdapter,
 	KEYCHAIN_STATUS,
@@ -140,5 +142,36 @@ describe("the keychain C unit", () => {
 		expect(listed).toContain("account-3999");
 		expect(listed).toContain("account-5999");
 		expect(LIST_CHUNK).toBeLessThan(names.length * 12);
+	});
+
+	test("list sizes each account from its own length, never a fixed stack buffer", () => {
+		// A fixed `char small[256]` made CFStringGetCString fail for any longer name, and the
+		// loop's `continue` then dropped it — set accepts it and get finds it, but list hid it.
+		const source = readFileSync(join(import.meta.dir, "shim", "119_keychain_b.c"), "utf8");
+		const list = source.slice(source.indexOf("long long shim_keychain_list"));
+		expect(list).toContain("CFStringGetMaximumSizeForEncoding");
+		expect(list).not.toContain("char small[256]");
+		// A name that will not fit is reported back so the adapter re-reads at the exact size.
+		expect(list).toContain("total += room");
+	});
+
+	test("list re-reads at the reported size when one name will not fit the first buffer", () => {
+		// The C half reports the full size it needs even when it wrote only part of the list,
+		// just as `get` reports the secret's full length. The adapter must ask again.
+		const long = "L".repeat(LIST_CHUNK + 32);
+		let calls = 0;
+		const keychain = darwinKeychainAdapter(
+			shim({
+				list: (_service, into) => {
+					calls++;
+					const bytes = new TextEncoder().encode(`${long}\0`);
+					into.set(bytes.subarray(0, Math.min(bytes.length, into.length)));
+					return bytes.length;
+				},
+			}),
+		);
+
+		expect(keychain.list?.("app")).toEqual([long]);
+		expect(calls).toBe(2);
 	});
 });

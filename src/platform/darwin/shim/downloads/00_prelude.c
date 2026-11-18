@@ -14,6 +14,8 @@ extern void *objc_allocateClassPair(void *superclass, const char *name, unsigned
 extern void objc_registerClassPair(void *cls);
 extern int class_addMethod(void *cls, void *name, void *imp, const char *types);
 extern void _NSConcreteGlobalBlock;
+extern void _NSConcreteStackBlock;
+extern void objc_disposeClassPair(void *cls);
 
 #define DL_SLOTS 32
 #define DL_TEXT 1024
@@ -27,8 +29,7 @@ extern void _NSConcreteGlobalBlock;
 static obj_t dl_downloads[DL_SLOTS];
 static long long dl_tokens[DL_SLOTS];
 static long long dl_next_token;
-static long long dl_pending[DL_SLOTS];
-static int dl_pending_count;
+static int dl_started_count;
 static char dl_text[DL_TEXT];
 static char dl_destination[DL_PATH];
 static long dl_destination_len;
@@ -63,12 +64,24 @@ static obj_t dl_nsstring(const char *bytes, long len) {
 	    allocd, sel_registerName("initWithBytes:length:encoding:"), bytes, (unsigned long)len, 4LL);
 }
 
+// Ownership rule: dl_nsstring answers a +1 object, so every caller balances it with one of these.
+// Never hand a Cocoa object to free(): Bun owns the C allocator here (the Linux shim's GLib trap)
+// and a Cocoa object needs its own teardown. Measured 2026-11-18: dl_start and dl_file_url dropped
+// the string they handed to NSURL, so every download leaked one NSString.
+static void dl_release(obj_t object) {
+	if (object) ((void (*)(void *, void *))objc_msgSend)(object, sel_registerName("release"));
+}
+
 static obj_t dl_file_url(const char *bytes, long len) {
 	obj_t path = dl_nsstring(bytes, len);
+	obj_t url;
 	if (!path) return 0;
-	return ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(objc_getClass("NSURL"),
+	url = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(objc_getClass("NSURL"),
 	                                                       sel_registerName("fileURLWithPath:"),
 	                                                       path);
+	// NSURL copies the path into itself; balance our +1 on both the success and the nil-URL path.
+	dl_release(path);
+	return url;
 }
 
 // The slot holding a token, the slot holding an object, and the first free slot.

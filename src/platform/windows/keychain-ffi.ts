@@ -19,6 +19,8 @@ import keychainSource from "./shim/48_keychain.c" with { type: "text" };
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
+/** One UTF-16 account name, far above the 2048-unit target name the C half caps. */
+const ACCOUNT_BYTES = 4096;
 
 /** The four exports, as `bun:ffi` hands them back. */
 export interface WindowsKeychainUnit {
@@ -45,6 +47,13 @@ export interface WindowsKeychainUnit {
 			serviceLength: number,
 			account: number,
 			accountLength: number,
+		) => number;
+		shim_keychain_list: (
+			service: number,
+			serviceLength: number,
+			index: number,
+			dst: number,
+			capacity: number,
 		) => number;
 	};
 }
@@ -76,6 +85,7 @@ function compile(): WindowsKeychainUnit {
 			shim_keychain_set: { args: [P, I64, P, I64, P, I64], returns: I32 },
 			shim_keychain_get: { args: [P, I64, P, I64, P, I64], returns: I64 },
 			shim_keychain_delete: { args: [P, I64, P, I64], returns: I32 },
+			shim_keychain_list: { args: [P, I64, I32, P, I64], returns: I64 },
 		},
 	});
 	return { symbols: library.symbols } as unknown as WindowsKeychainUnit;
@@ -97,6 +107,8 @@ export interface WindowsKeychainShim {
 	set(service: string, account: string, secret: string): number;
 	get(service: string, account: string, into: Uint8Array): number;
 	delete(service: string, account: string): number;
+	/** The `index`-th account under `service`, or `null` when the enumeration ends. */
+	list(service: string, index: number): string | null;
 }
 
 // A strong reference for the duration of one call: `bun:ffi` reads the bytes during the call and a
@@ -152,6 +164,35 @@ export function windowsKeychainShim(): WindowsKeychainShim {
 			return Number(
 				unit().shim_keychain_delete(s.address, s.length, a.address, a.length) ?? -1,
 			);
+		},
+		list: (service, index) => {
+			pinned = [];
+			const s = bytesOf(service);
+			let buffer = new Uint8Array(ACCOUNT_BYTES);
+			const read = (): number =>
+				Number(
+					unit().shim_keychain_list(
+						s.address,
+						s.length,
+						index,
+						ptr(buffer),
+						buffer.length,
+					) ?? -1,
+				);
+			let needed = read();
+			if (needed === 0) return null;
+			if (needed < 0)
+				throw new Error("keychain: the Windows credential store refused the read");
+			if (needed > buffer.length) {
+				buffer = new Uint8Array(needed);
+				needed = read();
+				if (needed < 0)
+					throw new Error("keychain: the Windows credential store refused the read");
+			}
+			// The C half counts the final NUL; TextDecoder would emit it, so strip it here.
+			return new TextDecoder("utf-16le")
+				.decode(buffer.subarray(0, Math.min(needed, buffer.length)))
+				.replace(/\0$/, "");
 		},
 	};
 }

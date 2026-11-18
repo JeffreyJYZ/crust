@@ -69,10 +69,12 @@ int shim_mode_ok(obj_t mode) {
 	return buf[i] == 0 ? 1 : 0;
 }
 
-// The pump: one 0.25 ms slice — the length decides tick fidelity, since 4 ms delivered only 82.4% of a
-// 16 ms tick (`site/app/docs/design/page.mdx`). `CFRunLoopRunInMode` alone does not draw: a page painted and its window went
-// blank while the pump kept ticking and the run loop reported "timed out, no sources" (measured with a
-// heartbeat page). So each tick also drains the event queue — mask, deadline, `sendEvent:`, `updateWindows`.
+// The pump: a 4 ms deadline with a 2 ms `CFRunLoopRunInMode` fallback — not the measured optimum.
+// A `research/runloop` sweep found 0.25 ms delivered 186 of 187 ticks (99.5%) while 4 ms delivered only
+// 82.4% of a 16 ms tick (`site/app/docs/design/page.mdx`); the shim's 4 ms is what actually shipped.
+// `CFRunLoopRunInMode` alone does not draw: a page painted and its window went blank while the pump
+// kept ticking and the run loop reported "timed out, no sources" (measured with a heartbeat page).
+// So each tick also drains the event queue — mask, deadline, `sendEvent:`, `updateWindows`.
 static obj_t shim_default_mode(void) { return __CFStringMakeConstantString("kCFRunLoopDefaultMode"); }
 
 // Does this thread own the main run loop? If it does not, pumping here can never drive

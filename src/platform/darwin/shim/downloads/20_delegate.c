@@ -43,21 +43,21 @@ static void dl_failed(void *self, void *cmd, obj_t download, obj_t error) {
 }
 
 // The completion of -startDownloadUsingRequest:completionHandler:, whose only argument is the
-// download WebKit created — nil when it refused the request.
+// download WebKit created — nil when it refused the request. The token is captured in the block,
+// so a completion that fires second still belongs to its own start; no FIFO ordering is assumed
+// (native-surface.md §4, measured 2026-11-18).
 static void dl_start_done(void *block, obj_t download) {
+	long long token = ((struct dl_start_block *)block)->token;
 	long slot;
-	int i;
-	(void)block;
-	if (!download) return;
+	if (!download || token <= 0) return;
+	dl_start_block_done(token);
+	if (dl_started_count > 0) dl_started_count--;
 	slot = dl_free_slot();
 	if (slot < 0) return;
 	((void (*)(void *, void *, obj_t))objc_msgSend)(download, sel_registerName("setDelegate:"),
 	                                                dl_delegate);
 	dl_downloads[slot] = download;
-	// Starts are queued before the send, so the oldest pending token is this download's.
-	dl_tokens[slot] = dl_pending_count > 0 ? dl_pending[0] : -1;
-	for (i = 1; i < dl_pending_count; i++) dl_pending[i - 1] = dl_pending[i];
-	if (dl_pending_count > 0) dl_pending_count--;
+	dl_tokens[slot] = token;
 }
 
 static void dl_cancel_done(void *block, obj_t resume) {

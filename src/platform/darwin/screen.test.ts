@@ -24,6 +24,8 @@ function doubles(
 const adapter = { list: listScreens };
 
 describe("the darwin screen adapter", () => {
+	const SCREENS = adapter.list() as ScreenRecord[];
+
 	test("answers every display in AppKit's own order", () => {
 		const screens = adapter.list();
 		// A headless runner is a real state; what must never happen is a throw.
@@ -36,10 +38,19 @@ describe("the darwin screen adapter", () => {
 		}
 	});
 
-	test("the primary flag is AppKit's, not index 0 by assumption", () => {
-		const screens = adapter.list() as ScreenRecord[];
-		if (screens.length === 0) return; // headless: nothing to assert about a list nobody has
-		expect(screens.filter((screen) => screen.primary).length).toBeLessThanOrEqual(1);
+	// A bare return on a headless host reported pass with zero assertions. Register a visible skip
+	// instead, and keep the assertion in the branch that has a display to check.
+	if (SCREENS.length === 0) {
+		test.skip("skipped: no display on this host, so the primary flag cannot be checked");
+	} else {
+		test("the primary flag is AppKit's, not index 0 by assumption", () => {
+			expect(SCREENS.filter((screen) => screen.primary).length).toBeLessThanOrEqual(1);
+		});
+	}
+
+	// A run that skipped the only native check must not read green.
+	test("coverage guard: a display is present, so the primary flag was checked", () => {
+		expect(SCREENS.length).toBeGreaterThan(0);
 	});
 
 	test("the unit reports why it cannot answer instead of throwing", () => {

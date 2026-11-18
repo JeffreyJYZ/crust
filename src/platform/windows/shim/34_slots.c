@@ -10,10 +10,13 @@ typedef struct {
 	long left, top, right, bottom;
 } shim_rect;
 
-// ICoreWebView2Controller slot 6. The signature says `put_Bounds(RECT bounds)`, and a 16-byte struct
-// is passed **by reference** on x64 — so the parameter is declared as a pointer and the address is
-// passed, which is the call the ABI already makes. Declaring it by value would leave the sequence to
-// TinyCC's struct codegen, which nothing on this machine can test.
+// ICoreWebView2Controller slot 6. The signature says `put_Bounds(RECT bounds)`. How that 16-byte
+// struct crosses is the one real x64/arm64 split in this unit: Windows x64 passes composites larger
+// than 8 bytes by pointer, so the pointer form is right there; Windows ARM64 follows AAPCS64, where
+// stage B.3 copies to memory only composites *larger* than 16 bytes and rule C.10 loads a 16-byte
+// composite into consecutive general-purpose registers. Passing &r on arm64 would make WebView2 read
+// the pointer as rcMonitor's left/top and ignore right/bottom. TCC's arm64 backend implements C.10,
+// so declaring the struct by value there matches the method WebView2 actually compiled.
 // Returns the method's own HRESULT, so a refusal and a crash are distinguishable.
 int wv2_put_bounds(void *ctrl, double w, double h) {
 	shim_rect r;
@@ -24,7 +27,11 @@ int wv2_put_bounds(void *ctrl, double w, double h) {
 	r.right = (long)w;
 	r.bottom = (long)h;
 	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_PUT_BOUNDS)) return -2147467262;
+#if defined(__aarch64__)
+	return ((int (*)(void *, shim_rect))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, r);
+#else
 	return ((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
+#endif
 }
 
 // ICoreWebView2Controller slot 24.

@@ -13,6 +13,7 @@ extern obj_t objc_getClass(const char *name);
 extern obj_t sel_registerName(const char *name);
 extern void *objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
+extern void objc_disposeClassPair(void *cls);
 extern int class_addMethod(void *cls, void *name, void *imp, const char *types);
 
 #define NET_TEXT 2048
@@ -64,6 +65,14 @@ static obj_t net_nsstring(const char *bytes, long len) {
 	    allocd, sel_registerName("initWithBytes:length:encoding:"), bytes, (unsigned long)len, 4LL);
 }
 
+// Ownership rule: net_nsstring answers a +1 object from alloc/init, so each one is balanced by
+// exactly one -release. Never hand a Cocoa object to free(): Bun owns the C allocator on this
+// process (the GLib trap in the Linux shim) and a Cocoa object needs its own teardown.
+// Measured 2026-11-18: a served request and a refused task each leaked their owned strings.
+static void net_release(obj_t object) {
+	if (object) ((void (*)(void *, void *))objc_msgSend)(object, sel_registerName("release"));
+}
+
 // -[WKURLSchemeTask didFailWithError:] with a real NSURLError, so the page sees a failed load.
 static void net_fail(obj_t task, long long code) {
 	obj_t domain = net_nsstring("NSURLErrorDomain", 16);
@@ -72,6 +81,8 @@ static void net_fail(obj_t task, long long code) {
 	error = ((obj_t (*)(void *, void *, obj_t, long long, obj_t))objc_msgSend)(
 	    objc_getClass("NSError"), sel_registerName("errorWithDomain:code:userInfo:"), domain, code,
 	    0);
+	// NSError keeps its own domain, so balance our +1 on both the success and the nil-error path.
+	net_release(domain);
 	if (!error) return;
 	((void (*)(void *, void *, obj_t))objc_msgSend)(task, sel_registerName("didFailWithError:"),
 	                                                error);
@@ -124,22 +135,31 @@ int net_installed(void) { return net_registered; }
 // Register on a configuration no webview has used yet: WebKit raises for a used one, and a raised
 // exception is a SIGABRT with no JavaScript error, so the caller owns that precondition.
 int net_install(obj_t configuration, const char *bytes, long len, void *decide, void *fill) {
-	obj_t super, scheme;
+	obj_t super, scheme, cls;
 	if (!configuration || !decide || !fill) return 0;
 	net_decide = decide;
 	net_fill = fill;
 	if (!net_handler) {
-		super = objc_getClass("NSObject");
-		if (!super) return 0;
-		net_handler_class = objc_allocateClassPair(super, "CrustSchemeHandler", 0);
-		if (!net_handler_class) return 0;
-		if (!class_addMethod(net_handler_class, sel_registerName("webView:startURLSchemeTask:"),
-		                     (void *)net_start, "v@:@@"))
-			return 0;
-		if (!class_addMethod(net_handler_class, sel_registerName("webView:stopURLSchemeTask:"),
-		                     (void *)net_stop, "v@:@@"))
-			return 0;
-		objc_registerClassPair(net_handler_class);
+		if (!net_handler_class) {
+			super = objc_getClass("NSObject");
+			if (!super) return 0;
+			cls = objc_allocateClassPair(super, "CrustSchemeHandler", 0);
+			if (!cls) return 0;
+			// A half-built class is disposed and left uncached: a failed selector must not wedge
+			// the unit by leaving a live class under the same name (native-surface.md §5).
+			if (!class_addMethod(cls, sel_registerName("webView:startURLSchemeTask:"),
+			                     (void *)net_start, "v@:@@")) {
+				objc_disposeClassPair(cls);
+				return 0;
+			}
+			if (!class_addMethod(cls, sel_registerName("webView:stopURLSchemeTask:"),
+			                     (void *)net_stop, "v@:@@")) {
+				objc_disposeClassPair(cls);
+				return 0;
+			}
+			objc_registerClassPair(cls);
+			net_handler_class = cls;
+		}
 		net_handler = ((obj_t (*)(void *, void *))objc_msgSend)(net_handler_class,
 		                                                       sel_registerName("alloc"));
 		if (!net_handler) return 0;
@@ -151,6 +171,8 @@ int net_install(obj_t configuration, const char *bytes, long len, void *decide, 
 	if (!scheme) return 0;
 	((void (*)(void *, void *, obj_t, obj_t))objc_msgSend)(
 	    configuration, sel_registerName("setURLSchemeHandler:forURLScheme:"), net_handler, scheme);
+	// The configuration copies the scheme as the handler's key; balance our +1 right after the send.
+	net_release(scheme);
 	net_registered = 1;
 	return 1;
 }

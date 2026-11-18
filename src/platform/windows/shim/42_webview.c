@@ -97,8 +97,9 @@ int shim_webview_attach(shim_h hwnd) {
 // prologue and emits `call __chkstk` instead; nothing in this unit's link set defines `__chkstk`, so
 // the call lands in a relocation filled with -1 — the `0xFFFFFFFFFFFFFFFF` that every failing run
 // reported. The function died at its own first instruction, and the shared `.pdata` record made the
-// crash report name `EmbeddedBrowserWebView.dll` instead. `frame.test.ts` fails the gate if any local
-// array in this unit reaches 4096 bytes, so this cannot come back by accident.
+// crash report name `EmbeddedBrowserWebView.dll` instead. Windows ARM64 needs the same helper at the
+// same 4096-byte threshold (`arm64_sub_sp` on PE), so the rule is not x64-only. `frame.test.ts` fails
+// the gate if any local array in this unit reaches 4096 bytes, so this cannot come back by accident.
 static shim_wchar g_url[2048];
 static shim_wchar g_html[512];
 

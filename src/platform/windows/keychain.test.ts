@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createKeychainPlugin } from "@/plugins/keychain";
 import {
 	SECRET_CHUNK,
 	WINDOWS_KEYCHAIN_STATUS,
@@ -26,6 +27,7 @@ function shim(overrides: Partial<WindowsKeychainShim> = {}): WindowsKeychainShim
 		set: () => WINDOWS_KEYCHAIN_STATUS.ok,
 		get: () => WINDOWS_KEYCHAIN_STATUS.refused,
 		delete: () => 0,
+		list: () => null,
 		...overrides,
 	};
 }
@@ -81,8 +83,38 @@ describe("what a status means", () => {
 		);
 	});
 
-	test("there is no list, so the plugin refuses by name instead of inventing an empty array", () => {
-		expect(windowsKeychainAdapter(shim()).list).toBeUndefined();
+	test("list enumerates accounts through CredEnumerateW until the shim ends the walk", () => {
+		const seen: number[] = [];
+		const keychain = windowsKeychainAdapter(
+			shim({
+				list: (_service, index) => {
+					seen.push(index);
+					return ["backup", "token"][index] ?? null;
+				},
+			}),
+		);
+		expect(keychain.list?.("app")).toEqual(["backup", "token"]);
+		expect(seen).toEqual([0, 1, 2]);
+		expect(windowsKeychainAdapter(shim()).list?.("app")).toEqual([]);
+	});
+
+	test("a refused enumeration throws so the plugin can answer handler-error", () => {
+		const keychain = windowsKeychainAdapter(
+			shim({
+				list: () => {
+					throw new Error("access denied");
+				},
+			}),
+		);
+		expect(() => keychain.list?.("app")).toThrow("access denied");
+	});
+
+	test("the plugin answers keychain.list instead of refusing by name", async () => {
+		const plugin = createKeychainPlugin(
+			windowsKeychainAdapter(shim({ list: (_s, i) => (i === 0 ? "token" : null) })),
+		);
+		const answer = await plugin.commands.list({ service: "app" });
+		expect(answer).toMatchObject({ ok: true, accounts: ["token"] });
 	});
 });
 
@@ -94,7 +126,7 @@ describe("the C unit's own shape", () => {
 			(match) => match[1] ?? "",
 		);
 		expect(imports.sort()).toEqual(["GetProcAddress", "LoadLibraryA"]);
-		for (const name of ["CredWriteW", "CredReadW", "CredDeleteW"]) {
+		for (const name of ["CredWriteW", "CredReadW", "CredDeleteW", "CredEnumerateW"]) {
 			// The call spans lines in this unit, so the name is matched next to its resolver and
 			// the file is checked for the assignment rather than the exact one-line spelling.
 			expect(source).toContain(name);

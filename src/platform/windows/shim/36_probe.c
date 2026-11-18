@@ -138,6 +138,11 @@ void *shim_controller_slot(int index) {
 // the `0xFFFFFFFFFFFFFFFF` every Windows run reported — the first `Navigate` fault was this prologue,
 // not the URL string.
 //
+// The same helper is required on Windows ARM64, so this is not an x64-only rule: `arm64-gen.c`'s
+// `arm64_sub_sp` takes the PE branch at `diff >= 4096`, puts `diff >> 4` in x15 and emits `bl __chkstk`
+// (Microsoft's ARM64 ABI doc, "Stack": 4k or more must touch each preceding page). The unit links no
+// libtcc1 there either, so the helper is equally unresolved and `frame.test.ts` guards both targets.
+//
 // `shim_frame_probe_small` is the positive control: a 2048-byte local, a 2080-byte frame, the inline
 // prologue. Its 4096-byte twin was measured on `windows-latest` (2026-11-16): it printed
 // `stage frame_probe_large …` and the child ended with exit 3, so it is not kept — a probe that must

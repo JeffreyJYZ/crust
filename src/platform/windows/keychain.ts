@@ -3,9 +3,10 @@
  * on the unit and shim in `keychain-ffi.ts`. The adapter only, so the C seam and the plugin seam stay
  * separable — the same split `platform/darwin/keychain.ts` has.
  *
- * `list` is absent on purpose: `CredEnumerateW` would be a fifth binding and a wildcard match, so the
- * plugin answers `not-implemented` naming it rather than an empty array that reads as "nothing is
- * stored". `get`, `set` and `delete` are the whole surface, and they are the ones a page needs.
+ * `list` uses `CredEnumerateW` from the same advapi32 unit: the shim returns one account name at a
+ * time and `null` ends the enumeration, so an empty store is a real empty answer rather than a
+ * refusal. The prefix is matched in C with a NULL filter, so a service containing `*` or `?` stays
+ * literal.
  */
 
 import type { KeychainAdapter } from "@/plugins/keychain";
@@ -67,6 +68,15 @@ export function windowsKeychainAdapter(
 		throw new Error("keychain: the Windows credential store refused the delete");
 	};
 
-	// No `list`: see the header. The plugin answers `not-implemented` naming `CredEnumerateW`.
-	return { platform: "win32", set, get, delete: remove };
+	const list = (service: string): string[] => {
+		const accounts: string[] = [];
+		for (let index = 0; ; index++) {
+			const account = native.list(service, index);
+			if (account === null) break;
+			accounts.push(account);
+		}
+		return accounts.sort();
+	};
+
+	return { platform: "win32", set, get, delete: remove, list };
 }

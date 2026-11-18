@@ -6,6 +6,8 @@
 
 extern long CFArrayGetCount(void *array);
 extern void *CFArrayGetValueAtIndex(void *array, long index);
+extern long CFStringGetLength(void *string);
+extern long CFStringGetMaximumSizeForEncoding(long length, unsigned int encoding);
 extern void *kSecMatchLimitOne;
 extern void *kCFBooleanTrue;
 
@@ -101,17 +103,28 @@ long long shim_keychain_list(const char *service, long long slen, char *dst, lon
 			for (long index = 0; index < count; index++) {
 				void *item = CFArrayGetValueAtIndex(result, index);
 				void *name = item ? CFDictionaryGetValue(item, kSecAttrAccount) : 0;
-				char small[256];
-				if (!name || !CFStringGetCString(name, small, 256, SHIM_KCF_UTF8)) continue;
-				long length = 0;
-				while (small[length]) length++;
-				// The separator costs one byte and an overflow drops the account rather
-				// than splitting a name, so a short buffer yields fewer accounts, never
-				// a corrupt one.
-				if (total + length + 1 > cap) continue;
-				for (long i = 0; i < length; i++) dst[total + i] = small[i];
-				dst[total + length] = 0;
-				total += length + 1;
+				if (!name) continue;
+				// Size from the name, never a fixed 256-byte stack buffer: the old hard limit
+				// made CFStringGetCString fail for any longer account, and `continue` turned that
+				// into a silent omission — set accepts the name and get finds it, but list hides it.
+				long units = CFStringGetLength(name);
+				long room = CFStringGetMaximumSizeForEncoding(units, SHIM_KCF_UTF8) + 1;
+				if (room <= 0) { total = -3; break; }
+				if (room > cap - total) {
+					// It will not fit in what is left. Report the room it needs so the adapter
+					// re-reads with an exact buffer, the signal shim_keychain_get already gives.
+					// `room` is an upper bound on the UTF-8 bytes, so the re-read has enough.
+					total += room;
+					continue;
+				}
+				// Enough room: CFStringGetCString writes the name and its NUL where the
+				// separator belongs, so the next account starts at that NUL plus one.
+				if (!CFStringGetCString(name, dst + total, room, SHIM_KCF_UTF8)) {
+					total = -3;
+					break;
+				}
+				while (dst[total]) total++;
+				total++;
 			}
 			CFRelease(result);
 		} else if (found == -25300) {
