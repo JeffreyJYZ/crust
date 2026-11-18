@@ -1,60 +1,78 @@
 /**
- * `crust:autostart` — launch at login on macOS, the half of Tauri's autostart plugin crust lacked. The
- * mechanism is a LaunchAgent: `~/Library/LaunchAgents/<bundle-id>.plist` with `RunAtLoad`, written to a
- * sibling temp file and renamed so launchd never reads a half plist. Every command answers a typed result
- * instead of throwing, and a refusal names the path it refused.
+ * `crust:autostart` — launch at login, the half of Tauri's autostart plugin crust lacked.
+ *
+ * Each OS gets its own mechanism, because one OS's file starts nothing on another: a LaunchAgent
+ * plist on macOS (`autostart-macos.ts`), an XDG autostart entry on Linux (`autostart-linux.ts`).
+ * Both are read back from disk, so `isEnabled` answers what is really armed rather than what a
+ * previous `enable` asked for, and `disable` answers `enabled: false` only once the file is gone.
+ *
+ * Windows is refused by name. Its login item is a value under
+ * `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, and this build writes no Win32 registry
+ * entry — an earlier revision answered `{ ok: true, enabled: true }` there while writing a macOS
+ * plist Windows never reads, which told an app it would start at login when it would not. A refusal
+ * a caller can branch on is the honest answer until that registry half exists.
  */
 
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { linuxMechanism } from "./autostart-linux";
+import { macosMechanism } from "./autostart-macos";
+import { type AutostartMechanism, exists, reasonOf } from "./autostart-mechanism";
+import type {
+	AutostartAdapter,
+	AutostartFailure,
+	AutostartFailureCode,
+	AutostartIdArgs,
+	AutostartResult,
+	EnableArgs,
+} from "./autostart-types";
 import { definePlugin } from "./define";
 
-/** Where the plist goes. `home` is injected so a test never writes the real `~/Library`. */
-export interface AutostartAdapter {
-	home: string;
-	/** Bundle id the plist is named for; `enable` falls back to the app's own `Info.plist`. */
-	bundleId?: string;
-}
+/**
+ * The typed answer lives in `autostart-types.ts` and is re-exported here, so every caller keeps
+ * importing it from the plugin.
+ */
+export type {
+	AutostartAdapter,
+	AutostartFailure,
+	AutostartFailureCode,
+	AutostartIdArgs,
+	AutostartResult,
+	AutostartStatus,
+	EnableArgs,
+} from "./autostart-types";
 
-export type AutostartFailureCode = "bad-request" | "not-found" | "handler-error";
-
-export interface AutostartFailure {
-	ok: false;
-	code: AutostartFailureCode;
-	message: string;
-}
-
-export interface AutostartStatus {
-	ok: true;
-	enabled: boolean;
-	/** Absolute path of the plist this answer is about. */
-	plistPath: string;
-}
-
-export type AutostartResult = AutostartStatus | AutostartFailure;
-
-export interface EnableArgs {
-	/** Absolute path of the `.app` bundle. A bare executable needs an explicit `bundleId`. */
-	appPath: string;
-	bundleId?: string;
-}
-
-export interface AutostartIdArgs {
-	bundleId?: string;
-}
+/** The OSes with a mechanism here; anything else is refused rather than guessed at. */
+const MECHANISMS = new Set(["darwin", "linux"]);
 
 function fail(code: AutostartFailureCode, message: string): AutostartFailure {
 	return { ok: false, code, message };
 }
 
-function reasonOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+/**
+ * The refusal for a platform with no mechanism. It names the real one, because "not supported" with
+ * no reason is what makes a caller assume the feature nearly worked.
+ */
+function unsupported(command: string, platform: string): AutostartFailure {
+	return fail(
+		"unsupported-platform",
+		`autostart.${command}: launch at login on ${platform} needs a value under ` +
+			"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, and this build writes no Win32 " +
+			"registry entry; crust arms a LaunchAgent on macOS and an XDG autostart entry on Linux, " +
+			"so nothing would start at login here",
+	);
 }
 
-function plistPath(adapter: AutostartAdapter, bundleId: string): string {
-	return join(adapter.home, "Library", "LaunchAgents", `${bundleId}.plist`);
+/** An id becomes a file name, so one that could leave its directory is refused, not sanitised. */
+function invalidId(command: string, bundleId: string): AutostartFailure | undefined {
+	const safe = bundleId.length > 0 && !/[/\\\0]/.test(bundleId);
+	if (safe && bundleId !== "." && bundleId !== "..") return undefined;
+	return fail(
+		"bad-request",
+		`autostart.${command}: "${bundleId}" is not a usable bundle id; it names a file, so it may not hold a path separator`,
+	);
 }
 
 const BUNDLE_ID = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/;
@@ -68,44 +86,11 @@ async function bundleIdFromApp(appPath: string): Promise<string | undefined> {
 	return text === undefined ? undefined : BUNDLE_ID.exec(text)?.[1];
 }
 
-function escapeXml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;");
-}
-
-function plistDocument(bundleId: string, appPath: string): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>${escapeXml(bundleId)}</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>${escapeXml(appPath)}</string>
-	</array>
-	<key>RunAtLoad</key>
-	<true/>
-	<key>ProcessType</key>
-	<string>Interactive</string>
-</dict>
-</plist>
-`;
-}
-
-/** Write beside the target then rename, so the plist is either absent or complete. */
-async function writeAtomic(target: string, contents: string): Promise<void> {
-	const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
-	await writeFile(temp, contents, { encoding: "utf8", mode: 0o644 });
-	await rename(temp, target);
-}
-
 export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedir() }) {
 	/** The id the last `enable` used, so `disable`/`isEnabled` need no argument after one call. */
 	let known: string | undefined;
+	const platform = adapter.platform ?? process.platform;
+	const configHome = adapter.configHome ?? join(adapter.home, ".config");
 
 	const resolveId = (given?: string): string | undefined => given ?? adapter.bundleId ?? known;
 
@@ -114,6 +99,12 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 			"bad-request",
 			`autostart.${command}: no bundle id known; pass bundleId, or call enable with the app path first`,
 		);
+
+	/** This OS's mechanism; the caller has already refused a platform that has none. */
+	const mechanismFor = (bundleId: string): AutostartMechanism =>
+		platform === "linux"
+			? linuxMechanism(configHome, bundleId)
+			: macosMechanism(adapter.home, bundleId);
 
 	return definePlugin({
 		name: "autostart",
@@ -126,10 +117,8 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 						'autostart.enable: "appPath" must be a non-empty string',
 					);
 				}
-				const present = await stat(appPath).then(
-					() => true,
-					() => false,
-				);
+				if (!MECHANISMS.has(platform)) return unsupported("enable", platform);
+				const present = await exists(appPath);
 				if (!present) return fail("not-found", `autostart.enable: no app at ${appPath}`);
 				const bundleId = resolveId(args?.bundleId) ?? (await bundleIdFromApp(appPath));
 				if (bundleId === undefined) {
@@ -138,40 +127,57 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 						`autostart.enable: no bundle id for ${appPath}; pass bundleId, or give the app a CFBundleIdentifier in its Info.plist`,
 					);
 				}
-				const target = plistPath(adapter, bundleId);
+				const unusable = invalidId("enable", bundleId);
+				if (unusable !== undefined) return unusable;
+				const entry = mechanismFor(bundleId);
 				try {
-					await mkdir(dirname(target), { recursive: true });
-					await writeAtomic(target, plistDocument(bundleId, appPath));
+					await mkdir(dirname(entry.path), { recursive: true });
+					await entry.write(appPath);
+					// Read the mechanism back: a write that landed nowhere is not "enabled".
+					if (!(await exists(entry.path))) {
+						return fail(
+							"handler-error",
+							`autostart.enable: ${entry.path} is still missing after the write`,
+						);
+					}
 				} catch (error) {
 					return fail("handler-error", `autostart.enable: ${reasonOf(error)}`);
 				}
 				known = bundleId;
-				return { ok: true, enabled: true, plistPath: target };
+				return { ok: true, enabled: true, path: entry.path };
 			},
 			disable: async (args: AutostartIdArgs | undefined): Promise<AutostartResult> => {
+				if (!MECHANISMS.has(platform)) return unsupported("disable", platform);
 				const bundleId = resolveId(args?.bundleId);
 				if (bundleId === undefined) return unknownId("disable");
-				const target = plistPath(adapter, bundleId);
+				const unusable = invalidId("disable", bundleId);
+				if (unusable !== undefined) return unusable;
+				const entry = mechanismFor(bundleId);
 				try {
-					await rm(target, { force: true });
+					await entry.remove();
+					if (await exists(entry.path)) {
+						return fail(
+							"handler-error",
+							`autostart.disable: ${entry.path} is still there after the delete`,
+						);
+					}
 				} catch (error) {
 					return fail("handler-error", `autostart.disable: ${reasonOf(error)}`);
 				}
-				return { ok: true, enabled: false, plistPath: target };
+				return { ok: true, enabled: false, path: entry.path };
 			},
 			isEnabled: async (args: AutostartIdArgs | undefined): Promise<AutostartResult> => {
+				if (!MECHANISMS.has(platform)) return unsupported("isEnabled", platform);
 				const bundleId = resolveId(args?.bundleId);
 				if (bundleId === undefined) return unknownId("isEnabled");
-				const target = plistPath(adapter, bundleId);
-				const enabled = await stat(target).then(
-					() => true,
-					() => false,
-				);
-				return { ok: true, enabled, plistPath: target };
+				const unusable = invalidId("isEnabled", bundleId);
+				if (unusable !== undefined) return unusable;
+				const entry = mechanismFor(bundleId);
+				return { ok: true, enabled: await entry.enabled(), path: entry.path };
 			},
 		},
 	});
 }
 
-/** The default registration: the real `~/Library/LaunchAgents`, bundle id supplied by the app. */
+/** The default registration: the real `~/Library/LaunchAgents` or `~/.config/autostart` for this OS. */
 export const autostartPlugin = createAutostartPlugin();

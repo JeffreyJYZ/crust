@@ -46,12 +46,12 @@ describe("autostart.enable", () => {
 	test("writes a RunAtLoad LaunchAgent at Library/LaunchAgents/<id>.plist, atomically", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home, bundleId: ID });
+			const plugin = createAutostartPlugin({ home, bundleId: ID, platform: "darwin" });
 			const app = await bundle(home);
 			const result = await call(plugin, "enable", { appPath: app });
 
 			const plist = join(home, "Library", "LaunchAgents", `${ID}.plist`);
-			expect(result).toEqual({ ok: true, enabled: true, plistPath: plist });
+			expect(result).toEqual({ ok: true, enabled: true, path: plist });
 			const text = await readFile(plist, "utf8");
 			expect(text).toContain("<key>Label</key>");
 			expect(text).toContain(`<string>${ID}</string>`);
@@ -67,13 +67,13 @@ describe("autostart.enable", () => {
 	test("reads the bundle id from Info.plist when the adapter has none", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home });
+			const plugin = createAutostartPlugin({ home, platform: "darwin" });
 			const app = await bundle(home, ID);
 			const result = await call(plugin, "enable", { appPath: app });
 			expect(result).toEqual({
 				ok: true,
 				enabled: true,
-				plistPath: join(home, "Library", "LaunchAgents", `${ID}.plist`),
+				path: join(home, "Library", "LaunchAgents", `${ID}.plist`),
 			});
 		} finally {
 			await rm(home, { recursive: true, force: true });
@@ -83,7 +83,7 @@ describe("autostart.enable", () => {
 	test("a missing app is not-found, naming the path", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home, bundleId: ID });
+			const plugin = createAutostartPlugin({ home, bundleId: ID, platform: "darwin" });
 			const missing = join(home, "Nope.app");
 			const result = await call(plugin, "enable", { appPath: missing });
 			expect(result.ok).toBe(false);
@@ -98,7 +98,7 @@ describe("autostart.enable", () => {
 	test("no bundle id anywhere is bad-request, not a guessed name", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home });
+			const plugin = createAutostartPlugin({ home, platform: "darwin" });
 			const app = await bundle(home);
 			const result = await call(plugin, "enable", { appPath: app });
 			expect(result.ok).toBe(false);
@@ -115,7 +115,7 @@ describe("autostart.disable and isEnabled", () => {
 	test("isEnabled follows the file, and disable removes it", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home, bundleId: ID });
+			const plugin = createAutostartPlugin({ home, bundleId: ID, platform: "darwin" });
 			const app = await bundle(home);
 			await call(plugin, "enable", { appPath: app });
 
@@ -130,7 +130,7 @@ describe("autostart.disable and isEnabled", () => {
 	test("the id enable learned is reused by disable and isEnabled", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home });
+			const plugin = createAutostartPlugin({ home, platform: "darwin" });
 			const app = await bundle(home, ID);
 			await call(plugin, "enable", { appPath: app });
 			// No bundleId argument and none on the adapter: the id came from the plist read.
@@ -144,7 +144,7 @@ describe("autostart.disable and isEnabled", () => {
 	test("a fresh plugin with no id refuses with bad-request", async () => {
 		const home = await scratch();
 		try {
-			const plugin = createAutostartPlugin({ home });
+			const plugin = createAutostartPlugin({ home, platform: "darwin" });
 			const result = await call(plugin, "isEnabled");
 			expect(result.ok).toBe(false);
 			if (result.ok) return;
