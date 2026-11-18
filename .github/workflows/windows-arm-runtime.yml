@@ -7,11 +7,14 @@ name: windows-arm-runtime
 # crosses the ABI with a 16-byte RECT whose passing rule differs from x64.
 #
 # This job closes that gap. It scaffolds with `crust init`, installs, builds, then runs
-# the built binary on `windows-11-arm` and asserts two lines from the scaffold's own
-# trivial page: "window open" (the ready event fired after openWindows) and the greet
-# answer (the page's invoke crossed the bridge and the backend handler ran). The second
-# line is the load-bearing one: a page can only invoke if WebView2 created a real view,
-# navigated to the bridge URL and executed the page's JavaScript.
+# the built binary on `windows-11-arm` and asserts three things from the scaffold's own
+# trivial page: "window open" (the ready event fired after openWindows), the greet answer
+# (the page's invoke crossed the bridge and the backend handler ran), and that the page
+# followed the window (the page's own `window.innerWidth`/`innerHeight` changed when the
+# window grew and again when it shrank). The greet line proves a page can only invoke if
+# WebView2 created a real view, navigated to the bridge URL and executed the page's
+# JavaScript; the resize lines prove the bounds the shim computes from `GetClientRect`
+# reached the view, which is the one claim a read of `20_class.c` cannot make.
 #
 # Gated to workflow_dispatch plus release tags, not every PR: `windows-11-arm` is a GA
 # GitHub-hosted runner, but it is not available on every plan/PR (notably private repos
@@ -70,6 +73,211 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { throw "crust init exited $LASTEXITCODE" }
                   Write-Host "project=$project"
 
+            # The resize proof is a patch applied to the scaffold, never to templates/default:
+            # the template must not grow a debug surface. The page reports `window.innerWidth`
+            # and `window.innerHeight` through invoke; the backend resizes the real HWND and
+            # prints the viewport the page reported against the client rect it measured.
+            #
+            # The resize goes through user32 directly because crust exposes no backend window
+            # driver on Windows: `window.setSize` is page-facing and answers `not-implemented`
+            # there, since `runtime-plugins.ts` registers `createWindowPlugin()` with no
+            # adapter off macOS. `SetWindowPos` is the same `WM_SIZE` path a user's drag takes,
+            # so it is the path under test — larger first, then smaller, because a one-way
+            # constraint passes a one-way test.
+            - name: patch the scaffold with the resize proof
+              shell: pwsh
+              run: |
+                  $project = Join-Path $env:RUNNER_TEMP 'crust-arm-runtime'
+                  $mainTs = @'
+                  import { dlopen, FFIType, ptr } from "bun:ffi";
+                  import { app } from "crust";
+
+                  // --- resize proof, applied by .github/workflows/windows-arm-runtime.yml --------------
+                  // Not part of templates/default. The page reports its viewport through invoke; this half
+                  // resizes the real HWND with SetWindowPos and prints the page's viewport against the
+                  // client rect it measured, so a page frozen at its opening size cannot pass. user32 is
+                  // the only driver: `window.setSize` is page-facing and answers `not-implemented` off
+                  // macOS, because `runtime-plugins.ts` registers `createWindowPlugin()` with no adapter.
+                  const LARGE = { width: 1400, height: 900 };
+                  const SMALL = { width: 700, height: 480 };
+                  const SWP = 0x0002 | 0x0004 | 0x0010; // SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE
+                  const SETTLE_MS = 10000;
+                  const PAGE_TIMEOUT_MS = 30000;
+                  const TOLERANCE = 2;
+
+                  const user32 = dlopen("user32.dll", {
+                  	FindWindowW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+                  	SetWindowPos: {
+                  		args: [
+                  			FFIType.ptr,
+                  			FFIType.ptr,
+                  			FFIType.i32,
+                  			FFIType.i32,
+                  			FFIType.i32,
+                  			FFIType.i32,
+                  			FFIType.u32,
+                  		],
+                  		returns: FFIType.i32,
+                  	},
+                  	GetClientRect: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+                  });
+
+                  let step: "opening" | "larger" | "smaller" | "done" = "opening";
+                  let hwnd = 0;
+                  let settle: ReturnType<typeof setTimeout> | undefined;
+
+                  function fail(reason: string): void {
+                  	if (settle !== undefined) clearTimeout(settle);
+                  	console.log(`resize    failed: ${reason}`);
+                  	process.exit(1);
+                  }
+
+                  /** The window class is the app name, which `app.info()` reads from the same config. */
+                  function findWindow(): number {
+                  	if (hwnd !== 0) return hwnd;
+                  	const cls = Buffer.from(`${app.info().name}\0`, "utf16le");
+                  	hwnd = Number(user32.symbols.FindWindowW(ptr(cls), null));
+                  	return hwnd;
+                  }
+
+                  function clientSize(): { width: number; height: number } | undefined {
+                  	const rect = Buffer.alloc(16);
+                  	if (Number(user32.symbols.GetClientRect(findWindow(), ptr(rect))) === 0) return undefined;
+                  	return { width: rect.readInt32LE(8), height: rect.readInt32LE(12) };
+                  }
+
+                  function resize(size: { width: number; height: number }): void {
+                  	const target = findWindow();
+                  	if (target === 0) fail(`no window classed "${app.info().name}" was found to resize`);
+                  	if (Number(user32.symbols.SetWindowPos(target, null, 0, 0, size.width, size.height, SWP)) === 0) {
+                  		fail(`SetWindowPos refused ${size.width}x${size.height}`);
+                  	}
+                  	const client = clientSize();
+                  	const measured = client ? `${client.width}x${client.height}` : "unreadable";
+                  	console.log(`resize    window ${size.width}x${size.height} client ${measured}`);
+                  }
+
+                  function arm(size: { width: number; height: number }, page: { width: number; height: number }): void {
+                  	if (settle !== undefined) clearTimeout(settle);
+                  	settle = setTimeout(() => {
+                  		fail(`viewport stayed ${page.width}x${page.height} while the window became ${size.width}x${size.height}`);
+                  	}, SETTLE_MS);
+                  }
+
+                  app.command("greet", ({ name }) => {
+                  	const answer = `hello ${typeof name === "string" && name.length > 0 ? name : "there"}`;
+                  	console.log(`  greet     ${answer} (page call answered)`);
+                  	return answer;
+                  });
+
+                  app.on("ready", () => {
+                  	console.log("  window    open");
+                  	settle = setTimeout(() => fail("the page never reported a viewport"), PAGE_TIMEOUT_MS);
+                  });
+
+                  // Closing the window ends the app instead of leaving the pump running.
+                  app.on("window-all-closed", () => {
+                  	console.log("  window    closed; quitting");
+                  });
+
+                  app.command("viewport", (args: Record<string, unknown>) => {
+                  	const cssWidth = Number(args.width);
+                  	const cssHeight = Number(args.height);
+                  	const dpr = Number(args.dpr) > 0 ? Number(args.dpr) : 1;
+                  	if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight)) {
+                  		fail("the page reported a viewport that is not a number");
+                  	}
+                  	const page = { width: Math.round(cssWidth * dpr), height: Math.round(cssHeight * dpr) };
+
+                  	if (step === "opening") {
+                  		console.log(`viewport  open page=${cssWidth}x${cssHeight} dpr=${dpr}`);
+                  		resize(LARGE);
+                  		step = "larger";
+                  		arm(LARGE, page);
+                  		return "reported";
+                  	}
+                  	if (step === "done") return "reported";
+
+                  	const client = clientSize();
+                  	if (client === undefined) return "reported";
+                  	const settled =
+                  		Math.abs(page.width - client.width) <= TOLERANCE &&
+                  		Math.abs(page.height - client.height) <= TOLERANCE;
+                  	if (!settled) {
+                  		console.log(
+                  			`viewport  ${step} page=${page.width}x${page.height} client=${client.width}x${client.height} (not settled yet)`,
+                  		);
+                  		return "reported";
+                  	}
+                  	console.log(`resize    match ${step} page=${page.width}x${page.height} client=${client.width}x${client.height}`);
+                  	if (step === "larger") {
+                  		resize(SMALL);
+                  		step = "smaller";
+                  		arm(SMALL, page);
+                  		return "reported";
+                  	}
+                  	if (settle !== undefined) clearTimeout(settle);
+                  	settle = undefined;
+                  	step = "done";
+                  	console.log(
+                  		`resize    proved the page followed the window to ${LARGE.width}x${LARGE.height} then ${SMALL.width}x${SMALL.height}`,
+                  	);
+                  	return "reported";
+                  });
+
+                  await app.run();
+                  '@
+                  $appJs = @'
+                  // The bridge injects window.crust into <head>; crust's runtime injects a
+                  // one-name invoke shim at <body>, so this script can call an app command by
+                  // name, exactly as DESIGN.md §5 shows.
+                  // Bind the document before invoking: `lang` drives pronunciation, `dir` flips
+                  // RTL layout. The set is the RTL base languages from the locale rule.
+                  const locale = navigator.language;
+                  document.documentElement.lang = locale;
+                  document.documentElement.dir = /^(ar|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(?:-|$)/i.test(locale)
+                  	? "rtl"
+                  	: "ltr";
+
+                  const answer = document.getElementById("answer");
+                  const status = document.getElementById("status");
+
+                  window.crust
+                  	.invoke("greet", { name: "crust" })
+                  	.then((greeting) => {
+                  		answer.textContent = greeting;
+                  		status.textContent = "answered over the bridge · " + window.crust.baseUrl;
+                  	})
+                  	.catch((error) => {
+                  		answer.textContent = "invoke failed";
+                  		status.textContent = String(error && error.message ? error.message : error);
+                  	});
+
+                  // --- resize proof, applied by .github/workflows/windows-arm-runtime.yml --------------
+                  // Report the viewport at open and again after each resize, so the backend can compare
+                  // what the page sees with the client rect it resized the window to.
+                  const viewport = () =>
+                  	window.crust
+                  		.invoke("viewport", {
+                  			width: window.innerWidth,
+                  			height: window.innerHeight,
+                  			dpr: window.devicePixelRatio,
+                  		})
+                  		.catch((error) => {
+                  			console.error("viewport report failed: " + String(error));
+                  		});
+
+                  viewport();
+                  let pending;
+                  window.addEventListener("resize", () => {
+                  	clearTimeout(pending);
+                  	pending = setTimeout(viewport, 250);
+                  });
+                  '@
+                  Set-Content -Path (Join-Path $project 'main.ts') -Value $mainTs -Encoding utf8
+                  Set-Content -Path (Join-Path $project 'public\app.js') -Value $appJs -Encoding utf8
+                  Write-Host 'patched main.ts and public/app.js with the resize proof'
+
             # `init` writes the dependency as link:<checkout>, so this installs the very
             # source whose shim is being proven, not a registry copy.
             - name: bun install in the scaffold
@@ -91,7 +299,7 @@ jobs:
 
             # Run the binary directly (never `Start-Process` with a shell: the .exe itself
             # is the process under test). stdout is captured to a file and polled for the
-            # two proving lines; the app pumps forever until stopped, so a match ends it.
+            # proving lines; the app pumps forever until stopped, so a match ends it.
             # `taskkill /T` takes the WebView2 helpers with it, leaving no runner residue.
             - name: run the built binary and assert the round trip
               shell: pwsh
@@ -110,14 +318,16 @@ jobs:
 
                   $opened = $false
                   $greeted = $false
-                  $deadline = (Get-Date).AddSeconds(60)
+                  $resized = $false
+                  $deadline = (Get-Date).AddSeconds(90)
                   while ((Get-Date) -lt $deadline) {
                     if (Test-Path $out) {
                       try { $text = Get-Content -Raw $out } catch { $text = '' }
                       if ($text -match 'window\s+open') { $opened = $true }
                       if ($text -match 'greet\s+hello crust \(page call answered\)') { $greeted = $true }
+                      if ($text -match 'resize\s+proved the page followed the window') { $resized = $true }
                     }
-                    if ($opened -and $greeted) { break }
+                    if ($opened -and $greeted -and $resized) { break }
                     if ($proc.HasExited) { break }
                     Start-Sleep -Milliseconds 250
                   }
@@ -133,6 +343,47 @@ jobs:
                   Write-Host '--- stderr ---'
                   Write-Host $errText
 
-                  if (-not $opened) { throw "window never opened: no 'window open' line within 60 s" }
-                  if (-not $greeted) { throw "invoke never round-tripped: no greet answer line within 60 s" }
-                  Write-Host 'windows-arm-runtime: PASS window opened and greet invoke round-tripped on arm64'
+                  if (-not $opened) { throw "window never opened: no 'window open' line within 90 s" }
+                  if (-not $greeted) { throw "invoke never round-tripped: no greet answer line within 90 s" }
+
+                  # The page must have followed the window both ways. Each `resize match` line
+                  # pairs the viewport the page reported with the client rect measured after the
+                  # resize; a frozen page never produces one, and the app's own settle timer
+                  # prints the numbers it stayed at, so a failure names them.
+                  if (-not $resized) {
+                    $stopped = [regex]::Match($text, 'resize\s+failed:\s*(.+)')
+                    if ($stopped.Success) { throw "resize never proved: $($stopped.Groups[1].Value.Trim())" }
+                    $seen = [regex]::Matches($text, 'viewport\s+\S+\s+page=(\d+)x(\d+)')
+                    $stayed = if ($seen.Count -gt 0) {
+                      "$($seen[$seen.Count - 1].Groups[1].Value)x$($seen[$seen.Count - 1].Groups[2].Value)"
+                    } else { 'no viewport at all' }
+                    throw "resize never proved within 90 s: the page's last reported viewport was $stayed"
+                  }
+
+                  $opening = [regex]::Match($text, 'viewport\s+open page=(\d+)x(\d+)')
+                  if (-not $opening.Success) { throw "the page never reported its opening viewport" }
+                  $openingWidth = [int]$opening.Groups[1].Value
+
+                  $widths = @{}
+                  $matchLines = [regex]::Matches($text, 'resize\s+match (larger|smaller) page=(\d+)x(\d+) client=(\d+)x(\d+)')
+                  foreach ($line in $matchLines) {
+                    $phase = $line.Groups[1].Value
+                    $pageWidth = [int]$line.Groups[2].Value
+                    $pageHeight = [int]$line.Groups[3].Value
+                    $clientWidth = [int]$line.Groups[4].Value
+                    $clientHeight = [int]$line.Groups[5].Value
+                    if ([math]::Abs($pageWidth - $clientWidth) -gt 2 -or [math]::Abs($pageHeight - $clientHeight) -gt 2) {
+                      throw "viewport ${phase}: page reported ${pageWidth}x${pageHeight} while the client rect was ${clientWidth}x${clientHeight}"
+                    }
+                    $widths[$phase] = $pageWidth
+                  }
+                  if (-not $widths.ContainsKey('larger')) { throw "the page never reported a viewport after the window grew to 1400x900" }
+                  if (-not $widths.ContainsKey('smaller')) { throw "the page never reported a viewport after the window shrank to 700x480" }
+                  if ($widths['larger'] -le $openingWidth) {
+                    throw "viewport stayed ${openingWidth} wide while the window became 1400x900"
+                  }
+                  if ($widths['smaller'] -ge $widths['larger']) {
+                    throw "viewport did not shrink: $($widths['larger']) wide then $($widths['smaller']) wide"
+                  }
+                  Write-Host "viewport open=$openingWidth larger=$($widths['larger']) smaller=$($widths['smaller'])"
+                  Write-Host 'windows-arm-runtime: PASS window opened, greet invoke round-tripped, and the page followed the window larger then smaller on arm64'

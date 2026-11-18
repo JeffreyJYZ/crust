@@ -47,7 +47,7 @@ No concrete arm64 defect found; the guard is source inspection plus the pinned T
 
 ## Unproven
 
-- The workflow YAML parses: `ruby -ryaml -e 'YAML.load_file(...)'` (keys, one job, 8 steps).
+- The workflow YAML parses: `ruby -ryaml -e 'YAML.load_file(...)'` (keys, one job, 9 steps).
 - I did **not** dispatch the job: this agent runs on macOS with no access to the repo's
   Actions API or a `windows-11-arm` runner. An unrun job is unproven — the file makes the
   proof possible; it does not claim the arm shim works.
