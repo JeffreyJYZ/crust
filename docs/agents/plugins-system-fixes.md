@@ -38,8 +38,8 @@ Source: `docs/reviews/defects-wave3/06-plugins-system.md`. Files owned: `src/plu
 7. **`power.state` stamped `ok: true` on a fabricated reading** — `src/plugins/power.ts:26,115,134`.
    `PowerState` gained optional `available`/`reason`, `idleSeconds` accepts a `PowerReadFailure`, and
    both commands answer `PowerFailure` when the adapter says the native read never happened. Faked
-   battery and idle values can no longer reach a page as a real reading. **Adapter half still needs
-   the darwin lane — see "Not fixed".**
+   battery and idle values can no longer reach a page as a real reading. **Adapter half was already
+   fixed by the darwin lane — now pinned below.**
 
 8. **`accessibility.prompt` had an untested throw path** — `src/plugins/accessibility.ts:49,89`.
    Added `PromptFailure`; `prompt()` wraps `adapter.prompt()` in `try`/`catch` and returns the typed
@@ -64,17 +64,19 @@ Source: `docs/reviews/defects-wave3/06-plugins-system.md`. Files owned: `src/plu
 
 `bun test` on the 12 plugin test files in this area: **70 pass, 0 fail**.
 
-## Not fixed — belongs to another lane
+## Formerly "not fixed" — darwin half closed and pinned
 
-- **Finding 4, darwin half**: `src/platform/darwin/crash.ts:150` calls `crust_crash_disarm()` and
-  discards its return, hardcoding `status: 0`, and `disarmCrashHandlers()` always returns
-  `armed: false`. The plugin now propagates any honest answer it is given, but on darwin the adapter
-  still reports success even when the C call refused. File owned by the `darwin` lane.
-- **Finding 7, darwin half**: `src/platform/darwin/power.ts:106-118` returns the fabricated
-  `{ onAc: false, batteryPercent: null, lowPowerMode: false }` and `0` when the C unit will not
-  compile. It must set `available: false, reason: unit` on the state and return
-  `{ available: false, reason: unit }` from `idleSeconds` for the new plugin channel to carry
-  anything on darwin. File owned by the `darwin` lane.
+- **Finding 4, darwin half — fixed, asserted by `src/platform/darwin/crash-disarm.test.ts`**:
+  `disarmCrashHandlers()` does not discard `crust_crash_disarm()`'s return. `status` is the C answer
+  (`-1` on compile failure), `armed` comes from `crashArmed()`, and the reason is `disarmed` or
+  `crust_crash_disarm answered <n>`. The test replaces the C answer on the exported `unit()` seam
+  (0 and 11) and forces a compile refusal in a child; a hardcoded `status: 0` / `armed: false`
+  adapter fails both cases.
+- **Finding 7, darwin half — fixed, asserted by `src/platform/darwin/power-unavailable.test.ts`**:
+  both `state()` and `idleSeconds()` already answer `available: false, reason: unit` when the C unit
+  will not compile, so fabricated readings never reach the plugin channel. The test forces that path
+  with an isolated `TMPDIR`, then asserts the same compile reason on both channels and that the state
+  is not a fabricated reading.
 
 ## Notes for the next lane
 
