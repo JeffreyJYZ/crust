@@ -4,6 +4,24 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.31] — 2026-11-18
+
+### Fixed
+
+- **Windows and Linux can be resized, and a page follows its window.** On macOS the window always resized; the **webview** did not, so the page stayed at the size the window opened at and the app looked frozen (`window 1600x840, content and webview 1100x760`). Two Auto Layout mistakes hid each other: a fixed width/height pair pinned the webview, and the content view had its autoresizing turned off with no constraints of its own — so removing only the pair collapsed the content view to `0x0`, which is why neither half was obvious alone. The webview is now four edge pins with no size of its own. `e2e:window` asserts the page's own viewport in **both** directions (`900x640 → 1200x760 → 640x460`), because a one-way constraint passes growing alone; against the old code both assertions fail with `page saw 900x640`.
+- **A Linux window with `minWidth` could never be made shorter.** The shim took only `minWidth` and passed the *opening height* as the second size request, so `gtk_widget_set_size_request` floored both axes: a 900x600 window with `minWidth: 400` could not be dragged below 600 px tall. `minHeight` never reached the shim at all. Both minimums now arrive, and an absent one sends GTK's `-1` ("no request") rather than `0`, which is a real floor of zero.
+- **`autostart.enable` claimed success on Windows and Linux while writing a macOS plist.** The plugin computed `~/Library/LaunchAgents/<id>.plist` with no platform check, so both OSes got `{ ok: true, enabled: true }` for a file nothing there reads — the one finding in the platform matrix that *looked* like success, and the worst kind, because the app believed it would start at login. Each OS now has its own mechanism: the LaunchAgent on macOS, an XDG entry at `$XDG_CONFIG_HOME/autostart/<id>.desktop` on Linux, and a named `unsupported-platform` refusal on Windows, whose mechanism is a `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value this build does not write. `isEnabled` and `disable` read the mechanism back instead of repeating what `enable` asked for — on Linux `Hidden=true` and `X-GNOME-Autostart-enabled=false` count as off — and an id holding a path separator is `bad-request`, since it names a file. The typed answer's `plistPath` is now `path`, which is what it always was.
+
+### Added
+
+- **Windows and Linux get their own `window` adapters.** Every window-shaped plugin was wired to the darwin adapter on every OS, so off macOS the namespaces existed and answered `not-implemented` with `requires: "NSWindow"` — a capability list reads that as supported, which is how a resize proof ended up hand-driving `SetWindowPos` to get around it. Windows now has `create`, `close`, `focus`, `setTitle`, `list`, `isOpen` and the full state set (`setSize`/`getSize`, position, minimise/maximise) on the window rect; Linux has those plus `alwaysOnTop`, `fullscreen`, `decorations` and `opacity` on GDK. Both refuse by name what they cannot honestly do — GTK3 has only a per-window cursor, Wayland gives no placement, and Win32 style read-backs the first pass could not make.
+- **The Windows arm64 runtime proof asserts the page followed the window.** It patches the scaffold so the page reports its own viewport and the backend resizes the real HWND `900x640 → 1400x900 → 700x480`, checking each answer against the client rect it measured, ±2 px after dpr. Both directions are required; a settle timer fails with the numbers rather than a bare timeout.
+- **`notification` and `tray` work on Windows and Linux.** Windows uses a tray balloon (`Shell_NotifyIconW` + `NIF_INFO`) — a real toast needs an AppUserModelID and a COM activation server, which `bun:ffi` cannot reach — and `NIM_ADD`/`NIM_MODIFY`/`NIM_DELETE` on a hidden window dispatched by the existing pump, with `CreatePopupMenu` + `TrackPopupMenu` for menus. Linux uses libnotify over `dlopen` and `GtkStatusIcon` + `GtkMenu`. `tray.setTitle` refuses by name on both, because neither surface has a text label; `requestPermission` answers `granted` with `NO_PERMISSION_MODEL`, because there is nothing on either OS to ask.
+
+### Changed
+
+- **`window.setSize` and `getSize` speak the frame**, and the design docs now say why the webview has no size of its own — that reasoning is the kind that gets "simplified" back.
+
 ## [0.1.30] — 2026-11-18
 
 ### Changed
