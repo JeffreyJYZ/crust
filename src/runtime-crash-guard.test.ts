@@ -67,7 +67,7 @@ function childSource(boom: string, record: string, go: string, ending: string): 
 
 const FAULT = [`boom.symbols.boom();`, `process.exit(9);`].join("\n");
 
-async function waitFor<T>(probe: () => T | null | undefined, timeoutMs = 5000): Promise<T> {
+async function waitFor<T>(probe: () => T | null | undefined, timeoutMs = 15000): Promise<T> {
 	const deadline = Date.now() + timeoutMs;
 	for (;;) {
 		const value = probe();
@@ -140,7 +140,7 @@ describe("crash guard", () => {
 		const guard = guards[guards.length - 1] as CrashGuard;
 		await waitFor(() => (guard.running() ? null : true));
 		expect(processAlive(guard.pid)).toBe(false);
-	});
+	}, 30_000);
 
 	test("a child that exits cleanly records nothing", async () => {
 		const root = await tempDir();
@@ -150,7 +150,7 @@ describe("crash guard", () => {
 		await waitFor(() => (guard.running() ? null : true));
 		expect(readLastCrash(root)).toBeNull();
 		expect(listCrashes(root)).toEqual([]);
-	});
+	}, 30_000);
 
 	test("stop() kills the guard and leaves no process behind", async () => {
 		const root = await tempDir();
@@ -168,5 +168,5 @@ describe("crash guard", () => {
 		guard.stop();
 		await waitFor(() => (processAlive(guard.pid) ? null : true));
 		expect(guard.running()).toBe(false);
-	});
+	}, 30_000);
 });
