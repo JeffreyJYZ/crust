@@ -5,6 +5,7 @@
 import type { Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import { unsupportedLifecycle } from "@/app-types.ts";
 import type { CrustConfig } from "@/config";
+import { setActiveLinuxPlatform } from "./active-platform.ts";
 import { createGtkBackend, type LinuxBackend, type NativeWindow } from "./backend.ts";
 
 /**
@@ -182,5 +183,9 @@ export function createPlatform(
 	config: CrustConfig,
 	backend: LinuxBackend = createGtkBackend(),
 ): LinuxPlatform {
-	return new LinuxPlatform(backend);
+	const platform = new LinuxPlatform(backend);
+	// The registry picks the window adapter by OS and receives only the darwin platform, so this
+	// instance registers itself where the Linux arm looks; see `active-platform.ts`.
+	setActiveLinuxPlatform({ platform });
+	return platform;
 }

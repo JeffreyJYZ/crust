@@ -27,24 +27,38 @@ export interface OtherPlatformParts {
 }
 
 /**
- * The one namespace the win32 arm replaces with an adapted instance. `nonDarwinPlugins` still carries
- * the bare `window-state`, and the registry refuses a duplicate name rather than shadowing one, so it
- * is dropped here instead of being registered twice. `positioner` is *not* in this set: its nine
- * placements are computed in AppKit's bottom-left space, so it keeps its bare refusal on a y-down
- * platform rather than placing windows on the wrong edge.
+ * The one namespace an adapted arm replaces. `nonDarwinPlugins` still carries the bare
+ * `window-state`, and the registry refuses a duplicate name rather than shadowing one, so it is
+ * dropped when — and only when — an adapter was actually wired. `positioner` is *not* in this set:
+ * its nine placements are computed in AppKit's bottom-left space, so on a y-down platform (Win32's
+ * client origin, GDK's top-left rectangles) it keeps its bare refusal rather than placing windows on
+ * the wrong edge. Making it honest needs an axis option in `src/plugins/positioner.ts`, not a flip
+ * here.
  */
 const ADAPTED = new Set(["window-state"]);
+
+/** What an OS arm produced: the plugins to register, and the bare names it replaced. */
+interface WindowWiring {
+	plugins: PluginDefinition[];
+	/** Dropped from `nonDarwinPlugins`, so no namespace is registered twice. */
+	replaced: ReadonlySet<string>;
+}
+
+/** No adapter: the bare plugin, and nothing replaced. */
+function bare(): WindowWiring {
+	return { plugins: [createWindowPlugin()], replaced: new Set() };
+}
 
 export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<PluginDefinition[]> {
 	const { core, scoped, os } = parts;
 	const window = await windowPlugins(os);
 	return [
 		...core.filter((plugin) => plugin.name !== "window").map(scoped),
-		...window,
+		...window.plugins,
 		parts.power,
 		// Displays have a working half on both platforms; the selector wires the right one.
 		nonDarwinScreenPlugin(os),
-		...nonDarwinPlugins.filter((plugin) => !(os === "win32" && ADAPTED.has(plugin.name))),
+		...nonDarwinPlugins.filter((plugin) => !window.replaced.has(plugin.name)),
 		parts.store,
 		parts.database,
 		parts.keychain,
@@ -55,13 +69,29 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 }
 
 /**
- * `window` and `window-state` for this OS. The Windows adapter is imported lazily so a Linux launch
- * never loads the Win32 shim's source, and resolved through `activeWindowsPlatform` rather than a
- * parameter because `runtime.ts` hands this registry only the darwin platform.
+ * `window` and `window-state` for this OS, plus the bare names replaced. Each adapter is imported
+ * lazily so a Linux launch never loads the Win32 shim's source and the reverse. The platform arrives
+ * through its own `active-platform` module, because `runtime.ts` hands this registry only the darwin
+ * platform; a Linux run with no platform built yet (a test, or an entry that never called `run()`)
+ * keeps the bare refusal instead of half-wiring a namespace.
  */
-async function windowPlugins(os: string): Promise<PluginDefinition[]> {
-	if (os !== "win32") return [createWindowPlugin()];
+async function windowPlugins(os: string): Promise<WindowWiring> {
+	if (os === "linux") {
+		const { activeLinuxPlatform } = await import("@/platform/linux/active-platform");
+		const wiring = activeLinuxPlatform();
+		if (wiring === undefined) return bare();
+		const { linuxWindowAdapter } = await import("@/platform/linux/window-adapter");
+		const native = linuxWindowAdapter(wiring.platform, wiring.native);
+		return {
+			plugins: [createWindowPlugin(native), createWindowStatePlugin({ native })],
+			replaced: ADAPTED,
+		};
+	}
+	if (os !== "win32") return bare();
 	const { windowsWindowAdapter } = await import("@/platform/windows/window-adapter");
 	const native = windowsWindowAdapter();
-	return [createWindowPlugin(native), createWindowStatePlugin({ native })];
+	return {
+		plugins: [createWindowPlugin(native), createWindowStatePlugin({ native })],
+		replaced: ADAPTED,
+	};
 }
