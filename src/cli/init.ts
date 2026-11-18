@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { listAssets } from "./assets.ts";
-import { crustRoot, fail, line, type CliOptions } from "./util.ts";
+import { crustRoot, fail, line, type CliOptions, VERSION } from "./util.ts";
 
 /** The scaffold sources. Copied, never assembled from strings in this file. */
 const TEMPLATES = {
@@ -59,7 +59,7 @@ function packageName(raw: string): string {
 }
 
 /**
- * `crust init [dir] [--react | --next | --svelte | --vue]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync; the crust installation running `init` is pinned as `link:`, which makes `bun install && bunx crust dev` work from a checkout.
+ * `crust init [dir] [--react | --next | --svelte | --vue]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync. A checkout running `init` pins the dependency as `link:` so `bun install && bunx crust dev` works against the live tree; a release pins the matching `v<version>` tag so two people scaffolding a week apart get the same code.
  * No flag is `templates/default/` (plain HTML, no bundler); `--react`, `--svelte` and `--vue` are Vite apps into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Two flags at once are refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
  */
 export async function init(options: InitOptions): Promise<number> {
@@ -118,7 +118,7 @@ export async function init(options: InitOptions): Promise<number> {
 		// A checkout pins the live directory; anything else (a `bunx` run, a
 		// registry install) has to name the package, because the directory it is
 		// running from is a cache path that will not survive.
-		"{{crust_dep}}": crustDep(crustRoot, existsSync(join(crustRoot, ".git"))),
+		"{{crust_dep}}": crustDep(crustRoot, existsSync(join(crustRoot, ".git")), VERSION),
 	};
 
 	console.log(`crust init — ${target}`);
@@ -142,17 +142,27 @@ export async function init(options: InitOptions): Promise<number> {
 	return 0;
 }
 
+/** A semver release version, the only shape with a matching `v` tag to pin. */
+const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
+
 /**
  * The dependency specifier a scaffold pins the crust package to. A checkout
- * links the live directory; a registry/bunx run names the package instead.
+ * links the live directory; a release name pins the matching `v<version>` tag,
+ * so `bun install` cannot drift to whatever `main` is on install day.
  * Bun resolves forward slashes on Windows, so a native `C:\a\crust` root is
  * normalised to `C:/a/crust` before substitution: raw `\a` and `\c` are not
  * valid JSON escapes and would make the scaffold's package.json unparseable.
  * A checkout's `link:` still resolves to one realpath, the invariant
  * `framework.ts:22` relies on to keep CLI and project on one module instance.
  */
-export function crustDep(root: string, isCheckout: boolean): string {
-	return isCheckout ? `link:${root.replaceAll("\\", "/")}` : "github:JeffreyJYZ/crust";
+export function crustDep(root: string, isCheckout: boolean, version: string): string {
+	if (isCheckout) return `link:${root.replaceAll("\\", "/")}`;
+	// A local/development build (`0.1.30-dev`) has no release tag. Pinning
+	// `v0.1.30-dev` would name a tag that does not exist and break `bun install`,
+	// so fall back to the unpinned specifier that resolves to the latest commit.
+	return RELEASE_VERSION.test(version)
+		? `github:JeffreyJYZ/crust#v${version}`
+		: "github:JeffreyJYZ/crust";
 }
 
 /** Replace the template tokens in a UTF-8 file. Binary files never reach this. */

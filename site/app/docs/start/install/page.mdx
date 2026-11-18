@@ -107,7 +107,7 @@ rm -rf ~/.bun/install/cache/@GH@JeffreyJYZ-crust-*
 
 ## Which crust runs
 
-`crust init` writes `crust` into the app's `package.json` as `link:<the CLI's own tree>`, and `bun install` links that copy as `node_modules/.bin/crust`. Inside the project bun prefers the local binary, so **the app runs the copy it pinned** — the same files the CLI ran from, not a second download. Ask it directly with `./node_modules/.bin/crust --version`.
+`crust init` writes `crust` into the app's `package.json` and `bun install` links that copy as `node_modules/.bin/crust`. The specifier depends on where `init` ran: from a checkout it is `link:<the CLI's own tree>` (an edit under `src/` reaches the app without republishing); from a release it is the pinned tag `github:JeffreyJYZ/crust#v<version>`, so `bun install` fetches the exact version you asked for rather than whatever `main` is that week. Inside the project bun prefers the local binary, so **the app runs the copy it pinned** — the same files the CLI ran from, not a second download. Ask it directly with `./node_modules/.bin/crust --version`.
 
 That `link:` is the other reason there is no npm package: it makes `import "crust"` in the app and the CLI one realpath, so both share a single `app` singleton. An installed crust would give a project two copies — the CLI's and its own — each with its own singleton, and a command registered by `main.ts` would be invisible under `crust dev`, which answers `crust: unknown command "greet"`.
 
