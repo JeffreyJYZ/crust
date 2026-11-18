@@ -51,8 +51,8 @@ name inside the C string the OS is handed, which is how two credentials could co
   `security add-generic-password`: a shell argument puts the secret in the process list for the life of
   the write, which is the shape this plugin exists to avoid.
 - **Windows** — `CredWriteW`, `CredReadW`, `CredDeleteW` in `advapi32`, resolved at runtime like every
-  other entry point. `list` answers `not-implemented` naming `CredEnumerateW`, which this half does not
-  bind; `set`, `get` and `delete` are the whole surface.
+  other entry point. `list` enumerates accounts through `CredEnumerateW` from the same unit, returning
+  a sorted `string[]` and an empty array for an empty store; a `NULL` filter keeps `*` and `?` literal.
 - **Linux** — libsecret's synchronous simple API over the same dlopen'd C shim GTK and WebKitGTK use.
   The `*_sync` calls make their own `GMainContext`/`GMainLoop`, so crust needs no running loop — only
   `libsecret-1.so.0` and a Secret Service provider (gnome-keyring, ksecretservice or KWallet) on the
@@ -68,7 +68,7 @@ name inside the C string the OS is handed, which is how two credentials could co
 | code               | when                                                                    |
 | ------------------ | ----------------------------------------------------------------------- |
 | `bad-request`      | `service` or `account` empty, a NUL in either, or a non-string `secret`  |
-| `not-implemented`  | no adapter on this platform, or `list` on Windows/Linux; `requires` names what is missing |
+| `not-implemented`  | no adapter on this platform, or `list` on Linux; `requires` names what is missing |
 | `handler-error`    | the OS refused the read, write or delete — a locked keychain, a denied prompt, or Linux's missing libsecret/provider |
 
 On macOS a secret is read into a caller-sized buffer and re-read at its exact length when the first

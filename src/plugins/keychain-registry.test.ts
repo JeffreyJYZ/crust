@@ -38,7 +38,7 @@ describe("the keychain plugin reaches a page", () => {
 		expect(Object.keys(keychainPlugin.commands).sort()).toEqual([...KEYCHAIN_COMMANDS].sort());
 	});
 
-	test("a guide page and a parity row both exist, and the row says Linux works except `list`", () => {
+	test("a guide page and a parity row both exist, and the row matches the shims", () => {
 		const guide = read("site/app/docs/guides/keychain/page.mdx");
 		for (const command of KEYCHAIN_COMMANDS) {
 			// Every command is named in the guide, so a new one added to the plugin cannot ship with
@@ -48,7 +48,17 @@ describe("the keychain plugin reaches a page", () => {
 		const parity = read("site/app/docs/reference/parity/page.mdx");
 		const row = parity.split("\n").find((line) => line.startsWith("| Secure storage"));
 		expect(row).toBeDefined();
+		// macOS and Windows enumerate, so the row names both working APIs; only Linux refuses.
+		expect(row).toContain("SecItemCopyMatching");
+		expect(row).toContain("CredEnumerateW");
+		expect(row).toContain("secret_service_search_sync");
 		expect(row).toContain("not-implemented");
 		expect(row).toContain("libsecret");
+		// The row must agree with the code: Windows binds the enumerator it claims, Linux does not.
+		const winShim = read("src/platform/windows/shim/48_keychain.c");
+		expect(winShim).toContain("static int (*CredEnumerateW)");
+		expect(winShim).toContain('"CredEnumerateW"');
+		const linuxShim = read("src/platform/linux/shim/70_keyring.c");
+		expect(linuxShim).not.toContain("secret_service_search_sync");
 	});
 });
