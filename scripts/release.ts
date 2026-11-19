@@ -9,8 +9,8 @@ import {
 	failureCount,
 	gitEnv,
 	nextVersion,
-	REPO,
 	REMOTE,
+	REPO,
 	sh,
 	step,
 	TAP_DIR,
@@ -19,7 +19,11 @@ import {
 
 const args = Bun.argv.slice(2);
 const dry = args.includes("--dry");
-const level = args.includes("--minor") ? "minor" : args.includes("--major") ? "major" : "patch";
+const level = args.includes("--minor")
+	? "minor"
+	: args.includes("--major")
+		? "major"
+		: "patch";
 
 // ---- 1. Preconditions ------------------------------------------------------
 const dirty = await sh(["git", "status", "--porcelain"]);
@@ -33,7 +37,9 @@ if (branch !== "main") {
 	process.exit(1);
 }
 
-const manifest = (await Bun.file(`${REPO}/package.json`).json()) as { version: string };
+const manifest = (await Bun.file(`${REPO}/package.json`).json()) as {
+	version: string;
+};
 const version = nextVersion(manifest.version, level);
 const tag = `v${version}`;
 step("release", `${manifest.version} -> ${version} (${tag})`);
@@ -52,20 +58,26 @@ await Bun.write(
 	`${REPO}/package.json`,
 	`${JSON.stringify({ ...manifest, version }, null, "\t")}\n`,
 );
-// Install examples pin the tag, so README's commands move with it. The docs site is
+// Install examples pin the tag, so README's and SKILL.md's commands move with it. The docs site is
 // deliberately excluded: its pages state *measured* answers — what bunx returned for a tag
 // on a fresh cache — and rewriting a tag there pairs a new tag with an old measurement,
 // which is how 0.1.9 shipped a table claiming #v0.1.9 answers 0.1.8. Re-measure by hand
-// (`BUN_INSTALL=<tmp> bunx …#<tag> --version`) and edit the install page.
-{
-	const path = `${REPO}/README.md`;
+// (`BUN_INSTALL=<tmp> bunx …#<tag> --version`) and edit the install page. SKILL.md's quickstart
+// claims nothing about what the tag answers, so it moves with the tag like README; the
+// install page is the only pin left to a human.
+for (const path of [`${REPO}/README.md`, `${REPO}/site/public/SKILL.md`]) {
 	const text = await Bun.file(path).text();
 	const updated = text.replaceAll(`#v${manifest.version}`, `#${tag}`);
 	if (updated !== text) await Bun.write(path, updated);
-	step("pins", `README.md${updated === text ? " (no change)" : ""}`);
+	step(
+		"pins",
+		`${path.slice(REPO.length + 1)}${updated === text ? " (no change)" : ""}`,
+	);
 }
-await sh(["git", "add", "package.json", "README.md"]);
-console.log("  note      re-measure the bunx tag in site/app/docs/start/install for this tag");
+await sh(["git", "add", "package.json", "README.md", "site/public/SKILL.md"]);
+console.log(
+	"  note      re-measure the bunx tag in site/app/docs/start/install for this tag",
+);
 await sh([
 	"git",
 	"-c",
@@ -106,7 +118,10 @@ step("digest", sha);
 // ---- 6. Formula and PR -----------------------------------------------------
 const formula = `${TAP_DIR}/Formula/crust.rb`;
 await sh(["git", "fetch", TAP_REMOTE], TAP_DIR, gitEnv);
-await sh(["git", "checkout", "-q", "-B", `crust-${version}`, `${TAP_REMOTE}/main`], TAP_DIR);
+await sh(
+	["git", "checkout", "-q", "-B", `crust-${version}`, `${TAP_REMOTE}/main`],
+	TAP_DIR,
+);
 const text = await Bun.file(formula).text();
 const bumped = text
 	.replace(/refs\/tags\/v[0-9.]+\.tar\.gz/, `refs/tags/${tag}.tar.gz`)
@@ -159,4 +174,6 @@ const url = await sh([
 await sh(["rm", body]);
 step("pr", url);
 
-console.log(`\nrelease: ${version} tagged and pushed; merge the tap PR to deliver it.`);
+console.log(
+	`\nrelease: ${version} tagged and pushed; merge the tap PR to deliver it.`,
+);

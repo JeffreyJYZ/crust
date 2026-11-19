@@ -1,3 +1,8 @@
+---
+name: crust
+description: crust makes a desktop app from Bun and the system WebView — no Rust, no bundled Chromium, no native build step. Reach for it to scaffold, build, run or package a crust app — crust init, crust.config.ts, main.ts backend commands, the window.crust page API, capability grants, and a signed release.
+---
+
 # Building with crust
 
 crust makes a desktop app out of Bun and the system WebView. No Rust, no bundled Chromium, no
@@ -12,8 +17,8 @@ not the full reference — when a table stops, the per-namespace command referen
 ## Quickstart
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.32 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.1.32 init my-app --react   # also --next, --svelte, --vue
+bunx github:JeffreyJYZ/crust#v0.2.1 init my-app   # plain HTML, no bundler
+bunx github:JeffreyJYZ/crust#v0.2.1 init my-app --react   # also --next, --svelte, --vue
 cd my-app && bun install
 bun run dev        # crust dev
 ```
