@@ -52,6 +52,7 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 			"check-links.ts",
 			"check-parity.ts",
 			"check-skips.ts",
+			"docs-coverage.ts",
 			"e2e-parity-patterns.ts",
 			"line-cap.ts",
 			"release.ts",

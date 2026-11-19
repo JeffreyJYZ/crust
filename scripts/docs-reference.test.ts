@@ -4,12 +4,18 @@
  * Each assertion below maps to a written defect: a command name, count or section
  * that had drifted from the source. They read the MDX files and the source of
  * truth, so a stale doc fails here instead of being re-found by the next hunter.
+ *
+ * The namespace check below closes hole 3 of docs/plan/docs-coverage/01-gaps.md. The hole it
+ * leaves open: nothing yet compares a documented arg shape to the implementation.
  */
 import { describe, expect, it } from "bun:test";
+import { Glob } from "bun";
 
 import { BUILD_KEYS } from "../src/config/validate-build.ts";
 import { corePlugins } from "../src/plugins/core.ts";
 import { WINDOW_COMMANDS } from "../src/plugins/window-types.ts";
+import { type DocPage, uncoveredNamespaces } from "./docs-coverage.ts";
+import { registry } from "./skill/registry.ts";
 
 const parity = await Bun.file("site/app/docs/reference/parity/page.mdx").text();
 const config = await Bun.file("site/app/docs/reference/config/page.mdx").text();
@@ -40,7 +46,9 @@ describe("parity reference page", () => {
 
 	it("uses the exact fs and dialog command names", () => {
 		expect(parity).toContain("dialog.openPanel/savePanel/cancel");
-		expect(parity).toContain("fs.readTextFile/writeTextFile/readBinary/writeBinary/list/stat/remove/rename/mkdir");
+		expect(parity).toContain(
+			"fs.readTextFile/writeTextFile/readBinary/writeBinary/list/stat/remove/rename/mkdir",
+		);
 		expect(parity).not.toContain("dialog.open,");
 		expect(parity).not.toContain("dialog.save`");
 		expect(parity).not.toContain("fs.read/write");
@@ -77,5 +85,43 @@ describe("config reference page", () => {
 				`\`${plugin.name}\``,
 			);
 		}
+	});
+});
+
+const pagePaths = [
+	...new Glob("site/app/docs/reference/api*/page.mdx").scanSync("."),
+	...new Glob("site/app/docs/guides/*/page.mdx").scanSync("."),
+].sort();
+const pages: DocPage[] = await Promise.all(
+	pagePaths.map(async (path) => ({ path, text: await Bun.file(path).text() })),
+);
+
+describe("namespace coverage", () => {
+	it("gives every registered namespace a reference heading or a guide", async () => {
+		const names = (await registry()).map((namespace) => namespace.name);
+		const uncovered = uncoveredNamespaces(names, pages);
+		expect(
+			uncovered,
+			`no reference/*api heading and no guide names: ${uncovered.join(", ")}`,
+		).toEqual([]);
+	});
+
+	it("classifies by name, so an omitted namespace is reported", () => {
+		const fixture: DocPage[] = [
+			{ path: "site/app/docs/reference/api-window/page.mdx", text: "## `window`\n## `tray`" },
+			{ path: "site/app/docs/guides/screen/page.mdx", text: "# Screen" },
+			{ path: "site/app/docs/guides/keychain/page.mdx", text: "# Secure storage" },
+		];
+		expect(uncoveredNamespaces(["window", "tray", "screen", "keychain"], fixture)).toEqual([]);
+		// A hyphenated heading covers only its own name.
+		const hyphenated: DocPage[] = [
+			{ path: "site/app/docs/reference/api-window/page.mdx", text: "## `window-state`" },
+		];
+		expect(uncoveredNamespaces(["window"], hyphenated)).toEqual(["window"]);
+		// A name with no page comes back by name, so the next gap reports itself.
+		expect(uncoveredNamespaces(["window", "store"], fixture)).toEqual(["store"]);
+		expect(
+			uncoveredNamespaces(["window", "tray", "screen", "keychain", "database"], fixture),
+		).toEqual(["database"]);
 	});
 });
