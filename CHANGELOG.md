@@ -4,6 +4,19 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.3.0] — 2026-11-19
+
+### Added
+
+- **An agent can now see the page and drive it.** `window.capture { label }` answers `{ width, height, scale, png }` — a base64 PNG of the page as the webview rendered it, sized in page pixels at the window's scale factor. It is `-[WKWebView takeSnapshotWithConfiguration:completionHandler:]` on macOS, so it needs no Screen Recording grant and never captures the display; Linux and Windows answer `not-implemented` with `requires` naming the API each would need, rather than pretending. Measured on a 1100×760 pt window at scale 2: a 2200×1520 PNG of 80,941 bytes.
+- **A `testing` namespace that drives the page the app owns**: `click`, `clickAt`, `type`, `key`, `hover`, `query`, `waitFor`, `console`. Every command runs `evaluateJavaScript` in that window's webview and dispatches DOM events, so nothing moves the cursor, posts a `CGEvent` or asks for Accessibility — and the events are what your handlers already listen for. `type` sets the value through the prototype's setter and then dispatches `input`, because a plain assignment leaves React and Vue state holding their own copy, which is the difference between a test that passes and a test that lies. `console` needed a hook in the page's own world, composed into the existing bridge source so the token model is untouched.
+- The namespace is registered only when the process starts with `CRUST_TEST=1`; without it the invoke is `unknown-plugin`. A config key was rejected for this because it would ship in the app's own config and could be left on.
+- `SKILL.md` and the docs site gained the surfaces: **Test an app** in the skill, `api-testing` as a reference page and in the sidebar, and a `capture` section on `api-window`.
+
+### Changed
+
+- The docs reference is now checked for coverage: every registered namespace must have a reference section or a guide, and the test names the ones that do not. `screen` gained the section it was missing.
+
 ## [0.2.1] — 2026-11-19
 
 ### Fixed
