@@ -1,6 +1,6 @@
 ---
 name: crust
-description: crust makes a desktop app from Bun and the system WebView — no Rust, no bundled Chromium, no native build step. Reach for it to scaffold, build, run or package a crust app — crust init, crust.config.ts, main.ts backend commands, the window.crust page API, capability grants, and a signed release.
+description: Use when building, running, packaging or debugging a crust desktop app — Bun backend plus the system WebView, no Rust and no bundled Chromium. Covers crust init, crust.config.ts, main.ts commands, the window.crust page API, capability grants, window.capture and the testing namespace, and signed releases. Not for Tauri, Electron, or a plain web app with no native window.
 ---
 
 # Building with crust
@@ -247,8 +247,8 @@ There is no `report` command: evidence is the doctor's lines, the build's exit c
 process's own stdout. Check in that order — each layer answers a question the one before cannot.
 
 **`crust doctor`** prints `crust doctor — <dir>` and then one aligned line per launch check, in the
-order a failure happens: `  <name>  [ok|fail|note] <detail>`. The names are `platform` (macOS arm64
-only), `bun`, `config` — or the single file that needs none — `macos` against
+order a failure happens: `  <name>  [ok|fail|note] <detail>`. The names are `platform` (macOS x64 or
+arm64), `bun`, `config` — or the single file that needs none — `macos` against
 `build.minimumSystemVersion`, `shim` (the C shim compiled with `cc()` exactly as launch compiles it),
 `bridge` (the app's own derived port bound and one invoke answered `pong`, then released), `dev port`
 / `dev url` only when `dev.url` is set, `backend` (`src/main.ts`, else `main.ts`), `dev watch` for a
