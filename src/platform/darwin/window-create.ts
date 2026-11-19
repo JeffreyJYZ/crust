@@ -33,6 +33,16 @@ export function windowSize(
 	};
 }
 
+/**
+ * `moveToActiveSpace | fullScreenPrimary` = 130: primary makes the green button the fullscreen
+ * arrows, where `fullScreenAuxiliary` (256) marks another app's helper and forces the zoom `+`;
+ * `canJoinAllSpaces` is out (a window on every Space has none to transition into) and
+ * `moveToActiveSpace` keeps the launch behaviour of following the Space being looked at.
+ */
+export function collectionBehavior(): number {
+	return 2 | 128;
+}
+
 export function createNativeWindow(
 	label: string,
 	options: MaterialOptions,
@@ -136,12 +146,9 @@ export function createNativeWindow(
 	// WindowServer reported it not on screen). This raises it above its siblings without needing
 	// activation.
 	S.v0(win, "orderFrontRegardless");
-	// `canJoinAllSpaces | fullScreenAuxiliary` = 257. A launched app's window otherwise
-	// lands on the desktop Space while the user is in a fullscreen one: it is created,
-	// visible to AppKit, and on no Space they can see (measured: `on active space 0` with
-	// the app unable to activate). This is what makes an app appear where it was launched.
+	// See `collectionBehavior`: fullscreen-primary, and the window still follows the active Space.
 	try {
-		S.vq1(win, "setCollectionBehavior:", 257);
+		S.vq1(win, "setCollectionBehavior:", collectionBehavior());
 	} catch {
 		// Older systems: the default behaviour is the fallback.
 	}
@@ -176,14 +183,15 @@ export function createNativeWindow(
 	const loaded = Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0);
 	if (!loaded) throw new Error(`shim_webview_load failed for ${url}`);
 
-	// Two numbers a blank window makes worth printing: its window number for
-	// `screencapture -l`, and whether AppKit thinks it is visible. A page that renders and
-	// then disappears is otherwise indistinguishable from a page that never loaded.
+	// A blank window makes these worth printing: its number for `screencapture -l`, whether AppKit
+	// thinks it visible, and the collection behaviour and fullscreen bit read from the live window
+	// rather than the constant — a page that renders and disappears is otherwise one that never loaded.
 	try {
 		const number = Number(shim().symbols.shim_window_number(win) ?? 0);
 		const visible = Number(shim().symbols.shim_window_is_visible(win) ?? 0);
+		const behavior = Number(shim().symbols.shim_window_collection_behavior(win) ?? -1);
 		console.log(
-			`  window    ${label} number ${number}, visible ${visible}, on active space ${Number(shim().symbols.shim_window_is_on_active_space(win) ?? -1)}`,
+			`  window    ${label} number ${number}, visible ${visible}, on active space ${Number(shim().symbols.shim_window_is_on_active_space(win) ?? -1)}, collection behavior ${behavior}, fullscreen ${(S.q0(win, "styleMask") & (1 << 14)) !== 0}`,
 		);
 	} catch {
 		// Diagnostics only.

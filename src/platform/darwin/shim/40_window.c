@@ -119,6 +119,18 @@ int shim_window_is_on_active_space(obj_t win) {
 	    win, sel_registerName("isOnActiveSpace"));
 }
 
+// The collection behaviour AppKit actually holds, so the fullscreen fix is measured rather than
+// asserted: the diagnostics print this number beside the constant JS wrote, and a window that is
+// fullscreen-primary answers 130 while one marked fullScreenAuxiliary answers 257. -1 means the
+// selector is absent, which no macOS that has `setCollectionBehavior:` does.
+long long shim_window_collection_behavior(obj_t win) {
+	if (!win) return -1;
+	if (!class_getInstanceMethod(object_getClass(win), sel_registerName("collectionBehavior")))
+		return -1;
+	return ((long long (*)(void *, void *))objc_msgSend)(win,
+	                                                    sel_registerName("collectionBehavior"));
+}
+
 // A minimum content size, so a window cannot be dragged smaller than the config
 // allows. NSSize is two doubles and stays on the C stack.
 typedef struct {

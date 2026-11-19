@@ -122,15 +122,14 @@ function compile() {
 			shim_window_miniaturize: { args: [P], returns: V },
 			shim_window_deminiaturize: { args: [P], returns: V },
 
-			// The chrome commands: the alpha pair is C-side because no ladder
-			// prototype returns a double. The style mask and the cursor are plain
-			// sends, so they stay in JS.
+			// The chrome commands: the alpha pair is C-side because no ladder prototype returns a double, while the style mask and the cursor are plain sends and stay in JS.
 			shim_window_opacity: { args: [P], returns: F64 },
 			shim_window_set_opacity: { args: [P, F64], returns: V },
 			shim_cursor_visible: { args: [I32], returns: V },
 
 			shim_on_main_runloop: { args: [], returns: I32 },
 			shim_window_is_on_active_space: { args: [P], returns: I32 },
+			shim_window_collection_behavior: { args: [P], returns: I64 },
 
 			shim_app_load: { args: [], returns: I32 },
 			shim_app_set_icon: { args: [P], returns: I32 },

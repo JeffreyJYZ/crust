@@ -77,6 +77,7 @@ export interface Shim {
 
 		shim_on_main_runloop: LooseSymbol;
 		shim_window_is_on_active_space: LooseSymbol;
+		shim_window_collection_behavior: LooseSymbol;
 
 		shim_app_load: LooseSymbol;
 		shim_app_set_icon: LooseSymbol;
