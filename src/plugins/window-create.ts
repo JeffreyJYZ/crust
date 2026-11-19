@@ -2,12 +2,8 @@
  * `window.create`, the one command whose native half is optional. Split out of `window.ts` because it carries its own ordering rules: ask whether the adapter can create before validating arguments, refuse a label the platform still holds, and read the platform's list back rather than trusting the call just made.
  */
 
-import {
-	currentBridgeToken,
-	isBridgeOrigin,
-	withForcedWindowLabel,
-	withToken,
-} from "@/bridge/window-identity.ts";
+import { currentBridgeToken, isBridgeOrigin, withToken } from "@/bridge/window-identity.ts";
+import { withForcedWindowLabel, withoutWindowLabel } from "@/bridge/window-query.ts";
 import type { NotImplemented } from "./define";
 import { duplicateLabel, failure, missingWindow, parseCreate } from "./window-args.ts";
 import type {
@@ -63,12 +59,14 @@ export function createWindowCommand(
 	// cannot present one — a window opened without it would answer `401` and show an error page.
 	const token = currentBridgeToken();
 	const appDocument = (): string => {
-		// The label comes from the command's `label` argument, never from the URL the page built.
-		// Both a relative document and a bridge-owned absolute one get the seed token appended, so
-		// either could otherwise carry `?window=admin` and mint a document with admin's grants.
-		// Replacing the query's label keeps the other pairs byte-exact and closes the encoded-key
-		// form (`%77indow=`) too.
-		const labelled = withForcedWindowLabel(url ?? "/", parsed.options.label);
+		// Identity follows who composed the URL. A relative document is crust's own, so the label
+		// comes from the command. An absolute one is the app's to define in full: crust adds no
+		// identity to it, and a `?window=` the page put there is stripped before the seed token is
+		// appended, or it would mint a document bound to a label the page picked.
+		const document = url ?? "/";
+		const labelled = bridgeOwned
+			? withoutWindowLabel(document)
+			: withForcedWindowLabel(document, parsed.options.label);
 		return token === undefined ? labelled : withToken(labelled, token);
 	};
 	const options: WindowCreateOptions =

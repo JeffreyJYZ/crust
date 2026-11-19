@@ -12,6 +12,7 @@ import {
 	windowLabelFromSearch,
 	withWindowLabel,
 } from "./window-identity.ts";
+import { withForcedWindowLabel, withoutWindowLabel } from "./window-query.ts";
 
 describe("withWindowLabel", () => {
 	test("appends the parameter to a document path", () => {
@@ -52,6 +53,24 @@ describe("withWindowLabel", () => {
 		const url = withWindowLabel("/", "big window");
 		expect(url).toBe("/?window=big%20window");
 		expect(windowLabelFromSearch(url.slice(url.indexOf("?")))).toBe("big window");
+	});
+});
+
+describe("an absolute URL carries no identity the page can choose", () => {
+	test("withForcedWindowLabel replaces a page-chosen label, even encoded", () => {
+		expect(withForcedWindowLabel("http://h/x?%77indow=admin&tab=1", "child")).toBe(
+			"http://h/x?tab=1&window=child",
+		);
+	});
+
+	test("withoutWindowLabel strips every label and keeps other pairs byte-exact", () => {
+		expect(withoutWindowLabel("http://h/x?window=admin&a=1%202&%77indow=bot#top")).toBe(
+			"http://h/x?a=1%202#top",
+		);
+	});
+
+	test("stripping the only pair leaves no dangling question mark", () => {
+		expect(withoutWindowLabel("http://h/x?window=admin#top")).toBe("http://h/x#top");
 	});
 });
 

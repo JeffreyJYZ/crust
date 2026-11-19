@@ -128,38 +128,6 @@ export function withWindowLabel(url: string, label: string): string {
 	return `${path}?${search.length > 0 ? `${search}&${added}` : added}${hash}`;
 }
 
-/**
- * Replace every page-supplied `window=` with `label`, leaving other query pairs byte-exact.
- *
- * `withWindowLabel` honours an existing label because a configured URL may name its own window.
- * A command a page invokes is different: `window.create` appends the bridge's seed token to the
- * URL it passes, so a `?window=admin` the page put there would mint a document bound to `admin`.
- * The label on a created window must come from the command, never from a query the page controls.
- * Keys are compared decoded, so `%77indow=` cannot smuggle a second label past the replacement.
- */
-export function withForcedWindowLabel(url: string, label: string): string {
-	const hashAt = url.indexOf("#");
-	const head = hashAt === -1 ? url : url.slice(0, hashAt);
-	const hash = hashAt === -1 ? "" : url.slice(hashAt);
-	const queryAt = head.indexOf("?");
-	const path = queryAt === -1 ? head : head.slice(0, queryAt);
-	const search = queryAt === -1 ? "" : head.slice(queryAt + 1);
-	const kept = search.split("&").filter((pair) => {
-		if (pair.length === 0) return false;
-		const equals = pair.indexOf("=");
-		const rawKey = equals === -1 ? pair : pair.slice(0, equals);
-		let key = rawKey;
-		try {
-			key = decodeURIComponent(rawKey.replace(/\+/g, " "));
-		} catch {
-			// A malformed escape is not our parameter name; keep the pair verbatim.
-		}
-		return key !== WINDOW_PARAM;
-	});
-	kept.push(`${WINDOW_PARAM}=${encodeURIComponent(label)}`);
-	return `${path}?${kept.join("&")}${hash}`;
-}
-
 /** Read `?token=` out of a search string, or `undefined` when absent or blank. */
 export function tokenFromSearch(search: string): string | undefined {
 	const value = new URLSearchParams(search.replace(/^\?/, "")).get(TOKEN_PARAM);
