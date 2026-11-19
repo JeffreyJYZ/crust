@@ -4,6 +4,12 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [Unreleased]
+
+### Fixed
+
+- **A macOS window could not enter real fullscreen.** The green button showed the zoom `+` — maximise to the visible frame — instead of the two fullscreen arrows, in `crust dev` and in a built `.app` alike, because `window-create.ts` set collection behaviour `257`, which is `canJoinAllSpaces | fullScreenAuxiliary`. `FullScreenAuxiliary` (256) marks a window as another app's helper that may appear *inside* someone else's fullscreen Space, and that bit disqualifies it as fullscreen-primary, so AppKit swapped the button. The window is now `moveToActiveSpace | fullScreenPrimary` (`130`): `FullScreenPrimary` (128) is the bit that makes the green button fullscreen, and `MoveToActiveSpace` (2) keeps the launch behaviour the old `CanJoinAllSpaces` was there for — an activated window moves to the Space the user is looking at, so a launch inside a fullscreen Space is not stranded on the desktop Space. `CanJoinAllSpaces` could not stay: a window present on every Space has no single Space to transition into. The create path now reads the behaviour and the fullscreen style bit back from the live window and prints them, so the number is measured rather than assumed.
+
 ## [0.2.0] — 2026-11-19
 
 ### Changed
