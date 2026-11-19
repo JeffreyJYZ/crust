@@ -51,8 +51,10 @@ export async function checkEnvironment(options: CliOptions): Promise<Environment
 	// Platform.
 	if (process.platform !== "darwin") {
 		push("platform", "fail", `macOS only — this is ${process.platform}`);
-	} else if (process.arch !== "arm64") {
-		push("platform", "fail", `macOS arm64 only — this is ${process.arch}`);
+	} else if (process.arch !== "arm64" && process.arch !== "x64") {
+		// The release publishes darwin-arm64 and darwin-x64, and the limits page promises both,
+		// so Intel is a supported host rather than a refusal.
+		push("platform", "fail", `macOS x64 or arm64 only — this is ${process.arch}`);
 	} else {
 		push("platform", "ok", `darwin ${process.arch}`);
 	}

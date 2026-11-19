@@ -6,11 +6,12 @@ export default {
 	// same window.crust client the bridge serves into its own documents.
 	dev: { url: "http://localhost:5173", beforeDevCommand: "bun --bun ./node_modules/.bin/vite" },
 	windows: [{ label: "main", url: "/", width: 980, height: 700, title: "{{name_text}}" }],
-	// The Svelte page calls `invoke("greet", …)`, which travels over the bridge as `app:invoke` and
-	// is gated like every other action. Declaring any capability turns the bridge deny-by-default,
-	// so this grant names the one action the page actually uses — widen it when the app calls plugins.
+	// The Svelte page calls `invoke("greet", …)`, authorised as `app:greet` — the command, not the
+	// `app:invoke` wire key. Declaring any capability turns the bridge deny-by-default, so this
+	// grant names the one command the page uses: a new command needs its own action here, or
+	// `app:invoke` if you deliberately want the broad alias.
 	security: {
-		capabilities: [{ name: "app", actions: ["app:invoke"] }],
+		capabilities: [{ name: "app", actions: ["app:greet"] }],
 		grants: { main: ["app"] },
 	},
 	build: {

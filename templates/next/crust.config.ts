@@ -9,11 +9,12 @@ export default {
 		beforeDevCommand: "bun --bun ./node_modules/.bin/next dev -p 3000",
 	},
 	windows: [{ label: "main", url: "/", width: 1100, height: 760, title: "{{name_text}}" }],
-	// The page calls `invoke("greet", …)`, which travels over the bridge as `app:invoke` and is
-	// gated like every other action. Declaring any capability turns the bridge deny-by-default, so
-	// this grant names the one action the page actually uses — widen it when the app calls plugins.
+	// The page calls `invoke("greet", …)`, authorised as `app:greet` — the command, not the
+	// `app:invoke` wire key. Declaring any capability turns the bridge deny-by-default, so this
+	// grant names the one command the page uses: a new command needs its own action here, or
+	// `app:invoke` if you deliberately want the broad alias.
 	security: {
-		capabilities: [{ name: "app", actions: ["app:invoke"] }],
+		capabilities: [{ name: "app", actions: ["app:greet"] }],
 		grants: { main: ["app"] },
 	},
 	build: {

@@ -43,15 +43,16 @@ function configObject(source: string): unknown {
 /**
  * Every action a page calls, in the bridge's own spelling.
  *
- * `invoke("greet", { … })` is the app form and travels as `app:invoke`; `invoke("fs", "readTextFile")`
- * is the plugin form and travels as `fs:readTextFile` — the two forms `install.ts` documents.
+ * `invoke("greet", { … })` is the app form: `invoke` is a dispatcher, so the gate checks the command
+ * the `name` selects — `app:greet`, not the wire key `app:invoke`. `invoke("fs", "readTextFile")` is
+ * the plugin form and travels as `fs:readTextFile` — the two forms `install.ts` documents.
  */
 function actionsIn(source: string): string[] {
 	const found = new Set<string>();
 	for (const match of source.matchAll(/\.invoke\(\s*"([^"]+)"\s*(?:,\s*"([^"]+)")?/g)) {
 		const [, first, second] = match;
 		if (first === undefined) continue;
-		found.add(second === undefined ? "app:invoke" : `${first}:${second}`);
+		found.add(second === undefined ? `app:${first}` : `${first}:${second}`);
 	}
 	return [...found];
 }
