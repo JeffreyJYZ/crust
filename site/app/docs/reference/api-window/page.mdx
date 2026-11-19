@@ -34,12 +34,23 @@ Every command answers a value, never a rejected invoke: `{ ok: true, … }` or `
 | `opacity`          | `{ label }`                                | `{ ok: true, label, opacity }`          |
 | `setCursor`        | `{ cursor }`                               | `{ ok: true, cursor }`                  |
 | `setCursorVisible` | `{ value }`                                | `{ ok: true, visible }`                 |
+| `capture`          | `{ label }`                                | `{ ok: true, label, width, height, scale, png }` |
 
 `label` is the one command with no adapter behind it: the bridge reads the window identity off the calling request (`?window=<label>` in the URL crust opened the page with, sent by the page client on every invoke) and hands it over as `ctx.window`. It answers the label that request carried — never the first open window, the focused one, or the only one. A page the bridge did not open that way carries no identity, and the answer is `not-implemented` with `requires: "the calling page's window identity on the invoke request"`. A client-supplied label is a routing hint, not a credential: the bearer token is the only one, so a page that claims another label can mislabel itself and nothing else.
 
 `create` refuses a label that is already open rather than replacing it, and refuses `width`/`height` that are not positive integers instead of clamping them. `setSize` measures the window frame, so the title bar is inside its height. The webview is four edge pins on the content view with no size of its own, so the page's own viewport follows the frame on every resize — a drag, `setSize`, `maximize` or a restore — and `bun run e2e:window` asserts that in both directions. `setCursor` and `setCursorVisible` take no label: macOS has one cursor for the app, not one per window. `setCursor` accepts `default`, `pointer`, `crosshair`, `text` and `grab`.
 
 Failure codes: `invalid-label` (a missing or empty `label`, or a `create` title that is not a string), `unknown-window` (no open window carries that label), `duplicate-label` (`create` on a label already in the platform's map), `invalid-size` (a size that is not a positive integer), `invalid-position` (an `x` or `y` that is not an integer; negative is legitimate), `invalid-value` (a `value` that is not a boolean, or an opacity outside 0–1, or a cursor outside the list), `invalid-url` (`create` with an empty or non-string `url`), `unknown-adapter` (the adapter has no such member, checked before the arguments), `handler-error` (the adapter threw, or a getter answered nothing).
+
+### `capture`
+
+| command   | arguments   | answer                                           |
+| --------- | ----------- | ------------------------------------------------ |
+| `capture` | `{ label }` | `{ ok: true, label, width, height, scale, png }` |
+
+`capture` renders the page as the webview draws it — `-[WKWebView takeSnapshotWithConfiguration:completionHandler:]` — never the display, so it needs no Screen Recording grant and never calls `CGWindowListCreateImage`. `width` and `height` are the bitmap in page pixels (the point size times `scale`), `scale` is the pixels-per-point the platform measured (2 on a Retina display), and `png` is base64 of the PNG bytes with no `data:` prefix, ready for an `<img src>` once a prefix is added. The answer is asynchronous: WebKit hands the picture to a completion handler after the invoke returns, so a second capture that starts while one is pending fails the first rather than queueing behind it, and a handler that does not answer within 5000 ms fails naming the timeout.
+
+A platform whose webview cannot render a picture is not a stale adapter, so it answers `not-implemented` instead of `unknown-adapter` and never falls back to a screenshot of the screen: `requires: "-[WKWebView takeSnapshotWithConfiguration:completionHandler:]"`, with the message "window.capture renders the page with the webview itself, which this platform does not expose" and the adapter that supplies it on macOS named. That is the answer on Linux and Windows today. A label with no webview is `unknown-window` (the darwin adapter names it "no open window labelled … to capture"), and `handler-error` covers a platform answer without all four fields, an empty PNG, and WebKit reporting it rendered nothing.
 
 ## `window-state`
 

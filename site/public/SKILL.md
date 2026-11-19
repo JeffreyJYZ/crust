@@ -201,7 +201,7 @@ const files  = await window.crust.invoke("fs", "list", { path: "." }); // plugin
 - `tray` — setTitle setTooltip setMenu show hide destroy
 - `window` — create close focus setTitle list isOpen label setSize getSize setPosition getPosition
   setAlwaysOnTop isAlwaysOnTop setFullscreen isFullscreen minimize unminimize isMinimized maximize
-  isMaximized setDecorations isDecorated setOpacity opacity setCursor setCursorVisible
+  isMaximized setDecorations isDecorated setOpacity opacity setCursor setCursorVisible capture
 - `window-state` — save restore forget saveAll restoreAll forgetAll
 <!-- skill:commands:end -->
 
@@ -238,9 +238,8 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 
 ## Validate an app
 
-There is no `report` command and no test harness for a crust app: evidence is the doctor's lines, the
-build's exit code, and the process's own stdout. Check in that order — each layer answers a question
-the one before cannot.
+There is no `report` command: evidence is the doctor's lines, the build's exit code, and the
+process's own stdout. Check in that order — each layer answers a question the one before cannot.
 
 **`crust doctor`** prints `crust doctor — <dir>` and then one aligned line per launch check, in the
 order a failure happens: `  <name>  [ok|fail|note] <detail>`. The names are `platform` (macOS arm64
@@ -289,6 +288,66 @@ one rather than failing silently. `forbidden` is the first a new app meets: the 
 `security.capabilities` is present the bridge denies by default, so a namespace the page calls needs
 both an action on its capability and a `grants` entry for that window's label. `bad-origin` is the
 second: `dev.url` without `strictPort` moves the port under a running page.
+
+## Test an app
+
+Past the round trip, two surfaces let an agent see and drive the page it built without touching the
+machine.
+
+**`window.capture { label }`** answers `{ ok, label, width, height, scale, png }`. `png` is base64
+with no `data:` prefix, and `width`/`height` are page pixels — the point size times `scale`, so a
+900×640 window on a Retina display comes back 1800×1280 at `scale: 2`. It is the webview's own
+render, never the display: no Screen Recording grant is asked for and none is needed, and a platform
+whose webview cannot render a picture answers `not-implemented` naming the API rather than falling
+back to a screenshot of the screen.
+
+**`testing`** drives that same page. Every command takes `label` too — omitted means the app's first
+open window.
+
+| command | args → answer |
+| --- | --- |
+| `click` | `{ selector }` → `{ ok, clicked }` — scrolls into view, focuses, then clicks |
+| `clickAt` | `{ x, y }` → `{ ok, clicked }` — whatever `elementFromPoint` finds there |
+| `type` | `{ selector, text }` → `{ ok, value }`, the field read back |
+| `key` | `{ key, modifiers? }` → `{ ok, key, modifiers, target }`, `target` being the tag it reached |
+| `hover` | `{ selector }` → `{ ok, hovered }` — `mouseover` then `mousemove` at its centre |
+| `query` | `{ selector }` → `{ ok, exists, visible, rect, text, value, attributes }` |
+| `waitFor` | `{ selector, timeoutMs? }` → `{ ok, found, waitedMs }`, 5000 ms by default |
+| `console` | `{ since? }` → `{ ok, hooked, entries }`, each entry `{ level, args, at }` |
+
+A selector that matches nothing is `not-found` — except in `query`, which answers `exists: false`
+instead, so `query` is the call when the absence is the finding. `value` is `null` for an element
+with no value, keeping `""` distinguishable. `console` reads what the bridge's page-world tap
+recorded from document start, filtered by millisecond `since`; a page without that tap answers
+`not-implemented` rather than `[]`.
+
+Two caveats decide whether a run is real. **`testing` exists only when the process starts with
+`CRUST_TEST=1`** — otherwise the namespace is not registered and every call answers `unknown-plugin`,
+which is the point: a shipped build cannot be driven. And it **drives the page with DOM events, not
+OS input**, so nothing moves a cursor and no Accessibility grant is involved; a synthetic `key` is
+one `KeyboardEvent` the page sees and no browser default follows it, so `key: "Enter"` submits
+nothing.
+
+That is also why `type` does not assign `.value`. A plain assignment leaves a framework's tracker
+holding its own copy of the value, so React sees no change, re-renders nothing, and the test passes
+over a stale field. `type` calls the prototype's value setter — under the tracker — then dispatches a
+bubbling `input` event, and answers the field's own value read back after it.
+
+A run is a few calls and a second look:
+
+```js
+await window.crust.invoke("testing", "waitFor", { selector: "#save" });
+const before = await window.crust.invoke("window", "capture", { label: "main" });
+await window.crust.invoke("testing", "type", { selector: "#title", text: "Ada" });
+await window.crust.invoke("testing", "click", { selector: "#save" });
+const status = await window.crust.invoke("testing", "query", { selector: "#status" });
+const after = await window.crust.invoke("window", "capture", { label: "main" });
+```
+
+`status.text` is what changed; the two `png`s are what the page looked like. Capture one at a time —
+a second capture supersedes an unanswered first, and one WebKit does not answer within 5 s fails
+rather than hangs. Once `security.capabilities` is present both namespaces need their own action and
+grant: `window:*` for `capture`, `testing:*` for the rest.
 
 ## Failure codes
 

@@ -77,6 +77,7 @@ export const NAV: readonly NavGroup[] = [
 		label: "Commands",
 		items: [
 			{ label: "Window", href: "/docs/reference/api-window" },
+			{ label: "Testing", href: "/docs/reference/api-testing" },
 			{ label: "Files and processes", href: "/docs/reference/api-fs" },
 			{ label: "Panels and input", href: "/docs/reference/api-ui" },
 			{ label: "Desktop and system", href: "/docs/reference/api-desktop" },

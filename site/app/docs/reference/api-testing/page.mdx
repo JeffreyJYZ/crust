@@ -1,0 +1,52 @@
+# Page-driving commands
+
+One namespace, `testing`, that drives and observes a running window's page from inside that page: a click, typed text, one key, a query, a wait and the page's console. The macOS runtime installs the evaluator once its platform exists, so an app that names no plugin still reaches it; a platform whose webview cannot evaluate a script answers `not-implemented`, never a silent no-op.
+
+Every command is one JavaScript expression run through `-[WKWebView evaluateJavaScript:completionHandler:]` in the named window's page, and answers what the page returned. `label` names the window; omitted, it means the app's first open window, and a label that names no open window is `unknown-window` rather than a fall back to that first one.
+
+## The gate
+
+The namespace exists only when the process was started with `CRUST_TEST=1`. The gate is read when the core plugin set is built, so a normal `crust build` (or `crust dev`) has no `testing` name in its registry at all: `invoke("testing", …)` answers `unknown-plugin`, exactly what a misspelled namespace gets. It is an environment variable rather than a config key on purpose — a `testing` key would ship inside the app's own `crust.config.ts` and become a setting somebody could leave on, while `CRUST_TEST=1` is a property of the process that was started.
+
+## What it drives
+
+Input here is ordinary DOM, not the operating system. `click` calls `element.click()`, `key` dispatches a `KeyboardEvent`, `hover` dispatches `mouseover` and `mousemove`. Nothing posts a `CGEvent`, nothing moves the human's cursor, and no Accessibility or Screen Recording grant is ever asked for, because nothing leaves the webview.
+
+The consequence a reader must plan around: a synthetic `key` does not trigger the browser defaults a real key press would. `Enter` submits no form, `Tab` moves no focus, and a command chord navigates nowhere — the page's own `keydown`/`keyup` listeners run and that is all. Drive the page's handler directly when a test needs the effect a default would have produced.
+
+## `testing`
+
+| command   | arguments                        | answer                                                                   |
+| --------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `click`   | `{ selector, label? }`           | `{ ok: true, clicked: true }`                                            |
+| `clickAt` | `{ x, y, label? }`               | `{ ok: true, clicked: true }`                                            |
+| `type`    | `{ selector, text, label? }`     | `{ ok: true, value }`                                                    |
+| `key`     | `{ key, modifiers?, label? }`    | `{ ok: true, key, modifiers, target }`                                   |
+| `hover`   | `{ selector, label? }`           | `{ ok: true, hovered: true }`                                            |
+| `query`   | `{ selector, label? }`           | `{ ok: true, exists, visible, rect, text, value, attributes }`           |
+| `waitFor` | `{ selector, timeoutMs?, label? }` | `{ ok: true, found: true, waitedMs }`                                  |
+| `console` | `{ since?, label? }`             | `{ ok: true, hooked, entries: [{ level, args, at }] }`                   |
+
+`click` scrolls the element to the centre of its scroll container, focuses it, then clicks it. `clickAt` reads the page's own `document.elementFromPoint(x, y)` and clicks whatever is painted there, refusing `not-found` when nothing is. Both answer only that a click was dispatched — a handler that throws, navigates or opens a dialog is the page's business, so assert the result with `query`.
+
+`hover` scrolls the element into view and dispatches `mouseover` then `mousemove`, both bubbling, with the page coordinates of the element's centre. CSS `:hover` does not apply to a synthetic event; a `mouseover` listener does.
+
+`query` never refuses for a selector that matches nothing: it answers `exists: false` with an empty rect, empty text, `value: null` and no attributes. `visible` is the element's own rectangle being non-zero *and* its computed style having `display` other than `none`, `visibility` other than `hidden`/`collapse`, and `opacity` other than `0` — it does not walk ancestors, so a child of a `display: none` parent can still read `visible: true`. `text` is `textContent` trimmed, `value` is the element's value as a string and `null` when it has none (so an empty field stays distinguishable from a field that cannot hold text), and `attributes` is every attribute name to value.
+
+`waitFor` polls `query` every 50 ms until `exists` is true, answering the milliseconds it waited. The default timeout is 5000 ms; expiry is `not-found` naming the selector and the timeout, never a silent success. A window that is gone, or a page that threw, is returned at once rather than polled for the whole timeout, because waiting cannot fix either.
+
+`console` returns what the bridge's page-world tap recorded from document start: `level` one of `log`, `info`, `warn`, `error`, `debug`; `args` every argument stringified (a string as itself, anything else through `JSON.stringify`); `at` the page's `Date.now()` in milliseconds. `since` filters to entries at or after that timestamp. The tap keeps the most recent 500 entries. A page without the tap answers `hooked: false`, which the plugin turns into `not-implemented` with `requires: "PAGE_CONSOLE_SOURCE at document start"` rather than an empty list that reads like silence.
+
+## Typing, and why it is not keystrokes
+
+`type` focuses the field, sets its value, and dispatches an `input` event that bubbles, then reads the value back for the answer. It does *not* send one keystroke per character: there is no `keydown`, `keyup`, `beforeinput` or per-character `input`, so a handler that filters input keystroke by keystroke sees nothing.
+
+The value is set through the prototype's own setter — `HTMLInputElement.prototype` or `HTMLTextAreaElement.prototype`, chosen by `instanceof` — not by assigning `element.value`. That is the trap: assigning `.value` directly does not notify React, whose tracker keeps its own copy of the value and installs a `value` accessor on the element, so a plain assignment updates the tracker's copy and the real field together and the framework then sees no change. Calling the prototype setter goes under the tracker, the tracker stays stale, and the `input` event that follows is honoured. Vue reads the event's target, so the same call updates Vue state too. `type` refuses `handler-error` for an element that holds no string value, and `bad-request` when `text` is not a string — an absent text is a caller bug, never an empty field typed silently.
+
+## Refusals
+
+Malformed arguments are rejected with the bridge's `bad-request` rather than answered as a value: an empty or non-string `selector`, an empty `label`, a `text` that is not a string, `x`/`y` that are not finite numbers, an empty `key`, a negative `timeoutMs`, a non-numeric `since`.
+
+Commands answer a typed failure for everything else: `unknown-window` (a `label` naming no open window, or a window with no webview), `not-found` (a selector that matches nothing for `click`, `hover` and `clickAt`, or a `waitFor` that timed out), `not-implemented` (no evaluator installed, or no console tap), `handler-error` (the page threw, or answered something other than its JSON envelope). The first two spellings are the same codes the [`window`](/docs/reference/api-window) namespace uses, so a caller branches once across both.
+
+Without an evaluator every command answers `not-implemented` with `requires: "WKWebView -evaluateJavaScript:completionHandler:"` — the API the platform must supply — instead of pretending. `modifiers` is `{ alt?, ctrl?, meta?, shift? }`, each defaulting to `false`, and `key` echoes all four back with the tag it dispatched on: the focused element, or `body` when nothing has focus.
