@@ -52,7 +52,7 @@ await window.crust.invoke("window", "create", {
 | `maximize`       | `{ label }`                                | `{ ok: true, label, maximized: true }`  |
 | `isMaximized`    | `{ label }`                                | `{ ok: true, label, maximized }`        |
 
-Success is `{ ok: true, … }`. Failure is an ordinary 200 with `{ ok: false, code, message, label? }`, where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-position`, `invalid-value`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
+Success is `{ ok: true, … }` with HTTP 200. Failure resolves with `{ ok: false, code, message, label? }` in the body and a non-200 status mapped from `code` through the same table `CrustError` uses (`invalid-label`, `invalid-size`, `invalid-position`, `invalid-value`, `invalid-url` and `duplicate-label` → 400, `unknown-window` → 404, `unknown-adapter` → 501, `handler-error` → 500), where `code` is one of `unknown-window`, `invalid-label`, `invalid-size`, `invalid-position`, `invalid-value`, `invalid-url`, `duplicate-label`, `unknown-adapter`, `handler-error`. Branch on `result.ok`, not on a rejected promise.
 
 ## Size and position
 

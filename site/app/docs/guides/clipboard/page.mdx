@@ -53,5 +53,5 @@ would read as a refusal. Without an adapter both commands answer `not-implemente
 | `handler-error`   | the adapter threw; the message is the throw's own       |
 | `not-implemented` | no pasteboard here, or the read answered `null`         |
 
-The typed failures arrive as a 200 with `{ ok: false, code, message }`, so branch on `result.ok`.
+The typed failures arrive with a non-200 status mapped from `code` through the same table `CrustError` uses (`bad-request` and `write-failed` → 400, `unknown-adapter` → 501, `handler-error` → 500); the body is still `{ ok: false, code, message }`, so branch on `result.ok`.
 `not-implemented` is the bridge's own error instead, carrying `requires: "NSPasteboard"`.

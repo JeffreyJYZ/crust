@@ -68,9 +68,10 @@ a token that reaches the page is in the page's own URL and history.
 carries `nonce="…"`, and a tag the page's own markup authored is stamped with the same value before
 the parser sees it. That closes script injection into the document, not a payload already running in
 it. `style-src` keeps `'unsafe-inline'` — inline styles are everywhere in real templates and a style
-is not a script door. A `security.csp` of your own replaces the policy whole; the nonce is still
-generated for the bootstrap, so a policy whose `script-src` omits it refuses that script too, and
-that consequence is yours.
+is not a script door. A `security.csp` of your own replaces the policy whole. The bridge still
+mints and stamps its bootstrap nonce but never rewrites your policy to admit it, so config validation
+refuses a `script-src` without `'unsafe-inline'` and explains why: the inline bootstrap would be
+blocked, `window.crust` would never install and every invoke would fail silently.
 
 ## Notifications
 

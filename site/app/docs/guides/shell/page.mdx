@@ -1,6 +1,6 @@
 # Shell
 
-Spawn an allowlisted program, read its bounded output, kill it, list what is live. The runtime registers it under `shell`, and the config decides what a page may run:
+Spawn an allowlisted program, feed its stdin, read its bounded output, close or kill it, list what is live. The runtime registers it under `shell`, and the config decides what a page may run:
 
 ```ts
 // crust.config.ts
@@ -30,14 +30,16 @@ No shell is ever invoked: a page's argument reaches the program as argv, never a
 
 ## Commands
 
-| command  | arguments                  | answers                                          |
-| -------- | -------------------------- | ------------------------------------------------ |
-| `spawn`  | `{ program, args?, cwd? }` | `{ ok: true, id }`                               |
-| `output` | `{ id }`                   | `{ ok: true, stdout, stderr, exitCode, signal }` |
-| `kill`   | `{ id }`                   | `{ ok: true, killed, id }`                       |
-| `list`   | none                       | `{ ok: true, ids }`                              |
+| command  | arguments                              | answers                                          |
+| -------- | -------------------------------------- | ------------------------------------------------ |
+| `spawn`  | `{ program, args?, cwd?, env?, stdin? }` | `{ ok: true, id }`                             |
+| `output` | `{ id }`                               | `{ ok: true, stdout, stderr, exitCode, signal }` |
+| `write`  | `{ id, data }`                         | `{ ok: true, bytes }`                            |
+| `close`  | `{ id }`                               | `{ ok: true, closed, id }`                       |
+| `kill`   | `{ id }`                               | `{ ok: true, killed, id }`                       |
+| `list`   | none                                   | `{ ok: true, ids }`                              |
 
-`env` is deliberately absent from `spawn` — see [Environment](#environment).
+A page-supplied `env` is refused by `spawn` — see [Environment](#environment).
 
 ```js
 const { id } = await window.crust.invoke("shell", "spawn", {
@@ -48,6 +50,10 @@ const out = await window.crust.invoke("shell", "output", { id });
 ```
 
 `spawn` answers as soon as the process exists, not when it ends. `output` reads what has been collected so far and is complete only after the process is gone; `exitCode` is `null` for a killed process, which reports `signal` instead. `list` holds live processes only, while `output` still answers for a finished one.
+
+## Stdin
+
+A process is spawned with stdin ignored unless `spawn` is given `stdin: "pipe"`. With a pipe, `write { id, data }` sends text down it and answers how many bytes it accepted; `close { id }` ends the pipe so a reader sees EOF. A process spawned without the pipe, one whose pipe `close` already ended, and one that has exited all have no writable stdin, so `write` answers `no-stdin` rather than throwing into the page.
 
 ## Environment
 
@@ -83,18 +89,19 @@ Nothing here makes `spawn` unusable. An allowed program with no `env` runs exact
 - **500 lines per stream.** Older lines drop, so a chatty program cannot grow the buffer.
 - **8192 characters per line.** A longer line is kept in pieces rather than unbounded.
 - **256 finished records.** Past that the oldest record is dropped and its `output` becomes `unknown-process`.
-- **No stdin, no pty.** A program that prompts gets nothing; one that needs a terminal is out of scope.
+- **No pty.** Stdin is a plain pipe, not a terminal; a program that needs a TTY is out of scope.
 
 ## Failure codes
 
 | code                   | when                                                                                                                                                                   |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `invalid-args`         | `program` empty or not a string, `args` not an array of strings, `env` not an object of strings, or no `{ id }`                                                        |
+| `invalid-args`         | `program` empty or not a string, `args` not an array of strings, `env` not an object of strings, `stdin` other than `"pipe"`/`"ignore"`, no `{ id }`, or `write` without `{ id, data }` |
 | `program-not-allowed`  | the resolved real path is not in `allow` — bare names go through `Bun.which`, path forms through realpath; the message names both the argument and what it resolved to |
 | `program-outside-root` | a **relative** program path resolved outside `cwdRoot`; an absolute path is never containment-checked                                                                  |
 | `cwd-not-allowed`      | `cwd` resolves outside `cwdRoot`, through a symlink, or to a path that does not exist                                                                                  |
 | `env-not-allowed`      | `env` supplied without the host's `{ env: true }`, or a refused name inside it                                                                                         |
 | `spawn-failed`         | a bare name the app's PATH cannot resolve (`"<name>" is not on PATH`), an absolute path that does not exist, or a program that was allowed and still would not start   |
 | `unknown-process`      | no live or kept record with that id                                                                                                                                    |
+| `no-stdin`             | `write` to a process spawned without `stdin: "pipe"`, one whose pipe `close` already ended, or one that has exited                                                    |
 
-Every one is a 200 with `{ ok: false, code, message }`, and the refusal happens before any process exists: `program-not-allowed` means nothing was started.
+Every one resolves with `{ ok: false, code, message }` in the body and a non-200 status mapped from `code` through the same table `CrustError` uses (`invalid-args` → 400, and the other shell codes, being unmapped, → 400), so a caller working at the `fetch` level sees a refusal too. A spawn refusal happens before any process exists: `program-not-allowed` means nothing was started.

@@ -1,0 +1,33 @@
+# Hunt 20 — CLI (`src/cli/**`)
+
+## Medium — value flags coerced by mri are silently dropped: `--dir 123` scaffolds into the current directory
+- where: `src/cli/index.ts:86-88` (`translate`), `src/cli/index.ts:113-118` (`validate`)
+- mechanism: cac/mri coerces a numeric-looking value to a number (`--dir 123` → `123`, `--dir 0` → `0`, `--entry 1e3` → `1000`) and a repeated value to an array (`--dir a --dir b` → `["a","b"]`). `validate` only refuses `true` (the documented missing-value signal), so numbers and arrays pass. `translate` then accepts a value only when `typeof raw[flag] === "string"`, so every number/array is discarded and `dir` falls back to `process.cwd()` (config/entry fall back to defaults). A positional `123` works — the same value via `--dir` does not.
+- reachable by: measured — `crust init --dir 123` in an empty cwd printed `crust init — <cwd>` and wrote the scaffold there, ignoring `123`; `crust init --dir a --dir b` did the same. From the repo root both printed `crust: /Users/jyz/dev/crust is not empty …`, proving the target was the cwd, not either flag value. The cac coercion was measured separately: `--dir 123 → dir:123`, `--dir a --dir b → dir:["a","b"]`.
+- smallest fix: normalise value flags once after parse — stringify scalars, and for every value flag except `--format` either take the last value or refuse repeats as a usage error. Make `translate` consume the same normalised value.
+
+## Medium — Svelte/Vue component edits restart the backend under `dev.url`, rotating the bridge token
+- where: `src/cli/ignore.ts:15` (`FRONTEND_SOURCE`), used at `src/cli/dev/runtime.ts:139`
+- mechanism: with `dev.url`, `watchRuntime` skips frontend saves by extension so a Vite/HMR edit does not kill the runtime — the code itself documents that a restart rotates the bridge bearer token and breaks the loaded page. `FRONTEND_SOURCE` covers `.tsx/.jsx/.css/.scss/.sass/.less/.html` and images but not `.svelte` or `.vue`. The Svelte and Vue scaffolds both set `dev.url` and put their editable component in `src/App.svelte` / `src/App.vue` under the project root that the recursive backend watch covers.
+- reachable by: read — `templates/{svelte,vue}/crust.config.ts` set `dev: { url: "http://localhost:5173", … }`; `templates/svelte/src/App.svelte` and `templates/vue/src/App.vue` exist; `devBackendEntry` uses the root `main.ts`, so `watch(dirname(entry))` is the project root. Saving `App.svelte` matches no ignore rule and triggers `restart()` at `runtime.ts:140`.
+- smallest fix: add `svelte` and `vue` to the `FRONTEND_SOURCE` extension list (and any other scaffold-specific component suffix the templates ship).
+
+## Low — `--` separator silently discards the single-file positional
+- where: `src/cli/index.ts:44` (`KNOWN` includes `"--"`), `src/cli/index.ts:89-92` (`translate`)
+- mechanism: cac/mri stores tokens after `--` in `options["--"]`, not in `parsed.args`. `validate` allows the `--` key, then reports zero positionals; `translate` never sees the file, so `single` stays unset and dev runs in project mode.
+- reachable by: measured — from an empty cwd, `crust dev -- app.tsx` answered `crust dev: no crust config in <cwd>` and the hint about single-file mode, rather than treating `app.tsx` as the single file. cac parse probe: `["dev","--","app.ts"] → args: [], options: {"--":["app.ts"]}`.
+- smallest fix: append `options["--"]` entries to the positional list used by `validate`/`translate` (or refuse `--` with a clear message instead of allowing it in `KNOWN`).
+
+## Low — unknown command plus `--version` exits 0 while plus `--help` correctly exits 1
+- where: `src/cli/index.ts:152-155` versus `src/cli/index.ts:156-158`
+- mechanism: the `version` branch returns `0` before the `isCommand(command)` check; the `help` branch performs that check explicitly ("a typo plus --help must not read as success"). A mistyped command with `-v` therefore prints the version and reports success.
+- reachable by: measured — `crust nope --version` printed `0.1.32`, exit `0`; `crust nope --help` printed `crust: unknown command "nope"`, exit `1`.
+- smallest fix: run the same `command !== undefined && !isCommand(command)` guard before the version return, or factor the guard above both branches.
+
+## Checked and clean
+- **Missing-value / unknown-option / flag-scope validation** (read; `src/cli/index.ts:103-134`, `cli-contract.test.ts`): measured cac probes confirm `--dir --react`, `--dir` last, `--format --react`, and `--config --entry foo` all surface `true` for the value flag and are refused with `--<flag> needs a value`. Unknown keys, a second positional, a positional plus `--dir`, scaffold flags outside `init`, `--format` outside `package`, and bad `--format` values all produce the documented `crust: <reason>` + hint and exit 1.
+- **Help/version scoping** (read + measured): `-h`/`--help` and `-v`/`--version` are registered as plain boolean options, so `--help dev` does not eat a value; `cli.outputHelp()` dispatches to the matched command. `nope --help` refuses (contract). Version short-circuiting validation for a *valid* command is pinned by the contract test and is intended.
+- **`init` non-empty / overwrite safety** (read; `src/cli/init.ts:78-94`): `stat` refuses a non-file target; an existing directory with any entry other than `.DS_Store` is refused with the entry list, so templates cannot overwrite user files. Two scaffolds are refused before any write; tokens are escaped (`name_text` via JSON, `name_html` entities); binary template files skip token substitution.
+- **Pinned dependency specifier** (read + measured; `src/cli/init.ts:158-166`): checkout → `link:<root>` with backslashes normalised; release version → `github:JeffreyJYZ/crust#v<version>`; `-dev` version → unpinned GitHub spec. The checkout test is `existsSync(<root>/.git)`; measured that none of the local `~/.bun/install/cache/@GH@JeffreyJYZ-crust-*` GitHub-installed copies contain `.git`, so a cached `bunx`/installed crust is not misdetected as a checkout.
+- **Single-file detection** (read; `src/single-detect.ts`): requires an existing file with a bundlable extension and refuses a `crust.config.ts`/`crust.json` beside it; combining a single file with `--config`/`--entry` is refused.
+- **Dev watcher lifecycle** (read; `src/cli/dev/runtime.ts:104-189`, `dev/reload.ts`, `dev/single.ts`): 150 ms restart debounce, ignore list for `public/dist/node_modules/.next/out/.crust`, `dev.url` frontend-save skip (apart from the Svelte/Vue gap above), `SIGINT`/`SIGTERM` handlers that close all watchers and kill children, clean exit on code 0, and a 120 ms reload debounce with a readability check. No unbounded timer or listener accumulation found on a single run. `waitForDevServer` is a bounded 30 s TCP poll.

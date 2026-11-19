@@ -48,7 +48,7 @@ Each menu is wired through that one trampoline, which is why a destroyed item fr
 
 ## Failure shape
 
-A tray failure is a value inside an ordinary `200`, not a rejected invoke:
+A tray failure is a value inside the resolved result, not a rejected invoke; the bridge maps its `code` to a non-200 status through the same table `CrustError` uses (`invalid-text` and `invalid-menu` → 400, `destroyed` → 404, `unknown-adapter` → 501, `handler-error` → 500) while the body stays unchanged:
 
 ```json
 {

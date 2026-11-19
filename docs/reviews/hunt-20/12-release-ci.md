@@ -1,0 +1,38 @@
+# Hunt 20 — release script and CI workflows
+
+All claims below are `read` (source inspection) unless marked `measured`. Nothing was executed
+against GitHub or a runner; the two shell commands I ran were `git log`/`git status` to confirm the
+tree and recent release commits.
+
+## High — Re-running a published tag un-publishes a good release and can flag it FAILED
+
+- where: `.github/workflows/release.yml:58-63` (create-release retry branch), `:166-177` (publish), `:182-195` (flag-failed)
+- mechanism: `create-release` does `gh release view … && gh release edit … --draft` whenever the release already exists, with no check of whether it is already published. A re-run therefore flips a public "Latest" back to a draft before the build legs start. If any leg fails on that re-run, `flag-failed` writes `--draft --title "crust <tag> — FAILED BUILD"` and nothing ever sets `--draft=false` again. A previously good, public release is now hidden and mislabelled.
+- reachable by: a maintainer clicks "Re-run all jobs" on a successful release run (or re-pushes an existing tag) — a routine reaction to a flaky dependency or a docs-only follow-up — and one build leg fails the second time. The first run had published successfully.
+- smallest fix: in the retry branch, read `isDraft`/`publishedAt` with `gh release view --json` and only pass `--draft` when the release is still a draft. In `flag-failed`, restore a release that was published before the re-run instead of forcing `--draft`.
+
+## Medium — Tag is pushed before the checksum is fetched; a digest failure strands a public release with no formula
+
+- where: `scripts/release.ts:84-104`
+- mechanism: step 4 pushes `main` and the tag in one command, which immediately triggers `release.yml` to build and publish six binaries. Step 5 only then fetches `archive/refs/tags/<tag>.tar.gz` to compute the SHA used by the homebrew formula. The retry window is 10 × 1.5 s; if every attempt returns non-OK, `fail("digest")` exits at line 102. The tag is public, CI publishes, but step 6 (formula bump + PR) never runs, so `brew` users stay pinned to the previous version with no indication of why.
+- reachable by: a transient 404/403/rate-limit on the freshly created tag archive — the code's own comment at `:88-89` concedes the archive exists only "a moment after the tag lands", so this is the exact failure the retry is guarding against, just with too short a window.
+- smallest fix: fetch the digest before the tag becomes public (or make step 5 resumable, keyed on the tag, so a later invocation can finish the formula), and treat total digest failure as a stop that does not leave a published tag without its formula.
+
+## Medium — The arm64 WebView2 runtime proof is not a publish gate; a broken arm64 shim can ship
+
+- where: `.github/workflows/release.yml:69-137` and its comment `:88-96`; `.github/workflows/windows-arm-runtime.yml:25-33,37-41`; `scripts/release/standalone-prove.ts:22-23`
+- mechanism: `windows-arm-runtime` is a separate workflow triggered by the same tag; GitHub cannot put it in `publish`'s `needs`, so its red result never blocks `--draft=false`. The arm64 build leg in `release.yml` calls `build-standalone`, whose host probe is only `--version`, `init` file counts and `doctor`; on Windows `DOCTOR_CHECKS` is `["templates"]` (`standalone-prove.ts:23`), so the leg never compiles the TinyCC shim or opens a WebView. The comment at `release.yml:88-96` claims this leg "can prove what an x64 runner would only print as SKIP", which the code does not do — the real shim proof lives in the non-gating workflow.
+- reachable by: an arm64-only regression in the Win32/WebView2 shim (e.g. the 16-byte RECT/`put_Bounds` ABI called out in `windows-arm-runtime.yml:5-7`). Release CI stays green, `publish` makes the binary public, and the tag's own runtime proof fails afterwards on real silicon; users download a binary that opens no window while the release notes imply arm64 was proven.
+- smallest fix: fold the runtime proof into `release.yml` ahead of `publish` (or gate publish on its check run/environment), and correct the comment to state the arm64 build leg proves only format, version and scaffold counts.
+
+## Checked and clean
+
+- **Publish invariant within release.yml**: `publish` has no `if` and `needs: [create-release, build, verify]` (`release.yml:166-168`); GitHub skips it on any failed/skipped need. `verify` uses `always()` but still requires `create-release` success (`:148`), so a build failure reports gaps without letting a partial asset set go public. Matching assertions are in `scripts/release/release-workflow.test.ts:21-32`.
+- **Matrix vs `targets.ts`**: the six `include` rows in `release.yml:77-96` are exactly the six keys of `TARGETS` in `scripts/release/targets.ts:11-18` (both include `bun-windows-arm64`). `build-standalone.ts:53-61` rejects an unknown `--target`, and `verify-assets.ts:75-89` derives expected names from the same table, so a seventh platform cannot be half-shipped without also editing both. `targets.test.ts` pins the six-count and the win32→windows remap.
+- **Version agreement**: tag/package.json consistency is asserted in three places — `release.yml:45-52`, `build-standalone.ts:63-72` (`--expect-version`), and `verify-assets.ts:55-65`. A mis-named tag cannot produce assets whose own `--version` disagrees.
+- **Bun pin**: every `setup-bun` in `release.yml` pins `1.4.4` (`:39-41`, `:109-111`, `:153-155`), asserted by `scripts/release/toolchain-pin.test.ts`. `windows-arm-runtime.yml:47-49` uses the same pin. `ci.yml:53` deliberately tracks current Bun; that is a stated choice, not drift, and the release binary is still proven with the pinned toolchain.
+- **Secrets and permissions**: `release.yml` declares only `contents: write`, `ci.yml` and `windows-arm-runtime.yml` only `contents: read`; all workflow `gh` calls use `${{ github.token }}`. The jyzbot token used by `scripts/release/git.ts:71` is local-only and never printed into a workflow log. No fork-PR path receives a write token.
+- **Concurrency groups**: `release-${ref}`, `windows-arm-runtime-${ref}` and `ci-${workflow}-${ref}` are distinct and `cancel-in-progress` is `false` on both tag workflows, so a re-run queues rather than cancelling an in-flight publish. CI's `true` is scoped to its own ref. No cross-workflow cancellation was found.
+- **Asset verification**: `assets.ts:86-149` checks presence, a 1 MB floor, the container magic prefix, and executes only the host asset; `verify-assets.ts:113-123` fails on any gap. The 1 MB floor plus magic prefix cannot detect a corrupted-but-large cross-platform binary, but the upload is the exact `bun build --compile` output over HTTPS with no transformation in between, so there is no reachable path to that state from this pipeline.
+- **Release gate scope**: `gate.ts:11-31` runs only `bun check` and `bun run test`; e2e/`check:lines`/`site:build`/`verify:package` are left to CI on the PR that put the commit on `main` (stated at `gate.ts:1-4`). Because `release.ts:25-34` requires a clean tree on `main`, those checks have run before the tag. The one residual risk is that the version-bump commit is pushed directly (`:84`) and is never itself seen by CI before the tag builds from it; its diff is only the version string plus README pins, so I do not call it a finding.
+- **Scaffold workflows** under `templates/*/.github/workflows/release.yml` are outside the root `.github/workflows/**` glob this lane was assigned. I spot-checked `templates/default/.github/workflows/release.yml` (macOS dmg, `gh release create … || gh release upload … --clobber`); no in-scope defect found. Another lane owns templates.

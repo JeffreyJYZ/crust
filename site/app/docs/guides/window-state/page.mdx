@@ -66,5 +66,4 @@ menu bar and a `bottomLeft` one above the Dock. Coordinates are whole points, ro
 | `handler-error`   | the adapter threw, or a getter answered no geometry                        |
 | `not-implemented` | no window adapter on this platform, so neither plugin can act              |
 
-`not-implemented` is the bridge's own error and carries `requires: "NSWindow"`; the rest arrive as a
-200 with `{ ok: false, code, message }`.
+`not-implemented` is the bridge's own error and carries `requires: "NSWindow"`; the rest resolve with `{ ok: false, code, message }` in the body and a non-200 status mapped from `code` through the same table `CrustError` uses (`invalid-label` → 400, `unknown-window` → 404, `unknown-adapter` → 501, `handler-error` → 500).

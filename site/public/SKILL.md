@@ -12,8 +12,8 @@ not the full reference — when a table stops, the per-namespace command referen
 ## Quickstart
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.1.29 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.1.29 init my-app --react   # also --next, --svelte, --vue
+bunx github:JeffreyJYZ/crust#v0.1.32 init my-app   # plain HTML, no bundler
+bunx github:JeffreyJYZ/crust#v0.1.32 init my-app --react   # also --next, --svelte, --vue
 cd my-app && bun install
 bun run dev        # crust dev
 ```
@@ -139,8 +139,9 @@ await app.run();
 
 ## Built-ins and capabilities
 
-All 32 namespaces below are registered before your code runs — `app.use` is only for your own
-plugins, never a built-in, so a page may call `store.get` with no registration step.
+All 32 plugin namespaces below are registered before your code runs, plus `app` and `single-instance`
+(34 built-ins always) and `updater` when the config has an `updater` section. `app.use` is only for
+your own plugins, never a built-in, so a page may call `store.get` with no registration step.
 
 But once `security.capabilities` is present, **each namespace needs its own capability and grant**;
 granting one does not grant another. For `store.get`:
@@ -227,7 +228,7 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 | `window` | `create {label,title?,width?,height?,url?}` · `list` · `label` · `close`/`focus`/`isOpen`/`minimize`/`unminimize`/`isMinimized`/`maximize`/`isMaximized`/`isDecorated`/`opacity`/`getSize`/`getPosition`/`isAlwaysOnTop`/`isFullscreen {label}` · `setTitle {label,title}` · `setSize {label,width,height}` · `setPosition {label,x,y}` · `setAlwaysOnTop`/`setFullscreen`/`setDecorations`/`setOpacity {label,value}` · `setCursor {cursor}` · `setCursorVisible {value}` |
 | `notification` | `notify {title,body?,id?,waitMs?}` · `requestPermission` |
 | `clipboard` | `read` · `write {text}` · `readImage` · `writeImage {png}` |
-| `shell` | `spawn {program,args?,cwd?,env?,stdin?}` (`stdin: "pipe"` to feed it) · `output`/`write`/`close`/`kill {id}` · `list` |
+| `shell` | `spawn {program,args?,cwd?,env?,stdin?}` (`stdin: "pipe"` to feed it) · `output`/`close`/`kill {id}` · `write {id,data}` · `list` |
 | `tray` | `setTitle`/`setTooltip {text}` · `setMenu {items:[{label,onClick?}]}` · `show`/`hide`/`destroy` |
 
 ## CLI

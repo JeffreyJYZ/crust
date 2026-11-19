@@ -1,0 +1,43 @@
+# Hunt 20 — persistence
+
+All claims below are `read` (code inspection and scoped `rg`); nothing here was run, and no GUI was touched.
+
+## High — `window-state` saves are an unserialized read-modify-write; concurrent calls silently drop frames
+- where: `src/plugins/window-persist.ts:149-156` (`save`), `:168-177` (`forget`), `src/plugins/window-persist-all.ts:61-81` (`saveAll`), `src/bridge/server/invoke.ts:50-87` (no queue)
+- mechanism: every mutating command does `readState(file)` → mutate the returned map → `writeState(file, map)`. Each `await` yields to the event loop, and the HTTP invoke runner awaits handlers without any per-file lock, so two in-flight commands read the same snapshot and the later atomic rename wins wholesale. Both commands return `{ok:true}`, so the lost label is reported as saved.
+- reachable by: a page fires `Promise.all([invoke("window-state","save",{label:"a"}), invoke("window-state","save",{label:"b"})])` (or a `saveAll` overlapping a `save`/`forget`). Both reads see the pre-call file; A writes `{a}`, B writes `{b}`; final file has only `b`, and both answers claim success. With two apps sharing the file (next finding) the collision needs no concurrent page at all.
+- smallest fix: serialize the mutating commands on one promise chain (a module-level `queue` each of `save`/`forget`/`saveAll`/`forgetAll` awaits), or re-read and merge under a compare-and-swap before writing so a rename never overwrites a newer snapshot.
+
+## High — every crust app shares one `window-state.json`, and the root is macOS-shaped off macOS
+- where: `src/runtime-plugins.ts:175` and `src/runtime-plugins-other.ts:105,116` call `createWindowStatePlugin({ native })` with no `app` and no `root`; fallback at `src/plugins/window-persist.ts:97` → `defaultStateRoot("crust")` at `src/plugins/window-persist-store.ts:23-27`
+- mechanism: the same helper is deliberately given `appRoot` for `store`, `database`, `downloads` and crash (`runtime-plugins.ts:51,76,78,151,185-189`), but not for `window-state`, so its file is `~/Library/Application Support/crust/window-state.json` regardless of the configured app id. On win32/linux the same join produces a `Library/Application Support` path under the user's home instead of an OS-appropriate data dir.
+- reachable by: two crust apps installed side by side; app B's `restore`/`restoreAll` reads app A's frames and moves B's same-labelled windows to A's size and position (or, if labels differ, A's `forgetAll` wipes B's entries on the shared file). No special configuration is needed — it is the default registration.
+- smallest fix: thread `app: appId` through `OtherPlatformParts` and pass `createWindowStatePlugin({ native, app: appId })` on all three call sites; fold `defaultStateRoot` into a platform-aware root helper.
+
+## Medium — `restore` applies a saved frame with no screen validation; a display change can leave the window off-screen
+- where: `src/plugins/window-persist.ts:158-166` (`restore`), `src/plugins/window-persist-all.ts:83-99` (`restoreAll`); no screen seam in either
+- mechanism: the stored `{x,y,width,height}` is passed straight to `setSize` then `setPosition`. Nothing checks the frame against current screens (the `screen` plugin's `listScreens`/main-screen frame is never consulted here), and `readFrame` only checks four finite numbers with positive width/height — no bounds. `positioner` explicitly refuses to clamp (`src/plugins/positioner.ts:90`), so there is no framework-wide screen-constraining policy to rely on.
+- reachable by: save a window at `x:2000,y:0` on an external display, quit, disconnect that display, relaunch and call `restore`. The frame is applied as-is on the remaining single display; AppKit's `setFrame:` does not constrain to screen, so the window reopens where the user cannot reach it. `restore` answers `restored:true` — a success the user cannot see.
+- smallest fix: give the window-state plugin an injected screen-frame seam and, before applying, intersect the saved frame with the union of current screen frames (or fall back to `restored:false`) so stale geometry cannot place a window off-screen.
+
+## Low — a corrupt state file is discarded silently and then overwritten, destroying the labels it still held
+- where: `src/plugins/window-persist-store.ts:53-69` (`readState`), `:79-89` (`writeState`), `src/plugins/window-persist.ts:149-156`
+- mechanism: `readState` returns an empty map for a file that fails `JSON.parse`, with no signal to the caller. The next `save` writes a fresh file containing only the just-saved label. `store.json` by contrast moves a corrupt file to `store.json.corrupt` and reports the path (`src/plugins/store-file.ts:49-51`), so there is a recovery path there and none here.
+- reachable by: any external corruption (a partial write from an older build, a hand edit, disk error) that leaves valid JSON for some labels and truncated JSON overall. `restore` reports `restored:false` (by design), then one `save` permanently erases every other label that was recoverable in the raw bytes.
+- smallest fix: on parse failure, rename `window-state.json` to `window-state.json.corrupt` before returning the empty state, mirroring `store-file.ts`, so the original bytes survive a subsequent save.
+
+## Low — a crash between temp write and rename leaves orphan `.tmp` files that are never cleaned
+- where: `src/plugins/window-persist-store.ts:79-89`; same pattern in `src/plugins/store-file.ts:57-67` and `src/plugins/stronghold-file.ts:155-166`
+- mechanism: `writeState` writes `${file}.${pid}.${random}.tmp` and renames it; cleanup runs only in the `catch` path. A process death after `writeFile` but before `rename` skips that cleanup. `readState` ignores the stray file, so each such crash leaves one full state JSON behind with no code path that removes it.
+- reachable by: kill the app during a save (the atomic-write window is small but nonzero), repeated over launches; the data root accumulates one orphan per crash. `store.json` and `stronghold.json` have the same shape, so the same litter appears there.
+- smallest fix: at plugin construction (or in `readState`), prune sibling `*.tmp` files older than a startup cutoff, or write all state files into a dedicated `tmp/` subdir that is cleared on launch.
+
+## Checked and clean
+- **Atomic write / temp-rename**: `writeState` writes beside the target on the same filesystem and renames, so a crash cannot leave a truncated live file (`window-persist-store.ts:79-89`). The test `window-persist.test.ts:26-47` asserts no `.tmp` remains after a successful write — correct for success; it says nothing about the crash window above, which is why that is a separate finding.
+- **Prototype-key labels**: `readState` builds a null-prototype map and every writer starts from it, so a label `"__proto__"` is stored as an ordinary own property rather than mutating `Object.prototype`; `window-proto-label.test.ts` pins this (`window-persist-store.ts:41-50,64-67`). Clean.
+- **Corrupt entry shape**: `readFrame` rejects non-objects, non-finite numbers and non-positive dimensions, and `readState` keeps the good entries while skipping bad ones (`window-persist-store.ts:29-39,64-68`); `window-persist.test.ts:87-112` proves a bad label does not poison a good one. Clean for type-shape corruption; the whole-file case is the Low finding above.
+- **Crash-log growth**: `MAX_CRASH_RECORDS = 200` and `rotateLog` rewrites the log to the newest 200 lines, while `last-crash.json` is overwritten each time; page message/stack are capped at `MAX_CRASH_CHARS` (`runtime-crash-write.ts:37-51,66-101`). Bounded; clean.
+- **File modes**: `store.json` and `stronghold.json` are written 0600 on create and chmod'd (temp mode + explicit chmod), and crash artefacts are chmod'd 0600 (`store-file.ts:57-67`, `stronghold-file.ts:150-166`, `runtime-crash-write.ts:58-64,92-99`). `window-state.json` is 0644, but frames are not secret, so this is not a security finding.
+- **Closed-window race**: `save` deliberately uses the tracked-window oracle (`isOpen`) rather than `list()` alone, so a closed-but-tracked window is still saved instead of being dropped as `unknown-window`; `window-closed-label.test.ts:60-71` proves it (`window-persist.ts:107, src/plugins/window-args.ts knownWindow`). Clean.
+- **App-id traversal into data roots**: already closed — `validateApp` refuses `id === "." / ".."` and any `/` or `\` before any root is built (`src/config/validate-app.ts:10-15`). I did not report this because the reachable path no longer exists.
+- **Bulk command liveness**: `saveAll` keeps the previous entry when a single frame read throws and names the label in `skipped`, so one bad window does not erase good frames (`window-persist-all.ts:67-80`). Clean.

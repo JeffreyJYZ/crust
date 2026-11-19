@@ -88,7 +88,7 @@ token boundary were both absent from this page for two revisions while the sweep
 | Tauri | crust | Status | Proof |
 | --- | --- | --- | --- |
 | Security / capabilities | `security.capabilities` + `security.grants`, checked in the bridge before a handler runs | same | no sweep command — config + bridge check; `src/bridge/capabilities.test.ts` |
-| CSP | `DEFAULT_CSP` when `security.csp` is absent: no inline script without that response's nonce, no evaluated string, no framing; a custom string replaces the policy | same | no sweep command — `DEFAULT_CSP` + nonce; `src/bridge/server/csp-nonce.test.ts` |
+| CSP | `DEFAULT_CSP` when `security.csp` is absent: no inline script without that response's nonce, no evaluated string, no framing; a custom string replaces the policy, validated to admit inline scripts because it cannot name the nonce | same | no sweep command — `DEFAULT_CSP` + nonce; `src/bridge/server/csp-nonce.test.ts` |
 | Isolation pattern | none — there is no second document between the page and the bridge | absent | — |
 | IPC transport | loopback HTTP + bearer token on the navigation URL; Tauri uses a custom scheme with no socket at all | accepted difference | — |
 | Command authorisation | deny by default once `security.capabilities` is set; absent config allows every command, as it always has | same | no sweep command — bridge check; `src/bridge/capabilities.test.ts` |
