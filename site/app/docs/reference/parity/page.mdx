@@ -30,7 +30,7 @@ Windows and Linux have a `Platform` each, and both are proven: Linux on real GTK
 
 | Tauri | crust | Status | Proof |
 | --- | --- | --- | --- |
-| Windows | `window`, 26 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize, decorations, opacity, cursor | same | `window.list` |
+| Windows | `window`, 27 commands: create, close, focus, title, list, size, position, always-on-top, fullscreen, minimize, maximize, decorations, opacity, cursor, capture | same | `window.list` |
 | Webviews | one `WKWebView` per window | same | no sweep command — structural; no command reports webview count |
 | Menus | `menu.setAppMenu/showContext/reset`, `NSMenu` in `98`+`99` | same | `menu.read`; `menu.showContext` skipped — modal |
 | Tray | `tray.setTitle/setMenu/setTooltip/show/hide/destroy` — menu rows, and a hover tooltip applied through `-setToolTip:` on the item or its button | same | `tray.setTooltip` |

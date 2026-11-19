@@ -135,6 +135,14 @@ export async function nativePlugins(
 	 * `bad-request` rather than silently acting on that first window.
 	 */
 	const webviewFor = webviewResolver(platform);
+	// Gated exactly like its registration (`core.ts`'s `testingEnabled`): a normal app never compiles
+	// the evaluate unit, and an unregistered namespace is never reachable to grant. `webviewFor` is
+	// the resolver navigation and find already use, so an unknown label refuses there.
+	if ((await import("@/plugins/core")).testingEnabled()) {
+		const { setTestingAdapter } = await import("@/plugins/testing");
+		const { darwinTestingAdapter } = await import("@/plugins/testing-darwin");
+		setTestingAdapter(darwinTestingAdapter(webviewFor));
+	}
 	const crashNative = {
 		arm: (recordPath: string) => crash.armCrashHandlers(recordPath),
 		disarm: () => crash.disarmCrashHandlers(),

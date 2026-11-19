@@ -1,5 +1,5 @@
 /**
- * `crust:window` — create, close, focus, title, list, isOpen, which window this page is (label), plus the state group (size, position, always-on-top, fullscreen, minimize, maximize). `NSWindow` is AppKit and this module owns none: the native half is a parameter, so it works unchanged on a platform with none, and without an adapter every command returns a typed `NotImplemented` naming the selector — never a silent undefined, never a resolved fake.
+ * `crust:window` — create, close, focus, title, list, isOpen, which window this page is (label), the state group (size, position, always-on-top, fullscreen, minimize, maximize), the chrome group (title bar, opacity, pointer) and `capture`, the page's own render as a base64 PNG. `NSWindow` is AppKit and this module owns none: the native half is a parameter, so it works unchanged on a platform with none, and without an adapter every command returns a typed `NotImplemented` naming the selector — never a silent undefined, never a resolved fake.
  * `create` is the one command whose native half is optional (it postdates the other five), so an old adapter still compiles and answers `unknown-adapter`; its macOS implementation is `DarwinPlatform.createWindow`, and this file never grows a second one. The adapter contract carries rules the type cannot: an untracked label throws `WindowAdapterError("unknown-window")` and one already held throws `duplicate-label` rather than replacing the entry — `DarwinPlatform` keeps a closed window addressable, so only it can tell "gone from `list`" from "still in the map". Both become values before the bridge.
  */
 
@@ -10,6 +10,7 @@ import {
 	type PluginDefinition,
 } from "./define";
 import { failure, invalidLabel, knownWindow, missingWindow, readLabel } from "./window-args.ts";
+import { type WindowCaptureCommands, windowCaptureCommands } from "./window-capture.ts";
 import { type WindowChromeCommands, windowChromeCommands } from "./window-chrome.ts";
 import { createWindowCommand } from "./window-create.ts";
 import { type WindowLabelAnswer, labelCommand } from "./window-label.ts";
@@ -47,7 +48,8 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 		/** The window this page is in, from the identity its request carried. */
 		label: (args: unknown, ctx: PluginContext) => WindowLabelAnswer;
 	} & WindowStateCommands &
-		WindowChromeCommands
+		WindowChromeCommands &
+		WindowCaptureCommands
 > {
 	const act = <Result>(
 		command: string,
@@ -136,6 +138,9 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 			// the title bar, the opacity and the pointer.
 			...windowStateCommands(adapter),
 			...windowChromeCommands(adapter),
+			// The page's own render, as a base64 PNG. A platform with no webview
+			// snapshot API answers `not-implemented` naming it.
+			...windowCaptureCommands(adapter),
 		},
 	});
 }

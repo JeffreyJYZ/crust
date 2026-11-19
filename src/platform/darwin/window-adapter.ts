@@ -2,6 +2,7 @@ import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import { shim } from "./index.ts";
 import { cstr, S } from "./objc.ts";
 import type { DarwinPlatform } from "./platform.ts";
+import { windowCaptureAdapter } from "./window-capture-adapter.ts";
 import { windowChromeAdapter } from "./window-chrome-adapter.ts";
 import { windowStateAdapter } from "./window-state-adapter.ts";
 
@@ -48,12 +49,30 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 		return new URL(url ?? "/", documentBase()).toString();
 	};
 
+	/**
+	 * The webview a label names, for `capture`. A label whose window is gone is the same refusal the
+	 * other sends give rather than a picture of whichever view came first.
+	 */
+	const webview = (label: string): number => {
+		const view = platform.webview(label);
+		if (view === undefined || view === 0) {
+			throw new WindowAdapterError(
+				"unknown-window",
+				`crust: no open window labelled ${JSON.stringify(label)} to capture`,
+			);
+		}
+		return view;
+	};
+
 	return {
 		// Geometry, level and the three toggles, each on the same `require`, so an
 		// unknown label refuses there too.
 		...windowStateAdapter(require),
 		// The title bar, the opacity and the pointer, on the same `require`.
 		...windowChromeAdapter(require),
+		// The page's own render, as base64 PNG: async because WebKit answers through a
+		// completion handler, and never a screenshot of the display.
+		...windowCaptureAdapter(webview),
 		/**
 		 * One `platform.window(label)` answers both questions: a handle means a live window and is refused, `undefined` means absent *or* closed and the call has already pruned the closed entry — which stops `createWindow` refusing a label nobody can see in `list`. The live case throws before any release.
 		 */

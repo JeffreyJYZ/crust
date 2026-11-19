@@ -22,6 +22,15 @@ export interface FakeWindow {
 	opacity: number;
 }
 
+/**
+ * A 1×1 transparent PNG, base64. Only the shape crosses a fake: a plugin test asserts
+ * `{ width, height, scale, png }` reached the page, while the real bytes are WebKit's and are
+ * proved by the darwin suite. A fake that invented 1100×760 pixels would dress a constant up as a
+ * measurement.
+ */
+export const FAKE_CAPTURE_PNG =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 /** A fresh window: 800×600 at the origin, every flag off, fully opaque. */
 function blank(title?: string): FakeWindow {
 	return {
@@ -91,6 +100,15 @@ export function fakeAdapter(labels: string[] = ["main"]): WindowNative & {
 		},
 		list: () => [...windows.keys()],
 		isOpen: (label) => require(label).open,
+		/**
+		 * The picture, as the shape the page receives. Async like the real adapter, so a suite that
+		 * awaits the plugin's `capture` proves the same path the platform takes.
+		 */
+		capture: async (label) => {
+			calls.push(`capture:${label}`);
+			require(label);
+			return { width: 1, height: 1, scale: 1, png: FAKE_CAPTURE_PNG };
+		},
 		setSize: (label, size) => {
 			calls.push(`setSize:${label}:${size.width}x${size.height}`);
 			const entry = require(label);

@@ -7,6 +7,8 @@
  * JS object graph is not: a string is the one value that crosses safely.
  */
 
+import { PAGE_CONSOLE_SOURCE } from "../../bridge/page-console.ts";
+
 /**
  * Runs in the isolated world at document start.
  *
@@ -126,8 +128,12 @@ export const CONTENT_WORLD_SOURCE = `(function () {
  * `{ ok, result }` / `{ ok: false, error }` envelope. Page script can call every command the window
  * is granted; it cannot read the token, and replacing this function buys nothing, because the world
  * that owns the credential is not reached by the page.
+ *
+ * The console tap travels in the same script rather than a third `WKUserScript`: both halves are
+ * page-world document-start work, and one script is what keeps a webview's controller holding the
+ * count `content-world.ts` reads as its install state.
  */
-export const PAGE_BRIDGE_SOURCE = `(function () {
+const PAGE_INVOKE_SOURCE = `(function () {
 	if (typeof window.crustInvoke === "function") return;
 	var seq = 0;
 	var waiting = Object.create(null);
@@ -154,3 +160,10 @@ export const PAGE_BRIDGE_SOURCE = `(function () {
 		});
 	};
 })();`;
+
+/**
+ * The one page-world script: the console tap first, then the invoke bridge. Two IIFEs rather than
+ * one, so the tap installs even when `crustInvoke` is already there — a page that reloaded into a
+ * second document still gets its first console line recorded.
+ */
+export const PAGE_BRIDGE_SOURCE = `${PAGE_CONSOLE_SOURCE}\n${PAGE_INVOKE_SOURCE}`;
