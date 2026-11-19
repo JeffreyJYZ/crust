@@ -18,8 +18,8 @@ index is <https://crust.jyz.land/docs>.
 ## Quickstart
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.2.1 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.2.1 init my-app --react   # also --next, --svelte, --vue
+bunx github:JeffreyJYZ/crust#v0.2.2 init my-app   # plain HTML, no bundler
+bunx github:JeffreyJYZ/crust#v0.2.2 init my-app --react   # also --next, --svelte, --vue
 cd my-app && bun install
 bun run dev        # crust dev
 ```
