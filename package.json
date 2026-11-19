@@ -33,6 +33,7 @@
 		"e2e": "bun run scripts/e2e.ts",
 		"e2e:notes": "bun run scripts/e2e-notes.ts",
 		"e2e:window": "bun run scripts/e2e-window.ts",
+		"e2e:fullscreen": "bun run scripts/e2e-fullscreen.ts",
 		"e2e:dogear": "bun run scripts/e2e-dogear.ts",
 		"e2e:capability": "bun run scripts/e2e-capability.ts",
 		"check:lines": "bun run scripts/line-cap.ts",
