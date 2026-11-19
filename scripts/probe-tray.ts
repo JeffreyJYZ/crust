@@ -7,18 +7,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createPlatform } from "@/platform/darwin/index.ts";
 import { createStatusBar, type StatusBarReadback } from "@/platform/darwin/status-bar.ts";
-import { captureFrontmost, guardFocus, restoreFocus } from "./e2e-harness.ts";
+import { guardFocus, restoreFocus } from "./e2e-harness.ts";
 import { clusters, inPoints, measured, screenRect, stats } from "./tray/analysis.ts";
 import { capture, desktopBounds, regionOf, setScreen } from "./tray/capture.ts";
 import { DIR, OCCLUSION_VISIBLE, STRIP_HEIGHT, TITLE } from "./tray/constants.ts";
 
 async function main(): Promise<void> {
-	// Captured before the platform starts: `start()` activates the app, so the human's own
-	// app is frontmost only until the first line of the probe runs.
-	const frontmost = await captureFrontmost();
-	// Armed at the same point: `start()` activates this probe's app, and a killed run runs no
-	// `finally`, so the guard is what restores on `exit` and the three signals.
-	guardFocus();
+	// Armed before `start()` activates this probe's app. Its decision is what the `finally`
+	// restores; a killed run has no `finally`, so the guard also restores on `exit` and
+	// the three signals.
+	const frontmost = guardFocus();
 	try {
 		mkdirSync(DIR, { recursive: true });
 

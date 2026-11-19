@@ -6,14 +6,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import {
-	captureFrontmost,
-	clearSurvivors,
-	guardFocus,
-	restoreFocus,
-	survivorsOf,
-	Verdict,
-} from "./e2e-harness.ts";
+import { clearSurvivors, guardFocus, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
 import { lastLine } from "./lib/text.ts";
 import { runOnce } from "./dev-binary/run.ts";
 import {
@@ -36,11 +29,9 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
-	// Captured before any `dev` run opens a window; passed to restoreFocus in `finally`.
-	const frontmost = await captureFrontmost();
-	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-	// `exit` and the three signals; the `finally` below still covers a normal return.
-	guardFocus();
+	// Armed before any `dev` run opens a window. Its decision is what the `finally` restores;
+	// a Ctrl-C runs no `finally`, so the guard also restores on `exit` and the three signals.
+	const frontmost = guardFocus();
 	// Everything below can throw — a missing binary, a full temp directory, a `pgrep` that
 	// will not answer — so it all sits inside the `try` and the restore is reachable from
 	// each of those paths rather than only from the happy one.

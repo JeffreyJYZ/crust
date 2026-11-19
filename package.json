@@ -28,7 +28,7 @@
 		"typecheck": "bun check",
 		"format": "bun fmt src scripts",
 		"format:check": "bun fmt --check src scripts",
-		"test": "bun test ./src ./examples scripts/release scripts/docs-reference.test.ts scripts/e2e-detail.test.ts scripts/e2e-parity-patterns.test.ts scripts/butter-sweep.test.ts",
+		"test": "bun test ./src ./examples scripts/release scripts/harness/focus-enforce.test.ts scripts/docs-reference.test.ts scripts/e2e-detail.test.ts scripts/e2e-parity-patterns.test.ts scripts/butter-sweep.test.ts",
 		"test:no-skips": "bun test --reporter=junit --reporter-outfile=.junit-skips.xml ./src ./examples scripts/release scripts/docs-reference.test.ts scripts/e2e-detail.test.ts scripts/e2e-parity-patterns.test.ts scripts/butter-sweep.test.ts && bun scripts/check-skips.ts .junit-skips.xml",
 		"e2e": "bun run scripts/e2e.ts",
 		"e2e:notes": "bun run scripts/e2e-notes.ts",

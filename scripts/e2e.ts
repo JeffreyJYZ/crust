@@ -6,7 +6,6 @@
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
-	captureFrontmost,
 	clearSurvivors,
 	guardFocus,
 	probe,
@@ -153,11 +152,10 @@ async function main(): Promise<number> {
 }
 
 // Captured before `main` builds and launches the app, so restore hands focus back to
-// whoever the human was using rather than a fixed terminal.
-const frontmost = await captureFrontmost();
-// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-// `exit` and the three signals; the `finally` below still covers a normal return.
-guardFocus();
+// whoever the human was using rather than a fixed terminal. Armed at the same point: a
+// Ctrl-C runs no `finally`, so the guard is what restores on `exit` and the three signals;
+// the `finally` below still covers a normal return.
+const frontmost = guardFocus();
 let code: number;
 try {
 	code = await main();

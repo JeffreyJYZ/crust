@@ -153,6 +153,11 @@ export async function probe(options: ProbeOptions): Promise<Probe> {
 	// a moment, then stop waiting — a WebKit helper can hold the far end open.
 	await Promise.race([pumping, delay(500)]);
 
+	// The deadline ended the child, so any exit code — including the 0 a SIGTERM handler
+	// returns — is a fact about the kill, not the app. `null` is the only code a caller
+	// cannot read as a normal exit; this mirrors runCommand's timeout branch.
+	if (timedOut) code = null;
+
 	return {
 		code,
 		signal,

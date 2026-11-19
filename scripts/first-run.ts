@@ -6,7 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureFrontmost, guardFocus, restoreFocus } from "./e2e-harness.ts";
+import { guardFocus, restoreFocus } from "./e2e-harness.ts";
 
 const argv = Bun.argv.slice(2);
 const template = argv.includes("--next") ? "next" : argv.includes("--plain") ? "plain" : "react";
@@ -72,11 +72,9 @@ async function launch(binary: string, deadlineMs: number): Promise<{ code: numbe
 	return { code, log: chunks.join("") };
 }
 
-// Captured before the build launches a window; passed to restoreFocus in `finally`.
-const frontmost = await captureFrontmost();
-// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-// `exit` and the three signals; the `finally` below still covers a normal return.
-guardFocus();
+// Armed before the build launches a window. Its decision is what the `finally` restores;
+// a Ctrl-C runs no `finally`, so the guard also restores on `exit` and the three signals.
+const frontmost = guardFocus();
 // The scratch workspace is created inside the `try`, so a full temp directory cannot throw
 // between the capture above and the restore below.
 let workspace: string | undefined;

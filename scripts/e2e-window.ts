@@ -6,13 +6,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	captureFrontmost,
-	clearSurvivors,
-	guardFocus,
-	restoreFocus,
-	Verdict,
-} from "./e2e-harness.ts";
+import { clearSurvivors, guardFocus, restoreFocus, Verdict } from "./e2e-harness.ts";
 import { proof } from "./window/proof.ts";
 
 async function main(): Promise<number> {
@@ -25,11 +19,10 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
-	// Capture before the proof launches its window; passed to restoreFocus in `finally`.
-	const frontmost = await captureFrontmost();
-	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-	// `exit` and the three signals; the `finally` below still covers a normal return.
-	guardFocus();
+	// Armed before the proof launches its window. Its decision is what the `finally`
+	// restores; a Ctrl-C runs no `finally`, so the guard also restores on `exit` and the
+	// three signals.
+	const frontmost = guardFocus();
 	const scratch = await mkdtemp(join(tmpdir(), "crust-e2e-window-"));
 	let binary: string | undefined;
 	try {

@@ -7,7 +7,6 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-	captureFrontmost,
 	clearSurvivors,
 	guardFocus,
 	restoreFocus,
@@ -24,8 +23,6 @@ const repo = resolve(import.meta.dir, "..");
 
 async function main(): Promise<number> {
 	const verdict = new Verdict();
-	// Captured before the build launches a window; passed to restoreFocus in `finally`.
-	const frontmost = await captureFrontmost();
 	// One stable identifier, not a random one. macOS remembers an authorization decision
 	// per bundle identifier, so a stable id means a person clicks Allow **once ever** and
 	// every later run is unattended; a fresh id asks again every time, which made this
@@ -40,9 +37,9 @@ async function main(): Promise<number> {
 	// twice each way. A notification-gated app has to live outside the system temp directory.
 	const cache = join(homedir(), ".cache");
 	const name = "Notify e2e";
-	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-	// `exit` and the three signals; the `finally` below still covers a normal return.
-	guardFocus();
+	// Armed before the build launches a window. Its decision is what the `finally` restores;
+	// a Ctrl-C runs no `finally`, so the guard also restores on `exit` and the three signals.
+	const frontmost = guardFocus();
 	let root: string | undefined;
 	let builtBinary: string | undefined;
 	try {

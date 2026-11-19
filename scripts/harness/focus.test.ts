@@ -93,21 +93,23 @@ test("restore is a no-op off macOS", async () => {
 
 /**
  * The classification lives in `focus-callers.ts`; what is asserted here is that it is total.
- * `captureFrontmost` plus a `finally` covers a normal or thrown return, and only `guardFocus()`
- * covers `exit` and the three signals — so a suite with the first and not the second still steals
- * focus when the human presses Ctrl-C. The set is read from disk, so a new suite fails until it is
- * wired: the old list only checked that twelve named files still contained a string, which is why
- * a suite calling neither capture nor restore was invisible to it.
+ * `guardFocus()` both arms the signal/exit restore and decides the target — a captured app, or the
+ * fallback when a test app would cause a cascade. A suite's `finally` must restore that decision,
+ * not a second raw capture, or it bypasses the refusal. The set is read from disk, so a new suite
+ * fails until it is wired: the old list only checked that twelve named files contained a string,
+ * which is why a suite calling neither guard nor restore was invisible to it.
  */
-test("every GUI-launching script arms the focus guard, not only the finally", async () => {
+test("every GUI-launching script restores the guard's target, not a raw capture", async () => {
 	for (const file of LAUNCHERS) {
 		const text = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
 		expect(text, `${file} calls guardFocus()`).toContain("guardFocus();");
 		expect(harnessImports(text), `${file} imports guardFocus from the harness`).toContain(
 			"guardFocus",
 		);
-		expect(text, `${file} captures the frontmost app`).toContain("captureFrontmost()");
-		expect(text, `${file} restores that app`).toContain("restoreFocus(frontmost)");
+		expect(text, `${file} captures the guard's decision`).toContain(
+			"const frontmost = guardFocus();",
+		);
+		expect(text, `${file} restores that decision`).toContain("restoreFocus(frontmost)");
 		expect(text, `${file} has no bare restoreFocus()`).not.toMatch(/await restoreFocus\(\);/);
 	}
 });

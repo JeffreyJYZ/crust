@@ -7,7 +7,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	captureFrontmost,
 	clearSurvivors,
 	guardFocus,
 	probe,
@@ -37,12 +36,10 @@ async function main(): Promise<number> {
 	}
 
 	const verdict = new Verdict();
-	// Capture before the probe launches its window, so restore hands focus back to
-	// whoever the human was actually using rather than a fixed terminal.
-	const frontmost = await captureFrontmost();
-	// Armed at the same point: a Ctrl-C runs no `finally`, so the guard is what restores on
-	// `exit` and the three signals; the `finally` below still covers a normal return.
-	guardFocus();
+	// Armed before the probe launches its window. Its decision is what the `finally`
+	// restores; a Ctrl-C runs no `finally`, so the guard also restores on `exit` and the
+	// three signals.
+	const frontmost = guardFocus();
 
 	// Everything that can throw sits inside the `try`, so a full temp directory or a
 	// wedged `pgrep` still reaches the restore below rather than skipping it.
