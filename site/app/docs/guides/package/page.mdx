@@ -1,9 +1,10 @@
 # Packaging
 
-Three commands: on macOS `build` assembles and ad-hoc signs an app, `dmg` wraps it for handing
-over, and `sign` replaces the signature with a Developer ID when you have one. On Linux and Windows
-`build` produces the flat compiled binary only — no bundle, no signing — and the bundle commands
-below do not apply.
+One command with ordered stages: on macOS `crust build` assembles and ad-hoc signs an app, then
+`--sign` replaces that signature with a Developer ID, `--notarize` submits the app and staples its
+ticket, and `--dmg` wraps the already-stapled app for handing over. `crust dmg`, `crust sign` and
+`crust notarize` are no longer commands. On Linux and Windows `build` produces the flat compiled
+binary only — no bundle, no signing — and the stages below do not apply.
 
 ## `crust build`
 
@@ -15,8 +16,8 @@ crust build app.tsx          # single-file mode
 
 It runs `build.beforeBuildCommand` first, reads `build.assets`, compiles the backend with Bun, then
 — only on macOS — assembles the bundle and signs it ad-hoc. Off darwin the compiled binary is the
-whole product and `sign` prints `none — codesign is macOS-only`. A failed frontend build stops the
-command instead of packaging stale bytes.
+whole product and `build` reports `sign  none — codesign is macOS-only`. A failed frontend build
+stops the command instead of packaging stale bytes.
 
 | output                                        | what it is                         |
 | --------------------------------------------- | ---------------------------------- |
@@ -33,29 +34,32 @@ missing `node_modules` fails here with a plain "run bun install" rather than ins
 `out/`, because a static export is where Next puts its page. Whatever the directory holds is
 embedded in the binary — there is no server at run time.
 
-## `crust dmg`
+## The `--dmg` stage
 
 ```sh
-crust dmg
+crust build --dmg                         # image from the app built in this run
+crust build --sign --notarize --dmg       # full release order in one command
 ```
 
-Requires a built app. Stages the bundle beside an `/Applications` symlink and compresses that
-folder into a drag-to-Applications image at `dist/<app.name>-<app.version>.dmg`. The volume name is
-`app.name`.
+Stages the freshly built bundle beside an `/Applications` symlink and compresses that folder into
+a drag-to-Applications image at `dist/<app.name>-<app.version>.dmg`. The volume name is `app.name`.
+The stage runs last, so with `--notarize` the image holds the already-stapled app. The dmg itself is
+**not** notarized: the notary plan zips and staples the `.app`, so the app's ticket travels inside
+the image.
 
-## `crust sign`
+## The `--sign` stage
 
 ```sh
-CRUST_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" crust sign
+CRUST_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" crust build --sign
 ```
 
 Reads the identity from the environment and fails naming it when unset. Signs with
 `--options runtime`, seals the entitlements below, verifies with `codesign --verify --strict`, and
-prints what `spctl` says.
+prints what `spctl` says. It replaces the ad-hoc signature `crust build` just applied.
 
 It does **not** notarise: that needs `notarytool` credentials and a `stapler staple` afterwards,
-and until the ticket is stapled `spctl` still refuses the bundle. `crust sign` reports that state
-rather than claiming a shippable app.
+and until the ticket is stapled `spctl` still refuses the bundle. Add `--notarize` for that; it
+requires `--sign`, because an ad-hoc signature cannot be submitted.
 
 ## Why ad-hoc is the default on macOS
 
@@ -79,7 +83,7 @@ Developer ID gives the bundle a stable requirement.
 
 ## Entitlements
 
-The hardened runtime is off by default. With `crust sign` it is on, and two entitlements are
+The hardened runtime is off by default. With the `--sign` stage it is on, and two entitlements are
 sealed:
 
 | entitlement                                              | why                                                                                                                         |

@@ -2,7 +2,7 @@
 
 Two more artefacts beside the disk image: an AppImage for Linux and an NSIS installer for Windows. Both are builders in `src/packaging/`, and both are honest about the one thing a person can install.
 
-**Run it:** `crust package --format appimage` or `--format nsis`, after `crust build`. `--format` is repeatable, defaults to `dmg`, and a machine without the packer prints the `requires` line and exits 1 rather than throwing, so the remaining formats still build. The macOS artefact is also [`crust dmg`](/docs/guides/package).
+**Run it:** `crust package --format appimage` or `--format nsis`, after `crust build`. `--format` is repeatable, defaults to `dmg`, and a machine without the packer prints the `requires` line and exits 1 rather than throwing, so the remaining formats still build. The macOS artefact is also [`crust build --dmg`](/docs/guides/package).
 
 An AppImage cannot be built without the icon, so its absence is a line rather than a crash:
 

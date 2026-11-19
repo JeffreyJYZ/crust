@@ -237,13 +237,13 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 | --- | --- |
 | `crust init <dir> [--react\|--next\|--svelte\|--vue]` | scaffold into an empty directory |
 | `crust dev [file]` | watch the backend, restart on change, keep the frontend's own dev server |
-| `crust build [file]` | compile; **macOS** assembles `X.app` in `dist/` and ad-hoc signs it. Linux/Windows produce the flat binary |
-| `crust sign` | Developer ID + hardened runtime, needs `CRUST_SIGNING_IDENTITY` |
-| `crust dmg` / `crust package --format appimage\|nsis` | release artefacts |
-| `crust notarize` | notarytool, staple, validate |
+| `crust build [file]` | compile; **macOS** assembles `X.app` in `dist/` and ad-hoc signs it. Linux/Windows produce the flat binary. `--sign --notarize --dmg` add the release stages in that order |
+| `crust package --format <fmt>` | release artefacts: `dmg`, `appimage`, `nsis`; repeatable, defaults to `dmg` |
 | `crust doctor` | one line per launch check, exit 1 on any failure |
 
 `--dir <path>` and `--config <path>` work on all of them.
+
+`crust sign`, `crust dmg` and `crust notarize` are gone — each prints `crust: unknown command "<verb>"`. Use the `crust build` stages in order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--notarize` needs `--sign`; the dmg is built from the stapled app and is not itself notarized.
 
 ## Failure codes
 

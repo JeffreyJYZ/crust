@@ -71,7 +71,7 @@ bun run build:standalone        # writes dist/crust
 cd my-app && bun install && ./dist/crust dev
 ```
 
-One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (On macOS `build` and `sign` still want the Xcode command line tools for `codesign`; Linux and Windows builds sign nothing.) This is the same file the [release page](https://github.com/JeffreyJYZ/crust/releases/latest) attaches per platform; building it yourself is how you get one for a target the workflow does not ship.
+One file with the framework sources embedded — `src/`, `templates/`, `tsconfig.json`, `package.json` — so it needs no checkout at all: `init`, `doctor`, `dev` and `build` all run from it, on a machine with nothing installed but Bun. (On macOS `build` and its `--sign` stage still want the Xcode command line tools for `codesign`; Linux and Windows builds sign nothing.) This is the same file the [release page](https://github.com/JeffreyJYZ/crust/releases/latest) attaches per platform; building it yourself is how you get one for a target the workflow does not ship.
 
   </TabPanel>
 </Tabs>

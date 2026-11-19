@@ -26,7 +26,7 @@ On Linux, `keychain` talks to libsecret with the synchronous `v` variants — `s
   </AccordionItem>
   <AccordionItem title="No notarisation without a Developer ID">
 
-A notarised ticket needs a certificate and `notarytool` credentials. `crust sign` takes `CRUST_SIGNING_IDENTITY`, signs with the hardened runtime, and still reports `spctl` refusing until the ticket is stapled.
+A notarised ticket needs a certificate and `notarytool` credentials. `crust build --sign` takes `CRUST_SIGNING_IDENTITY`, signs with the hardened runtime, and still reports `spctl` refusing until the ticket is stapled; `--notarize` submits and staples it.
 
   </AccordionItem>
   <AccordionItem title="Auto-update is macOS-only">

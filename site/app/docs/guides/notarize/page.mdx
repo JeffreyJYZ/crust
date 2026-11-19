@@ -2,7 +2,7 @@
 
 Submitting a signed bundle to Apple and stapling the ticket, in the one order that works. The argv is a pure value in `notarize-plan.ts`, so what a test asserts is what runs.
 
-**Run it:** `crust notarize`, after `crust sign`. Credentials come from the environment — `CRUST_SIGNING_IDENTITY`, then either `CRUST_NOTARY_PROFILE` or `CRUST_NOTARY_APPLE_ID` with `CRUST_NOTARY_PASSWORD` and `CRUST_NOTARY_TEAM_ID` — and on a machine with no Developer ID certificate the preflight refusal is printed verbatim with exit 1. Signing first is [`crust sign`](/docs/guides/package).
+**Run it:** `crust build --sign --notarize` — one command, with `--notarize` after `--sign` in the release order build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. Credentials come from the environment — `CRUST_SIGNING_IDENTITY`, then either `CRUST_NOTARY_PROFILE` or `CRUST_NOTARY_APPLE_ID` with `CRUST_NOTARY_PASSWORD` and `CRUST_NOTARY_TEAM_ID` — and on a machine with no Developer ID certificate the preflight refusal is printed verbatim with exit 1. `--notarize` requires `--sign`. The stages are described in [Packaging](/docs/guides/package).
 
 On a machine with no Developer ID certificate the refusal is the whole output — exit 1, and no command ran:
 
@@ -10,7 +10,7 @@ On a machine with no Developer ID certificate the refusal is the whole output �
 notarize refused   ad-hoc identity cannot be notarized — requires a Developer ID Application certificate
 ```
 
-The same shape names the missing credential when the identity is real but no route is set. Signing first is [`crust sign`](/docs/guides/package).
+The same shape names the missing credential when the identity is real but no route is set. Signing first is [`crust build --sign`](/docs/guides/package).
 
 ## The plan
 

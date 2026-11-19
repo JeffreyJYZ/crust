@@ -144,7 +144,7 @@ loads, and `crypto.subtle` is defined.
 - **~86 MiB is the floor**, because Bun is embedded. The honest claim is "no bundled Chromium",
   never "as small as Tauri" — Tauri ships no JavaScript engine.
 - **Ad-hoc signing by default.** It runs locally and Gatekeeper refuses it anywhere else until
-  `crust sign` puts a Developer ID on it.
+  `crust build --sign` puts a Developer ID on it.
 - **The polled pump is the only option here.** BunKit's event-driven pump is strictly better and
   is closed to crust for one reason: it wraps each `sendEvent:` in `@try`, which is Objective-C
   syntax, and `cc()` compiles C only.

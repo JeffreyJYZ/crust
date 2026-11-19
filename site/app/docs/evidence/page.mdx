@@ -61,7 +61,7 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 | `stat -f '%z'` on the assembled `.app` (0.1.26)                     | 90,374,144 B (86.19 MiB)                                                                                                   |
 | `--trim` with and without, outfile name held equal                  | byte-identical, same sha256 on 1.4.4 — `--trim` strips nothing; `--minify` saved 33,024 B in the earlier run               |
 | a Bun carrying `bun compile` (AOT plus `--trim`)                    | 55,360,800 B (52.79 MiB)                                                                                                   |
-| `crust dmg`                                                         | 40,610,304 B (38.73 MiB) image that `hdiutil verify` accepts                                                               |
+| `crust build --dmg`                                                 | 40,610,304 B (38.73 MiB) image that `hdiutil verify` accepts                                                               |
 | hardened runtime sealed with `allow-jit` alone                      | app launched, created no page, printed nothing, exit 0; the `.ips` said `SIGKILL (Code Signature Invalid)`, `Invalid Page` |
 | hardened runtime with both entitlements                             | the same bundle runs                                                                                                       |
 | `spctl` on an ad-hoc build                                          | rejected, exit 3; ad-hoc cannot be notarized                                                                               |
@@ -79,6 +79,6 @@ The item is only visible where the menu bar has room; a fullscreen Space draws n
 
 ## What is not proven
 
-- **Developer ID signing.** No such certificate exists on this machine, so `crust sign`'s path is written and never exercised, and Gatekeeper's behaviour on a recipient's Mac is untested. Ad-hoc is the only signature observed.
+- **Developer ID signing.** No such certificate exists on this machine, so `crust build --sign`'s path is written and never exercised, and Gatekeeper's behaviour on a recipient's Mac is untested. Ad-hoc is the only signature observed.
 - **The free-standing panel at runtime.** A windowless app's `beginWithCompletionHandler:` path has its adapter half tested; the AppKit half has never been entered.
 - **A warm first launch, and anything timed from inside the page.** Every cold-start worst case is a cold page cache, and the page's own `ready` marker is resolved but never reported back to the backend, so it is not timed.

@@ -1,6 +1,6 @@
 # CLI
 
-One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
+One binary, five commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
 
 ## Commands
 
@@ -12,12 +12,11 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 | `crust init <dir> --svelte`      | the Svelte + Vite scaffold                                                                                                   |
 | `crust init <dir> --vue`         | the Vue + Vite scaffold                                                                                                      |
 | `crust dev [file]`               | watch the backend, restart it on change, keep the frontend with its own dev server                                           |
-| `crust build [file]`             | compile the binary; on macOS assemble `X.app` in `dist/` and ad-hoc sign it                                                  |
-| `crust sign`                     | Developer ID signing with hardened runtime and the two entitlements; needs `CRUST_SIGNING_IDENTITY`                          |
-| `crust dmg`                      | drag-to-Applications image at `dist/<name>-<version>.dmg`                                                                    |
+| `crust build [file]`             | compile the binary; on macOS assemble `X.app` in `dist/` and ad-hoc sign it; `--sign --notarize --dmg` add the release stages |
 | `crust package [--format <fmt>]` | release artefacts for `dmg`, `appimage` or `nsis`; `--format` is repeatable and defaults to `dmg`                            |
-| `crust notarize`                 | submit the signed bundle to notarytool, then staple and validate the ticket; needs a Developer ID signature and a credential |
 | `crust doctor`                   | one line per launch check; exit 1 if any check failed                                                                        |
+
+`crust sign`, `crust dmg` and `crust notarize` are gone. Each now prints `crust: unknown command "<verb>"` and exits 1. Their work is done by stages of `crust build`, run in one invocation after the plain build in this order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--sign` replaces the ad-hoc signature with a Developer ID; `--notarize` submits the signed app, then staples and validates its ticket; `--dmg` builds the image from the already-stapled app. The disk image itself is **not** notarized — the app's ticket travels inside it.
 
 `init` refuses a non-empty directory, naming the entries it found, rather than merging into it.
 
@@ -29,6 +28,9 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 | `--config <path>` | all        | config file, relative to `--dir`                                      |
 | `--entry <path>`  | all        | backend entry, relative to `--dir`, default `src/main.ts` then `main.ts` |
 | `--format <fmt>`  | package    | `dmg`, `appimage` or `nsis`; repeat the flag for several               |
+| `--sign`          | build      | Developer ID sign the app, replacing the ad-hoc signature (needs `CRUST_SIGNING_IDENTITY`) |
+| `--notarize`      | build      | notarize and staple the signed app; implies `--sign`                   |
+| `--dmg`           | build      | build a disk image from the signed app (macOS)                         |
 | `--react`         | init       | copy the React + Vite template                                        |
 | `--next`          | init       | copy the Next.js template                                             |
 | `--svelte`        | init       | copy the Svelte + Vite template                                       |
@@ -36,7 +38,9 @@ One binary, eight commands. From a checkout `bun run src/cli/index.ts` is the sa
 | `--help`, `-h`    | all        | print the usage text, exit 0                                          |
 | `--version`, `-v` | all        | print the version, exit 0                                             |
 
-The four init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1.
+The four init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1. Any stage flag on a command other than `build` fails with `--<flag> only applies to build`.
+
+The stages refuse before any build work runs. `--notarize` without `--sign` is `notarize requires --sign — an ad-hoc signature cannot be submitted; add --sign with CRUST_SIGNING_IDENTITY`. `--sign` without the identity is `sign requires CRUST_SIGNING_IDENTITY — set "Developer ID Application: Name (TEAMID)"`. Off macOS, `--dmg` and `--sign` refuse with `--dmg has no disk image on <platform> — a disk image is macOS only` and `--sign needs codesign, which is macOS-only (this platform is <platform>)`. `--notarize` without a credential or Developer ID signature names which is missing.
 
 ## Single-file mode
 
@@ -66,11 +70,11 @@ The `extensions` block reports `zig`, `rustc` and `clang` as found with their ve
 
 | variable                 | read by                                        | does                                                                                                                |
 | ------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `CRUST_SIGNING_IDENTITY` | `crust sign`, `crust notarize`        | the Developer ID identity to sign with; absent, `crust sign` fails naming the variable and prints the expected form |
-| `CRUST_NOTARY_PROFILE`   | `crust notarize`                               | a notarytool `store-credentials` profile; wins over the one-shot route                                              |
-| `CRUST_NOTARY_APPLE_ID`  | `crust notarize`                               | the Apple ID for the one-shot credential route                                                                      |
-| `CRUST_NOTARY_PASSWORD`  | `crust notarize`                               | the app-specific password for that Apple ID                                                                         |
-| `CRUST_NOTARY_TEAM_ID`   | `crust notarize`                               | the team the Apple ID belongs to                                                                                    |
+| `CRUST_SIGNING_IDENTITY` | `crust build --sign`, `--notarize`              | the Developer ID identity to sign with; absent, `--sign` fails naming the variable and prints the expected form       |
+| `CRUST_NOTARY_PROFILE`   | `crust build --notarize`                       | a notarytool `store-credentials` profile; wins over the one-shot route                                              |
+| `CRUST_NOTARY_APPLE_ID`  | `crust build --notarize`                       | the Apple ID for the one-shot credential route                                                                      |
+| `CRUST_NOTARY_PASSWORD`  | `crust build --notarize`                       | the app-specific password for that Apple ID                                                                         |
+| `CRUST_NOTARY_TEAM_ID`   | `crust build --notarize`                       | the team the Apple ID belongs to                                                                                    |
 | `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `<cwd>/.crust/dev.json`                                                          |
 
 An uncaught command failure prints `crust <command>: <message>` and exits 1. Nothing prints a stack trace and nothing exits 0 on a refusal.

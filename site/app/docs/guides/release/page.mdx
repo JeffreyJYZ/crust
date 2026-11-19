@@ -17,7 +17,7 @@ git commit -am 'chore: 0.2.0' && git tag -a v0.2.0 -m '0.2.0' && git push origin
 
 `.github/workflows/release.yml` runs on `macos-14`, installs with `bun install --frozen-lockfile`, runs `bun run build` (which is `crust build`; the frontend build runs in `beforeBuildCommand`), then `bunx crust package --format dmg` and uploads `dist/*.dmg` to the release for the tag with `gh release create` / `gh release upload`. It needs no secret beyond the default `GITHUB_TOKEN`.
 
-Signing and notarization are deliberately not in it: `crust sign` and `crust notarize` need `CRUST_SIGNING_IDENTITY` and a notary profile, which are distribution decisions. Add those steps only when the certificate exists.
+Signing and notarization are deliberately not in it: the `crust build --sign` and `--notarize` stages need `CRUST_SIGNING_IDENTITY` and a notary profile, which are distribution decisions. Add them to the build command only when the certificate exists — `crust build --sign --notarize --dmg` runs all three stages in that order.
 
 ## Cross-compile: one command per host, not one flag
 
@@ -27,7 +27,7 @@ Signing and notarization are deliberately not in it: `crust sign` and `crust not
 bunx crust build --help      # no --target option
 ```
 
-`--target` exists only for crust's own standalone executable (`bun run build:standalone -- --target bun-<os>-<arch>`), which compiles crust, not the user's app. To ship more than one OS, run the same `bunx crust build` on a runner of each OS. The scaffolded workflow is the macOS job; add a Linux job for `--format appimage` (needs `app.icon` and `appimagetool`) and a Windows job for `--format nsis` (needs `makensis`). The `.dmg`, `sign` and `notarize` steps stay on a mac host.
+`--target` exists only for crust's own standalone executable (`bun run build:standalone -- --target bun-<os>-<arch>`), which compiles crust, not the user's app. To ship more than one OS, run the same `bunx crust build` on a runner of each OS. The scaffolded workflow is the macOS job; add a Linux job for `--format appimage` (needs `app.icon` and `appimagetool`) and a Windows job for `--format nsis` (needs `makensis`). The `.dmg`, `--sign` and `--notarize` stages stay on a mac host.
 
 ## Publish an update
 
