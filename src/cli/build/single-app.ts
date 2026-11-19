@@ -11,11 +11,17 @@ import { signSidecars } from "@/packaging/installers-sidecars";
 import { signApp } from "@/packaging/sign";
 import { buildPage, type PageBuild, type SingleApp } from "@/single";
 import { frameworkRoot } from "../framework.ts";
-import { fail, line } from "../util.ts";
+import { fail, line, type CliOptions } from "../util.ts";
 import { assetsModuleSource, collectAssets } from "./assets.ts";
+import { hasStages, runStages, type StageSeams } from "./stages.ts";
 import { singleWrapperSource } from "./wrapper.ts";
 
-export async function buildSingle(app: SingleApp, minimumSystemVersion: string): Promise<number> {
+export async function buildSingle(
+	app: SingleApp,
+	minimumSystemVersion: string,
+	options: CliOptions = { dir: app.dir },
+	seams: StageSeams = {},
+): Promise<number> {
 	console.log(`crust build — ${app.file} (one file, no config)`);
 
 	let page: PageBuild;
@@ -77,6 +83,15 @@ export async function buildSingle(app: SingleApp, minimumSystemVersion: string):
 		line("app", `${formatBytes(assembled.assembledBytes)}  ${assembled.appPath}`);
 		line("sign", "ad-hoc (codesign --sign -)");
 		line("gatekeeper", "refused on another machine until a Developer ID signature exists");
+		if (hasStages(options)) {
+			const staged = await runStages(
+				assembled.appPath,
+				{ ...options, dir: app.dir },
+				app.config,
+				seams,
+			);
+			if (staged !== 0) return staged;
+		}
 		console.log(`\ndone — open it locally with: open ${assembled.appPath}`);
 	} else {
 		line("sign", "none — codesign is macOS-only");

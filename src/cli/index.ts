@@ -19,6 +19,7 @@
  *   missing-value signal, and a following flag is never eaten as a value.
  */
 import { cac } from "cac";
+import { translate, validate, VALUE_FLAGS, type RawOptions } from "./argv.ts";
 import { COMMANDS, isCommand, type CommandName } from "./commands.ts";
 import {
 	BASIC_EXAMPLES,
@@ -27,8 +28,6 @@ import {
 	OPTION_DESCRIPTIONS,
 	PUBLISHED_LIMITS,
 } from "./help.ts";
-import type { InitOptions } from "./init.ts";
-import { parseFormats } from "./package/format.ts";
 import { VERSION } from "./util.ts";
 
 /** The no-config error is thrown by config/load.ts, which this layer does not own. */
@@ -37,12 +36,6 @@ const NO_CONFIG_HINT =
 	"run `crust init` for a new project, or use single-file mode " +
 	"(`crust dev <file>`, which needs no config).";
 const HINT = 'run "crust --help" for usage';
-
-type RawOptions = Record<string, unknown>;
-const VALUE_FLAGS = ["dir", "config", "entry", "format"] as const;
-const SCAFFOLDS = ["react", "next", "svelte", "vue"] as const;
-const KNOWN = new Set<string>(["--", ...VALUE_FLAGS, ...SCAFFOLDS, "help", "h", "version", "v"]);
-const POSITIONAL_COMMANDS = new Set<string>(["init", "dev", "build"]);
 
 /** The one cac instance. Exported so commands.test.ts reads the real command list. */
 export const cli = cac("crust");
@@ -75,62 +68,6 @@ for (const name of Object.keys(COMMANDS) as CommandName[]) {
 	command.action(async (raw: RawOptions, positional?: string) => {
 		return await COMMANDS[name](translate(name, positional, raw));
 	});
-}
-
-/** cac's parsed options into the CliOptions every handler already receives. */
-function translate(
-	name: CommandName,
-	positional: string | undefined,
-	raw: RawOptions,
-): InitOptions {
-	const options: InitOptions = { dir: typeof raw.dir === "string" ? raw.dir : process.cwd() };
-	if (typeof raw.config === "string") options.config = raw.config;
-	if (typeof raw.entry === "string") options.entry = raw.entry;
-	if (positional !== undefined) {
-		if (name === "dev" || name === "build") options.single = positional;
-		else if (name === "init") options.dir = positional;
-	}
-	for (const flag of SCAFFOLDS) if (raw[flag] === true) options[flag] = true;
-	if (raw.format !== undefined) {
-		const values = Array.isArray(raw.format) ? raw.format.map(String) : [String(raw.format)];
-		const parsed = parseFormats(values);
-		if (parsed.ok) options.formats = parsed.formats;
-	}
-	return options;
-}
-
-/** The old error strings, in the old order. Returns the message when argv is refused. */
-function validate(
-	command: CommandName,
-	positionals: string[],
-	raw: RawOptions,
-): string | undefined {
-	for (const key of Object.keys(raw)) {
-		if (!KNOWN.has(key)) return `unknown option ${key.length > 1 ? `--${key}` : `-${key}`}`;
-	}
-	const allowed = POSITIONAL_COMMANDS.has(command) ? 1 : 0;
-	if (positionals.length > allowed) return `unexpected argument ${positionals[allowed]}`;
-	for (const flag of VALUE_FLAGS) {
-		const value = raw[flag];
-		if (value === true || (Array.isArray(value) && value.some((item) => item === true))) {
-			return `--${flag} needs a value`;
-		}
-	}
-	if (command === "init" && positionals.length === 1 && typeof raw.dir === "string") {
-		return "init takes one directory — pass <dir> or --dir, not both";
-	}
-	for (const flag of SCAFFOLDS) {
-		if (raw[flag] === true && command !== "init") return `--${flag} only applies to init`;
-	}
-	if (raw.format !== undefined && command !== "package") {
-		return "--format only applies to package";
-	}
-	if (raw.format !== undefined) {
-		const values = Array.isArray(raw.format) ? raw.format.map(String) : [String(raw.format)];
-		const parsed = parseFormats(values);
-		if (!parsed.ok) return parsed.error;
-	}
-	return undefined;
 }
 
 function unknownCommand(name: string): number {

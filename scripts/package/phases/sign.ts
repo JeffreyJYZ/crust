@@ -1,6 +1,6 @@
 /**
- * Phase 4: `crust sign` refuses without a certificate — and the refusal is the
- * feature, so its wording is asserted as well as its exit code.
+ * Phase 4: `crust build --sign` refuses without a certificate — and the refusal
+ * is the feature, so its wording is asserted as well as its exit code.
  */
 import { runCommand, type Verdict } from "../../e2e-harness.ts";
 import { lastLine } from "../../lib/text.ts";
@@ -19,7 +19,7 @@ export async function signPhase(verdict: Verdict, scratch: string, built: Built)
 		["codesign", "-dv", "--verbose=4", built.bundle],
 		REPO_ROOT,
 	);
-	const signRun = await runCommand([CLI, "sign", "--dir", scratch], REPO_ROOT);
+	const signRun = await runCommand([CLI, "build", "--sign", "--dir", scratch], REPO_ROOT);
 	if (inherited !== undefined) process.env.CRUST_SIGNING_IDENTITY = inherited;
 	if (inherited !== undefined) {
 		note("CRUST_SIGNING_IDENTITY was set in this shell; unset here so the refusal path runs");
@@ -29,8 +29,8 @@ export async function signPhase(verdict: Verdict, scratch: string, built: Built)
 		"sign",
 		signRun.code !== 0,
 		signRun.code !== 0
-			? `crust sign exited ${signRun.code} instead of signing something it cannot verify`
-			: "crust sign exited 0 with no certificate — a signature nobody can notarize was claimed as success",
+			? `crust build --sign exited ${signRun.code} instead of signing something it cannot verify`
+			: "crust build --sign exited 0 with no certificate — a signature nobody can notarize was claimed as success",
 	);
 
 	// The message is the feature: a user without a certificate needs to be told
@@ -38,22 +38,22 @@ export async function signPhase(verdict: Verdict, scratch: string, built: Built)
 	// in wording is visible in the log rather than only in a boolean.
 	const refusal = (signRun.stderr || signRun.stdout).trim();
 	const refusalLine = refusal.split("\n")[0]?.trim() ?? "";
-	if (refusalLine.length > 0) note(`crust sign said: ${refusalLine}`);
+	if (refusalLine.length > 0) note(`crust build --sign said: ${refusalLine}`);
 	const namesVariable = refusal.includes("CRUST_SIGNING_IDENTITY");
 	const namesWhatsMissing = /Developer ID/.test(refusal) && /certificate|identity/i.test(refusal);
-	const namesConsequence = /Gatekeeper|ad-hoc|another machine/i.test(refusal);
+	const namesIdentityToSet = /Developer ID Application/.test(refusal) && /TEAMID/.test(refusal);
 	const singleLine = refusal.split("\n").length === 1 && refusal.length > 0;
 	verdict.check(
 		"sign message",
-		singleLine && namesVariable && namesWhatsMissing && namesConsequence,
-		singleLine && namesVariable && namesWhatsMissing && namesConsequence
-			? "one line naming the variable, the Developer ID certificate and the Gatekeeper consequence"
+		singleLine && namesVariable && namesWhatsMissing && namesIdentityToSet,
+		singleLine && namesVariable && namesWhatsMissing && namesIdentityToSet
+			? "one line naming the variable, the missing Developer ID and the exact identity format to set"
 			: !singleLine
 				? `stderr is ${refusal.split("\n").length} lines, not one actionable line: ${refusalLine || "(empty)"}`
 				: `the refusal never names ${[
 						namesVariable ? "" : "CRUST_SIGNING_IDENTITY",
-						namesWhatsMissing ? "" : "the missing certificate",
-						namesConsequence ? "" : "what Gatekeeper does about it",
+						namesWhatsMissing ? "" : "the missing Developer ID certificate",
+						namesIdentityToSet ? "" : "the Developer ID Application identity format to set",
 					]
 						.filter((part) => part.length > 0)
 						.join(", ")} — a user cannot act on it`,
@@ -65,7 +65,7 @@ export async function signPhase(verdict: Verdict, scratch: string, built: Built)
 		"sign honest",
 		!/^\s{2}signed\s/m.test(signRun.stdout),
 		/^\s{2}signed\s/m.test(signRun.stdout)
-			? `crust sign printed a signed line while exiting ${signRun.code}`
+			? `crust build --sign printed a signed line while exiting ${signRun.code}`
 			: "stdout claims nothing about signing",
 	);
 

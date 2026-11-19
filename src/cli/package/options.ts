@@ -1,6 +1,6 @@
 /**
  * The inputs each artefact builder takes, derived from one loaded config and the
- * bundle `crust dmg` already finds. Pure: nothing here stats, spawns or writes.
+ * bundle the build already produced. Pure: nothing here stats, spawns or writes.
  */
 
 import { resolve } from "node:path";

@@ -2,12 +2,9 @@
 
 import { build } from "./build.ts";
 import { dev } from "./dev.ts";
-import { dmg } from "./dmg.ts";
 import { doctor } from "./doctor.ts";
 import { init } from "./init.ts";
-import { notarizeCommand } from "./notarize.ts";
 import { packageCommand } from "./package.ts";
-import { sign } from "./sign.ts";
 import type { CliOptions } from "./util.ts";
 
 /** Every command: the shared options in, a process exit code out. */
@@ -17,10 +14,7 @@ export const COMMANDS = {
 	init,
 	dev,
 	build,
-	sign,
-	dmg,
 	package: packageCommand,
-	notarize: notarizeCommand,
 	doctor,
 } as const satisfies Record<string, Handler>;
 

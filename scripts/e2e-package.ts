@@ -1,5 +1,5 @@
 /**
- * E2E for packaging: `crust dmg` makes a disk image and `crust sign` refuses honestly with no certificate — the path every user without a Developer ID takes, so the wording is the feature.
+ * E2E for packaging: `crust build --dmg` makes a disk image and `crust build --sign` refuses honestly with no certificate — the path every user without a Developer ID takes, so the wording is the feature.
  * `diskutil image create from` writes an APFS container, so the detach device is parsed from `hdiutil attach`'s table, never guessed from `/Volumes/<name>`; the detach lives in a `finally` because a mounted volume shows on the user's desktop. Sign fails before reading the bundle, so the proof is that the hash and seal are unchanged. Phases in `package/phases/`.
  */
 

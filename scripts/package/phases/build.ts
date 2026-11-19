@@ -1,6 +1,6 @@
 /**
- * Phase 0-1: a scratch copy of `examples/hello`, and `crust build` — the command
- * `dmg` and `sign` both require.
+ * Phase 0-1: a scratch copy of `examples/hello`, and `crust build` — the build
+ * that `--dmg` and `--sign` both add their release stages to.
  */
 import { cp, mkdir, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -76,7 +76,7 @@ export async function buildPhase(verdict: Verdict, scratch: string): Promise<Bui
 			: `incomplete copy in ${scratch}: ${inputs.map((ok, i) => `${["config", "main", "page"][i]} ${ok ? "ok" : "missing"}`).join(", ")}`,
 	);
 
-	// ---- 1. `crust build`, the command `dmg` and `sign` both require -------
+	// ---- 1. `crust build`, the base `--dmg` and `--sign` add stages to ------
 	const build = await runCommand([CLI, "build", "--dir", scratch], REPO_ROOT);
 	const namedBundle = build.stdout.includes(bundle);
 	const built = build.code === 0 && namedBundle;

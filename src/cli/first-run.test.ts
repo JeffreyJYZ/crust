@@ -82,17 +82,14 @@ describe("first-run CLI messages", () => {
 	test("global --help still names every command", async () => {
 		const run = await runCli("--help");
 		expect(run.code).toBe(0);
-		for (const command of [
-			"init",
-			"dev",
-			"build",
-			"sign",
-			"dmg",
-			"package",
-			"notarize",
-			"doctor",
-		]) {
+		for (const command of ["init", "dev", "build", "package", "doctor"]) {
 			expect(run.out).toContain(`crust ${command}`);
+		}
+		for (const verb of ["sign", "dmg", "notarize"]) {
+			expect(run.out).not.toContain(`crust ${verb}`);
+		}
+		for (const flag of ["--sign", "--notarize", "--dmg"]) {
+			expect(run.out).toContain(flag);
 		}
 	});
 });

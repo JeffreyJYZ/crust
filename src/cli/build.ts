@@ -1,5 +1,9 @@
 /**
- * `crust build` — compile the backend with Bun, assemble and ad-hoc sign `X.app` on darwin; a Developer ID signature is `crust sign`'s job. Windows and Linux ship the flat binary instead. The two sizes print separately because they answer different questions: the compiled binary is what Bun produced, the assembled bundle is what a recipient's disk gives up.
+ * `crust build` — compile the backend with Bun, assemble and ad-hoc sign `X.app` on darwin;
+ * `--sign --notarize --dmg` turn that ad-hoc build into a release artefact. Windows and Linux
+ * ship the flat binary instead. The two sizes print separately because they answer different
+ * questions: the compiled binary is what Bun produced, the assembled bundle is what a recipient's
+ * disk gives up.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -14,6 +18,7 @@ import { detectSingle } from "../single.ts";
 import { assetsModuleSource } from "./build/assets.ts";
 import { resolveAssets } from "./build/resolve-assets.ts";
 import { buildSingle } from "./build/single-app.ts";
+import { hasStages, runStages, stageRefusal, type StageSeams } from "./build/stages.ts";
 import { wrapperSource } from "./build/wrapper.ts";
 import { projectCrustRoot } from "./framework.ts";
 import {
@@ -31,10 +36,16 @@ export { resolveAssets, type ResolvedAssets } from "./build/resolve-assets.ts";
 /** LSMinimumSystemVersion when the config does not name one. */
 const DEFAULT_MINIMUM_SYSTEM_VERSION = "13.0";
 
-export async function build(options: CliOptions): Promise<number> {
+export async function build(options: CliOptions, seams: StageSeams = {}): Promise<number> {
+	// Refuse impossible stage combinations before a single build step runs.
+	const refusal = stageRefusal(options, seams);
+	if (refusal) return fail("build", refusal);
+
 	const detected = await detectSingle(options);
 	if (detected.kind === "error") return fail("build", detected.message);
-	if (detected.kind === "app") return buildSingle(detected.app, DEFAULT_MINIMUM_SYSTEM_VERSION);
+	if (detected.kind === "app") {
+		return buildSingle(detected.app, DEFAULT_MINIMUM_SYSTEM_VERSION, options, seams);
+	}
 
 	const loaded = await loadConfig({ dir: options.dir, configPath: options.config });
 	console.log(`crust build — ${loaded.path}`);
@@ -167,6 +178,16 @@ export async function build(options: CliOptions): Promise<number> {
 	line("sign", signed ? "ad-hoc (codesign --sign -)" : "none — codesign is macOS-only");
 	if (signed) {
 		line("gatekeeper", "refused on another machine until a Developer ID signature exists");
+	}
+	if (hasStages(options)) {
+		if (!assembled) {
+			return fail(
+				"build",
+				`release stages need an .app — none assembled on ${process.platform}`,
+			);
+		}
+		const stageCode = await runStages(assembled.appPath, options, config, seams);
+		if (stageCode !== 0) return stageCode;
 	}
 	if (assembled) {
 		console.log(`\ndone — open it locally with: open ${assembled.appPath}`);

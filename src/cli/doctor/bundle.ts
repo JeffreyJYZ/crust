@@ -32,7 +32,7 @@ export async function checkBundle(dir: string): Promise<Check[]> {
 		status: "note",
 		detail: adHoc
 			? "ad-hoc signed: refused elsewhere until a Developer ID signature exists"
-			: "signature state unknown — `crust sign` needs CRUST_SIGNING_IDENTITY",
+			: "signature state unknown — `crust build --sign` needs CRUST_SIGNING_IDENTITY",
 	});
 	return checks;
 }

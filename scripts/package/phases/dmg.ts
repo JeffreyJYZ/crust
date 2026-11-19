@@ -1,5 +1,5 @@
 /**
- * Phase 2: `crust dmg` makes a real image, and every claim it prints about that
+ * Phase 2: `crust build --dmg` makes a real image, and every claim it prints about that
  * image is checked against the file rather than trusted as text.
  */
 import { stat } from "node:fs/promises";
@@ -12,14 +12,14 @@ import type { Built } from "./build.ts";
 
 export async function dmgPhase(verdict: Verdict, scratch: string, built: Built): Promise<string> {
 	const dmgsBefore = await listDmgs(built.dist);
-	const dmgRun = await runCommand([CLI, "dmg", "--dir", scratch], REPO_ROOT);
+	const dmgRun = await runCommand([CLI, "build", "--dmg", "--dir", scratch], REPO_ROOT);
 	const dmgOk = dmgRun.code === 0;
 	verdict.check(
 		"dmg",
 		dmgOk,
 		dmgOk
-			? "crust dmg exited 0"
-			: `crust dmg exited ${dmgRun.code} — ${lastLine(dmgRun.stderr) || lastLine(dmgRun.stdout) || "no output"}`,
+			? "crust build --dmg exited 0"
+			: `crust build --dmg exited ${dmgRun.code} — ${lastLine(dmgRun.stderr) || lastLine(dmgRun.stdout) || "no output"}`,
 	);
 
 	const dmgsAfter = await listDmgs(built.dist);
@@ -37,7 +37,7 @@ export async function dmgPhase(verdict: Verdict, scratch: string, built: Built):
 				: created.length !== 1
 					? `${created.length} new .dmg file(s) in dist: ${created.join(", ") || "none"}`
 					: `${created[0]} is the one new image`
-			: "not checked — crust dmg failed",
+			: "not checked — crust build --dmg failed",
 	);
 
 	verdict.check(
@@ -85,7 +85,7 @@ export async function dmgPhase(verdict: Verdict, scratch: string, built: Built):
 			: `hdiutil verify exited ${verify.code} — ${lastLine(verify.stderr) || lastLine(verify.stdout)}`,
 	);
 
-	// The volume name `crust dmg` printed is compared against the mounted one in
+	// The volume name `crust build --dmg` printed is compared against the mounted one in
 	// the mounting phase, which is the only place it can be observed.
 	return printedVolume;
 }

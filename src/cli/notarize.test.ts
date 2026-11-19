@@ -3,32 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunResult } from "@/packaging/exec";
-import { notarizeCommand } from "./notarize";
-
-const KEYS = [
-	"CRUST_SIGNING_IDENTITY",
-	"CRUST_NOTARY_PROFILE",
-	"CRUST_NOTARY_APPLE_ID",
-	"CRUST_NOTARY_PASSWORD",
-	"CRUST_NOTARY_TEAM_ID",
-] as const;
-
-type Env = Partial<Record<(typeof KEYS)[number], string>>;
-
-/** The five credential variables are the command's whole input, so each test sets them from scratch. */
-async function withEnv(values: Env, body: () => Promise<void>): Promise<void> {
-	const saved = KEYS.map((key) => [key, process.env[key]] as const);
-	for (const key of KEYS) delete process.env[key];
-	Object.assign(process.env, values);
-	try {
-		await body();
-	} finally {
-		for (const [key, value] of saved) {
-			if (value === undefined) delete process.env[key];
-			else process.env[key] = value;
-		}
-	}
-}
+import { notarizeStage } from "./notarize";
 
 async function project(bundle: boolean): Promise<string> {
 	const root = await mkdtemp(join(tmpdir(), "crust-cli-notarize-"));
@@ -43,6 +18,8 @@ async function project(bundle: boolean): Promise<string> {
 	if (bundle) await mkdir(join(root, "dist", "Example.app"), { recursive: true });
 	return root;
 }
+
+const appPath = (root: string): string => join(root, "dist", "Example.app");
 
 function recorder(calls: string[][]): (command: string[]) => Promise<RunResult> {
 	return async (command) => {
@@ -67,21 +44,19 @@ async function capture(body: () => Promise<number>): Promise<{ code: number; out
 	}
 }
 
-describe("crust notarize", () => {
+describe("crust build --notarize stage", () => {
 	test("refuses an ad-hoc identity before reading the bundle or running a command", async () => {
 		const root = await project(false);
 		try {
-			await withEnv({}, async () => {
-				const calls: string[][] = [];
-				const { code, out } = await capture(() =>
-					notarizeCommand({ dir: root }, { exec: recorder(calls) }),
-				);
-				expect(code).toBe(1);
-				expect(out).toContain(
-					"notarize refused   ad-hoc identity cannot be notarized — requires a Developer ID Application certificate",
-				);
-				expect(calls).toEqual([]);
-			});
+			const calls: string[][] = [];
+			const { code, out } = await capture(() =>
+				notarizeStage(appPath(root), {}, recorder(calls)),
+			);
+			expect(code).toBe(1);
+			expect(out).toContain(
+				"notarize refused   ad-hoc identity cannot be notarized — requires a Developer ID Application certificate",
+			);
+			expect(calls).toEqual([]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -90,20 +65,19 @@ describe("crust notarize", () => {
 	test("refuses a Developer ID signature with no notarytool credential", async () => {
 		const root = await project(false);
 		try {
-			await withEnv(
-				{ CRUST_SIGNING_IDENTITY: "Developer ID Application: Crust (ABCDE12345)" },
-				async () => {
-					const calls: string[][] = [];
-					const { code, out } = await capture(() =>
-						notarizeCommand({ dir: root }, { exec: recorder(calls) }),
-					);
-					expect(code).toBe(1);
-					expect(out).toContain(
-						"requires notarytool store-credentials <profile> or appleId + password",
-					);
-					expect(calls).toEqual([]);
-				},
+			const calls: string[][] = [];
+			const { code, out } = await capture(() =>
+				notarizeStage(
+					appPath(root),
+					{ CRUST_SIGNING_IDENTITY: "Developer ID Application: Crust (ABCDE12345)" },
+					recorder(calls),
+				),
 			);
+			expect(code).toBe(1);
+			expect(out).toContain(
+				"requires notarytool store-credentials <profile> or appleId + password",
+			);
+			expect(calls).toEqual([]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -112,27 +86,26 @@ describe("crust notarize", () => {
 	test("runs the plan and prints the accepted verdict", async () => {
 		const root = await project(true);
 		try {
-			await withEnv(
-				{
-					CRUST_SIGNING_IDENTITY: "Developer ID Application: Crust (ABCDE12345)",
-					CRUST_NOTARY_PROFILE: "crust",
-				},
-				async () => {
-					const calls: string[][] = [];
-					const { code, out } = await capture(() =>
-						notarizeCommand({ dir: root }, { exec: recorder(calls) }),
-					);
-					expect(code).toBe(0);
-					expect(out).toContain("notarize accepted");
-					expect(calls.map((command) => command[0])).toEqual([
-						"ditto",
-						"xcrun",
-						"xcrun",
-						"xcrun",
-						"spctl",
-					]);
-				},
+			const calls: string[][] = [];
+			const { code, out } = await capture(() =>
+				notarizeStage(
+					appPath(root),
+					{
+						CRUST_SIGNING_IDENTITY: "Developer ID Application: Crust (ABCDE12345)",
+						CRUST_NOTARY_PROFILE: "crust",
+					},
+					recorder(calls),
+				),
 			);
+			expect(code).toBe(0);
+			expect(out).toContain("notarize accepted");
+			expect(calls.map((command) => command[0])).toEqual([
+				"ditto",
+				"xcrun",
+				"xcrun",
+				"xcrun",
+				"spctl",
+			]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

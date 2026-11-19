@@ -24,11 +24,8 @@ export const BASIC_EXAMPLES =
 export const COMMAND_DESCRIPTIONS: Record<CommandName, string> = {
 	init: "scaffold an app in an empty directory",
 	dev: "watch the backend, restart on change, follow the frontend URL",
-	build: "compile the binary and assemble X.app (ad-hoc signed)",
-	sign: "Developer ID signing (needs a certificate)",
-	dmg: "build a drag-to-Applications disk image",
+	build: "compile the binary and assemble X.app; --sign --notarize --dmg release it",
 	package: "build release artefacts; --format is repeatable, defaults to dmg",
-	notarize: "submit the signed bundle to notarytool, then staple the ticket",
 	doctor: "report why the app did not open",
 };
 
@@ -38,6 +35,9 @@ export const OPTION_DESCRIPTIONS = {
 	config: "config file, relative to --dir",
 	entry: "backend entry, relative to --dir (default: src/main.ts, then main.ts)",
 	format: "package only: dmg, appimage or nsis; repeat for several",
+	sign: "build only: Developer ID sign the app (needs CRUST_SIGNING_IDENTITY)",
+	notarize: "build only: notarize and staple the signed app (implies --sign)",
+	dmg: "build only: build a disk image from the signed app (macOS)",
 	react: "init only: copy the React + Vite template",
 	next: "init only: copy the Next.js template (static export)",
 	svelte: "init only: copy the Svelte + Vite template",
@@ -54,4 +54,5 @@ export const NOTARIZE_CREDENTIALS = `\nnotarize credentials come from the enviro
 /** Leading newline survives cac's "\n" example join as a blank separator. */
 export const PUBLISHED_LIMITS =
 	"\nThe published limits: ~85 MiB per app (Bun ships its runtime), macOS arm64 only, " +
-	"and no Developer ID signature yet, so Gatekeeper refuses builds on other machines.";
+	"and an ad-hoc signature that Gatekeeper refuses on other machines; use " +
+	"`crust build --sign --notarize --dmg` with a Developer ID for release.";

@@ -34,6 +34,10 @@ export interface CliOptions {
 	single?: string;
 	/** `crust package` formats, already validated; the command defaults to `["dmg"]`. */
 	formats?: PackageFormat[];
+	/** `crust build` release stages, run in sign → notarize/staple → dmg order. */
+	sign?: boolean;
+	notarize?: boolean;
+	dmg?: boolean;
 }
 
 const LABEL_WIDTH = 9;
