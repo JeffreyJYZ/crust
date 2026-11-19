@@ -20,6 +20,7 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 path you touched:
 
 - `bun run e2e:notes` — multi-file apps, `fs` against a real folder, the window title
+- `bun run e2e:fullscreen` — the window's collection behaviour and a real fullscreen transition
 - `bun run e2e:single` — single-file mode
 - `bun run e2e:dev:react` — a real Vite driven through `crust dev`
 - `bun run e2e:window` — the `window` plugin
@@ -46,6 +47,12 @@ A green gate is the only proof a landing is safe.
 
 - `[[NSWindow alloc] init]` is not a valid initializer — use `initWithContentRect:…` with the rect
   built on the C stack.
+- **`NSWindowCollectionBehaviorFullScreenAuxiliary` (256) disqualifies a window as fullscreen-primary,
+  so the green button becomes a zoom `+` that stops at the visible frame** — measured 923 pt fullscreen
+  against 840 pt zoomed on a 956 pt display, which is why "the window got bigger" proves nothing.
+  `moveToActiveSpace | fullScreenPrimary` = 130 is the pair that keeps the launch-on-active-Space
+  behaviour and the real button; `canJoinAllSpaces` contradicts `fullScreenPrimary` because a window
+  on every Space has none to transition into (2026-11-19).
 - A short ASCII `NSString` is a tagged pointer and cannot cross `bun:ffi`; objects stay in C.
 - `-windowNumber` never clears after `-close`; liveness is `visible || miniaturized || appHidden`.
 - Every `bun:ffi` declaration's arity must match its C prototype — `src/platform/darwin/arity.test.ts`

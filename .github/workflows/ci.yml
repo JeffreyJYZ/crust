@@ -145,6 +145,17 @@ jobs:
               if: steps.window.outputs.available == 'true'
               run: bun run e2e:parity
 
+            # The green button was a zoom `+` for every crust app until 0.2.1, and nothing in
+            # the suite could see it: the window opened, the page loaded, and only a person
+            # noticed the icon. This asserts the two things a zoom cannot fake — the
+            # collection behaviour carries fullScreenPrimary (128) and not fullScreenAuxiliary
+            # (256), and a real transition reaches styleMask bit 14 with the page above the
+            # windowed visible frame (923 pt against 840 pt here; a zoom stops at 840). It
+            # builds one scratch app, so it costs about a bundle build plus 6 s.
+            - name: e2e fullscreen
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:fullscreen
+
             # Whether this change touches the multi-file path, i.e. the runtime or the
             # `examples/notes` app. On a push to main there is no PR base, so it runs.
             - name: multi-file e2e decision
