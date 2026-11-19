@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 import { pageClientSource } from "./bridge/client.ts";
+import { DEFAULT_WINDOW_LABEL, TOKEN_PARAM, WINDOW_PARAM } from "./bridge/window-identity.ts";
 
 /** The variable `crust dev` sets to the bridge's absolute URL. */
 export const BRIDGE_URL_VAR = "CRUST_BRIDGE_URL";
@@ -17,6 +18,29 @@ export interface CrustOptions {
 	urlVar?: string;
 	/** Environment variable holding the per-launch token. */
 	tokenVar?: string;
+}
+
+/**
+ * Ask the bridge for a document token bound to the default label and hand that to the page.
+ *
+ * The process token may seed a document for *any* label, so injecting it would let a page mint
+ * another window's grants with one navigation. A minted document token re-serves only its own
+ * document: it is a real credential for invoke, but never a seeding one.
+ */
+async function mintPageToken(bridgeUrl: string, seed: string): Promise<string | undefined> {
+	try {
+		const document = new URL("/", bridgeUrl);
+		document.searchParams.set(TOKEN_PARAM, seed);
+		document.searchParams.set(WINDOW_PARAM, DEFAULT_WINDOW_LABEL);
+		const response = await fetch(document, { redirect: "manual" });
+		if (response.status !== 302) return undefined;
+		const location = response.headers.get("location");
+		if (location === null) return undefined;
+		const token = new URL(location, document).searchParams.get(TOKEN_PARAM);
+		return token === null || token.length === 0 ? undefined : token;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -58,24 +82,31 @@ export function crust(options: CrustOptions = {}): Plugin {
 		apply: "serve",
 		transformIndexHtml: {
 			order: "pre",
-			handler(html) {
+			async handler(html) {
 				const { url, token } = read();
-				if (url.length === 0 || token.length === 0) {
+				const warn = (reason: string) => {
 					if (!warned) {
 						warned = true;
-						console.warn(
-							`[crust] ${urlVar}/${tokenVar} are unset, so this page gets no window.crust. ` +
-								"Start the dev server through `crust dev`, which exports both for it.",
-						);
+						console.warn(`[crust] ${reason} This page gets no window.crust.`);
 					}
 					return html;
+				};
+				if (url.length === 0 || token.length === 0) {
+					return warn(
+						`${urlVar}/${tokenVar} are unset. Start the dev server through ` +
+							"`crust dev`, which exports both for it.",
+					);
+				}
+				const pageToken = await mintPageToken(url, token);
+				if (pageToken === undefined) {
+					return warn(`the bridge at ${url} did not mint a page token.`);
 				}
 				return {
 					html,
 					tags: [
 						{
 							tag: "script",
-							children: `window.__CRUST__ = ${JSON.stringify({ url, token })};`,
+							children: `window.__CRUST__ = ${JSON.stringify({ url, token: pageToken })};`,
 							injectTo: "head-prepend" as const,
 						},
 						{

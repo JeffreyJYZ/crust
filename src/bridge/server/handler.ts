@@ -21,6 +21,7 @@ import {
 } from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
+import { createDocumentTokenLedger } from "./document-tokens.ts";
 import type { Events } from "./events.ts";
 import { bearer, contentTypeOf, errorResponse, hasExtension } from "./http.ts";
 import { invokeRequest, type Run } from "./invoke.ts";
@@ -43,12 +44,24 @@ export interface BridgeState {
 	 * comes from the bound label — never from a request field.
 	 */
 	labels: Map<string, string | undefined>;
+	/**
+	 * Tokens allowed to seed a document. Only the host's process token by default — a document
+	 * token can re-serve its own page but can never choose a different label.
+	 */
+	seedTokens?: ReadonlySet<string>;
+	/** Override the issued-document cap; tests use a small number to exercise eviction. */
+	maxDocumentTokens?: number;
 	/** The bound port. An ephemeral bind only knows it after `serve` returns. */
 	port(): number;
 	run: Run;
 }
 
 export function createHandler(state: BridgeState): (request: Request) => Promise<Response> {
+	// The process token is the only seed unless the caller says otherwise. Keep it explicit: a
+	// credential handed to a page is never allowed to mint a token for a label of the page's choosing.
+	const seeds = state.seedTokens ?? new Set([state.token]);
+	const ledger = createDocumentTokenLedger(state.labels, state.maxDocumentTokens);
+
 	return async function fetch(request: Request): Promise<Response> {
 		const { options, csp, token, devOrigins, events } = state;
 		const url = new URL(request.url);
@@ -70,14 +83,15 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 				);
 			}
 			const label = windowLabelFromSearch(url.search);
-			// Only the process token may seed a document, and only on a real navigation (a top-level
-			// GET carries no Origin; a page's `fetch` does). Minting from a token the bridge already
-			// bound would let a page holding its own `main` token ask for `?window=admin` and read the
-			// admin token out of the redirect. A document token therefore only ever re-serves its own
-			// document; its binding cannot be changed.
-			if (presented === token && origin === null) {
+			// Only a seed token may mint, and only on a real navigation (a top-level GET carries no
+			// Origin; a page's `fetch` does). By default that is the host's process token alone: it
+			// never reaches a page, because `crust dev` injects a minted document token instead and
+			// `window.create` replaces any page-chosen `?window=` before the seed is appended.
+			// Minting from a bound token would let a page holding `main` ask for `?window=admin` and
+			// read the admin token out of the redirect. A document token only re-serves its document.
+			if (seeds.has(presented) && origin === null) {
 				const documentToken = crypto.randomUUID();
-				state.labels.set(documentToken, label ?? DEFAULT_WINDOW_LABEL);
+				ledger.remember(documentToken, label ?? DEFAULT_WINDOW_LABEL);
 				const location = new URL(request.url);
 				location.searchParams.set(TOKEN_PARAM, documentToken);
 				return new Response(null, {

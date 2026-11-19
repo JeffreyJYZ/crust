@@ -5,8 +5,8 @@
 import {
 	currentBridgeToken,
 	isBridgeOrigin,
+	withForcedWindowLabel,
 	withToken,
-	withWindowLabel,
 } from "@/bridge/window-identity.ts";
 import type { NotImplemented } from "./define";
 import { duplicateLabel, failure, missingWindow, parseCreate } from "./window-args.ts";
@@ -47,8 +47,7 @@ export function createWindowCommand(
 	if (!parsed.ok) return parsed.failure;
 	// A window's identity is its URL, so a runtime-created window gets the same treatment as a
 	// configured one — but only for the app's own document. An absolute URL is the app's to define
-	// in full (it may carry a signature, or a `window` of its own), so it is handed through
-	// untouched; a page that wants an identity on one appends `?window=` itself.
+	// in full (it may carry a signature), so a genuinely foreign one is handed through untouched.
 	// A scheme OR two leading slash/backslash characters make a URL authority-absolute: the
 	// adapter's `new URL(url, documentBase())` resolves `//evil.example/x` (and `\\...`) to a
 	// foreign origin, so those must pass through untouched too. One leading backslash is only a
@@ -58,21 +57,18 @@ export function createWindowCommand(
 		url === undefined || (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) && !/^[\\/][\\/]/.test(url));
 	// An absolute URL is still the app's own document when it points at this bridge: a page that
 	// builds one from `location.origin` names a path, not a different app. Such a URL keeps its
-	// query and hash and gets the token, because the document route refuses a request without one —
-	// which is exactly how a created window ended up blank the first time the token moved out of
-	// the HTML. A genuinely foreign origin is still handed through untouched.
+	// query and hash and gets the token, because the document route refuses a request without one.
 	const bridgeOwned = url !== undefined && isBridgeOrigin(url);
-	// Absent still means the app's own document, `/`: a relative reference the adapter resolves
-	// against the window's document. A query on it changes neither the origin nor the path.
-	//
 	// The token rides along on the same URL, because the document route refuses a request that
 	// cannot present one — a window opened without it would answer `401` and show an error page.
 	const token = currentBridgeToken();
 	const appDocument = (): string => {
-		// An absolute bridge URL keeps the contract the probe pins: it carries no identity of its
-		// own, because the app built it and may have named a `window` already. Only the credential
-		// is added, and only because the document route refuses a request without one.
-		const labelled = bridgeOwned ? url : withWindowLabel(url ?? "/", parsed.options.label);
+		// The label comes from the command's `label` argument, never from the URL the page built.
+		// Both a relative document and a bridge-owned absolute one get the seed token appended, so
+		// either could otherwise carry `?window=admin` and mint a document with admin's grants.
+		// Replacing the query's label keeps the other pairs byte-exact and closes the encoded-key
+		// form (`%77indow=`) too.
+		const labelled = withForcedWindowLabel(url ?? "/", parsed.options.label);
 		return token === undefined ? labelled : withToken(labelled, token);
 	};
 	const options: WindowCreateOptions =

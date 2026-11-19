@@ -5,7 +5,7 @@
  */
 
 import { readlink, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 
@@ -17,13 +17,18 @@ export function outsideScope(path: string): CrustError {
  * The real location of a path. A missing leaf resolves through its nearest existing parent, so a check names
  * the directory a write will land in rather than the plain name in front of it.
  *
+ * `..` is left in the string for `realpath` to fold the way the OS does. Folding it lexically first would
+ * erase a symlink before a `..` (`scope/link/../secret.txt` → `scope/secret.txt`), so the check would name a
+ * path inside the grant while the command still follows the link outside it.
+ *
  * A **dangling** symlink is the case that makes a parent-only fallback wrong: `realpath` fails because the
  * target is absent, the link's own path is inside the scope, and `Bun.write` then follows the link to a
  * target outside it. So the link itself is read and its target resolved even though nothing is there yet.
  * `seen` bounds a link cycle, which would otherwise recurse forever.
  */
 export async function canonical(path: string, seen: Set<string> = new Set()): Promise<string> {
-	const absolute = resolve(path);
+	// Absolute without folding `..`: resolve() would drop the symlink realpath must traverse.
+	const absolute = isAbsolute(path) ? path : `${process.cwd()}${sep}${path}`;
 	const found = await realpath(absolute).catch(() => undefined);
 	if (found !== undefined) return found;
 	const parent = dirname(absolute);
@@ -32,7 +37,7 @@ export async function canonical(path: string, seen: Set<string> = new Set()): Pr
 	const link = await readlink(absolute).catch(() => undefined);
 	if (link !== undefined) {
 		seen.add(absolute);
-		return canonical(resolve(parent, link), seen);
+		return canonical(isAbsolute(link) ? link : `${parent}${sep}${link}`, seen);
 	}
 	return join(await canonical(parent, seen), basename(absolute));
 }
