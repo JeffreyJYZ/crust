@@ -4,6 +4,24 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.0] — 2026-11-19
+
+### Changed
+
+- **`crust build` owns the release stages; `sign`, `dmg` and `notarize` are gone as commands.** They were four verbs over one pipeline with the order documented rather than enforced — `crust dmg` failed with "run crust build first", `crust notarize` was meaningless without `crust sign`, and `crust package` would wrap a `.app` from an earlier build. The stages are flags now, run in the order a release actually needs:
+
+  ```
+  crust build                       build + ad-hoc sign
+  crust build --sign                Developer ID sign
+  crust build --notarize            sign → zip → submit → staple → validate → spctl
+  crust build --dmg                 disk image, built from the stapled app
+  crust package --format nsis,appimage
+  ```
+
+  Each refusal names what is missing rather than saying "invalid": `--notarize` without `--sign` says an ad-hoc signature cannot be submitted; `--sign` with no identity names `CRUST_SIGNING_IDENTITY` and its format; `--dmg` on Linux says a disk image is macOS only. The image itself is not notarized — the app inside it is stapled, which is what a user gets.
+
+  **Breaking:** three public commands disappear. The CLI contract rows were rewritten rather than deleted, so every behaviour they pinned still has a test, and `e2e:package` drives the new flags with its assertions intact.
+
 ## [0.1.33] — 2026-11-19
 
 A hunt across the whole framework — twenty-three lanes, one field each — and the fixes that survived
