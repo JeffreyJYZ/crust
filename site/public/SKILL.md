@@ -1,6 +1,6 @@
 ---
 name: crust
-description: Use when building, running, packaging or debugging a crust desktop app — Bun backend plus the system WebView, no Rust and no bundled Chromium. Covers crust init, crust.config.ts, main.ts commands, the window.crust page API, capability grants, window.capture and the testing namespace, and signed releases. Not for Tauri, Electron, or a plain web app with no native window.
+description: You MUST use this when developing with crust — building, running, packaging or debugging a crust desktop app (Bun backend plus the system WebView, no Rust and no bundled Chromium). Covers crust init, crust.config.ts, main.ts commands, the window.crust page API, capability grants, window.capture and the testing namespace, and signed releases. Not for Tauri, Electron, or a plain web app with no native window.
 ---
 
 # Building with crust
