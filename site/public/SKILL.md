@@ -11,8 +11,9 @@ and they talk over a loopback bridge with a bearer token. macOS 13+, Linux (GTK3
 Windows (WebView2), x64 and arm64.
 
 This file is the working surface: everything here is enough to build, run and verify an app. It is
-not the full reference — when a table stops, the per-namespace command reference is at
-<https://crust.jyz.land/docs/reference/api>. The docs index is <https://crust.jyz.land/docs>.
+not the full reference — when a table stops, the command reference is at
+<https://crust.jyz.land/docs/reference/api>, one page per area and indexed by namespace. The docs
+index is <https://crust.jyz.land/docs>.
 
 ## Quickstart
 
@@ -127,21 +128,6 @@ await app.run();
 
 Handlers run on the pump thread, so keep them fast. An async handler is awaited and does not block.
 
-### Verify it runs
-
-No `report` command exists — the scaffold reads stdout. In `main.ts`, log in `ready` and in a
-handler, then `bun run dev`: `window    open` means the window mounted, `page call answered` means
-the page's invoke reached your handler and came back.
-
-```ts
-app.command("greet", ({ name }) => {
-  console.log("  greet     answer (page call answered)");
-  return `hello ${name}`;
-});
-app.on("ready", () => console.log("  window    open"));
-await app.run();
-```
-
 ## Built-ins and capabilities
 
 All 32 plugin namespaces below are registered before your code runs, plus `app` and `single-instance`
@@ -250,6 +236,60 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 
 `crust sign`, `crust dmg` and `crust notarize` are gone — each prints `crust: unknown command "<verb>"`. Use the `crust build` stages in order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--notarize` needs `--sign`; the dmg is built from the stapled app and is not itself notarized.
 
+## Validate an app
+
+There is no `report` command and no test harness for a crust app: evidence is the doctor's lines, the
+build's exit code, and the process's own stdout. Check in that order — each layer answers a question
+the one before cannot.
+
+**`crust doctor`** prints `crust doctor — <dir>` and then one aligned line per launch check, in the
+order a failure happens: `  <name>  [ok|fail|note] <detail>`. The names are `platform` (macOS arm64
+only), `bun`, `config` — or the single file that needs none — `macos` against
+`build.minimumSystemVersion`, `shim` (the C shim compiled with `cc()` exactly as launch compiles it),
+`bridge` (the app's own derived port bound and one invoke answered `pong`, then released), `dev port`
+/ `dev url` / `dev watch` only when `dev.url` is set, `backend` (`src/main.ts`, else `main.ts`),
+`single` for a single file's page bundle, `window` (the platform module imported), `trap` for the
+fatal patterns in your own source, `assets` (what a build would embed), `templates`, and last `bundle`
+with `gatekeeper`. Exit 0 ends `all checks passed`; any `[fail]` ends `N checks failed` on stderr with
+exit 1. It needs no build: with nothing in `dist/`, `bundle` is a `[note]` telling you to run
+`crust build` first. A red line is the check that refused, in its own words — a `bridge` note about a
+busy port means the page origin moves and origin-scoped storage does not follow, and a red `assets`
+line names the missing directory and the command that should produce it, which is the blank window's
+usual cause.
+
+**`crust build`** is the second layer, and its exit code is the verdict: `0` after lines for
+`assets`, `binary`, `app`, `sign` and `gatekeeper`, or `1` with `crust build: <reason>` on stderr
+naming the thing to fix — a missing `app.icon`, no backend entry, a frontend command that failed.
+macOS assembles `dist/<app.name>.app` around the compiled binary and ad-hoc signs it, printing
+`sign  ad-hoc (codesign --sign -)` and `gatekeeper  refused on another machine until a Developer ID
+signature exists`: a build that runs here is not yet a build that runs for a recipient. Linux and
+Windows produce the flat `dist/crust-app` (`crust-app.exe` on Windows) and print
+`sign  none — codesign is macOS-only`.
+
+**Run the binary, not `open`.** The build's closing line suggests `open <path>`, but `open` goes
+through LaunchServices: it can raise a Gatekeeper dialog and it never tells you which process ran.
+Launch the executable inside the bundle instead — `dist/<app.name>.app/Contents/MacOS/crust-app` on
+macOS, the flat binary elsewhere — and keep its stdout, because that is the only output you get.
+
+**The round trip is the proof.** Both directions work when a handler's line appears after a page
+call. `examples/hello/main.ts` prints this for one window and one `invoke("greet", { name })`:
+
+```
+  window    Hello crust is open — 900x640
+  greet     hello Ada (page call answered)
+```
+
+`window` means the window mounted and `ready` ran; `(page call answered)` means the page's
+`window.crust.invoke` crossed the bridge, reached the handler and came back. A window with no such
+line means the call never left the page or was refused — read that as transport, not as a rendering
+fault.
+
+**What a failure looks like.** The codes below are the bridge's vocabulary, and a refusal rejects with
+one rather than failing silently. `forbidden` is the first a new app meets: the moment
+`security.capabilities` is present the bridge denies by default, so a namespace the page calls needs
+both an action on its capability and a `grants` entry for that window's label. `bad-origin` is the
+second: `dev.url` without `strictPort` moves the port under a running page.
+
 ## Failure codes
 
 `unauthorized` (401), `forbidden` (403, capability refused), `bad-origin`, `not-found`,
@@ -272,6 +312,7 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 
 ## Full reference
 
-`/docs/start/first-app`, `/docs/reference/config`, `/docs/reference/api` (one page per namespace),
-`/docs/reference/errors`, `/docs/guides/*` (one guide per plugin), `/docs/limits` (what crust does
-not do, stated before you build on it).
+`/docs/start/first-app`, `/docs/reference/config`, `/docs/reference/api` (the namespace index: the
+command reference runs one page per area — `api-app`, `api-desktop`, `api-fs`, `api-ui`,
+`api-updater`, `api-web`, `api-window`), `/docs/reference/errors`, `/docs/guides/*` (one guide per
+plugin), `/docs/limits` (what crust does not do, stated before you build on it).

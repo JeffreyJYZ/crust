@@ -1,6 +1,6 @@
 # Desktop and system commands
 
-Six namespaces that read or change the machine the app runs on: `theme` for appearance, `dock` for the tile, `power` for battery and sleep, `accessibility` for the AX trust state, `opener` for handing a path or URL to the OS, `os` for what the machine reports.
+Seven namespaces that read or change the machine the app runs on: `theme` for appearance, `dock` for the tile, `power` for battery and sleep, `screen` for the displays, `accessibility` for the AX trust state, `opener` for handing a path or URL to the OS, `os` for what the machine reports.
 
 Every command answers a plain object, and nothing throws: a bad argument is a typed failure, an adapter that threw becomes `handler-error`, and a missing framework is `not-implemented` naming the framework.
 
@@ -51,6 +51,21 @@ Failure codes: `bad-request` (a non-string `label`, a `value` outside 0–1), `h
 The six `on*` commands arm a push event instead of reading a value: each answers the `event` name it armed, and every later report arrives as that `power:*` event. Each one names the OS notification it needs in a `not-implemented` refusal when the platform has no such notification, so a listener that could never fire is never silently installed.
 
 Failure codes: `bad-request` (a missing or empty `reason`), `handler-error` (IOKit refused the assertion); `not-implemented` with `requires: "IOPSCopyPowerSourcesInfo"` for the four reads, or the notification name for an `on*` command that cannot be armed.
+
+## `screen`
+
+| command   | arguments | answer                            |
+| --------- | --------- | --------------------------------- |
+| `list`    | none      | `{ ok: true, screens: Screen[] }` |
+| `primary` | none      | `{ ok: true, screen }`            |
+
+Each `Screen` is `{ id, primary, scale, bounds, workArea }`. `id` is the platform's own index as a string, `"0"` being the primary on macOS; `primary` says whether the OS treats it as the main display; `scale` is the backing scale factor, `2` on Retina and `1` otherwise. `bounds` and `workArea` are both `{ x, y, width, height }` in **top-left page pixels** — `x` grows right from the primary's left edge, `y` grows down from its top, and a display left of or above the primary answers a negative `x` or `y`. `workArea` is `bounds` minus the menu bar and the Dock, which is what a window actually fits into.
+
+`primary` answers the display the platform marks, falling back to the first one listed when none is marked — `[NSScreen screens][0]` on macOS, so the fallback agrees with the native answer. The adapter is asked on every call, so plugging in a display is visible without a restart.
+
+Failure codes: `handler-error` (`primary` when the platform listed no usable display); `not-implemented` without an adapter, naming the call that platform would need — `NSScreen screens` on macOS, `EnumDisplayMonitors` on Windows, `gdk_display_get_monitor` on Linux. `list` answering `screens: []` is a real answer, not a failure: a headless process has nothing connected. A display whose `bounds` or `workArea` is missing or has no area is dropped rather than answered as a zero rectangle, and a record missing its `id` or `scale` defaults to the listed index and `1`.
+
+The rectangles are not the frame `window.setPosition` takes: the darwin half flips them once into top-left pixels while the window calls pass AppKit's y-up frame through, so read [the screen guide](/docs/guides/screen) before handing one to a window call.
 
 ## `accessibility`
 

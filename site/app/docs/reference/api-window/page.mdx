@@ -60,6 +60,6 @@ Failure codes: `invalid-label`, `unknown-window`, `unknown-adapter` (a partial f
 
 Nine commands, one per placement: `center`, `topLeft`, `topRight`, `bottomLeft`, `bottomRight`, `topCenter`, `bottomCenter`, `leftCenter`, `rightCenter`.
 
-Each takes `{ label }` and answers `{ ok: true, label, x, y, placed: true }`. The screen frame is the main screen's visible frame, so `top` is the largest `y` and a `topLeft` window sits under the menu bar. A window larger than the screen keeps its negative offset: clamping would report a success the user cannot see.
+Each takes `{ label }` and answers `{ ok: true, label, x, y, placed: true }`. The screen frame is the main screen's visible frame, so `top` is the largest `y` and a `topLeft` window sits under the menu bar. A window larger than the screen keeps its negative offset: clamping would report a success the user cannot see. To choose a display before placing, [`screen.primary`](/docs/reference/api-desktop) answers the display the platform marks and its `workArea`; those rectangles are top-left page pixels rather than the y-up frame the window calls take, so read [the screen guide](/docs/guides/screen) before feeding one to `setPosition`.
 
 Failure codes: `invalid-label`, `unknown-window`, `unknown-adapter` (no `getSize`/`setPosition`, or no usable screen frame), `handler-error`; `not-implemented` with `requires: "NSWindow"` without an adapter.
