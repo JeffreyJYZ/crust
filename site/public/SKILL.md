@@ -46,7 +46,7 @@ export default {
   app: { id: "land.jyz.myapp", name: "My app", version: "0.1.0" },
   windows: [{ label: "main", url: "/", width: 900, height: 640, title: "My app" }],
   security: {
-    capabilities: [{ name: "app", actions: ["app:invoke"] }],
+    capabilities: [{ name: "app", actions: ["app:greet"] }],
     grants: { main: ["app"] },
   },
 } satisfies CrustConfig;
@@ -83,16 +83,19 @@ completion, a non-zero exit aborts the build; `minimumSystemVersion` (`"13.0"`);
 
 ```ts
 security: {
-  capabilities: [{ name: "fs", actions: ["fs:*"] }, { name: "app", actions: ["app:invoke"] }],
+  capabilities: [{ name: "fs", actions: ["fs:*"] }, { name: "app", actions: ["app:greet"] }],
   grants: { main: ["app", "fs"], admin: ["app"] },
 }
 ```
 
 - **Absent or empty `capabilities` allows every command.** That is the compatibility guarantee.
-- **Present and non-empty denies by default.** A label with no `grants` entry holds nothing.
+- **Present and non-empty denies by default.** A label with no `grants` entry holds nothing, and
+  each namespace a page calls needs its own `capabilities` entry with the actions it may use plus
+  that capability in the label's `grants` — granting one namespace does not grant another.
 - An action is `plugin:command` with `*` as the only metacharacter: `fs:*`, `dialog:openPanel`.
 - App commands can be narrowed: `app:<name>` (e.g. `app:notes.save`). `app:invoke` is the broad
-  alias that grants every app command, which is what scaffolds ship.
+  alias that grants every app command, present and future — useful while sketching, wrong in a
+  shipped app.
 - **The grant belongs to the window label bound to the token when its document was served.** A page
   writing `"window": "admin"` in its own invoke body can address that window but cannot hold its
   grants.
@@ -129,12 +132,15 @@ Handlers run on the pump thread, so keep them fast. An async handler is awaited 
 
 ## Built-ins and capabilities
 
-All 32 plugin namespaces below are registered before your code runs, plus `app` and `single-instance`
-(34 built-ins always) and `updater` when the config has an `updater` section. `app.use` is only for
-your own plugins, never a built-in, so a page may call `store.get` with no registration step.
+These are the built-in namespaces: each registers before your code runs, as do `app` and
+`single-instance` — with three exceptions, so no count in prose can stay true. `updater` registers
+only when the config has an `updater` section; `testing` only when the process starts with
+`CRUST_TEST=1`; and a non-empty `plugins` array narrows the built-ins to exactly the names it lists
+(`app` and anything mounted with `app.use` always register). `app.use` is only for your own plugins,
+never a built-in, so a page may call `store.get` with no registration step.
 
-But once `security.capabilities` is present, **each namespace needs its own capability and grant**;
-granting one does not grant another. For `store.get`:
+A namespace still needs its own capability and grant before a page may call it — see `security`
+above. For `store.get`:
 
 ```ts
 security: {
@@ -156,13 +162,13 @@ const files  = await window.crust.invoke("fs", "list", { path: "." }); // plugin
 - `window.crust` is injected by the bridge. **Never import crust in page code** — two clients.
 - A refused command rejects with a `code`. A command answering a typed failure
   (`{ ok: false, code }`) resolves with it and the transport carries a 4xx/5xx.
-- `window.crust.a11y.pageTree(selector)` returns the DOM subtree as
+- `window.crust.a11y.pageTree(selector)` returns `{ nodes }` — each
   `{ role, label, focusable, readingOrder }` — the DOM's view, not the OS accessibility tree.
-  `focusElement(selector)` reports what actually took focus.
+  `focusElement(selector)` answers `{ active: { role, label } }`, what actually took focus.
 - In `next dev` there is no `window.crust`, because nothing injects the client into a document the
   Next dev server serves. A built app works.
 
-## Plugin namespaces (32)
+## Plugin namespaces
 
 <!-- skill:commands:begin -->
 - `accessibility` — trusted prompt elementCount announce title focus
@@ -245,10 +251,13 @@ order a failure happens: `  <name>  [ok|fail|note] <detail>`. The names are `pla
 only), `bun`, `config` — or the single file that needs none — `macos` against
 `build.minimumSystemVersion`, `shim` (the C shim compiled with `cc()` exactly as launch compiles it),
 `bridge` (the app's own derived port bound and one invoke answered `pong`, then released), `dev port`
-/ `dev url` / `dev watch` only when `dev.url` is set, `backend` (`src/main.ts`, else `main.ts`),
-`single` for a single file's page bundle, `window` (the platform module imported), `trap` for the
-fatal patterns in your own source, `assets` (what a build would embed), `templates`, and last `bundle`
-with `gatekeeper`. Exit 0 ends `all checks passed`; any `[fail]` ends `N checks failed` on stderr with
+/ `dev url` only when `dev.url` is set, `backend` (`src/main.ts`, else `main.ts`), `dev watch` for a
+page written as `.ts` when `dev.url` is set, `single` for a single file's page bundle, `window` (the
+platform module imported), `source` (one line when the trap scan is clean, or a `trap` line per
+fatal pattern in your own source), `assets` (what a build would embed), `templates`, and `bundle`
+with `gatekeeper` when a `.app` is in `dist/`. After those lines comes the `extensions` block: the
+compilers, then a verdict per native source file, or one line when the project has no `native/` dir.
+Exit 0 ends `all checks passed`; any `[fail]` ends `N checks failed` on stderr with
 exit 1. It needs no build: with nothing in `dist/`, `bundle` is a `[note]` telling you to run
 `crust build` first. A red line is the check that refused, in its own words — a `bridge` note about a
 busy port means the page origin moves and origin-scoped storage does not follow, and a red `assets`
@@ -282,11 +291,11 @@ call. `examples/hello/main.ts` prints this for one window and one `invoke("greet
 line means the call never left the page or was refused — read that as transport, not as a rendering
 fault.
 
-**What a failure looks like.** The codes below are the bridge's vocabulary, and a refusal rejects with
-one rather than failing silently. `forbidden` is the first a new app meets: the moment
-`security.capabilities` is present the bridge denies by default, so a namespace the page calls needs
-both an action on its capability and a `grants` entry for that window's label. `bad-origin` is the
-second: `dev.url` without `strictPort` moves the port under a running page.
+**What a failure looks like.** The codes below are the bridge's vocabulary, and a refusal rejects
+with one rather than failing silently. `forbidden` is the first a new app meets: a namespace the
+page calls needs both an action and a `grants` entry for that window's label (`security` above says
+why). `bad-origin` is the second: `dev.url` without `strictPort` moves the port under a running
+page.
 
 ## Test an app
 
@@ -352,12 +361,15 @@ grant: `window:*` for `capture`, `testing:*` for the rest.
 
 `unauthorized` (401), `forbidden` (403, capability refused), `bad-origin`, `not-found`,
 `unknown-plugin`, `unknown-command`, `bad-json`, `bad-request`, `handler-error`, `too-large`,
-`not-implemented`, `outside-scope` (403, `fs`/`shell` boundary).
+`not-implemented`, `outside-scope` (403, an `fs` path resolving outside every `fs.scope` prefix).
+`shell` answers a typed `{ ok: false, code, message }` value instead of rejecting, with its own
+codes (`program-not-allowed`, `program-outside-root`, `cwd-not-allowed`, `env-not-allowed`, and
+others).
 
 ## Gotchas that cost time
 
-- **A present `capabilities` array turns the bridge deny-by-default.** Every window label then needs
-  a `grants` entry, and every namespace a page calls needs an action. Symptom: `forbidden`.
+- **`forbidden` is a missing grant, not a bug** — add the namespace's capability to that window
+  label's `grants`; `security` above has the rule.
 - **`dev.url` must be `strictPort`.** A port move is `bad-origin` on every invoke.
 - **`app.icon` is a PNG**, not SVG/ICO. A missing file fails the build by name.
 - **Builds are host-only.** `crust build` has no `--target`; the release workflow builds the other
