@@ -10,22 +10,36 @@
  * The assertion is the child's own readback, not its exit code: `-URL` is read back from the
  * webview and the tray title from the status item, so a `true` that never reached the native call
  * could not make either change.
+ *
+ * Starting AppKit also installs a menu bar and brings that app forward, so the human's own app is
+ * captured before each spawn and restored in a `finally`: a child that throws or crashes on the way
+ * out must not leave someone looking at a test window.
  */
 import { describe, expect, test } from "bun:test";
+import { captureFrontmost, restoreFocusVerified } from "../../../scripts/harness/focus.ts";
 
 const REPO = new URL("../../..", import.meta.url).pathname;
 
 /** A script run in its own process, so nothing it starts leaks into the test runner. */
 async function runChild(source: string): Promise<{ code: number; out: string }> {
-	const child = Bun.spawn(["bun", "-e", source], {
-		cwd: REPO,
-		stdout: "pipe",
-		stderr: "pipe",
-		env: { ...process.env, CRUST_TEST_CHILD: "1" },
-	});
-	const out = await new Response(child.stdout).text();
-	await child.exited;
-	return { code: child.exitCode ?? -1, out };
+	// Captured before the spawn, never after: once the child's window is up, the frontmost app is
+	// already the wrong answer. The restore is verified because `open -a` returns early.
+	const frontmost = await captureFrontmost();
+	try {
+		const child = Bun.spawn(["bun", "-e", source], {
+			cwd: REPO,
+			stdout: "pipe",
+			stderr: "pipe",
+			env: { ...process.env, CRUST_TEST_CHILD: "1" },
+		});
+		const out = await new Response(child.stdout).text();
+		await child.exited;
+		return { code: child.exitCode ?? -1, out };
+	} finally {
+		const { restored, actual } = await restoreFocusVerified(frontmost);
+		if (!restored)
+			console.log(`focus: frontmost is ${actual ?? "(none)"}, wanted ${frontmost}`);
+	}
 }
 
 describe("tray.setTooltip reaches AppKit", () => {

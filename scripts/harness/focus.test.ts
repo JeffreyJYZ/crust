@@ -91,6 +91,45 @@ test("restore is a no-op off macOS", async () => {
 	expect(calls).toHaveLength(0);
 });
 
+/** A sleep that records instead of waiting, so a polling test costs the suite no time. */
+function napper(): { slept: number[]; sleep: (ms: number) => Promise<void> } {
+	const slept: number[] = [];
+	return { slept, sleep: async (ms) => void slept.push(ms) };
+}
+
+/**
+ * The verified restore exists because `open -a` returns before activation settles: "we called
+ * restore" and "the app is frontmost again" are different claims, and only the second one is the
+ * courtesy the human gets. Each read is replayed here, so the polling is tested without touching the
+ * real frontmost app.
+ */
+test("verified restore polls until the captured app is frontmost again", async () => {
+	const { runner, calls } = recorder(ok(""), ok("bun"), ok("WeChat"), ok("ghostty"));
+	const { slept, sleep } = napper();
+	const { restoreFocusVerified } = makeFocus(runner, "darwin");
+	expect(await restoreFocusVerified("ghostty", { sleep })).toEqual({
+		restored: true,
+		actual: "ghostty",
+	});
+	// One `open -a`, then three reads; a sleep sits between reads only, never after the match.
+	expect(calls).toHaveLength(4);
+	expect(calls[0]!.command).toEqual(["open", "-a", "ghostty"]);
+	expect(slept).toHaveLength(2);
+});
+
+test("verified restore reports the app it saw last when the target never comes back", async () => {
+	const { runner, calls } = recorder(ok(""), ok("bun"), ok("WeChat"), ok("WeChat"));
+	const { slept, sleep } = napper();
+	const { restoreFocusVerified } = makeFocus(runner, "darwin");
+	// A miss is not a pass: the run says which app is in front instead of claiming the restore.
+	expect(await restoreFocusVerified("ghostty", { attempts: 3, delayMs: 5, sleep })).toEqual({
+		restored: false,
+		actual: "WeChat",
+	});
+	expect(calls).toHaveLength(4);
+	expect(slept).toEqual([5, 5]);
+});
+
 /**
  * The classification lives in `focus-callers.ts`; what is asserted here is that it is total.
  * `guardFocus()` both arms the signal/exit restore and decides the target — a captured app, or the
