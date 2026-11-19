@@ -14,6 +14,7 @@ import {
 	watchWindows,
 } from "./app-loop.ts";
 import { appInfo, type AppInfo } from "./app-info.ts";
+import { emitOnQuit } from "./app-watch.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
@@ -161,14 +162,13 @@ export class App {
 
 		if (this.#listeners.get("window-all-closed")?.size) {
 			this.#windowCheck = watchWindows(config, platform, () => {
-				// A listener that throws must not keep the app alive with every window gone.
-				// `emit` awaits each listener, so a rejection used to skip the quit and leave the
-				// pump running a windowless process; the error is named, then the app quits anyway.
-				void emit(this.#listeners, "window-all-closed")
-					.catch((error: unknown) => {
-						const text = error instanceof Error ? error.message : String(error);
-						console.warn(`  window    a window-all-closed listener threw: ${text}`);
-					})
+				// The platform's lifecycle source only sees a user's ⌘Q, so emit the save-on-quit
+				// events here too: the most common quit is every window closing, and a listener
+				// that throws must not keep a windowless process alive. `emitOnQuit` names the
+				// error and still lets the next event and the quit run.
+				void emitOnQuit(this.#listeners, "window-all-closed")
+					.then(() => emitOnQuit(this.#listeners, "before-quit"))
+					.then(() => emitOnQuit(this.#listeners, "will-quit"))
 					.then(() => platform.quit());
 			});
 		}

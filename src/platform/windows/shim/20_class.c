@@ -17,8 +17,15 @@ typedef struct {
 	shim_h iconSm;
 } shim_wndclassex;
 
-// Every crust window shares this procedure, so a title-bar close reaches DestroyWindow and
-// WM_DESTROY posts the quit the pump reads. A minimised window still reports IsWindow.
+// Defined in 42_webview.c, which compiles after this part. WM_DESTROY needs both: the close to hand
+// the controller slot back, and the live count to know whether the last window just went away.
+void shim_webview_close(shim_h hwnd);
+int shim_webview_live(void);
+
+// Every crust window shares this procedure, so a title-bar close reaches DestroyWindow and WM_DESTROY.
+// It releases the controller slot and posts the quit only when the last window is gone — the runtime's
+// window-all-closed watcher owns the decision, so closing one of three must not end the app.
+// A minimised window still reports IsWindow.
 shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 	if (msg == SHIM_WM_SIZE) {
 		// The client rect is the authority, not LPARAM: a DPI change reports a stale pair there.
@@ -51,7 +58,11 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 		return 0;
 	}
 	if (msg == SHIM_WM_DESTROY) {
-		PostQuitMessage(0);
+		// The title-bar X never reached shim_webview_close: eight closes exhausted the eight-slot
+		// table and every later createWindow refused. Release the slot here, then quit only when no
+		// tracked window remains so one of several closes leaves the app running.
+		shim_webview_close(hwnd);
+		if (shim_webview_live() == 0) PostQuitMessage(0);
 		return 0;
 	}
 	return DefWindowProcW(hwnd, msg, wp, lp);

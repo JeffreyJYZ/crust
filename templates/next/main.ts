@@ -6,4 +6,9 @@ app.command("greet", ({ name }) => {
 	return answer;
 });
 
+// Closing the window ends the app instead of leaving the pump running.
+app.on("window-all-closed", () => {
+	console.log("  window    closed; quitting");
+});
+
 await app.run();

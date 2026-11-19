@@ -23,6 +23,11 @@ static int find_window(shim_h hwnd) {
 	return -1;
 }
 
+// How many windows still hold a controller. WM_DESTROY reads this after shim_webview_close, so the
+// quit is posted only once the last tracked window is gone; closing one of three must not end the
+// app before the runtime's own window-all-closed watcher runs.
+int shim_webview_live(void) { return g_windows; }
+
 int shim_webview_put_bounds(shim_h hwnd, double w, double h) {
 	int i = find_window(hwnd);
 	if (i < 0) return 0;

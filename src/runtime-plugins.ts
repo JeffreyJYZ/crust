@@ -2,36 +2,27 @@
  * The plugins `startApp` registers: the platform's adapted core four, the window plugin the platform owns, and the runtime's own `app` namespace. Split out of `runtime.ts` because each needs a different instance — AppKit adapters, the running platform, or the `app` singleton.
  */
 
-import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
+import type { ShellConfig } from "@/config";
 import { crashRecordPath } from "@/platform/darwin/crash-record";
 import { createSidecarPlugin } from "@/plugins/sidecar";
-import { createWindowPlugin, type PluginDefinition } from "@/plugins";
+// Static, not part of the darwin-only dynamic import below: `scoped` runs on the non-darwin arm
+// before that import is reached, and a `const` binding there would be in its temporal dead zone.
+import { createFsPlugin, createWindowPlugin, type PluginDefinition } from "@/plugins";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
 import { platformKeychainPlugin } from "@/runtime-keychain";
 import { startCrashPart } from "@/runtime-crash-start";
-import { otherPlatformPlugins } from "@/runtime-plugins-other.ts";
+import {
+	otherPlatformPlugins,
+	optionsOf,
+	type NativePluginOptions,
+} from "@/runtime-plugins-other.ts";
 
 /**
  * The `app` namespace moved to `runtime-app-namespace.ts` when this file crossed the 200-line cap.
  * Re-exported so every caller keeps importing it from here.
  */
 export { createAppNamespacePlugin } from "./runtime-app-namespace.ts";
-
-/** The config sections that change which plugin an app gets. */
-export interface NativePluginOptions {
-	shell?: ShellConfig;
-	updater?: UpdaterConfig;
-	/** Filesystem scope: when set, every `fs` command must resolve inside it. */
-	fs?: FsConfig;
-	/** The app's id, which names its data directory: crash records, store and downloads live there. */
-	app?: string;
-}
-
-/** A bare `ShellConfig` is the third argument this function took before `updater` existed. */
-function optionsOf(options: NativePluginOptions | ShellConfig): NativePluginOptions {
-	const named = "shell" in options || "updater" in options || "app" in options;
-	return named ? (options as NativePluginOptions) : { shell: options as ShellConfig };
-}
+export type { NativePluginOptions } from "@/runtime-plugins-other.ts";
 
 /**
  * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
@@ -83,6 +74,8 @@ export async function nativePlugins(
 		return otherPlatformPlugins({
 			core,
 			scoped,
+			app: appId,
+			root: appRoot,
 			power: powerPlugin,
 			shell: shellPlugin,
 			sidecar: sidecarPlugin,
@@ -115,7 +108,6 @@ export async function nativePlugins(
 	const { createNavigationPlugin } = await import("@/plugins/navigation");
 	const { createFindInPagePlugin } = await import("@/plugins/findinpage");
 	const {
-		createFsPlugin,
 		createClipboardPlugin,
 		createOpenerPlugin,
 		createOsPlugin,
@@ -172,7 +164,7 @@ export async function nativePlugins(
 		createOpenerPlugin(opener.darwinOpenerAdapter()),
 		createOsPlugin(osInfo.darwinOsAdapter()),
 		createShortcutsPlugin(shortcuts.darwinShortcutsAdapter()),
-		createWindowStatePlugin({ native: windowAdapter }),
+		createWindowStatePlugin({ native: windowAdapter, app: appId, root: appRoot }),
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
 		createScreenPlugin({ adapter: { list: screen.listScreens }, requires: "NSScreen screens" }),
 		createMenuPlugin(darwin.darwinMenuAdapter()),

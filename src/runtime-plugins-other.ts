@@ -7,6 +7,7 @@
  * `darwinWindowAdapter`; Windows now wires its own; a platform with neither keeps the bare plugins,
  * which answer `not-implemented` by name instead of throwing at the first command.
  */
+import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
 import {
 	createPositionerPlugin,
 	createWindowPlugin,
@@ -15,6 +16,22 @@ import {
 } from "@/plugins";
 import { coreNamespacePlugins, replacesCoreNamespace } from "@/runtime-adapters-other.ts";
 import { nonDarwinPlugins, nonDarwinScreenPlugin } from "@/runtime-non-darwin";
+
+/** The config sections that change which plugin an app gets. */
+export interface NativePluginOptions {
+	shell?: ShellConfig;
+	updater?: UpdaterConfig;
+	/** Filesystem scope: when set, every `fs` command must resolve inside it. */
+	fs?: FsConfig;
+	/** The app's id, which names its data directory: crash records, store and downloads live there. */
+	app?: string;
+}
+
+/** A bare `ShellConfig` is the third argument `nativePlugins` took before `updater` existed. */
+export function optionsOf(options: NativePluginOptions | ShellConfig): NativePluginOptions {
+	const named = "shell" in options || "updater" in options || "app" in options;
+	return named ? (options as NativePluginOptions) : { shell: options as ShellConfig };
+}
 
 /** The pieces `nativePlugins` has already built when it reaches this arm. */
 export interface OtherPlatformParts {
@@ -30,6 +47,9 @@ export interface OtherPlatformParts {
 	updater: readonly PluginDefinition[];
 	/** `process.platform` in a real run; a parameter so the win32 arm is testable on macOS. */
 	os: string;
+	/** The app id and its data root, so window-state writes one file per app, not one per machine. */
+	app: string | undefined;
+	root: string;
 }
 
 /**
@@ -59,8 +79,8 @@ function bare(): WindowWiring {
 }
 
 export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<PluginDefinition[]> {
-	const { core, scoped, os } = parts;
-	const window = await windowPlugins(os);
+	const { core, scoped, os, app, root } = parts;
+	const window = await windowPlugins(os, app, root);
 	return [
 		...core
 			.filter((plugin) => plugin.name !== "window")
@@ -94,7 +114,11 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
  * platform; a Linux run with no platform built yet (a test, or an entry that never called `run()`)
  * keeps the bare refusal instead of half-wiring a namespace.
  */
-async function windowPlugins(os: string): Promise<WindowWiring> {
+async function windowPlugins(
+	os: string,
+	app: string | undefined,
+	root: string,
+): Promise<WindowWiring> {
 	if (os === "linux") {
 		const { activeLinuxPlatform } = await import("@/platform/linux/active-platform");
 		const wiring = activeLinuxPlatform();
@@ -102,7 +126,7 @@ async function windowPlugins(os: string): Promise<WindowWiring> {
 		const { linuxWindowAdapter } = await import("@/platform/linux/window-adapter");
 		const native = linuxWindowAdapter(wiring.platform, wiring.native);
 		return {
-			plugins: [createWindowPlugin(native), createWindowStatePlugin({ native })],
+			plugins: [createWindowPlugin(native), createWindowStatePlugin({ native, app, root })],
 			replaced: ADAPTED,
 		};
 	}
@@ -113,7 +137,7 @@ async function windowPlugins(os: string): Promise<WindowWiring> {
 	return {
 		plugins: [
 			createWindowPlugin(native),
-			createWindowStatePlugin({ native }),
+			createWindowStatePlugin({ native, app, root }),
 			// The nine placements, measured against the primary work area and flipped into Win32's
 			// y-down axis by the adapter — the plugin's own arithmetic is untouched.
 			createPositionerPlugin(windowsPositioner(native)),

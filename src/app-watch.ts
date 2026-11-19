@@ -102,6 +102,22 @@ export function watchWindows(
 }
 
 /**
+ * Emit one app event on the window-all-closed quit path, naming a throwing listener instead of
+ * letting it block termination. `emit` awaits each listener, so a rejection would otherwise skip
+ * the quit and leave a windowless process alive. Each event gets its own call so a throw in
+ * `before-quit` still lets `will-quit` run and the app quit.
+ */
+export function emitOnQuit(
+	listeners: Map<AppEvent, Set<AppListener>>,
+	event: AppEvent,
+): Promise<void> {
+	return emit(listeners, event).catch((error: unknown) => {
+		const text = error instanceof Error ? error.message : String(error);
+		console.warn(`  lifecycle a ${event} listener threw: ${text}`);
+	});
+}
+
+/**
  * Drain a platform's lifecycle queue into `app.on` listeners.
  *
  * Same rule as `window-all-closed`: a listener that throws is named and never blocks termination. A
