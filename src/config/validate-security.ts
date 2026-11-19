@@ -83,12 +83,57 @@ function validateGrants(v: Validator, value: unknown, known: ReadonlySet<string>
 	}
 }
 
+/**
+ * A custom policy replaces the whole header. The bridge still injects its bootstrap as an inline
+ * `<script>` with a per-response nonce, but it never rewrites an app's policy to admit that nonce.
+ * A `script-src` that omits `'unsafe-inline'` therefore loads a page where `window.crust` never
+ * installs and every invoke fails silently — refuse it here instead. When `script-src` is absent
+ * CSP falls back to `default-src`, so a strict `default-src` blocks the bootstrap the same way.
+ */
+const CSP_REASON =
+	"a custom policy cannot name the bridge's per-response nonce; without 'unsafe-inline' the " +
+	"inline bootstrap is blocked, window.crust never installs and every invoke fails silently";
+
+function cspExpectation(directive: "script-src" | "default-src"): string {
+	const base = `a policy whose ${directive} includes 'unsafe-inline' (${CSP_REASON})`;
+	return directive === "default-src"
+		? `${base} — script-src falls back to default-src when absent; add a script-src that admits the nonce or loosen default-src`
+		: base;
+}
+
+/** The directive governing inline scripts: `script-src`, else `default-src`, else unrestricted. */
+function scriptDirective(
+	csp: string,
+): { name: "script-src" | "default-src"; value: string } | undefined {
+	let fallback: { name: "default-src"; value: string } | undefined;
+	for (const directive of csp.split(";")) {
+		if (/^\s*script-src(?:\s|$)/i.test(directive)) {
+			return { name: "script-src", value: directive };
+		}
+		if (fallback === undefined && /^\s*default-src(?:\s|$)/i.test(directive)) {
+			fallback = { name: "default-src", value: directive };
+		}
+	}
+	return fallback;
+}
+
+/** CSP directive names and source keywords are ASCII case-insensitive. */
+function admitsInline(directive: string): boolean {
+	return /(?:^|\s)'unsafe-inline'(?:\s|$)/i.test(directive);
+}
+
 export function validateSecurity(v: Validator, value: unknown): void {
 	if (value === undefined) return;
 	const security = v.object("security", value);
 	if (!security) return;
 	v.only(security, "security", SECURITY_KEYS);
-	v.string(security, "csp", "security", false);
+	const csp = v.string(security, "csp", "security", false);
+	if (csp !== undefined) {
+		const directive = scriptDirective(csp);
+		if (directive && !admitsInline(directive.value)) {
+			v.fail("security.csp", cspExpectation(directive.name), csp);
+		}
+	}
 
 	validateCapabilities(v, security.capabilities);
 

@@ -91,3 +91,69 @@ describe("security capabilities config", () => {
 		expect(() => validateConfig(withSecurity({ csp: "x", nope: 1 }))).toThrow(ConfigError);
 	});
 });
+
+function cspIssue(csp: unknown): { path: string; expected: string } | undefined {
+	try {
+		validateConfig(withSecurity({ csp }));
+		return undefined;
+	} catch (error) {
+		expect(error).toBeInstanceOf(ConfigError);
+		return (error as ConfigError).issues[0];
+	}
+}
+
+describe("security.csp validation", () => {
+	test("accepts a custom policy whose script-src admits inline scripts", () => {
+		const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'";
+		expect(cspIssue(csp)).toBeUndefined();
+		expect(validateConfig(withSecurity({ csp })).security?.csp).toBe(csp);
+	});
+
+	test("accepts a policy that restricts scripts by neither directive", () => {
+		expect(cspIssue("connect-src 'self'; img-src 'self'")).toBeUndefined();
+	});
+
+	test("accepts a default-src that admits inline scripts when script-src is absent", () => {
+		expect(cspIssue("default-src 'self' 'unsafe-inline'; connect-src 'self'")).toBeUndefined();
+	});
+
+	test("refuses a strict default-src with no script-src, naming default-src", () => {
+		const found = cspIssue("default-src 'self'; connect-src 'self'");
+		expect(found?.path).toBe("security.csp");
+		expect(found?.expected).toContain("default-src");
+		expect(found?.expected).toContain("'unsafe-inline'");
+		expect(found?.expected).toContain("nonce");
+		expect(found?.expected).toContain("window.crust");
+	});
+
+	test("script-src wins over a strict default-src", () => {
+		expect(cspIssue("default-src 'none'; script-src 'self' 'unsafe-inline'")).toBeUndefined();
+	});
+
+	test("refuses a strict script-src even when default-src is loose", () => {
+		const found = cspIssue("default-src 'self' 'unsafe-inline'; script-src 'self'");
+		expect(found?.path).toBe("security.csp");
+		expect(found?.expected).toContain("script-src");
+		expect(found?.expected).not.toContain("falls back");
+	});
+
+	test("accepts the directive and keyword case-insensitively", () => {
+		expect(cspIssue("SCRIPT-SRC 'UNSAFE-INLINE'")).toBeUndefined();
+	});
+
+	test("refuses a script-src without 'unsafe-inline', explaining the nonce bootstrap", () => {
+		const found = cspIssue("default-src 'self'; script-src 'self'");
+		expect(found?.path).toBe("security.csp");
+		expect(found?.expected).toContain("'unsafe-inline'");
+		expect(found?.expected).toContain("nonce");
+		expect(found?.expected).toContain("window.crust");
+	});
+
+	test("refuses a script-src relying on a nonce placeholder the bridge does not fill", () => {
+		expect(cspIssue("script-src 'self' 'nonce-{{nonce}}'")?.path).toBe("security.csp");
+	});
+
+	test("refuses a non-string csp by name", () => {
+		expect(cspIssue(42)?.path).toBe("security.csp");
+	});
+});
