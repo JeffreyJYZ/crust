@@ -24,8 +24,7 @@ cd my-app && bun install
 bun run dev        # crust dev
 ```
 
-`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS. Release binaries for all six
-platform/arch pairs are on the releases page.
+`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS, and `bun add -g github:JeffreyJYZ/crust#v0.2.2` installs that tag globally as `~/.bun/bin/crust` on any platform (`bun add -g crust` is a different, unrelated npm package — always name the `github:` specifier). Release binaries for all six platform/arch pairs are on the releases page; a bun global sits earlier on `PATH` than Homebrew's prefix, so where both exist the bun copy answers `crust`.
 
 ## What a scaffold is
 
