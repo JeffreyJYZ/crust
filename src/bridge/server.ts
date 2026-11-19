@@ -11,6 +11,7 @@ import { Events } from "./server/events.ts";
 import { createHandler, EVENTS_PATH, INVOKE_PATH } from "./server/handler.ts";
 import { compileCapabilities } from "./server/capabilities.ts";
 import { createRunner } from "./server/invoke.ts";
+import { createDocumentTokenLedger, mintDocumentToken } from "./server/document-tokens.ts";
 import type { BridgeHandle, StartBridgeOptions } from "./server/types.ts";
 import { DEFAULT_WINDOW_LABEL } from "./window-identity.ts";
 
@@ -53,6 +54,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 	// claim another window's grants. Labels are never taken from an invoke body.
 	const labels = new Map<string, string | undefined>();
 	labels.set(token, DEFAULT_WINDOW_LABEL);
+	const ledger = createDocumentTokenLedger(labels);
 	const state = {
 		options,
 		// Only the app's own override: the document route builds the default policy per response so
@@ -62,6 +64,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 		devOrigins,
 		events,
 		labels,
+		ledger,
 		port: () => port,
 		run: createRunner(handlers, ctx, capabilities),
 	};
@@ -82,6 +85,7 @@ export function startBridge(options: StartBridgeOptions): BridgeHandle {
 		url: `http://${HOST}:${port}`,
 		server,
 		emit,
+		mintPageToken: (label) => mintDocumentToken(ledger, label),
 		async stop() {
 			events.stop();
 			await server.stop(true);

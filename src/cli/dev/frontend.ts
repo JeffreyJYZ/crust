@@ -4,7 +4,10 @@
  */
 
 /**
- * The pair `crust/vite` reads, taken from this process's environment. Both are empty for a `dev.url` app whose runtime has not published a bridge address yet; the caller turns that into one line rather than a page that fails its first invoke with no explanation.
+ * The pair `crust/vite` reads, taken from this process's environment. The token here is the
+ * document token the runtime mints where the bridge binds, never the seed. Both are empty for a
+ * `dev.url` app whose runtime has not published a bridge yet; the caller turns that into one line
+ * rather than a page that fails its first invoke with no explanation.
  */
 export function bridgeEnv(devUrl: string | undefined): Record<string, string> {
 	if (devUrl === undefined) return {};

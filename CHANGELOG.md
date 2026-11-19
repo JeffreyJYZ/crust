@@ -4,6 +4,36 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.1.33] — 2026-11-19
+
+A hunt across the whole framework — twenty-three lanes, one field each — and the fixes that survived
+validation. Two of these shipped in `0.1.32` and are the reason this release exists.
+
+### Fixed
+
+- **A Windows or Linux app with `fs.scope` crashed on start.** `createFsPlugin` was read through a closure that ran before the `await import` that defines it, so `nativePlugins(…, "win32")` threw `ReferenceError: Cannot access 'createFsPlugin' before initialization` before any window opened.
+- **`fs` could be escaped with a symlink.** `canonical()` folded `..` lexically and the command then ran the raw path, which the OS resolves through the link — `…/scope/link/../secret.txt` passed the scope check and read a file outside the grant. The check resolves the real path now, so what it compares is what the operation touches.
+- **A page could give its new window another window's grants.** `window.create` kept a page-supplied `?window=` on a bridge-owned URL, and the document token is bound to the label in that query. The label is forced from the command, only a seed token may mint, `crust dev` injects a minted non-seeding token instead of the process token, and issued tokens are capped at 256 with FIFO revocation.
+- **Windows: closing one window quit the app, and eight closes wedged it.** `WM_DESTROY` posted a quit unconditionally and never released the WebView2 controller slot, so a three-window app ended on the first close and the eight-slot table filled permanently. The slot is released and the quit is left to the runtime's own `window-all-closed` watcher.
+- **`before-quit` never fired on the common quit.** Closing the last window went straight to `platform.quit()` → `process.exit(0)`, so the save-on-quit listener the lifecycle guide shows never ran. The order is `window-all-closed` → `before-quit` → `will-quit` → quit, and a throwing listener is named rather than blocking termination.
+- **`store` and `window-state` lost writes under concurrency.** Both did an unserialised read-modify-write, so `Promise.all([set a, set b])` left one key — reproduced. Mutations are serialised per file and re-read inside the lock.
+- **Every crust app wrote the same `window-state.json`.** The plugin was built with no app id or root and fell back to a shared directory. It now receives both, at all three call sites.
+- **`keychain.get`/`list` returned truncated data as success.** After a second overrun they clamped to the buffer and answered `{ ok: true, found: true }` with a prefix of the secret. They re-read up to three times and then throw a named error.
+- **`crash-reporter`'s data-root fence was lexical**, so a symlink inside the root wrote records outside it. The fence compares real paths.
+- **`dev.url` accepted `localhost:5173`**, which parses as scheme `localhost:` with an empty host — startup passed and the failure arrived 30 s later as a connection error. It must be an absolute `http(s)` URL with a host.
+- **A custom CSP could never admit the bridge's nonce**, so a strict `script-src` blocked the inline bootstrap and every invoke failed silently. Such a policy is refused at config time with the reason, including when the restriction arrives through `default-src`.
+- **The `--next` scaffold never quit** — the only one of the five templates without a `window-all-closed` listener.
+- **`probe()` reported `exit 0` for an app it had just killed**, because the deadline SIGTERM produced a clean exit code. It is `null` on timeout now.
+- **The dev page could lose `window.__CRUST__`.** Minting the page token inside `transformIndexHtml` made the client depend on a race with the bridge binding. The runtime mints once when the bridge binds, and `crust/vite` injects from the environment again with no round trip.
+
+### Added
+
+- **A probe that can take the screen now fails the suite unless it restores focus.** The check decides from what a file does — spawns a built `.app`, spawns under `dist/`, calls `createNativeWindow`, runs `open -a`, or runs `crust dev`/`build` and launches the result — across `scripts/`, the repo root, `examples/`, `research/` and `spike/`, and fails naming the file and the fix.
+
+### Changed
+
+- **`window.setSize`/`getSize` speak the frame**, and the docs state the namespace counts precisely: 32 plugin namespaces, 34 with `app` and `single-instance`, 35 when an `updater` is configured.
+
 ## [0.1.32] — 2026-11-18
 
 ### Fixed

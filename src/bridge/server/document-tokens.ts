@@ -5,6 +5,8 @@
  * the cap revokes the oldest token first.
  */
 
+import { DEFAULT_WINDOW_LABEL } from "../window-identity.ts";
+
 /** Cap on live document tokens. The process token is never counted or evicted. */
 export const MAX_DOCUMENT_TOKENS = 256;
 
@@ -28,4 +30,21 @@ export function createDocumentTokenLedger(
 			}
 		},
 	};
+}
+
+/**
+ * Issue a document token bound to `label`, or the main window when no label is given.
+ *
+ * This is the one mint, shared by the document route (a seed token navigating) and by the runtime
+ * (minting once for the dev page at the point the bridge is bound). A token minted here is a real
+ * credential for invoke but is never a seed, so its holder cannot mint a document for a label of
+ * its choosing.
+ */
+export function mintDocumentToken(
+	ledger: DocumentTokenLedger,
+	label: string | undefined = DEFAULT_WINDOW_LABEL,
+): string {
+	const token = crypto.randomUUID();
+	ledger.remember(token, label);
+	return token;
 }

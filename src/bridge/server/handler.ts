@@ -13,15 +13,10 @@
  */
 
 import { CrustError } from "../errors";
-import {
-	DEFAULT_WINDOW_LABEL,
-	TOKEN_PARAM,
-	tokenFromSearch,
-	windowLabelFromSearch,
-} from "../window-identity.ts";
+import { TOKEN_PARAM, tokenFromSearch, windowLabelFromSearch } from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
-import { createDocumentTokenLedger } from "./document-tokens.ts";
+import { type DocumentTokenLedger, mintDocumentToken } from "./document-tokens.ts";
 import type { Events } from "./events.ts";
 import { bearer, contentTypeOf, errorResponse, hasExtension } from "./http.ts";
 import { invokeRequest, type Run } from "./invoke.ts";
@@ -44,13 +39,13 @@ export interface BridgeState {
 	 * comes from the bound label — never from a request field.
 	 */
 	labels: Map<string, string | undefined>;
+	/** The single document-token ledger, shared with the runtime's one-shot dev-page mint. */
+	ledger: DocumentTokenLedger;
 	/**
 	 * Tokens allowed to seed a document. Only the host's process token by default — a document
 	 * token can re-serve its own page but can never choose a different label.
 	 */
 	seedTokens?: ReadonlySet<string>;
-	/** Override the issued-document cap; tests use a small number to exercise eviction. */
-	maxDocumentTokens?: number;
 	/** The bound port. An ephemeral bind only knows it after `serve` returns. */
 	port(): number;
 	run: Run;
@@ -60,7 +55,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 	// The process token is the only seed unless the caller says otherwise. Keep it explicit: a
 	// credential handed to a page is never allowed to mint a token for a label of the page's choosing.
 	const seeds = state.seedTokens ?? new Set([state.token]);
-	const ledger = createDocumentTokenLedger(state.labels, state.maxDocumentTokens);
+	const { ledger } = state;
 
 	return async function fetch(request: Request): Promise<Response> {
 		const { options, csp, token, devOrigins, events } = state;
@@ -90,8 +85,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 			// Minting from a bound token would let a page holding `main` ask for `?window=admin` and
 			// read the admin token out of the redirect. A document token only re-serves its document.
 			if (seeds.has(presented) && origin === null) {
-				const documentToken = crypto.randomUUID();
-				ledger.remember(documentToken, label ?? DEFAULT_WINDOW_LABEL);
+				const documentToken = mintDocumentToken(ledger, label);
 				const location = new URL(request.url);
 				location.searchParams.set(TOKEN_PARAM, documentToken);
 				return new Response(null, {

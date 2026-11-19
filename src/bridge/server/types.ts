@@ -37,6 +37,12 @@ export interface BridgeHandle {
 	readonly port: number;
 	readonly token: string;
 	readonly url: string;
+	/**
+	 * Issue a document token bound to `label` (main when omitted). The runtime calls this once,
+	 * at the moment the bridge is bound, to give the dev page a credential that can invoke but
+	 * can never seed a document for a label of its choosing.
+	 */
+	mintPageToken(label?: string): string;
 	/** Push an event to every connected page. */
 	emit(event: string, data: unknown): void;
 	stop(): Promise<void>;

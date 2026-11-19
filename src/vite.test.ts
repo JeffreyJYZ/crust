@@ -1,13 +1,12 @@
 /**
- * `crust dev` injects the page client through Vite, so this is the one path where a
- * page could be handed the process token. The process token may seed a document for
- * any label; a page that holds it can mint another window's grants. The plugin must
- * hand the page a document token the bridge minted and bound instead.
+ * `crust dev` injects the page client through Vite, and the runtime mints the credential once
+ * where the bridge is bound. The plugin must inject that document token verbatim — with no fetch,
+ * no round trip and no race — and the token it injects must be able to invoke but never to seed.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR, crust } from "./vite.ts";
 import { start, stopAll } from "./bridge/server/fixtures.ts";
+import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR, crust } from "./vite.ts";
 
 afterEach(() => {
 	delete process.env[BRIDGE_URL_VAR];
@@ -50,31 +49,44 @@ async function injected(): Promise<{ url: string; token: string } | undefined> {
 }
 
 describe("the dev page's credential", () => {
-	test("the process token is never injected into the page", async () => {
+	test("the plugin injects its document token verbatim, with no fetch in the path", async () => {
 		const bridge = start();
+		const pageToken = bridge.mintPageToken();
 		process.env[BRIDGE_URL_VAR] = bridge.url;
-		process.env[BRIDGE_TOKEN_VAR] = bridge.token;
-		const config = await injected();
-		expect(config).toBeDefined();
-		expect(config?.url).toBe(bridge.url);
-		expect(config?.token).not.toBe(bridge.token);
+		process.env[BRIDGE_TOKEN_VAR] = pageToken;
+
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() => {
+			throw new Error("transformIndexHtml must not touch the network");
+		}) as unknown as typeof fetch;
+		try {
+			expect(await injected()).toEqual({ url: bridge.url, token: pageToken });
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
-	test("the injected token cannot mint a document for another label", async () => {
+	test("window.__CRUST__ carries a token the bridge accepts but that cannot seed", async () => {
 		const bridge = start();
 		process.env[BRIDGE_URL_VAR] = bridge.url;
-		process.env[BRIDGE_TOKEN_VAR] = bridge.token;
+		process.env[BRIDGE_TOKEN_VAR] = bridge.mintPageToken();
 		const config = await injected();
 		if (config === undefined) throw new Error("no config injected");
-		const served = await fetch(`${bridge.url}/?token=${config.token}&window=admin`, {
-			redirect: "manual",
-		});
-		// A document token re-serves its own document: 200, no mint, no authority change.
+
+		// A real credential for the document route (200, no redirect).
+		const served = await fetch(`${bridge.url}/?token=${config.token}`, { redirect: "manual" });
 		expect(served.status).toBe(200);
 		expect(served.headers.get("location")).toBeNull();
+
+		// A document token re-serves its own document: no mint, no authority change.
+		const tried = await fetch(`${bridge.url}/?token=${config.token}&window=admin`, {
+			redirect: "manual",
+		});
+		expect(tried.status).toBe(200);
+		expect(tried.headers.get("location")).toBeNull();
 	});
 
-	test("without a bridge nothing is injected", async () => {
+	test("without a handshake or environment nothing is injected", async () => {
 		delete process.env[BRIDGE_URL_VAR];
 		delete process.env[BRIDGE_TOKEN_VAR];
 		process.env.CRUST_DEV_FILE = "/definitely/missing/dev.json";

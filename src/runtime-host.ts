@@ -2,8 +2,10 @@
  * `startApp`'s host questions — which port to bind, which document to serve, which entry module to import — none of which needs the app instance, so they live beside `runtime.ts` rather than inside it.
  */
 
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AssetTable } from "@/bridge/server.ts";
+import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 
 /** The origin a dev server serves from, or undefined when the URL is unusable. */
 export function originOf(url: string): string | undefined {
@@ -39,6 +41,46 @@ export function bridgeBindFailure(preferred: number, cause?: unknown): Error {
 			`and an OS-assigned port${reason ? ` (last error: ${reason})` : ""}. ` +
 			`Free the port or use another one: check what holds ${preferred} with ` +
 			`\`lsof -nP -iTCP:${preferred}\`, or change app.id in crust.config.ts to shift the preferred port`,
+	);
+}
+
+/** The narrow bridge shape the handshake needs: its address and the one-shot document-token mint. */
+export interface DevBridge {
+	readonly url: string;
+	mintPageToken(label?: string): string;
+}
+
+/**
+ * Publish the dev handshake the Vite plugin reads, once, at the moment the bridge is bound.
+ *
+ * The runtime mints a document token here — never the seed — and writes that where the dev server
+ * reads it, so the page can invoke but cannot mint a document for a label of its choosing, and the
+ * mint cannot race the bridge bind. Any failure is fatal: a dev run whose page has no client is
+ * exactly the failure this path exists to prevent.
+ */
+export function publishDevHandshake(projectDir: string, bridge: DevBridge): void {
+	let reason: string;
+	try {
+		const pageToken = bridge.mintPageToken();
+		if (pageToken.length === 0) throw new Error("the bridge minted an empty document token");
+		const dir = join(projectDir, ".crust");
+		mkdirSync(dir, { recursive: true });
+		// 0600: the file carries a bearer credential, and without an explicit mode a 0644 umask
+		// lets every local account drive the bridge. chmod also tightens a pre-existing file.
+		const handshake = join(dir, "dev.json");
+		writeFileSync(handshake, JSON.stringify({ url: bridge.url, token: pageToken }), {
+			mode: 0o600,
+		});
+		chmodSync(handshake, 0o600);
+		process.env[BRIDGE_URL_VAR] = bridge.url;
+		process.env[BRIDGE_TOKEN_VAR] = pageToken;
+		return;
+	} catch (error) {
+		reason = error instanceof Error ? error.message : String(error);
+	}
+	throw new Error(
+		`crust: the dev page cannot get its client — minting or publishing its document token ` +
+			`failed (${reason}). No page will be served without window.crust`,
 	);
 }
 

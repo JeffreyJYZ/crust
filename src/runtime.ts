@@ -2,7 +2,6 @@
  * The shared runtime: what `crust dev` spawns and what a built app runs. One `startApp` loads and validates the config, attaches the platform and config to the `app` singleton, imports the user's `main.ts`, creates the bridge on its first `run()` (core plugins, mounted ones, one `app` namespace) and serves the page with the injected token and `invoke` shim.
  * An invoke that matches no handler is the bridge's structured error, never a crash. Pieces: `runtime-shim.ts`, `runtime-plugins.ts`, `runtime-host.ts`. Run directly it IS the backend: `bun run src/runtime.ts --config <path> --entry <path>`.
  */
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { app, type App, type CommandHandler, type Platform } from "@/app.ts";
 import { loadDarwinPlatform, loadPlatform } from "./app-loop.ts";
@@ -14,6 +13,7 @@ import {
 	bridgeBindFailure,
 	isDirectory,
 	preferredPortFor,
+	publishDevHandshake,
 	readIndex,
 	resolveEntry,
 	originOf,
@@ -23,7 +23,6 @@ import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
 import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
 import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
-import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 import { setBridgeToken, tokenClearedOnStop } from "@/bridge/window-identity.ts";
 import type { StartAppOptions } from "./runtime-options.ts";
 
@@ -120,29 +119,10 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			}
 		}
 		if (!bridge) throw bridgeBindFailure(preferred, bindError);
-		// The handshake only exists for a dev server, which a built app never has.
-		// A built app runs with cwd `/`, so writing it there would throw and kill
-		// `run()` before a window exists — measured as e2e's missing greet.
-		if (runConfig.dev?.url) {
-			try {
-				const handshakeDir = join(projectDir, ".crust");
-				mkdirSync(handshakeDir, { recursive: true });
-				// 0600: the file carries the bearer token, and without an explicit mode it inherits
-				// the process umask (commonly 0644), so every local account on a shared machine
-				// could read it and drive every bridge command. The mode applies only on creation,
-				// so an existing file from an earlier run is tightened by the `chmod`.
-				const handshake = join(handshakeDir, "dev.json");
-				writeFileSync(handshake, JSON.stringify({ url: bridge.url, token: bridge.token }), {
-					mode: 0o600,
-				});
-				chmodSync(handshake, 0o600);
-				process.env[BRIDGE_URL_VAR] = bridge.url;
-				process.env[BRIDGE_TOKEN_VAR] = bridge.token;
-			} catch (error) {
-				const reason = error instanceof Error ? error.message : String(error);
-				console.warn(`  bridge    could not publish the dev handshake: ${reason}`);
-			}
-		}
+		// The handshake only exists for a dev server. Mint here, while the bridge handle is
+		// in scope, and publish the document token — not the seed — for the dev page to inject.
+		// A built app has no dev.url, so it never writes into its `/` cwd and never sees this.
+		if (runConfig.dev?.url) publishDevHandshake(projectDir, bridge);
 		console.log(
 			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
 		);
