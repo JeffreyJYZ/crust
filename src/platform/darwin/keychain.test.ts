@@ -78,8 +78,9 @@ describe("the keychain C unit", () => {
 		expect(keychain.get("app", "token")).toBe(long);
 	});
 
-	test("a read that still overruns its second buffer is clamped, never handed back unmeasured", () => {
-		// The race guard: the secret was replaced by a longer one between the two calls.
+	test("a secret that keeps growing is refused, never returned truncated", () => {
+		// A secret replaced by a longer one on every read must not be clamped to the buffer and
+		// answered as `{ found: true }` — a truncated key is silently wrong. Refuse after retries.
 		let calls = 0;
 		const keychain = darwinKeychainAdapter(
 			shim({
@@ -92,11 +93,25 @@ describe("the keychain C unit", () => {
 			}),
 		);
 
-		const value = keychain.get("app", "token") ?? "";
-		expect(calls).toBe(2);
-		// The second buffer is one byte longer than the first reported length, and its own minus
-		// one is the most that can be decoded; asking for a third read would loop forever.
-		expect(value.length).toBe(SECRET_CHUNK + 16);
+		expect(() => keychain.get("app", "token")).toThrow("kept growing");
+		expect(calls).toBe(3);
+	});
+
+	test("a list that keeps growing is refused, never returned truncated", () => {
+		let calls = 0;
+		const keychain = darwinKeychainAdapter(
+			shim({
+				list: (_service, into) => {
+					calls++;
+					const bytes = new TextEncoder().encode(`${"L".repeat(into.length + 16)}\0`);
+					into.set(bytes.subarray(0, Math.min(bytes.length, into.length)));
+					return bytes.length;
+				},
+			}),
+		);
+
+		expect(() => keychain.list?.("app")).toThrow("kept growing");
+		expect(calls).toBe(3);
 	});
 
 	test("a bad-name status is a refusal, not a silent empty secret", () => {

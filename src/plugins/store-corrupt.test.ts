@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,23 @@ describe("store recovery", () => {
 			expect(await readFile(`${file}.corrupt`, "utf8")).toBe('{"ui": {"theme": "da');
 			await call<StoreSetResult>(plugin, "set", { key: "ui", value: "fresh" });
 			expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ ui: "fresh" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("a corrupt file whose quarantine rename fails does not claim recovery", async () => {
+		const root = await scratch();
+		try {
+			const file = join(root, STORE_FILE);
+			await writeFile(file, '{"ui": {"theme": "da');
+			// A directory at the quarantine target makes the rename fail, so the corrupt
+			// bytes are still on disk. The answer must not claim they were preserved.
+			await mkdir(`${file}.corrupt`);
+			const plugin = createStorePlugin({ root });
+			const result = await call<StoreGetResult>(plugin, "get", { key: "ui" });
+			expect(result.value).toBeNull();
+			expect(result.recovered).toBeUndefined();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

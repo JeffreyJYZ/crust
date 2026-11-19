@@ -46,6 +46,41 @@ test("save writes each frame under its label and leaves no temporary file", asyn
 	expect(adapter.calls).toEqual([]);
 });
 
+test("two saves fired together do not lose each other's frame", async () => {
+	const adapter = fakeWindow({
+		main: { x: 1, y: 2, width: 300, height: 200 },
+		prefs: { x: 10, y: 20, width: 400, height: 300 },
+	});
+	const plugin = createWindowStatePlugin({ native: adapter, root });
+
+	await Promise.all([
+		plugin.commands.save({ label: "main" }),
+		plugin.commands.save({ label: "prefs" }),
+	]);
+
+	expect(await written()).toEqual({
+		main: { x: 1, y: 2, width: 300, height: 200 },
+		prefs: { x: 10, y: 20, width: 400, height: 300 },
+	});
+});
+
+test("a save in a second instance is not clobbered", async () => {
+	const main = fakeWindow({ main: { x: 1, y: 2, width: 300, height: 200 } });
+	const prefs = fakeWindow({ prefs: { x: 10, y: 20, width: 400, height: 300 } });
+	const one = createWindowStatePlugin({ native: main, root });
+	const two = createWindowStatePlugin({ native: prefs, root });
+
+	await Promise.all([
+		one.commands.save({ label: "main" }),
+		two.commands.save({ label: "prefs" }),
+	]);
+
+	expect(await written()).toEqual({
+		main: { x: 1, y: 2, width: 300, height: 200 },
+		prefs: { x: 10, y: 20, width: 400, height: 300 },
+	});
+});
+
 test("restore applies the saved frame and reports it", async () => {
 	const adapter = fakeWindow({ main: { x: 120, y: 80, width: 900, height: 640 } });
 	const plugin = createWindowStatePlugin({ native: adapter, root });

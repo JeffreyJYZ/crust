@@ -56,21 +56,22 @@ export function darwinKeychainAdapter(
 
 	const get = (service: string, account: string): string | null => {
 		let buffer = new Uint8Array(SECRET_CHUNK);
-		let length = native.get(service, account, buffer);
-		// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
-		if (length === KEYCHAIN_STATUS.refused) return null;
-		if (length < 0) throw new Error("keychain: the OS keychain refused the read");
-		// The buffer was too small for the secret, so ask again with an exact one rather than
-		// handing back a truncated key — a truncated secret is worse than a refusal.
-		if (length > buffer.length - 1) {
-			buffer = new Uint8Array(length + 1);
-			length = native.get(service, account, buffer);
+		// A secret can grow between the size probe and the read. Re-read at the reported size at
+		// most three times, then refuse: a truncated secret is worse than a refusal (a half token
+		// is silently wrong, a refusal is loud). Never decode a clamped prefix.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const length = native.get(service, account, buffer);
+			// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
 			if (length === KEYCHAIN_STATUS.refused) return null;
 			if (length < 0) throw new Error("keychain: the OS keychain refused the read");
+			if (length <= buffer.length - 1) {
+				return new TextDecoder().decode(buffer.subarray(0, length));
+			}
+			buffer = new Uint8Array(length + 1);
 		}
-		// A secret edited between the two calls can still overrun; the clamp is a race guard.
-		const bytes = Math.min(length, buffer.length - 1);
-		return new TextDecoder().decode(buffer.subarray(0, bytes));
+		throw new Error(
+			"keychain: the secret kept growing between reads; refusing a truncated secret",
+		);
 	};
 
 	const remove = (service: string, account: string): boolean => {
@@ -83,14 +84,16 @@ export function darwinKeychainAdapter(
 
 	const list = (service: string): string[] => {
 		let buffer = new Uint8Array(LIST_CHUNK);
-		let length = native.list(service, buffer);
-		if (length < 0) throw new Error("keychain: the OS keychain refused the list");
-		if (length > buffer.length) {
-			buffer = new Uint8Array(length);
-			length = native.list(service, buffer);
+		// Same bounded retry as `get`; a list that keeps growing is refused, never truncated.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const length = native.list(service, buffer);
 			if (length < 0) throw new Error("keychain: the OS keychain refused the list");
+			if (length <= buffer.length) return splitAccounts(buffer.subarray(0, length));
+			buffer = new Uint8Array(length);
 		}
-		return splitAccounts(buffer.subarray(0, Math.min(length, buffer.length)));
+		throw new Error(
+			"keychain: the account list kept growing between reads; refusing a truncated list",
+		);
 	};
 
 	return { platform: "darwin", set, get, delete: remove, list };

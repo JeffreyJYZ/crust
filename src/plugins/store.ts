@@ -126,23 +126,24 @@ export function createStorePlugin(adapter: StoreAdapter = {}) {
 				const store = forArgs(args);
 				const name = requireKey(args.key, "set");
 				assertJsonValue(args.value, name);
-				const current = await store.loaded();
 				// Store the JSON round trip, so what a later `get` answers is what is on disk and a
 				// caller mutating its own object cannot drift the in-memory copy.
 				const stored = JSON.parse(JSON.stringify(args.value)) as unknown;
-				await store.persist({ ...current, [name]: stored });
+				await store.mutate((current) => ({ ...current, [name]: stored }));
 				return { ...store.answer(), key: name };
 			},
 			delete: async (args: StoreKeyArgs): Promise<StoreDeleteResult> => {
 				const store = forArgs(args);
 				const name = requireKey(args.key, "delete");
-				const current = await store.loaded();
-				if (!Object.hasOwn(current, name))
-					return { ...store.answer(), key: name, existed: false };
-				const next = { ...current };
-				delete next[name];
-				await store.persist(next);
-				return { ...store.answer(), key: name, existed: true };
+				let existed = false;
+				await store.mutate((current) => {
+					if (!Object.hasOwn(current, name)) return undefined;
+					existed = true;
+					const next = { ...current };
+					delete next[name];
+					return next;
+				});
+				return { ...store.answer(), key: name, existed };
 			},
 			keys: async (args?: StoreNamedArgs): Promise<StoreKeysResult> => {
 				const store = forArgs(args);
@@ -152,16 +153,21 @@ export function createStorePlugin(adapter: StoreAdapter = {}) {
 			},
 			clear: async (args?: StoreNamedArgs): Promise<StoreClearResult> => {
 				const store = forArgs(args);
-				const current = await store.loaded();
-				const cleared = Object.keys(current).length;
-				await store.persist({});
+				let cleared = 0;
+				await store.mutate((current) => {
+					cleared = Object.keys(current).length;
+					return {};
+				});
 				return { ...store.answer(), cleared };
 			},
 			save: async (args?: StoreNamedArgs): Promise<StoreSaveResult> => {
 				const store = forArgs(args);
-				const current = await store.loaded();
-				await store.persist({ ...current });
-				return { ...store.answer(), keys: Object.keys(current).length };
+				let count = 0;
+				await store.mutate((current) => {
+					count = Object.keys(current).length;
+					return current;
+				});
+				return { ...store.answer(), keys: count };
 			},
 		},
 	});

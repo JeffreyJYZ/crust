@@ -6,6 +6,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { withFileLock } from "./store-file.ts";
+
 /** A window's frame in screen points, `y` growing upward as AppKit's does. */
 export interface WindowFrame {
 	x: number;
@@ -66,6 +68,15 @@ export async function readState(file: string): Promise<Record<string, WindowFram
 		if (frame !== undefined) state[label] = frame;
 	}
 	return state;
+}
+
+/**
+ * Serialise a state-file mutation. A save is a read-modify-write, so two windows saved together
+ * must re-read inside the lock or the later commit drops the earlier frame. The lock is shared
+ * per path with the store's, so every plugin instance pointing at this file uses one chain.
+ */
+export function withStateLock<T>(file: string, run: () => Promise<T>): Promise<T> {
+	return withFileLock(file, run);
 }
 
 /** Drop the whole file; a missing file is already the empty state `readState` answers. */

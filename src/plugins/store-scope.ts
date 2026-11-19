@@ -5,7 +5,7 @@
 import { join } from "node:path";
 
 import { CrustError } from "../bridge/errors";
-import { readStore, STORE_FILE, writeStore, type StoreEntries } from "./store-file";
+import { readStore, STORE_FILE, withFileLock, writeStore, type StoreEntries } from "./store-file";
 
 /** Every command's answer base, so a caller learns which file it reached. */
 export interface StoreAnswer {
@@ -48,7 +48,7 @@ export class StoreScope {
 		if (this.entries !== undefined) return this.entries;
 		const read = await readStore(this.file);
 		this.entries = read.entries;
-		this.recovered = read.corrupt;
+		if (read.corrupt !== undefined) this.recovered = read.corrupt;
 		return this.entries;
 	}
 
@@ -62,8 +62,19 @@ export class StoreScope {
 		return base;
 	}
 
-	async persist(next: StoreEntries): Promise<void> {
-		await writeStore(this.file, next);
-		this.entries = next;
+	/**
+	 * Serialised read-modify-write. Re-reads the file inside the queue so a command in a second
+	 * plugin instance — or a concurrent command here — cannot be clobbered by a stale snapshot.
+	 * Return `undefined` to leave the file untouched, e.g. deleting a key that was never there.
+	 */
+	async mutate(run: (current: StoreEntries) => StoreEntries | undefined): Promise<void> {
+		await withFileLock(this.file, async () => {
+			const read = await readStore(this.file);
+			if (read.corrupt !== undefined) this.recovered = read.corrupt;
+			const next = run(read.entries);
+			if (next === undefined) return;
+			await writeStore(this.file, next);
+			this.entries = next;
+		});
 	}
 }

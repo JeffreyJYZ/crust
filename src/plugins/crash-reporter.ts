@@ -4,8 +4,9 @@
  * The page also reports, because the ordinary crash is an `onerror` in a render loop that never faults the process. `report` is that half; `configure` repoints where its records land.
  */
 
+import { readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { crashRecordPath } from "../platform/darwin/crash-record";
 import { listCrashes, readLastCrash, recordPageCrash } from "../runtime-crash-store";
 import {
@@ -54,10 +55,39 @@ export function createCrashReporterPlugin(options: CrashReporterOptions = {}): P
 			"armCrashHandlers()",
 		);
 
-	/** Inside the data root, by prefix on a resolved path: a sibling whose name starts the same is out. */
+	/**
+	 * The real location of `path`, for the fence below. `realpathSync` follows symlinks, so a link
+	 * inside the data root pointing outside resolves outside and is refused. A dangling link's target
+	 * is read explicitly — a parent-only fallback would wave a link whose target does not exist yet
+	 * through the fence, and a later write would follow it out. `seen` bounds a link cycle.
+	 */
+	const realCanonical = (path: string, seen: Set<string> = new Set()): string => {
+		let found: string | undefined;
+		try {
+			found = realpathSync(path);
+		} catch {
+			found = undefined;
+		}
+		if (found !== undefined) return found;
+		const parent = dirname(path);
+		if (parent === path || seen.has(path)) return path;
+		let link: string | undefined;
+		try {
+			link = readlinkSync(path);
+		} catch {
+			link = undefined;
+		}
+		if (link !== undefined) {
+			seen.add(path);
+			return realCanonical(resolve(parent, link), seen);
+		}
+		return join(realCanonical(parent, seen), basename(path));
+	};
+
+	/** Inside the data root by real path: a symlink inside it that points out is refused. */
 	const insideRoot = (dir: string): boolean => {
-		const target = resolve(dir);
-		const fence = resolve(dataRoot);
+		const target = realCanonical(dir);
+		const fence = realCanonical(dataRoot);
 		if (target === fence) return true;
 		return target.startsWith(fence.endsWith(sep) ? fence : `${fence}${sep}`);
 	};

@@ -16,6 +16,26 @@ export const CORRUPT_SUFFIX = ".corrupt";
 
 export type StoreEntries = Record<string, unknown>;
 
+/**
+ * Serialise read-modify-write per absolute file path. The queue is module-scoped, so two plugin
+ * instances pointed at the same file share one chain — a command must re-read *inside* `run`
+ * to see the previous command's commit rather than a stale in-memory snapshot.
+ */
+const fileQueues = new Map<string, Promise<unknown>>();
+
+export function withFileLock<T>(file: string, run: () => Promise<T>): Promise<T> {
+	const previous = fileQueues.get(file) ?? Promise.resolve();
+	const next = previous.then(run, run);
+	fileQueues.set(file, next);
+	// Drop the entry once it settles so a long-lived app does not grow the map per write. A newer
+	// chain may have replaced ours while it ran; never delete that one.
+	const forget = (): void => {
+		if (fileQueues.get(file) === next) fileQueues.delete(file);
+	};
+	void next.then(forget, forget);
+	return next;
+}
+
 export interface StoreRead {
 	entries: StoreEntries;
 	/** Absolute path the corrupt file was moved to, present only when this read found one. */
@@ -47,8 +67,14 @@ export async function readStore(file: string): Promise<StoreRead> {
 		return { entries: { ...(parsed as StoreEntries) } };
 	}
 	const corrupt = `${file}${CORRUPT_SUFFIX}`;
-	await rename(file, corrupt).catch(() => undefined);
-	return { entries: {}, corrupt };
+	// Only claim recovery when the rename actually succeeded. A failed rename left the corrupt
+	// bytes in place, so reporting `corrupt` here would lie about preserving them — and the next
+	// persist would overwrite them anyway.
+	const moved = await rename(file, corrupt).then(
+		() => true,
+		() => false,
+	);
+	return moved ? { entries: {}, corrupt } : { entries: {} };
 }
 
 /**

@@ -20,6 +20,8 @@ export interface WindowStateAllSeam {
 	file: string;
 	missing: (command: string) => NotImplemented;
 	calls: (native: { list(): string[] }) => FrameCalls;
+	/** Serialise a read-modify-write on `file`, so concurrent commands see each other's commits. */
+	lock: <T>(run: () => Promise<T>) => Promise<T>;
 }
 
 export interface WindowStateSaveAllResult {
@@ -43,7 +45,7 @@ export interface WindowStateForgetAllResult {
 }
 
 export function windowStateAllCommands(seam: WindowStateAllSeam) {
-	const { native, file, missing, calls } = seam;
+	const { native, file, missing, calls, lock } = seam;
 
 	const act = async <Result>(
 		command: string,
@@ -61,22 +63,24 @@ export function windowStateAllCommands(seam: WindowStateAllSeam) {
 		saveAll: () =>
 			act("saveAll", async (adapter) => {
 				const frames = calls(adapter);
-				const state = await readState(file);
 				const saved: string[] = [];
 				const skipped: string[] = [];
-				for (const label of adapter.list()) {
-					try {
-						state[label] = frames.read(label);
-					} catch {
-						// One unreadable frame is that window's problem: aborting would lose
-						// the frames that are fine. Its old entry is left as it was.
-						skipped.push(label);
-						continue;
+				await lock(async () => {
+					const state = await readState(file);
+					for (const label of adapter.list()) {
+						try {
+							state[label] = frames.read(label);
+						} catch {
+							// One unreadable frame is that window's problem: aborting would lose
+							// the frames that are fine. Its old entry is left as it was.
+							skipped.push(label);
+							continue;
+						}
+						saved.push(label);
 					}
-					saved.push(label);
-				}
-				// One write for the whole set; nothing saved leaves the file untouched.
-				if (saved.length > 0) await writeState(file, state);
+					// One write for the whole set; nothing saved leaves the file untouched.
+					if (saved.length > 0) await writeState(file, state);
+				});
 				return { ok: true as const, saved, skipped };
 			}),
 
@@ -100,8 +104,11 @@ export function windowStateAllCommands(seam: WindowStateAllSeam) {
 
 		forgetAll: () =>
 			act("forgetAll", async () => {
-				const removed = Object.keys(await readState(file));
-				await clearState(file);
+				let removed: string[] = [];
+				await lock(async () => {
+					removed = Object.keys(await readState(file));
+					await clearState(file);
+				});
 				return { ok: true as const, removed };
 			}),
 	};

@@ -15,6 +15,7 @@ import {
 	readState,
 	STATE_FILE,
 	type WindowFrame,
+	withStateLock,
 	writeState,
 } from "./window-persist-store.ts";
 import {
@@ -149,9 +150,11 @@ export function createWindowStatePlugin(
 			save: (args: WindowLabelArgs) =>
 				act("save", args, async (native, label) => {
 					const frame = frames(native).read(label);
-					const state = await readState(file);
-					state[label] = frame;
-					await writeState(file, state);
+					await withStateLock(file, async () => {
+						const state = await readState(file);
+						state[label] = frame;
+						await writeState(file, state);
+					});
 					return { ok: true as const, label, frame };
 				}),
 
@@ -167,13 +170,15 @@ export function createWindowStatePlugin(
 
 			forget: (args: WindowLabelArgs) =>
 				act("forget", args, async (_native, label) => {
-					const state = await readState(file);
-					if (state[label] === undefined) {
-						return { ok: true as const, label, removed: false as const };
-					}
-					delete state[label];
-					await writeState(file, state);
-					return { ok: true as const, label, removed: true as const };
+					let removed = false;
+					await withStateLock(file, async () => {
+						const state = await readState(file);
+						if (state[label] === undefined) return;
+						removed = true;
+						delete state[label];
+						await writeState(file, state);
+					});
+					return { ok: true as const, label, removed };
 				}),
 
 			// Every window at once: the plugin's own seam, handed over so the file is
@@ -183,6 +188,7 @@ export function createWindowStatePlugin(
 				file,
 				missing: missingState,
 				calls: frames,
+				lock: (run) => withStateLock(file, run),
 			}),
 		},
 	});
