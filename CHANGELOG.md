@@ -4,6 +4,19 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.6] — 2026-11-20
+
+### Added
+
+- **The framework writes the story of a run, as JSONL.** `logs/app.jsonl` rotates at 5 MiB across three generations and `logs/errors.jsonl` keeps warn and above; every line carries `ts`, `level`, `source`, `event`, `msg`, `pid` and a monotonic `seq`. The sources carry the fields worth querying: `bridge.invoke` (window, ns, cmd, durMs, ok, code, bytes), `bridge.refuse` (the reason, because `forbidden` alone is a riddle), window lifecycle with frames, `page.error` with stack and url, `page.console`, and platform refusals with the API that refused.
+- **App code logs through the same system**: `log.info("sync finished", { files: 12, ms: 340 })` — same sink, same fields with `source: "app"`, the config's level applies, and `crust dev` interleaves both streams into the terminal. A page keeps `logging.write` behind a grant.
+- Secrets never reach the file: bearer and seed tokens, keychain and stronghold values, and any field named like a secret are redacted, including a token inside a URL query. `e2e:logs` plants a value, triggers a `forbidden`, and fails if that value appears in any of the four files.
+- `app.command` throws when the handler is not a function. `for (const name of COMMANDS) app.command(name, handlers[name])` used to register an `undefined` whenever a table entry was missing, and the failure surfaced at call time in whichever panel invoked it.
+
+### Changed
+
+- `logging` writes JSONL instead of `ISO LEVEL message`, and its default rotation is 5 MiB with `app.jsonl` / `app.1.jsonl`. `logging.write` keeps its shape: `{ level, message }` → `{ written, reason, path, line, rotated }`.
+
 ## [0.2.5] — 2026-11-20
 
 ### Added
