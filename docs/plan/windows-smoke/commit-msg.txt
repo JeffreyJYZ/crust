@@ -1,0 +1,20 @@
+fix(ci): prove the Windows pump by posting a message, and name the one retry
+
+`windows:smoke` went red twice on `main` on 2026-11-20, both green after a rerun:
+
+- `pump`: `0 PeekMessageW messages dispatched over 8 pump slices in 120 ms`. Eight slices in
+  120 ms is a live timer, and `PeekMessageW` answering FALSE is what an *idle* pump does, so
+  the assertion could not tell idle from dead — it counted traffic WebView2 might not have
+  queued yet. It now posts one `WM_NULL` through the shim (`shim_window_post_null`) and
+  asserts a slice dispatched it, counted from before the post so earlier traffic cannot answer
+  for it. `pump.test.ts` pins all three shapes: live, idle, and a refused post.
+- `window`: `E_ABORT` (`0x80004004`) from the controller's completion handler with
+  `environment callback 0x0`. A held user-data folder fails the *environment* callback, and a
+  parent window destroyed mid-creation is impossible here (the window is created and the
+  controller asked for inside one synchronous call), so what is left is the runtime aborting
+  its own controller before its browser process is up. That single cause is retried once, and
+  only when the text names it (`cold-abort.ts`, `cold-abort.test.ts`); every other controller
+  refusal is still a finding, reported verbatim. The folder is also emptied first
+  (`user-data.ts`), so a folder the previous run left behind is not the state under test.
+
+No retry wraps the smoke, no sleep was added, and the failure text is unchanged.

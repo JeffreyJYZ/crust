@@ -87,7 +87,7 @@ PASS  loader          WebView2Loader.dll is beside the executable or on PATH
 PASS  preflight       the runtime and loader the shim needs are both present
 PASS  com + class     CoInitializeEx and RegisterClassExW("crust-smoke") succeeded
 PASS  window          smoke: HWND 328220 with a WebView2 controller, navigated to about:blank
-PASS  pump            2 PeekMessageW slices in 120 ms at a 16 ms interval
+PASS  pump            shim_pump dispatched 1 of 1 posted WM_NULL over 3 slices
 PASS  still open      shim_window_is_open still answers 1 after the pump
 windows:smoke: PASS  7/7 assertions  26.8s
 ```

@@ -63,6 +63,11 @@ export function fakeShim(
 		shim_post_quit: () => {
 			calls.push("post_quit");
 		},
+		// The one message a test can queue itself: the pump proof posts it and then asserts a dispatch.
+		shim_window_post_null: (hwnd) => {
+			calls.push(`post_null:${Number(hwnd)}`);
+			return open.has(Number(hwnd)) ? 1 : 0;
+		},
 		shim_window_new: (title, width, height, className) => {
 			calls.push(`window_new:${text(title)}:${width}x${height}:${text(className)}`);
 			if (options.failWindow) return 0;

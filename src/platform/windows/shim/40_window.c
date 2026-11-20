@@ -28,6 +28,16 @@ int shim_window_set_title(shim_h hwnd, const char *title) {
 	return SetWindowTextW(hwnd, buf) ? 1 : 0;
 }
 
+// One `WM_NULL` posted to the window's own queue: a queued message `shim_pump` can only answer with a
+// dispatch count, and `DefWindowProcW` does nothing with it, so posting one changes no state. It exists
+// because a fresh window with an empty queue is indistinguishable from a dead pump — the smoke asserted
+// `nativeMessages >= 1` on traffic it hoped WebView2 would leave behind, and a loaded runner queued
+// nothing in 120 ms (2026-11-20, run 44754520437: 0 messages over 8 live slices). 1 posted, 0 refused.
+int shim_window_post_null(shim_h hwnd) {
+	if (!hwnd || !PostMessageW) return 0;
+	return PostMessageW(hwnd, 0u, 0, 0) ? 1 : 0;
+}
+
 int shim_window_destroy(shim_h hwnd) {
 	if (!hwnd) return 0;
 	shim_window_set_min(hwnd, 0, 0);
