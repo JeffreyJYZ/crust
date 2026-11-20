@@ -9,76 +9,9 @@ import { type Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-/** Every script that launches or activates a GUI app, so every one must call `guardFocus()`. */
-export const LAUNCHERS = [
-	"demo.ts",
-	"e2e-capability.ts",
-	"e2e-dev-binary.ts",
-	"e2e-dev-react.ts",
-	"e2e-dev-size.ts",
-	"e2e-dev.ts",
-	"e2e-dogear.ts",
-	"e2e-fullscreen.ts",
-	"e2e-native.ts",
-	"e2e-notes.ts",
-	"e2e-notify.ts",
-	"e2e-parity.ts",
-	"e2e-single.ts",
-	"e2e-window.ts",
-	"e2e.ts",
-	"first-run.ts",
-	"probe-tray.ts",
-];
-
-/** Why a script under `scripts/` cannot take the screen. Every remaining `.ts` must appear here. */
-export const EXEMPT: { reason: string; files: string[] }[] = [
-	{
-		reason: "another platform's suite: it runs a Linux or Windows binary and never a macOS window",
-		files: [
-			"e2e-appimage.ts",
-			"e2e-linux.ts",
-			"e2e-package-nsis.ts",
-			"linux-gtk-quit.ts",
-			"linux-smoke.ts",
-			"windows-smoke.ts",
-		],
-	},
-	{
-		reason: "builds or packages only: a bundle, a dmg or an extension is produced, never launched",
-		files: ["build-standalone.ts", "e2e-package.ts", "native-extensions.ts"],
-	},
-	{
-		reason: "reads a registry, a tarball, a page or the tree; it launches no app",
-		files: [
-			"check-links.ts",
-			"check-parity.ts",
-			"check-skips.ts",
-			"docs-coverage.ts",
-			"e2e-parity-patterns.ts",
-			"line-cap.ts",
-			"release.ts",
-			"skill.ts",
-			"verify-cellar.ts",
-			"verify-package.ts",
-			"verify-release.ts",
-		],
-	},
-	{
-		reason: "a module or a unit test, imported rather than run as a suite",
-		files: [
-			"butter-sweep-commands.ts",
-			"butter-sweep-helpers.ts",
-			"docs-reference.test.ts",
-			"e2e-detail.test.ts",
-			"e2e-harness.ts",
-			"e2e-parity-patterns.test.ts",
-		],
-	},
-	{
-		reason: "a unit test that drives a GUI child: its own `finally` restores that child's focus, and arming a process-wide exit handler inside the shared `bun test` runner would activate an app at the end of every run",
-		files: ["butter-sweep.test.ts"],
-	},
-];
+// The tables live next door so this file stays under the cap; re-exported so the test's import
+// surface does not move.
+export { EXEMPT, LAUNCHERS } from "./focus-classification.ts";
 
 /** The names an `import { … } from "./e2e-harness"` in a caller brings in. */
 export function harnessImports(text: string): string[] {
@@ -123,9 +56,7 @@ export const SCREEN_RULES: ScreenRule[] = [
 
 /** Remove comments so a rule cannot fire on prose describing a launch. Keeps `https://` intact. */
 export function stripComments(text: string): string {
-	return text
-		.replace(/\/\*[\s\S]*?\*\//g, "")
-		.replace(/(^|[^:])\/\/.*$/gm, "$1");
+	return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
 /** The rule a file trips, or undefined when nothing in it can take the screen. */
@@ -179,7 +110,11 @@ export async function probeFiles(root: string = process.cwd()): Promise<string[]
 	const found: string[] = [];
 	for (const entry of await readdir(root, { withFileTypes: true })) {
 		if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-		if (/^\..*\.ts$/.test(entry.name) || /\.probe\.ts$/.test(entry.name) || /^probe.*\.ts$/.test(entry.name)) {
+		if (
+			/^\..*\.ts$/.test(entry.name) ||
+			/\.probe\.ts$/.test(entry.name) ||
+			/^probe.*\.ts$/.test(entry.name)
+		) {
 			found.push(entry.name);
 		}
 	}

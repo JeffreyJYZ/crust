@@ -39,6 +39,8 @@ export interface AssembleAppOptions {
 	 * leaves `CFBundleURLTypes` out entirely, so no link is ever routed here.
 	 */
 	urlScheme?: string;
+	/** `security.microphone`: the purpose sentence, written as `NSMicrophoneUsageDescription`. */
+	microphone?: string;
 	/** Directory the bundle is created in. Defaults to `dist`. */
 	outDir?: string;
 }
@@ -120,6 +122,7 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 			minimumSystemVersion: options.minimumSystemVersion,
 			hasIcon,
 			urlScheme: options.urlScheme,
+			microphone: options.microphone,
 		}),
 		"utf8",
 	);

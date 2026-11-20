@@ -69,13 +69,18 @@ export async function buildSingle(
 			name: app.config.app.name,
 			version: app.config.app.version,
 			minimumSystemVersion,
+			microphone: app.config.security?.microphone,
 		},
 	});
 
 	const assembled = result.assembled;
 	if (assembled) {
 		await signSidecars(assembled.executablePath, app.config.build?.sidecars ?? []);
-		await signApp({ appPath: assembled.appPath, mode: "adhoc" });
+		await signApp({
+			appPath: assembled.appPath,
+			mode: "adhoc",
+			microphone: app.config.security?.microphone !== undefined,
+		});
 	}
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);

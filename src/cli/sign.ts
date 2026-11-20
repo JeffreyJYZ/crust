@@ -24,7 +24,11 @@ export function signVerdict(result: SignResult): string[] {
  * JIT entitlement replace the ad-hoc signature the build applied. No identity
  * ever reaches here — `stageRefusal` refuses the invocation before any work.
  */
-export async function signStage(bundle: string, identity: string): Promise<number> {
+export async function signStage(
+	bundle: string,
+	identity: string,
+	microphone = false,
+): Promise<number> {
 	line("identity", identity);
 	line("bundle", bundle);
 
@@ -33,6 +37,7 @@ export async function signStage(bundle: string, identity: string): Promise<numbe
 		mode: "developer-id",
 		identity,
 		hardenedRuntime: true,
+		microphone,
 	});
 	for (const text of signVerdict(result)) line("sign", text);
 

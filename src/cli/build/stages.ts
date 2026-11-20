@@ -77,7 +77,11 @@ export async function runStages(
 ): Promise<number> {
 	const env = seams.env ?? process.env;
 	if (options.sign) {
-		const code = await (seams.sign ?? signStage)(bundle, env.CRUST_SIGNING_IDENTITY!.trim());
+		const code = await (seams.sign ?? signStage)(
+			bundle,
+			env.CRUST_SIGNING_IDENTITY!.trim(),
+			config.security?.microphone !== undefined,
+		);
 		if (code !== 0) return code;
 	}
 	if (options.notarize) {

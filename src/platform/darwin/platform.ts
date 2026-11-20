@@ -9,10 +9,9 @@ import { darwinLifecycleSource } from "./lifecycle.ts";
 import { shim } from "./index.ts";
 import { applyDockIcon } from "./dock-icon.ts";
 import { ptrValue, S } from "./objc.ts";
+import type { DarwinOptions } from "./platform-options.ts";
 import { createNativeWindow } from "./window-create.ts";
 import { type DarwinWindowStore, createWindowStore } from "./window-store.ts";
-
-type DarwinOptions = { appName?: string; activate?: Activation["mode"]; icon?: string };
 
 /** The macOS `Platform`: the pump and its timer are testable without a window. */
 export class DarwinPlatform implements Platform {
@@ -22,6 +21,7 @@ export class DarwinPlatform implements Platform {
 	readonly #icon: string | undefined;
 	/** `app.activate`: when a window create may bring the app forward. */
 	#activateMode: Activation["mode"];
+	readonly #microphone: boolean;
 	#mode = 0;
 	#started = false;
 	#pumping = false;
@@ -33,6 +33,7 @@ export class DarwinPlatform implements Platform {
 		this.#appName = options.appName ?? "crust";
 		this.#activateMode = options.activate ?? "always";
 		this.#icon = options.icon;
+		this.#microphone = options.microphone === true;
 		this.#windows = windows ?? createWindowStore(() => this.#app);
 	}
 
@@ -105,7 +106,7 @@ export class DarwinPlatform implements Platform {
 			mode: this.#activateMode,
 			once: () => this.activateOnce(),
 		};
-		const pointers = createNativeWindow(label, options, activation);
+		const pointers = createNativeWindow(label, options, activation, this.#microphone);
 		this.#windows.track(handle, pointers);
 		return handle;
 	}

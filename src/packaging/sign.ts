@@ -6,7 +6,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { JIT_ENTITLEMENT_PLIST } from "./entitlements";
+import { hardenedEntitlements } from "./entitlements";
 import { runOrThrow } from "./exec";
 
 export * from "./entitlements.ts";
@@ -29,6 +29,11 @@ export interface SignOptions {
 	 * Pass `false` to reproduce the measured no-entitlement probe.
 	 */
 	jitEntitlement?: boolean;
+	/**
+	 * Seal `com.apple.security.device.audio-input` for `security.microphone`. Only meaningful
+	 * with `hardenedRuntime`, which is the only mode that enforces entitlements at all.
+	 */
+	microphone?: boolean;
 }
 
 export interface SignResult {
@@ -69,8 +74,12 @@ export async function signApp(options: SignOptions): Promise<SignResult> {
 	if (entitled) {
 		entitlementsDir = join(tmpdir(), `crust-entitlements-${process.pid}-${Date.now()}`);
 		await mkdir(entitlementsDir, { recursive: true });
-		entitlementsPath = join(entitlementsDir, "jit.entitlements");
-		await writeFile(entitlementsPath, JIT_ENTITLEMENT_PLIST, "utf8");
+		entitlementsPath = join(entitlementsDir, "crust.entitlements");
+		await writeFile(
+			entitlementsPath,
+			hardenedEntitlements({ microphone: options.microphone === true }),
+			"utf8",
+		);
 		args.push("--entitlements", entitlementsPath);
 	}
 

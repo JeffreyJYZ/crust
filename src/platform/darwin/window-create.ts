@@ -8,6 +8,7 @@ import { type Activation, activateForWindow } from "./activation.ts";
 import { installContentWorldBridge } from "./content-world.ts";
 import { devInspectEnabled } from "./devtools.ts";
 import { shim } from "./index.ts";
+import { installWindowMediaCapture } from "./media-capture.ts";
 import { cls, cstr, ptrValue, S } from "./objc.ts";
 import { webviewConfiguration } from "./webview-configuration.ts";
 import type { NativeWindowPointers } from "./windows.ts";
@@ -33,20 +34,16 @@ export function windowSize(
 	};
 }
 
-/**
- * `moveToActiveSpace | fullScreenPrimary` = 130: primary makes the green button the fullscreen
- * arrows, where `fullScreenAuxiliary` (256) marks another app's helper and forces the zoom `+`;
- * `canJoinAllSpaces` is out (a window on every Space has none to transition into) and
- * `moveToActiveSpace` keeps the launch behaviour of following the Space being looked at.
- */
-export function collectionBehavior(): number {
-	return 2 | 128;
-}
+import { collectionBehavior } from "./window-behavior.ts";
+
+export { collectionBehavior } from "./window-behavior.ts";
 
 export function createNativeWindow(
 	label: string,
 	options: MaterialOptions,
 	activation: Activation,
+	/** `security.microphone`: whether this app may answer a capture request with grant. */
+	microphone = false,
 ): NativeWindowPointers {
 	const { width, height, minWidth, minHeight } = windowSize(options, {
 		width: 1100,
@@ -88,6 +85,9 @@ export function createNativeWindow(
 	}
 	// DevTools is a dev-only surface: the C gate is the env flag, which only `crust dev` sets.
 	if (devInspectEnabled()) shim().symbols.shim_webview_enable_devtools(web);
+	// Installed on every window: an app without the opt-in denies capture rather than letting
+	// WebKit ask TCC for a microphone it declared no purpose for (that terminates the process).
+	installWindowMediaCapture(web, microphone);
 
 	const content = S.p0(win, "contentView");
 	if (!content) throw new Error("-[NSWindow contentView] returned null");

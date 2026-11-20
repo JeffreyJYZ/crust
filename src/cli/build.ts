@@ -7,16 +7,15 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig } from "@/config";
 import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import { bundlesApp } from "@/packaging/app";
 import { buildApp, formatBytes } from "@/packaging/build";
-import { runOrThrow } from "@/packaging/exec";
-import { signApp } from "@/packaging/sign";
 import { detectSingle } from "../single.ts";
 import { assetsModuleSource } from "./build/assets.ts";
 import { resolveAssets } from "./build/resolve-assets.ts";
+import { signAdhoc } from "./build/sign-adhoc.ts";
 import { buildSingle } from "./build/single-app.ts";
 import { hasStages, runStages, stageRefusal, type StageSeams } from "./build/stages.ts";
 import { wrapperSource } from "./build/wrapper.ts";
@@ -152,6 +151,7 @@ export async function build(options: CliOptions, seams: StageSeams = {}): Promis
 			iconPath: process.platform === "darwin" ? iconPath : undefined,
 			minimumSystemVersion,
 			urlScheme: config.build?.urlScheme,
+			microphone: config.security?.microphone,
 		},
 	});
 
@@ -159,17 +159,7 @@ export async function build(options: CliOptions, seams: StageSeams = {}): Promis
 	// hosts ship the flat binary and sign nothing.
 	const assembled = result.assembled;
 	const signed = bundlesApp(process.platform);
-	if (signed && assembled) {
-		// codesign treats every file in Contents/MacOS as nested code, so a sidecar copied there
-		// fails the bundle seal with "code object is not signed at all" unless it carries its own
-		// ad-hoc signature first. The manifest was moved to Resources for the same reason.
-		const sidecarDir = dirname(assembled.executablePath);
-		for (const name of config.build?.sidecars ?? []) {
-			const sidecar = resolve(sidecarDir, ...name.split(/[\\/]/));
-			await runOrThrow(["codesign", "--force", "--sign", "-", "--timestamp=none", sidecar]);
-		}
-		await signApp({ appPath: assembled.appPath, mode: "adhoc" });
-	}
+	if (signed && assembled) await signAdhoc(assembled, config);
 
 	line("binary", `${formatBytes(result.binaryBytes)}  ${result.binaryPath}`);
 	if (assembled) {

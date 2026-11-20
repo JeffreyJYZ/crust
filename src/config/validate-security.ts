@@ -8,7 +8,7 @@
 
 import type { Validator } from "./validator.ts";
 
-export const SECURITY_KEYS = ["csp", "capabilities", "grants"] as const;
+export const SECURITY_KEYS = ["csp", "capabilities", "grants", "microphone"] as const;
 
 /** One action pattern: a plugin name, a colon, and a command pattern with `*` as the metacharacter. */
 const ACTION = /^[A-Za-z0-9_-]+:[A-Za-z0-9_.*-]+$/;
@@ -122,6 +122,24 @@ function admitsInline(directive: string): boolean {
 	return /(?:^|\s)'unsafe-inline'(?:\s|$)/i.test(directive);
 }
 
+/**
+ * The microphone purpose string is copied verbatim into `Info.plist` and shown by macOS in the
+ * permission dialog, so a placeholder like "mic" is a user-facing defect Apple also rejects. It
+ * is checked as a sentence — at least two words and terminal punctuation — rather than merely
+ * non-empty.
+ */
+const MICROPHONE_EXPECTATION =
+	'a sentence shown in the macOS microphone prompt, e.g. "Example records voice memos." — ' +
+	"at least two words, ending in a period, question mark or exclamation mark";
+
+function validateMicrophone(v: Validator, security: Record<string, unknown>): void {
+	const text = v.string(security, "microphone", "security", false);
+	if (text === undefined) return;
+	const trimmed = text.trim();
+	if (/\s/.test(trimmed) && /[.!?]$/.test(trimmed)) return;
+	v.fail("security.microphone", MICROPHONE_EXPECTATION, text);
+}
+
 export function validateSecurity(v: Validator, value: unknown): void {
 	if (value === undefined) return;
 	const security = v.object("security", value);
@@ -135,6 +153,7 @@ export function validateSecurity(v: Validator, value: unknown): void {
 		}
 	}
 
+	validateMicrophone(v, security);
 	validateCapabilities(v, security.capabilities);
 
 	const known = new Set<string>();

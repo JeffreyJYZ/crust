@@ -42,6 +42,7 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 				appName: config.app.name,
 				activate: config.app.activate,
 				icon: config.app.icon,
+				microphone: config.security?.microphone !== undefined,
 			});
 		}
 		case "linux": {
@@ -83,6 +84,7 @@ export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPla
 		appName: config.app.name,
 		activate: config.app.activate,
 		icon: config.app.icon,
+		microphone: config.security?.microphone !== undefined,
 	});
 }
 

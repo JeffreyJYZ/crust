@@ -157,3 +157,35 @@ describe("security.csp validation", () => {
 		expect(cspIssue(42)?.path).toBe("security.csp");
 	});
 });
+
+describe("security.microphone validation", () => {
+	const sentence = "Caps records voice memos you choose to transcribe.";
+
+	test("accepts a sentence and keeps it verbatim", () => {
+		expect(validateConfig(withSecurity({ microphone: sentence })).security?.microphone).toBe(
+			sentence,
+		);
+	});
+
+	test("is optional", () => {
+		expect(validateConfig(withSecurity({})).security?.microphone).toBeUndefined();
+	});
+
+	test("refuses a placeholder, because macOS shows it in the prompt", () => {
+		expect(() => validateConfig(withSecurity({ microphone: "mic" }))).toThrow(
+			/security\.microphone/,
+		);
+	});
+
+	test("refuses a sentence with no terminal punctuation", () => {
+		expect(() => validateConfig(withSecurity({ microphone: "records voice memos" }))).toThrow(
+			/security\.microphone/,
+		);
+	});
+
+	test("refuses an empty string by name", () => {
+		expect(() => validateConfig(withSecurity({ microphone: "  " }))).toThrow(
+			/security\.microphone/,
+		);
+	});
+});

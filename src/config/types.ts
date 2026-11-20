@@ -85,6 +85,15 @@ export interface SecurityConfig {
 	capabilities?: CapabilityConfig[];
 	/** Which capabilities each window label holds. A label with no entry holds none. */
 	grants?: Record<string, string[]>;
+	/**
+	 * The sentence macOS shows in its microphone prompt, e.g. "Example records voice memos you
+	 * choose to transcribe." Present enables capture: `NSMicrophoneUsageDescription` in the
+	 * bundle's Info.plist, `com.apple.security.device.audio-input` under the hardened runtime,
+	 * and a grant for the webview's media-capture request. macOS only for now — Windows
+	 * (WebView2's `PermissionRequested` with `Microphone`) and Linux (WebKitGTK's
+	 * `permission-request` signal) still deny capture because neither platform handles it.
+	 */
+	microphone?: string;
 }
 
 /** What `crust:shell` may run; absent means nothing, because the allowlist is deny-by-default. */

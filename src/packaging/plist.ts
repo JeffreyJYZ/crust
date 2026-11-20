@@ -48,6 +48,12 @@ export function infoPlist(options: {
 	 * LaunchServices reads as a claim on nothing.
 	 */
 	urlScheme?: string;
+	/**
+	 * `NSMicrophoneUsageDescription`, from `security.microphone`. Without it, any request that
+	 * reaches TCC terminates the process instead of prompting, so the key and the runtime grant
+	 * are two halves of one opt-in.
+	 */
+	microphone?: string;
 }): string {
 	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -69,7 +75,13 @@ export function infoPlist(options: {
 	<string>${escapeXml(options.version)}</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>${escapeXml(options.minimumSystemVersion)}</string>
-	<key>NSHighResolutionCapable</key>
+	${
+		options.microphone === undefined
+			? ""
+			: `<key>NSMicrophoneUsageDescription</key>
+	<string>${escapeXml(options.microphone)}</string>
+	`
+	}<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
