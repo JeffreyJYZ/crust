@@ -301,8 +301,10 @@ page.
 **The run's own record is on disk.** crust logs the run itself — app and window lifecycle, every
 invoke with `durMs` and a `code`, page console and errors — as JSON lines in
 `~/Library/Application Support/<app.id>/logs/app.jsonl`, rotating into `app.1.jsonl`… and keeping
-`warn` and above in `errors.jsonl`. Read the tail from the page with
-`window.crust.invoke("logging", "tail", { level, source, since, limit })`, or let `crust dev`
+`warn` and above in `errors.jsonl`. Your own code writes to the same file with `import { log } from
+"crust"` and `log.info("sync finished", { files: 12, ms: 340 })` — the fields land as JSON, `source`
+is `app`, and the configured level filters it like any framework line. Read the tail from the page
+with `window.crust.invoke("logging", "tail", { level, source, since, limit })`, or let `crust dev`
 stream `debug` to the terminal for you.
 
 ## Test an app
