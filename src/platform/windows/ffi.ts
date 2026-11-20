@@ -87,6 +87,7 @@ export function compile(): WindowsShim {
 				shim_register_class: { args: [CS], returns: I64 },
 				shim_pump: { args: [], returns: I32 },
 				shim_post_quit: { args: [], returns: V },
+				shim_window_post_null: { args: [P], returns: I32 },
 
 				shim_window_new: { args: [CS, I32, I32, CS], returns: P },
 				shim_window_is_open: { args: [P], returns: I32 },

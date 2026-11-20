@@ -47,6 +47,7 @@ const THIRTY_TWO: Record<string, string> = {
 	SetForegroundWindow: "int", // BOOL
 	SetWindowTextW: "int", // BOOL
 	PeekMessageW: "int", // BOOL
+	PostMessageW: "int", // BOOL — PostMessageW returns BOOL, not the LRESULT PostQuitMessage lacks
 	TranslateMessage: "int", // BOOL
 	MultiByteToWideChar: "int", // int
 	GetLastError: "unsigned int", // DWORD

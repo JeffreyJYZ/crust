@@ -35,6 +35,11 @@ export interface WindowsShim extends WindowsWebViewShim, WindowsNamespaceShim {
 	shim_register_class(name: Uint8Array): number;
 	shim_pump(): number;
 	shim_post_quit(): void;
+	/**
+	 * Post one `WM_NULL` to the window's own queue: 1 posted, 0 refused. A pump proof needs a message
+	 * that is queued by us, because an idle queue and a dead pump answer the same way.
+	 */
+	shim_window_post_null(hwnd: number): number;
 
 	shim_window_new(
 		title: Uint8Array,

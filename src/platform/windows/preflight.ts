@@ -42,6 +42,11 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 	["user32.dll", "DispatchMessageW", "no window procedure runs, so no close and no resize"],
 	["user32.dll", "DefWindowProcW", "unhandled messages fault the window procedure"],
 	["user32.dll", "PostQuitMessage", "the pump cannot be ended"],
+	[
+		"user32.dll",
+		"PostMessageW",
+		"a queued message cannot be posted, so pump liveness is unprovable",
+	],
 	["user32.dll", "LoadCursorW", "the window has no cursor over its client area"],
 	["kernel32.dll", "GetModuleHandleW", "CreateWindowExW has no instance to register against"],
 	["kernel32.dll", "GetLastError", "a failure reports no reason"],

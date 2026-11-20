@@ -63,6 +63,7 @@ int shim_win32_load(void) {
 	SHIM_BIND(g_user32, DispatchMessageW);
 	SHIM_BIND(g_user32, DefWindowProcW);
 	SHIM_BIND(g_user32, PostQuitMessage);
+	SHIM_BIND(g_user32, PostMessageW);
 	SHIM_BIND(g_user32, GetWindowThreadProcessId);
 	SHIM_BIND(g_user32, EnumDisplayMonitors);
 	SHIM_BIND(g_user32, GetMonitorInfoW);

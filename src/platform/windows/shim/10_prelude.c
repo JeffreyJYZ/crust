@@ -60,6 +60,9 @@ static int (*TranslateMessage)(const void *msg);
 static shim_i64 (*DispatchMessageW)(const void *msg);
 static shim_i64 (*DefWindowProcW)(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp);
 static void (*PostQuitMessage)(int code);
+// One message into a window's own queue, which is the only way a pump proof can distinguish a live
+// pump with nothing to do from a dead one: `PeekMessageW` answering FALSE *is* an idle pump.
+static int (*PostMessageW)(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp);
 // The monitor enumeration `47_screen.c` calls. Both are user32, resolved like every other pointer.
 static int (*EnumDisplayMonitors)(shim_h dc, const void *rect, void *callback, shim_i64 data);
 static int (*GetMonitorInfoW)(shim_h monitor, void *info);

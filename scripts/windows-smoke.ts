@@ -21,8 +21,11 @@ import { join } from "node:path";
 import { createPlatform, defaultBackend, preflightError } from "../src/platform/windows/index.ts";
 import { Verdict } from "./e2e-harness.ts";
 import { formatBisect, runBisect } from "./windows/bisect.ts";
+import { createWithAbortRetry } from "./windows/cold-abort.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
+import { provePump } from "./windows/pump.ts";
 import { runStages } from "./windows/stages.ts";
+import { freshUserData } from "./windows/user-data.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
 const USER_DATA = join(tmpdir(), "crust-smoke-webview2");
@@ -112,6 +115,7 @@ async function main(): Promise<number> {
 	//    these reports the refusal verbatim instead of a stack trace. A shim that will not *build* is
 	//    the exception: `compile()` attaches the exact tcc command line, so the failure names what
 	//    TinyCC was handed instead of being inferred from the throw.
+	freshUserData(USER_DATA);
 	const platform = createPlatform({ appName: "crust-smoke", userDataDir: USER_DATA });
 	try {
 		await platform.start();
@@ -135,17 +139,19 @@ async function main(): Promise<number> {
 		`CoInitializeEx and RegisterClassExW("crust-smoke") succeeded`,
 	);
 
-	try {
-		platform.createWindow({
-			label: "smoke",
-			title: "crust smoke",
-			url: "about:blank",
-			width: 480,
-			height: 320,
-		});
-	} catch (error) {
-		console.log(`unavailable: ${message(error)}`);
-		verdict.check("window", false, message(error));
+	const options = {
+		label: "smoke",
+		title: "crust smoke",
+		url: "about:blank",
+		width: 480,
+		height: 320,
+	};
+	// The single exception to "a red smoke is a finding": `cold-abort.ts` says why this HRESULT with a
+	// healthy environment is the runtime rather than this layer, and bounds it to one attempt.
+	const failure = createWithAbortRetry(platform, options);
+	if (failure !== undefined) {
+		console.log(`unavailable: ${failure}`);
+		verdict.check("window", false, failure);
 		return verdict.report("windows:smoke");
 	}
 	const hwnd = platform.nativeWindow("smoke") ?? 0;
@@ -155,20 +161,18 @@ async function main(): Promise<number> {
 		`smoke: HWND ${hwnd} with a WebView2 controller, navigated to about:blank`,
 	);
 
-	// 3. The real message loop, not Bun's timer: nativeMessages moves only when shim_pump
-	//    dispatches a queued Win32 message, so a stubbed PeekMessageW cannot pass this line.
-	platform.pump(16);
-	await Bun.sleep(120);
-	const ticks = platform.ticks;
-	const messages = platform.nativeMessages;
-	platform.stopPump();
+	// 5. The real message loop, not Bun's timer: a message this process posts is dispatched by
+	//    `shim_pump`, so a stubbed PeekMessageW cannot pass this line, and an idle queue cannot fail it.
+	const pump = await provePump(platform);
 	verdict.check(
 		"pump",
-		ticks >= 2 && messages >= 1,
-		`${messages} PeekMessageW messages dispatched over ${ticks} pump slices in 120 ms`,
+		pump.ok,
+		pump.posted === 1
+			? `shim_pump dispatched ${pump.dispatched} of 1 posted WM_NULL over ${pump.ticks} slices`
+			: "the window refused a posted WM_NULL, so the pump could not be proved live",
 	);
 
-	// 4. Liveness is `IsWindow`: platform.window() prunes through WindowsRegistry.get,
+	// 6. Liveness is `IsWindow`: platform.window() prunes through WindowsRegistry.get,
 	//    which calls shim_window_is_open before it answers.
 	const stillOpen = platform.window("smoke") !== undefined;
 	verdict.check(
