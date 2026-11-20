@@ -95,6 +95,18 @@ Absent or `[]` registers **every** built-in plugin the runtime assembles — the
 
 Absent, the loader discovers `extensions/*.ts`; present, it loads exactly those files. Each is a flat non-empty string path, resolved against the project. See [Extensions](/docs/guides/extensions).
 
+## `logging`
+
+| key           | type             | default       | what it does                                                                                       |
+| ------------- | ---------------- | ------------- | -------------------------------------------------------------------------------------------------- |
+| `level`       | string           | `"info"`      | quietest level written: `trace`, `debug`, `info`, `warn` or `error`; `crust dev` starts at `debug` |
+| `console`     | boolean          | `false`       | mirror `warn` and above to stderr with the human one-line form                                     |
+| `dir`         | string           | `"logs"`      | directory for the JSONL files, relative to the app's data directory                                |
+| `generations` | positive integer | `3`           | rotated `app.N.jsonl` archives kept; the oldest is deleted last                                    |
+| `maxBytes`    | positive integer | `5242880`     | size at which the live file rotates (5 MiB)                                                        |
+
+The framework logs a run itself — app and window lifecycle, every invoke with its duration and outcome, page console and errors, platform refusals — under `~/Library/Application Support/<app.id>/logs/`. See [Logging](/docs/guides/logging).
+
 ## `security`
 
 | key            | type             | default           | what it does                                                                                                       |

@@ -298,6 +298,13 @@ page calls needs both an action and a `grants` entry for that window's label (`s
 why). `bad-origin` is the second: `dev.url` without `strictPort` moves the port under a running
 page.
 
+**The run's own record is on disk.** crust logs the run itself — app and window lifecycle, every
+invoke with `durMs` and a `code`, page console and errors — as JSON lines in
+`~/Library/Application Support/<app.id>/logs/app.jsonl`, rotating into `app.1.jsonl`… and keeping
+`warn` and above in `errors.jsonl`. Read the tail from the page with
+`window.crust.invoke("logging", "tail", { level, source, since, limit })`, or let `crust dev`
+stream `debug` to the terminal for you.
+
 ## Test an app
 
 Past the round trip, two surfaces let an agent see and drive the page it built without touching the

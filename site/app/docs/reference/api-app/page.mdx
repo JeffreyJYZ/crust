@@ -27,15 +27,15 @@ Failure codes: `bad-request` (no `appPath`, no bundle id known, a bundle with no
 
 ## `logging`
 
-| command     | arguments            | answer                                                  |
-| ----------- | -------------------- | ------------------------------------------------------- |
-| `setLevel`  | `{ level }`          | `{ level, changed }`                                    |
-| `level`     | none                 | the level in force, as a string                         |
-| `configure` | `{ file?, level? }`  | `{ ok, file?, level?, error? }`                         |
-| `write`     | `{ level, message }` | `{ written, line?, path?, rotated?, reason?, error? }`  |
-| `tail`      | `{ limit? }`         | `{ lines }`                                             |
+| command     | arguments                    | answer                                                  |
+| ----------- | ---------------------------- | ------------------------------------------------------- |
+| `setLevel`  | `{ level }`                  | `{ level, changed }`                                    |
+| `level`     | none                         | the level in force, as a string                         |
+| `configure` | `{ file?, level? }`          | `{ ok, file?, level?, error? }`                         |
+| `write`     | `{ level, message }`         | `{ written, line?, path?, rotated?, reason?, error? }`  |
+| `tail`      | `{ limit?, level?, source?, since? }` | `{ records }`                                   |
 
-Levels are `trace`, `error`, `warn`, `info`, `debug`; `info` is the default. A line below the level in force is dropped before it reaches the file, and `write` reports which happened through `reason`: `below-level`, `bad-level`, or `sink-error` with `error` carrying the reason. `rotated` is set when that write moved `app.log` aside to `app.log.1` at the 1 MiB threshold. `tail` reads the in-memory ring of the last 200 lines and touches no disk; `limit` is clamped to that size.
+Levels are `trace`, `debug`, `info`, `warn` or `error`; `info` is the default. Every record is one JSON object per line in `app.jsonl` under the app's data directory, with `warn` and above also appended to `errors.jsonl`; the live file rotates into `app.1.jsonl` once it reaches `logging.maxBytes`. `tail` reads the live file and answers parsed records, filtering by that level and above, one `source`, and a `since` that is an ISO timestamp or epoch milliseconds; a line that is not JSON comes back as `{ raw }` instead of breaking the read. `write` records an author line with event `log.write` and source `plugin`, and reports why nothing reached the file (`below-level`, `bad-level` or `sink-error`) when that is what happened. `rotated` is set when that write moved the live file aside, naming the archive it moved to.
 
 `setLevel` answers `changed: false` for a name that is not a level, so a caller can tell "ignored" from "applied". `configure` repoints the live file and sets the level in one call; its `file` must be absolute and stay inside the app's data root (symlinks resolved), or it answers `{ ok: false, error }`. Nothing here throws: a bad payload answers `written: false` with `reason: "bad-level"`.
 

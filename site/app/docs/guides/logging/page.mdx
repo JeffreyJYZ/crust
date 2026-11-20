@@ -1,84 +1,106 @@
 # Logging
 
-A level filter, a file under the app's data directory that rotates at 1 MiB, and an in-memory ring
-so a page reads the tail without touching the disk. Registered on macOS under `logging`.
+crust writes the story of a run itself: one JSON object per line, on disk, with no print statements
+from your code. Every launch records the app's lifecycle, each window's life, every invoke with its
+duration and outcome, page console output and uncaught errors, and every platform refusal — enough to
+answer "why did this invoke fail" after the fact.
 
-## write
+## Where the files are
+
+The files sit under the app's own data root; on macOS that is `~/Library/Application Support/<app.id>`.
+
+```
+~/Library/Application Support/<app.id>/logs/app.jsonl      live file
+~/Library/Application Support/<app.id>/logs/app.1.jsonl    one generation back, then .2, .3
+~/Library/Application Support/<app.id>/logs/errors.jsonl   warn and above only
+```
+
+`<app.id>` is `app.id` from `crust.config.ts`, so two apps never share a directory. `app.jsonl`
+rotates when it reaches `logging.maxBytes`; the live file moves to `app.1.jsonl`, the previous `.1`
+to `.2`, and the oldest generation is deleted last. `errors.jsonl` is the subset you attach to a bug
+report: it keeps `warn` and `error` only, rotates at the same size, and keeps one generation.
+
+## One line
+
+```json
+{"ts":"2026-11-20T09:41:07.812Z","level":"info","source":"bridge","event":"bridge.invoke","msg":"os.info refused","window":"main","ns":"os","cmd":"info","durMs":0.42,"ok":false,"code":"forbidden","pid":4711,"seq":38}
+```
+
+| field    | what it is                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `ts`     | ISO 8601 with milliseconds                                                                    |
+| `level`  | `trace`, `debug`, `info`, `warn` or `error`                                                   |
+| `source` | which part of the app wrote it: `app`, `window`, `bridge`, `page`, `platform` or `plugin`     |
+| `event`  | a stable dotted name — `app.ready`, `window.create`, `bridge.invoke`, `page.error`             |
+| `msg`    | one human sentence                                                                            |
+| `pid`    | process id, so a dev restart's lines are separable                                            |
+| `seq`    | monotonic per process, so ordering survives two lines with an equal timestamp                 |
+
+Source-specific fields are the reason the format exists:
+
+| event           | fields                                                                             |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `bridge.invoke` | `window`, `ns`, `cmd`, `durMs`, `ok`, `code` (on failure), `bytesIn`, `bytesOut`     |
+| `bridge.refuse` | `reason` — `origin`, `token` or `capability` — plus `window`, `ns`, `cmd`            |
+| `window.*`      | `label`, `width`, `height`, `visible`; the record's `event` is `window.create`, `window.close`, `window.focus` or `window.resize` |
+| `app.*`         | `app`, `platform`, `arch`, `runtime`, `version`, then counts only: `windows`, `plugins`, `capabilities`, `grants` |
+| `page.console`  | `consoleLevel`, `args` (serialised and truncated), `url`                             |
+| `page.error`    | `message`, `stack` (first frames), `url`, `line`, `col`                              |
+| `platform.*`    | `api`, `code`, `detail` — what a `not-implemented` refusal already carries            |
+
+## Filtering with `tail`
 
 ```js
-const result = await window.crust.invoke("logging", "write", {
+const { records } = await window.crust.invoke("logging", "tail", {
 	level: "warn",
-	message: "save took 4.2 s",
+	source: "bridge",
+	since: "2026-11-20T09:40:00.000Z",
+	limit: 50,
 });
-// { written: true, line: "2026-11-15T…Z WARN save took 4.2 s", path: "…/logs/app.log" }
+// [{ ts, level, source, event, msg, … }, …]
 ```
 
-| argument  | notes                                     |
-| --------- | ----------------------------------------- |
-| `level`   | `trace`, `error`, `warn`, `info` or `debug` |
-| `message` | anything; it is stringified into the line |
+`tail` reads the live file and answers parsed objects, not strings, so a field is a field rather than
+text to parse again. Every argument is optional and the filters combine: `level` keeps that level and
+above, `source` keeps one writer, `since` keeps lines from that instant on (an ISO 8601 timestamp or
+epoch milliseconds), and `limit` caps the answer. A line that is not valid JSON comes back with `raw`
+set instead of breaking the read, so one truncated write cannot hide the rest of the file.
 
-A line below the configured level is dropped before it reaches the file, and the answer says which of
-the two happened:
+A page reaches it like any namespace: once `security.capabilities` is present, that window label needs
+`logging:tail` in its grant.
 
-| answer                                                  | meaning                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------ |
-| `{ written: true, line, path }`                         | the line was formatted and appended                          |
-| `{ written: false, reason: "below-level" }`             | the level is quieter than the current one                    |
-| `{ written: false, reason: "bad-level" }`               | `level` is not one of the five                               |
-| `{ written: false, reason: "sink-error", line, error }` | the file could not be written; the line is still in the ring |
+## Raising the level
 
-A write has no failure code: it answers a result every time, so a log call never breaks a caller.
-
-## setLevel and level
-
-```js
-await window.crust.invoke("logging", "setLevel", { level: "debug" });
-// { level: "debug", changed: true }
-```
-
-`changed` is false when the argument was not a level, which tells "ignored" from "applied". `level`
-takes no arguments and answers the current name. The plugin starts at `info`.
-
-## configure
-
-```js
-const { ok, file, level } = await window.crust.invoke("logging", "configure", {
-	file: "/Users/me/Library/Application Support/land.jyz.notes/logs/app.log",
-	level: "debug",
-});
-```
-
-Both arguments are optional: `file` repoints the live sink and `level` sets the filter in one call.
-It answers `{ ok: true, file, level }` with the values in force afterwards. `file` must be absolute
-and resolve inside the app's data root — a sibling whose name merely starts with the root's, or a
-symlink that leads out of it, answers `{ ok: false, error }`; so does an unknown `level`. The archive
-is always the live file's `app.log.1` sibling, so repointing moves the rotation with it.
-
-## tail
-
-```js
-const { lines } = await window.crust.invoke("logging", "tail", { limit: 50 });
-```
-
-The last `limit` lines of the in-memory ring, capped at 200 and defaulting to the whole ring. It never
-reads the file, so it answers instantly and only covers this process's own lines. The file itself is
-rotated at 1 MiB into its `app.log.1` sibling and is the record that survives a restart.
-
-## Where the file is
-
-`~/Library/Application Support/<app>/logs/app.log`, where `<app>` is the bundle id the plugin was
-built with — `crust` for the default instance the runtime carries.
-
-To name your app, select the other built-ins in `plugins` and mount your own instance, because two
-plugins of one name would collide:
+`info` is the default. Anything quieter is dropped before it is written, so the file stays small:
 
 ```ts
-// main.ts
-import { createLoggingPlugin } from "crust/plugin";
-
-app.use(createLoggingPlugin({ appId: "land.jyz.notes" }));
+// crust.config.ts
+export default {
+	// …
+	logging: { level: "debug" },
+} satisfies CrustConfig;
 ```
 
-With `plugins: ["fs", "dialog", "notification", "tray", "window"]`, the mounted instance is the only
-one, and its file lands under `land.jyz.notes`.
+`debug` adds the detail worth having while building — window frames, invocation boundaries, the
+page's own console — and is what `crust dev` already streams to the terminal, so a person watching
+sees each event without opening a file. A built app writes files and stays quiet unless you set
+`console: true`, which mirrors `warn` and above to stderr with the human one-line form.
+
+## What is never logged
+
+- Bearer tokens, including the page's own document token and any token in a URL's query.
+- Seed tokens, keychain and stronghold values, and any file's contents.
+- Capability and window-configuration *contents*: counts are logged, the grants themselves are not.
+
+A redaction pass runs over every field by name — `token`, `secret`, `password`, `key` — and over the
+message string, because a URL can carry a token in its query. A value that reaches a log line under
+one of those names is replaced before the line is appended, so it is never written and cannot be
+recovered from an archive.
+
+## Seeing it while you work
+
+`crust dev` starts the level at `debug` and streams each event to the terminal, so the run you are
+watching prints its own record as it happens — no `tail` call, no file to open. Set `logging.level`
+explicitly and dev respects it instead. To read the same events from a built app, call `logging.tail`
+or open `app.jsonl`; see [the config reference](/docs/reference/config#logging) for the block's
+defaults.
