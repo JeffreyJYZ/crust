@@ -4,6 +4,15 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.4] — 2026-11-20
+
+### Added
+
+- **A window keeps the size you gave it across a `crust dev` restart.** Editing the backend restarts the app, and the window used to come back at the configured size — `window-state` existed but nothing called `restore()`, so a saved frame only applied if a page asked. The frame now lives for the life of one `crust dev` process: the runner hands its child a state directory it owns and deletes on exit, so a restart reopens at the size it had and a fresh `crust dev` starts from the config. A built app has no runner and keeps the config size, which is a decision rather than an omission.
+- The save is debounced on frame change, not deferred to shutdown, because a dev restart is a `SIGTERM` that `registerShutdownSignals` turns into `process.exit(0)` — `before-quit` never runs, so a quit-only save would lose exactly the size worth keeping.
+- A restored frame is validated against every display's work area before it is applied: fully off-screen is rejected, partial overlap accepted, and no displays reject everything, so unplugging a monitor cannot restore a window nobody can see.
+- `e2e:dev:size` proves both halves — a restart keeps `1024x700`, and a fresh `crust dev` opens `900x672` again.
+
 ## [0.2.3] — 2026-11-20
 
 ### Added
