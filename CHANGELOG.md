@@ -4,6 +4,16 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.5] — 2026-11-20
+
+### Added
+
+- **A crust app can ask for the microphone.** A WKWebView refuses `getUserMedia` without `NSMicrophoneUsageDescription` and, under hardened runtime, `com.apple.security.device.audio-input`; crust shipped neither, so no crust app could record and `tccd` kills an unbundled process that asks without a purpose string.
+- `security.microphone: "<sentence>"` is the whole opt-in. The sentence is validated as a real one (two words, terminal punctuation) because macOS shows it verbatim in the permission prompt; it is copied into the plist key, and the audio entitlement is added to the hardened-runtime entitlements.
+- No `WKWebViewConfiguration` switch is needed on macOS 13+: `WKUIDelegate` treats an unimplemented capture permission as `.prompt`, so a runtime UI delegate grants microphone-only requests when configured. Camera and microphone-plus-camera requests are denied, every request is denied when the key is absent, and `crust dev` always denies because an unbundled process cannot carry a purpose string — that is why capture must be tested in a built bundle.
+- Proven end to end: the probe reached the OS prompt, the grant produced `getUserMedia granted — 1 audio track (MacBook Air Microphone)`, and the run exited 0.
+- Windows and Linux deny capture today: WebView2's `PermissionRequested` and WebKitGTK's `permission-request` need their own handlers, and the config type says so rather than implying parity.
+
 ## [0.2.4] — 2026-11-20
 
 ### Added
