@@ -2,15 +2,25 @@
  * `crust:window-state` — save, restore and forget a window's frame, so it reopens where it was. The native half and the data root are both injected: no AppKit here, and a test never writes into the real `Application Support`. The disk half (atomic write, the corrupt-is-empty rule) is `window-persist-store.ts`, re-exported below so callers import one module.
  * A corrupt or missing file is not an error — `restore` answers `{ restored: false }` and the window opens at its configured size, because refusing to open over a half-written JSON is worse than forgetting where it was.
  * The `…All` commands act on every label `list()` reports in one file read and one write, and name each window they could not save or had nothing saved for; they live in `window-persist-all.ts`.
+ * Under `crust dev` this plugin also runs itself: `openWindows` restores a saved frame at create and `window-frame-memory.ts` saves a changed one, debounced, to the directory the dev runner owns for that one process. A built app gets no such directory, so it opens at the configured size and remembers nothing across launches.
  */
 
 import { join } from "node:path";
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, knownWindow, readLabel } from "./window-args.ts";
+import { createFrameMemory, setFrameMemory } from "./window-frame-memory.ts";
 import { type WindowStateAllCommands, windowStateAllCommands } from "./window-persist-all.ts";
+import type {
+	WindowFrameNative,
+	WindowStateForgetResult,
+	WindowStateOptions,
+	WindowStateRestoreResult,
+	WindowStateSaveResult,
+} from "./window-persist-options.ts";
 import {
 	defaultStateRoot,
+	devWindowStateRoot,
 	readFrame,
 	readState,
 	STATE_FILE,
@@ -26,50 +36,9 @@ import {
 	type WindowSize,
 } from "./window-types.ts";
 
-export * from "./window-persist-store.ts";
 export * from "./window-persist-all.ts";
-
-/**
- * The native half: `list` plus the four frame calls, optional exactly as `WindowStateNative` has them, so a platform adapter is passed straight in and a missing member answers `unknown-adapter` instead of failing to compile.
- */
-export interface WindowFrameNative {
-	list(): string[];
-	/** The liveness oracle; a closed window is pruned from `list()` on macOS but still known here. */
-	isOpen?(label: string): boolean;
-	getSize?(label: string): WindowSize;
-	getPosition?(label: string): WindowPoint;
-	setSize?(label: string, size: WindowSize): void;
-	setPosition?(label: string, position: WindowPoint): void;
-}
-
-export interface WindowStateSaveResult {
-	ok: true;
-	label: string;
-	frame: WindowFrame;
-}
-
-export interface WindowStateRestoreResult {
-	ok: true;
-	label: string;
-	/** False when no usable entry existed; that is an answer, not a failure. */
-	restored: boolean;
-	frame?: WindowFrame;
-}
-
-export interface WindowStateForgetResult {
-	ok: true;
-	label: string;
-	removed: boolean;
-}
-
-export interface WindowStateOptions {
-	/** The platform's frame calls; absent answers `not-implemented`, as `crust:window` does. */
-	native?: WindowFrameNative;
-	/** Directory holding the state file. Defaults to `defaultStateRoot(app)`. */
-	root?: string;
-	/** App name for the default root, usually the config's `app.name`. */
-	app?: string;
-}
+export * from "./window-persist-options.ts";
+export * from "./window-persist-store.ts";
 
 type WindowStateCommands = {
 	save: (
@@ -95,7 +64,13 @@ export function createWindowStatePlugin(
 	options: WindowStateOptions = {},
 ): PluginDefinition<"window-state", WindowStateCommands> {
 	const adapter = options.native;
-	const file = join(options.root ?? defaultStateRoot(options.app ?? "crust"), STATE_FILE);
+	// The dev runner lends this run a directory and deletes it on exit; a built app has none, so its
+	// window frame is never remembered and never written into its data directory.
+	const devRoot = devWindowStateRoot();
+	const file = join(
+		devRoot ?? options.root ?? defaultStateRoot(options.app ?? "crust"),
+		STATE_FILE,
+	);
 
 	const act = async <Result>(
 		command: string,
@@ -138,11 +113,22 @@ export function createWindowStatePlugin(
 				return frame;
 			},
 			apply: (label: string, frame: WindowFrame): void => {
-				setSize.call(native, label, { width: frame.width, height: frame.height });
+				setSize.call(native, label, {
+					width: frame.width,
+					height: frame.height,
+				});
 				setPosition.call(native, label, { x: frame.x, y: frame.y });
 			},
 		};
 	};
+
+	// The automatic half, armed only where a dev runner owns a directory and the platform can read
+	// and apply a frame: restore at create and a debounced save on change both go through `frames`.
+	const quad = adapter;
+	const canFrame = quad?.getSize && quad.getPosition && quad.setSize && quad.setPosition;
+	if (devRoot !== undefined && options.workAreas !== undefined && canFrame) {
+		setFrameMemory(createFrameMemory({ native: quad, file, workAreas: options.workAreas }));
+	}
 
 	return definePlugin({
 		name: "window-state",
@@ -163,9 +149,18 @@ export function createWindowStatePlugin(
 					const calls = frames(native);
 					const frame = (await readState(file))[label];
 					if (frame === undefined)
-						return { ok: true as const, label, restored: false as const };
+						return {
+							ok: true as const,
+							label,
+							restored: false as const,
+						};
 					calls.apply(label, frame);
-					return { ok: true as const, label, restored: true as const, frame };
+					return {
+						ok: true as const,
+						label,
+						restored: true as const,
+						frame,
+					};
 				}),
 
 			forget: (args: WindowLabelArgs) =>

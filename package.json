@@ -44,6 +44,7 @@
 		"check:parity": "bun run scripts/check-parity.ts",
 		"e2e:notify": "bun run scripts/e2e-notify.ts",
 		"e2e:dev": "bun run scripts/e2e-dev.ts",
+		"e2e:dev:size": "bun run scripts/e2e-dev-size.ts",
 		"e2e:single": "bun run scripts/e2e-single.ts",
 		"e2e:dev:react": "bun run scripts/e2e-dev-react.ts",
 		"e2e:native": "bun run scripts/e2e-native.ts",

@@ -3,11 +3,8 @@
  */
 
 import { CrustError } from "@/bridge/errors";
-import type { BridgeTarget } from "@/bridge/server.ts";
-import { withToken, withWindowLabel } from "@/bridge/window-identity.ts";
-import { type CrustConfig, type WindowConfig } from "@/config";
+import type { CrustConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
-import { type PluginDefinition, definePlugin } from "./plugins/define.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
@@ -15,6 +12,7 @@ import {
 	type LifecycleSource,
 	type Platform,
 } from "./app-types.ts";
+import { definePlugin, type PluginDefinition } from "./plugins/define.ts";
 import { corePlugins, windowPlugin } from "./plugins/index.ts";
 import { defaultStateRoot } from "./plugins/window-persist-store.ts";
 
@@ -29,37 +27,6 @@ export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
 	windowPlugin.name,
 	...corePlugins.map((plugin) => plugin.name),
 ]);
-
-/**
- * An absolute URL is mandatory: the platform hands it to `NSURL` as-is, and a
- * relative one becomes `about:blank` there. `dev.url` wins verbatim (it is the
- * Vite origin), otherwise the window is served by the bridge.
- *
- * The document carries the window's identity: `?window=<label>` is appended
- * when the configured URL names no window, so the page reads its own label back
- * from `location.search` and the bridge can inject it into the client. A URL
- * that already names its own `window` is left byte-exact.
- *
- * A bridge-served URL also carries `?token=<token>`: the document route refuses a request that
- * cannot present one, so a page fetched without it is a `401` — and a local process fetching `/`
- * never receives the credential. A dev-server page is served by Vite, so it needs no token.
- */
-export function windowUrl(
-	window: WindowConfig,
-	devUrl: string | undefined,
-	bridge: BridgeTarget | undefined,
-): string {
-	const path = window.url ?? "/";
-	if (devUrl) return withWindowLabel(devUrl, window.label);
-	if (!bridge) {
-		throw new Error(
-			"crust: no page URL — set dev.url, or start through `crust dev` / a built app " +
-				"so the bridge can serve the page",
-		);
-	}
-	const url = `${bridge.url.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-	return withToken(withWindowLabel(url, window.label), bridge.token);
-}
 
 /**
  * The only dynamic import of the native layer. Keeping it lazy is what lets
@@ -129,21 +96,18 @@ export async function emit(
 	for (const listener of set) await listener();
 }
 
-/** Create every configured window and say so, so a silent window is visible. */ export function openWindows(
-	platform: Platform,
-	config: CrustConfig,
-	bridge: BridgeTarget | undefined,
-): void {
-	for (const window of config.windows) {
-		platform.createWindow({
-			...window,
-			url: windowUrl(window, config.dev?.url, bridge),
-		});
-		// A window that exists but never appears is the worst failure: the page runs, the
-		// bridge answers, and the screen is empty. Say what was created so a silent window
-		// is visible in the log rather than inferred from a user's "nothing happened".
-		console.log(`  window    ${window.label} created`);
-	}
+/**
+ * A deep link arrives before any page exists: the launch URL is claimed here, and the plugin's
+ * `url()` answers it once a page asks. Nothing on a platform without the concept.
+ */
+export async function installLaunchDeepLink(): Promise<void> {
+	if (process.platform !== "darwin") return;
+	const link = await import("@/platform/darwin/deep-link");
+	link.installDeepLinkHandler();
+	const launched = link.takeLaunchUrl();
+	if (!launched) return;
+	const { deepLink } = await import("@/plugins");
+	deepLink.launch(launched);
 }
 
 /**
@@ -176,9 +140,10 @@ export function mountable(
 	return definition;
 }
 
-/**
- * `watchWindows` and `watchLifecycle` moved to `app-watch.ts` — this file crossed the 200-line cap
- * when lifecycle events landed, and the fix for a cap is another file. Re-exported so every caller
- * and test keeps importing them from here.
- */
 export { LIFECYCLE_CHECK_INTERVAL_MS, watchLifecycle, watchWindows } from "./app-watch.ts";
+/**
+ * `windowUrl` and `openWindows` moved to `app-windows.ts` when the frame restore pushed this file
+ * past the line cap; `watchWindows` and `watchLifecycle` moved to `app-watch.ts` when lifecycle
+ * events did. Both are re-exported so every caller and test keeps importing them from here.
+ */
+export { openWindows, windowUrl } from "./app-windows.ts";

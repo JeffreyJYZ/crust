@@ -9,6 +9,7 @@
  */
 
 import type { ScreenAdapter, ScreenBounds, ScreenRecord } from "@/plugins/screen";
+import type { FrameRect } from "@/plugins/window-frame";
 import { type LinuxShim, shim } from "./shim-ffi.ts";
 
 /** One display from ten doubles: frame, work area, scale, then the primary flag. */
@@ -64,4 +65,13 @@ export function linuxScreenAdapter(native: LinuxShim = shim().symbols): ScreenAd
 			return screens;
 		},
 	};
+}
+
+/**
+ * Every display's work area in GDK's own top-left space, which is the space a window frame is
+ * reported and applied in. Read lazily, so a launch that never restores a frame compiles no shim.
+ */
+export function linuxWindowWorkAreas(): FrameRect[] {
+	const listed = linuxScreenAdapter().list();
+	return Array.isArray(listed) ? listed.map((entry) => entry.workArea) : [];
 }

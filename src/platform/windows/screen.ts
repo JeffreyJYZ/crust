@@ -9,6 +9,7 @@
  */
 
 import type { ScreenAdapter, ScreenBounds, ScreenRecord } from "@/plugins/screen";
+import type { FrameRect } from "@/plugins/window-frame";
 import { defaultBackend, type WindowsShim } from "./backend.ts";
 
 /** One display from ten doubles: frame, work area, scale, then the primary flag. */
@@ -69,4 +70,13 @@ export function windowsScreenAdapter(
 			return screens;
 		},
 	};
+}
+
+/**
+ * Every monitor's work area in Win32's top-left space, the same rect `getPosition` reports.
+ * Lazy for the same reason as the adapter: a launch that restores nothing loads nothing.
+ */
+export function windowsWindowWorkAreas(): FrameRect[] {
+	const listed = windowsScreenAdapter().list();
+	return Array.isArray(listed) ? listed.map((entry) => entry.workArea) : [];
 }

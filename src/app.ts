@@ -5,29 +5,32 @@
 import { CrustError } from "@/bridge/errors";
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
+import { frameQuitListener, quitAfterSaving } from "./app-frames.ts";
+import { type AppInfo, appInfo } from "./app-info.ts";
 import {
 	emit,
+	installLaunchDeepLink,
 	loadPlatform,
 	mountable,
 	openWindows,
 	watchLifecycle,
 	watchWindows,
 } from "./app-loop.ts";
-import { appInfo, type AppInfo } from "./app-info.ts";
-import { emitOnQuit } from "./app-watch.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
 	type AppListener,
 	type BridgeFactory,
 	type CommandHandler,
-	PUMP_INTERVAL_MS,
 	type Platform,
+	PUMP_INTERVAL_MS,
 } from "./app-types.ts";
+import { emitOnQuit } from "./app-watch.ts";
 import { invokeCommand, type PluginDefinition } from "./plugins/define.ts";
+import { frameMemory } from "./plugins/window-frame-memory.ts";
 
-export * from "./app-types.ts";
 export type { AppInfo } from "./app-info.ts";
+export * from "./app-types.ts";
 
 export class App {
 	readonly #commands = new Map<string, CommandHandler>();
@@ -143,18 +146,11 @@ export class App {
 
 		this.#started = true;
 		await platform.start();
-		// A deep link arrives before any page exists: the launch URL is claimed
-		// here, and the plugin's `url()` answers it once a page asks.
-		if (process.platform === "darwin") {
-			const link = await import("@/platform/darwin/deep-link");
-			link.installDeepLinkHandler();
-			const launched = link.takeLaunchUrl();
-			if (launched) {
-				const { deepLink } = await import("@/plugins");
-				deepLink.launch(launched);
-			}
-		}
-		openWindows(platform, config, this.#bridge);
+		await installLaunchDeepLink();
+		await openWindows(platform, config, this.#bridge, frameMemory());
+		// A signal restart never reaches a clean shutdown, so the frame is also saved on ⌘Q here.
+		const frameQuit = frameQuitListener();
+		if (frameQuit !== undefined) this.on("before-quit", frameQuit);
 		await emit(this.#listeners, "ready");
 		platform.pump(PUMP_INTERVAL_MS);
 		const lifecycle = platform.lifecycle?.();
@@ -169,6 +165,7 @@ export class App {
 				void emitOnQuit(this.#listeners, "window-all-closed")
 					.then(() => emitOnQuit(this.#listeners, "before-quit"))
 					.then(() => emitOnQuit(this.#listeners, "will-quit"))
+					.then(() => frameMemory()?.flush())
 					.then(() => platform.quit());
 			});
 		}
@@ -176,8 +173,10 @@ export class App {
 
 	/** Quit the application, closing every window and stopping the pump timer. */
 	quit(): void {
-		this.#stopWatching();
-		this.#platform?.quit();
+		quitAfterSaving(() => {
+			this.#stopWatching();
+			this.#platform?.quit();
+		});
 	}
 
 	#stopWatching(): void {

@@ -6,88 +6,21 @@
  */
 
 import { watch } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isFrontendSource, isIgnoredWatchPath } from "../ignore.ts";
-import { projectCrustRoot } from "../framework.ts";
 import { line } from "../util.ts";
-import { devEntrySource } from "./entry.ts";
-import { interpreter } from "./interpreter.ts";
+import { type RuntimeOptions, spawnRuntime } from "./spawn.ts";
 
-export interface RuntimeOptions {
-	entry: string;
-	projectDir: string;
-	configPath: string;
-	devUrl?: string;
-	/** The bridge pair to publish, when a `dev.url` page needs it. */
-	env?: Record<string, string>;
-	/** Extension files that loaded from disk; empty spawns the plain runtime. */
-	extensionFiles?: readonly string[];
-	/** The project's `native/` source dir, when it exists. Edit there rebuilds the dylib. */
-	nativeDir?: string;
-}
-
-export async function spawnRuntime(options: RuntimeOptions) {
-	const run = interpreter();
-	const crust = await projectCrustRoot(options.projectDir);
-	const generated = await devEntryPath(options, crust);
-	return Bun.spawn({
-		cmd:
-			generated === undefined
-				? [
-						...run.command,
-						join(crust, "src/runtime.ts"),
-						"--config",
-						options.configPath,
-						"--entry",
-						options.entry,
-					]
-				: [...run.command, generated],
-		cwd: options.projectDir,
-		stdio: ["inherit", "inherit", "inherit"],
-		env: {
-			...process.env,
-			...run.env,
-			...options.env,
-			CRUST_DEV_URL: options.devUrl ?? "",
-		},
-	});
-}
-
-/**
- * The generated entry, written into `.crust/dev` — crust's own scratch, which the watcher ignores,
- * so writing it never restarts the runtime it feeds. `undefined` for a project with no extensions,
- * which keeps the plain `src/runtime.ts --config … --entry …` argv every project used before.
- */
-async function devEntryPath(options: RuntimeOptions, crust: string): Promise<string | undefined> {
-	const files = options.extensionFiles ?? [];
-	if (files.length === 0) return undefined;
-	const path = join(options.projectDir, ".crust", "dev", "entry.ts");
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(
-		path,
-		devEntrySource({
-			configPath: options.configPath,
-			entryPath: options.entry,
-			runtimePath: join(crust, "src/runtime.ts"),
-			extensionsPath: join(crust, "src/extensions/registry.ts"),
-			projectDir: options.projectDir,
-			extensionFiles: files,
-		}),
-		"utf8",
-	);
-	return path;
-}
+export type { RuntimeOptions, spawnRuntime } from "./spawn.ts";
 
 /**
  * The dirs whose edits restart the runtime: each extension file's parent, plus the `native/`
  * source dir when the project has one. Kept pure so the dev watch can be tested without spawning
  * a runtime or installing real fs watchers.
  */
-export function extensionDirs(
-	files: readonly string[] | undefined,
-	nativeDir?: string,
-): string[] {
+export function extensionDirs(files: readonly string[] | undefined, nativeDir?: string): string[] {
 	const dirs = [...new Set((files ?? []).map((file) => dirname(file)))];
 	if (nativeDir !== undefined) dirs.push(nativeDir);
 	return dirs;
@@ -102,7 +35,15 @@ const BACKEND_SOURCE = /\.(?:ts|c|rs|zig)$/;
  * imports live; a change under `public/` is HMR's and is ignored.
  */
 export async function watchRuntime(options: RuntimeOptions): Promise<number> {
-	let child = await spawnRuntime(options);
+	// One directory for this run, not one per child: the restart must find the frame the previous
+	// child wrote. It lives in the OS temp dir, never in the project or the app's data directory,
+	// and it is deleted on every exit path, so a new `crust dev` starts with nothing to restore.
+	const frameDir = await mkdtemp(join(tmpdir(), "crust-window-frame-"));
+	const run = { ...options, frameDir };
+	const discard = (): void => {
+		void rm(frameDir, { recursive: true, force: true }).catch(() => undefined);
+	};
+	let child = await spawnRuntime(run);
 	let stopping = false;
 	let restarting = false;
 	let wake: (() => void) | undefined;
@@ -162,6 +103,7 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		for (const extensionWatcher of extensionWatchers) extensionWatcher.close();
 		wake?.();
 		child.kill();
+		discard();
 	};
 	process.once("SIGINT", stop);
 	process.once("SIGTERM", stop);
@@ -171,13 +113,14 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		if (stopping) return 0;
 		if (restarting) {
 			restarting = false;
-			child = await spawnRuntime(options);
+			child = await spawnRuntime(run);
 			continue;
 		}
 		if (code === 0) {
 			line("backend", "exited cleanly; crust dev stopped");
 			watcher.close();
 			for (const extensionWatcher of extensionWatchers) extensionWatcher.close();
+			discard();
 			return 0;
 		}
 		line("backend", `exited with ${code}; waiting for a change`);
@@ -185,6 +128,6 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 			wake = resolve;
 		});
 		if (stopping) return 0;
-		child = await spawnRuntime(options);
+		child = await spawnRuntime(run);
 	}
 }

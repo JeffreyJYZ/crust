@@ -28,6 +28,22 @@ export function defaultStateRoot(app: string): string {
 	return join(homedir(), "Library", "Application Support", app);
 }
 
+/**
+ * The directory `crust dev` lends this run, or `undefined` when nothing did.
+ *
+ * A window frame is remembered for the life of one `crust dev` process only: the runner creates
+ * this directory, every restarted child reads and writes the frame there, and the runner deletes it
+ * when it stops. So a new `crust dev` starts empty and opens at the configured size, with no cleanup
+ * code in the app. A `crust build` output has no runner and therefore no such variable, so it keeps
+ * the pre-existing behaviour — configured size, no remembered frame. That is a decision, not a bug:
+ * window state does not persist in a production build, and it never writes into the app's own data
+ * directory behind the human's back.
+ */
+export function devWindowStateRoot(): string | undefined {
+	const override = process.env.CRUST_WINDOW_STATE_DIR;
+	return override !== undefined && override.length > 0 ? override : undefined;
+}
+
 function isNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
 }

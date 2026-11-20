@@ -12,6 +12,8 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { FrameRect } from "@/plugins/window-frame";
+
 // A compiled binary has no readable source tree, so the C travels inside it.
 import screenSource from "./shim/97_screen.c" with { type: "text" };
 
@@ -76,7 +78,12 @@ export function mainScreenFrame(): ScreenFrame | undefined {
 	if (answered !== 1) return undefined;
 	const [x, y, width, height] = Array.from(out);
 	if (![x, y, width, height].every((value) => Number.isFinite(value))) return undefined;
-	return { x: x as number, y: y as number, width: width as number, height: height as number };
+	return {
+		x: x as number,
+		y: y as number,
+		width: width as number,
+		height: height as number,
+	};
 }
 
 /** Every finite number in `values`, so a partially written buffer never becomes a frame. */
@@ -125,6 +132,29 @@ function record(index: number, out: Float64Array, ceiling: number): ScreenRecord
 }
 
 /**
+ * Every display's visible frame in AppKit's own bottom-left space — the space `getPosition` and
+ * `setPosition` report and apply a window frame in. No flip here on purpose: `list()` answers
+ * top-left page pixels for pages, while this answers what the window frame rule needs, and mixing
+ * the two coordinate systems would silently accept a window on a display that is no longer there.
+ */
+export function windowWorkAreas(): FrameRect[] {
+	const unit = screenUnit();
+	const count = Number(unit.symbols.shim_screen_count() ?? 0);
+	const areas: FrameRect[] = [];
+	for (let index = 0; index < count; index++) {
+		const out = new Float64Array(10);
+		if (Number(unit.symbols.shim_screen_info(index, ptr(out)) ?? 0) !== 1) continue;
+		const vx = Number(out[4]);
+		const vy = Number(out[5]);
+		const vw = Number(out[6]);
+		const vh = Number(out[7]);
+		if (!finite(vx, vy, vw, vh) || vw <= 0 || vh <= 0) continue;
+		areas.push({ x: vx, y: vy, width: vw, height: vh });
+	}
+	return areas;
+}
+
+/**
  * Every display, in AppKit's own order, as top-left page pixels. An empty list is a real answer
  * for a headless process; the caller decides whether that is a failure.
  */
@@ -154,7 +184,10 @@ export function screenUnitStatus(): { available: boolean; reason: string } {
 	try {
 		screenUnit();
 	} catch (error) {
-		return { available: false, reason: error instanceof Error ? error.message : String(error) };
+		return {
+			available: false,
+			reason: error instanceof Error ? error.message : String(error),
+		};
 	}
 	const frame = mainScreenFrame();
 	return frame

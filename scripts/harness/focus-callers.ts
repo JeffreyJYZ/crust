@@ -15,6 +15,7 @@ export const LAUNCHERS = [
 	"e2e-capability.ts",
 	"e2e-dev-binary.ts",
 	"e2e-dev-react.ts",
+	"e2e-dev-size.ts",
 	"e2e-dev.ts",
 	"e2e-dogear.ts",
 	"e2e-fullscreen.ts",

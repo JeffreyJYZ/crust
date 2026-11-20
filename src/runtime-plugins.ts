@@ -4,25 +4,26 @@
 
 import type { ShellConfig } from "@/config";
 import { crashRecordPath } from "@/platform/darwin/crash-record";
-import { createSidecarPlugin } from "@/plugins/sidecar";
 // Static, not part of the darwin-only dynamic import below: `scoped` runs on the non-darwin arm
 // before that import is reached, and a `const` binding there would be in its temporal dead zone.
 import { createFsPlugin, createWindowPlugin, type PluginDefinition } from "@/plugins";
+import { createSidecarPlugin } from "@/plugins/sidecar";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
-import { platformKeychainPlugin } from "@/runtime-keychain";
 import { startCrashPart } from "@/runtime-crash-start";
+import { platformKeychainPlugin } from "@/runtime-keychain";
 import {
-	otherPlatformPlugins,
-	optionsOf,
 	type NativePluginOptions,
+	optionsOf,
+	otherPlatformPlugins,
 } from "@/runtime-plugins-other.ts";
+import { darwinWebviews, installTestingAdapter } from "@/runtime-testing.ts";
 
+export type { NativePluginOptions } from "@/runtime-plugins-other.ts";
 /**
  * The `app` namespace moved to `runtime-app-namespace.ts` when this file crossed the 200-line cap.
  * Re-exported so every caller keeps importing it from here.
  */
 export { createAppNamespacePlugin } from "./runtime-app-namespace.ts";
-export type { NativePluginOptions } from "@/runtime-plugins-other.ts";
 
 /**
  * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
@@ -56,7 +57,10 @@ export async function nativePlugins(
 		createUpdaterPlugin,
 		powerPlugin,
 	} = await import("@/plugins");
-	const shellPlugin = createShellPlugin({ allow: shell?.allow, cwdRoot: shell?.cwdRoot });
+	const shellPlugin = createShellPlugin({
+		allow: shell?.allow,
+		cwdRoot: shell?.cwdRoot,
+	});
 	// The sidecar plugin reads its declared names from the manifest `crust build` copied
 	// beside the binary. It is always registered: with no manifest it declares no names and
 	// refuses every spawn, which is the same deny-by-default shape as shell with no allowlist.
@@ -126,23 +130,9 @@ export async function nativePlugins(
 		deepLink,
 	} = await import("@/plugins");
 	const deepLinkPlugin = deepLink.plugin;
-	const { webviewResolver } = await import("@/platform/darwin/webview-target");
 	const windowAdapter = darwin.darwinWindowAdapter(platform);
-	/**
-	 * The `WKWebView` of one window, chosen by label and resolved per call so a window created
-	 * after registration is still reachable. With no label it is the app's first open window,
-	 * which is what a single-window caller means; a label that names no open window answers
-	 * `bad-request` rather than silently acting on that first window.
-	 */
-	const webviewFor = webviewResolver(platform);
-	// Gated exactly like its registration (`core.ts`'s `testingEnabled`): a normal app never compiles
-	// the evaluate unit, and an unregistered namespace is never reachable to grant. `webviewFor` is
-	// the resolver navigation and find already use, so an unknown label refuses there.
-	if ((await import("@/plugins/core")).testingEnabled()) {
-		const { setTestingAdapter } = await import("@/plugins/testing");
-		const { darwinTestingAdapter } = await import("@/plugins/testing-darwin");
-		setTestingAdapter(darwinTestingAdapter(webviewFor));
-	}
+	const webviewFor = darwinWebviews(platform);
+	await installTestingAdapter(webviewFor);
 	const crashNative = {
 		arm: (recordPath: string) => crash.armCrashHandlers(recordPath),
 		disarm: () => crash.disarmCrashHandlers(),
@@ -172,7 +162,13 @@ export async function nativePlugins(
 		createOpenerPlugin(opener.darwinOpenerAdapter()),
 		createOsPlugin(osInfo.darwinOsAdapter()),
 		createShortcutsPlugin(shortcuts.darwinShortcutsAdapter()),
-		createWindowStatePlugin({ native: windowAdapter, app: appId, root: appRoot }),
+		// A dev restart reads the frame back; the work areas keep a frame from a gone monitor off screen.
+		createWindowStatePlugin({
+			native: windowAdapter,
+			app: appId,
+			root: appRoot,
+			workAreas: screen.windowWorkAreas,
+		}),
 		createPositionerPlugin({ native: windowAdapter, screen: screen.mainScreenFrame }),
 		createScreenPlugin({ adapter: { list: screen.listScreens }, requires: "NSScreen screens" }),
 		createMenuPlugin(darwin.darwinMenuAdapter()),

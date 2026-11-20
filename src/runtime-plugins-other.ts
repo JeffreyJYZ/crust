@@ -124,20 +124,35 @@ async function windowPlugins(
 		const wiring = activeLinuxPlatform();
 		if (wiring === undefined) return bare();
 		const { linuxWindowAdapter } = await import("@/platform/linux/window-adapter");
+		const { linuxWindowWorkAreas } = await import("@/platform/linux/screen");
 		const native = linuxWindowAdapter(wiring.platform, wiring.native);
 		return {
-			plugins: [createWindowPlugin(native), createWindowStatePlugin({ native, app, root })],
+			plugins: [
+				createWindowPlugin(native),
+				createWindowStatePlugin({
+					native,
+					app,
+					root,
+					workAreas: linuxWindowWorkAreas,
+				}),
+			],
 			replaced: ADAPTED,
 		};
 	}
 	if (os !== "win32") return bare();
 	const { windowsWindowAdapter } = await import("@/platform/windows/window-adapter");
+	const { windowsWindowWorkAreas } = await import("@/platform/windows/screen");
 	const { windowsPositioner } = await import("@/platform/windows/window-positioner");
 	const native = windowsWindowAdapter();
 	return {
 		plugins: [
 			createWindowPlugin(native),
-			createWindowStatePlugin({ native, app, root }),
+			createWindowStatePlugin({
+				native,
+				app,
+				root,
+				workAreas: windowsWindowWorkAreas,
+			}),
 			// The nine placements, measured against the primary work area and flipped into Win32's
 			// y-down axis by the adapter — the plugin's own arithmetic is untouched.
 			createPositionerPlugin(windowsPositioner(native)),
