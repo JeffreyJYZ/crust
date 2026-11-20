@@ -4,6 +4,18 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.3] — 2026-11-20
+
+### Added
+
+- **`crust init --solid` scaffolds a Vite app with Solid 2.** Solid 2.0 shipped stable on 16 November 2026 and changed two things that make the obvious template fail: `solid-js@2` no longer exports `./web` (the DOM renderer is `@solidjs/web`, so `import { render } from "solid-js/web"` fails with `"./web" is not exported under the conditions […]`), and `vite-plugin-solid@2.11.17` peers on `solid-js ^1.7.2`. The Solid 2 plugin is the renamed `@solidjs/vite-plugin@3.0.1` (peers `solid-js ^2`, `vite ^8 || ^9`), and the template needs `jsxImportSource: "@solidjs/web"` — without it the build fails in a way that reads like a plugin bug. It is not SolidStart: Solid 2 retired it, and `dev.url` wants one SPA on one origin.
+- Measured from `crust init --solid`: 11 files, `bun install` 42 packages, `vite build` 52 modules, `crust build` 86.60 MiB, and the launched app printed `greet hello solid (page call answered)`.
+
+### Fixed
+
+- **`crust doctor` refused darwin-x64** as `macOS arm64 only`, while the release matrix builds `bun-darwin-x64`, the install page names it and `docs/limits` promises both architectures — the checker was refusing a platform crust ships. It accepts arm64 and x64 now.
+- **Every scaffold shipped `actions: ["app:invoke"]`**, the broad alias that authorises every app command, present and future. All five templates grant the command they actually register (`app:greet`), with a comment saying a new command needs its own action. The skill's examples were changed to match, so the docs, the scaffold and the checker now agree.
+
 ## [0.2.2] — 2026-11-19
 
 ### Added
