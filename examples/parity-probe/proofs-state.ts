@@ -61,15 +61,20 @@ export async function proveAutostart(): Promise<boolean> {
 	}
 }
 
-/** 1 KiB lines, so the sink crosses its 1 MiB threshold and both files together hold every line. */
+/**
+ * 1 KiB lines, and `maxBytes` is set here rather than inherited: the sink's default is 5 MiB (the
+ * documented `logging.maxBytes`), so a proof that crossed 1 MiB by accident would now never rotate.
+ * One rotation happens inside 1,100 lines, and `app.jsonl` plus `app.1.jsonl` still hold every line.
+ */
 const LINE_CHARS = 1024;
 const LINE_COUNT = 1100;
+const MAX_BYTES = 1024 * 1024;
 
 export async function proveLogging(): Promise<boolean> {
 	let root: string | undefined;
 	try {
 		root = await tempRoot("logging");
-		const logging = createLoggingPlugin({ root });
+		const logging = createLoggingPlugin({ root, maxBytes: MAX_BYTES });
 		const lines: string[] = [];
 		let rotated = false;
 		for (let index = 0; index < LINE_COUNT; index += 1) {
@@ -85,8 +90,9 @@ export async function proveLogging(): Promise<boolean> {
 			if (answer.line !== undefined) lines.push(answer.line);
 			if (answer.rotated !== undefined) rotated = true;
 		}
-		const live = join(root, "logs", "app.log");
-		const archive = join(root, "logs", "app.log.1");
+		// The JSONL names: `app.jsonl` is live and `app.1.jsonl` is the first generation.
+		const live = join(root, "logs", "app.jsonl");
+		const archive = join(root, "logs", "app.1.jsonl");
 		const before = await readFile(archive, "utf8").catch(() => "");
 		const after = await readFile(live, "utf8").catch(() => "");
 		// A set, not `includes`: a 1 KiB needle against 1 MiB of text is quadratic per line.
