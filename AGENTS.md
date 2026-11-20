@@ -14,6 +14,8 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 - **Merging and tagging here need no permission** — the owner waived the approval step for crust on 2026-11-17, so land PRs and cut tags directly; a tag push is still one tag at a time (user, 2026-11-17).
 - **After every release is published, refresh the installed skill: `skills update crust`** (user, 2026-11-20) — `~/.agents/skills/crust` is a copy of `main` taken at install time, so without the update it keeps the previous tag's pin and silently misses docs that landed after the last install; verify with `rg -n "v0\\.2\\.[0-9]" ~/.agents/skills/crust/SKILL.md` matching the tag you just cut.
 - **The same refresh covers the two installed CLIs: `brew upgrade crust` and `bun add -g github:JeffreyJYZ/crust#<tag>`** (user, 2026-11-20) — `~/.bun/bin` precedes `/opt/homebrew/bin`, so the Bun copy is what `crust` resolves to and brew updates a binary nobody invokes; update both and verify with `which -a crust` plus each path's own `--version`.
+- **Every release includes a docs and SKILL.md review, not just a pin bump** (user, 2026-11-20, caps: "EVERY RELEASE HAS TO HAVE U REVIEW DOCS AND SKILL.MD UP TO DATE") — read each new command, config key and app-facing API against the code, because 0.2.6 shipped the framework log documented and `log.info` missing from the skill.
+- **The log redactor matches field names, so an over-broad pattern silently deletes data** — a field named `keys` shipped as `[redacted]` and an app renamed it to `shape` to get its array back (perch-crust, 2026-11-20); the pattern is curated to secret names and their suffixes now, and `keys`/`key`/`publicKey` survive, because over-redaction costs the caller information nothing can recover.
 
 ## The gate
 

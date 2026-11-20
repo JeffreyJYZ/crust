@@ -84,7 +84,11 @@ export default {
 `debug` adds the detail worth having while building — window frames, invocation boundaries, the
 page's own console — and is what `crust dev` already streams to the terminal, so a person watching
 sees each event without opening a file. A built app writes files and stays quiet unless you set
-`console: true`, which mirrors `warn` and above to stderr with the human one-line form.
+`console: true`, which mirrors `warn` and above with the human one-line form.
+
+The mirror follows severity: `debug` and `info` go to stdout, `warn` through `console.warn` and
+`error` to stderr. That keeps `2>` meaningful — redirecting stderr to a file gives you what went
+wrong, not the whole conversation — and lets a terminal colour each line by its level.
 
 ## What is never logged
 
@@ -92,10 +96,25 @@ sees each event without opening a file. A built app writes files and stays quiet
 - Seed tokens, keychain and stronghold values, and any file's contents.
 - Capability and window-configuration *contents*: counts are logged, the grants themselves are not.
 
-A redaction pass runs over every field by name — `token`, `secret`, `password`, `key` — and over the
-message string, because a URL can carry a token in its query. A value that reaches a log line under
-one of those names is replaced before the line is appended, so it is never written and cannot be
-recovered from an archive.
+A redaction pass runs over every field by name and over the message string, because a URL can carry
+a token in its query. A value that reaches a log line under one of those names is replaced with
+`[redacted]` before the line is appended, so it is never written and cannot be recovered from an
+archive.
+
+Redacted names, at any depth of an object or array:
+
+| redacted                                                 | kept                                  |
+| -------------------------------------------------------- | ------------------------------------- |
+| `token`, `seed`, `secret`, `password`, `passphrase`       | `keys`, `key`                         |
+| `credential`, `authorization`, `cookie`                   | `publicKey`, `public_key`             |
+| `apiKey`, `api_key`, `privateKey`, `private_key`          | `keyCount`, `shape`                   |
+| `keychain`, and any name ending in `Token`, `Secret`, `Password` or `ApiKey` | anything else not named after a secret |
+
+The list is deliberately curated. A bare `key` or `keys` is as often a lookup table as a credential,
+and redacting one deletes a field you meant to keep with nothing to recover it — that happened to a
+real app, which had to rename its field. So name a field after what it holds, not after a secret
+word: `keys: ["a", "b"]` is logged verbatim, while the same array under `apiKey` arrives as
+`[redacted]`.
 
 ## Seeing it while you work
 

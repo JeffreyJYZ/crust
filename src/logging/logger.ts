@@ -12,7 +12,8 @@
 
 import { dirname, join } from "node:path";
 
-import { logDirs, type LogDirOptions, type LogDirs } from "./paths.ts";
+import { mirrorRecord } from "./mirror.ts";
+import { type LogDirOptions, type LogDirs, logDirs } from "./paths.ts";
 import { buildRecord } from "./record.ts";
 import { createSink, type Sink } from "./sink.ts";
 import {
@@ -28,8 +29,8 @@ import {
 	type TailResult,
 } from "./types.ts";
 
-export { logDirs } from "./paths.ts";
 export type { LogDirs } from "./paths.ts";
+export { logDirs } from "./paths.ts";
 
 export interface LoggerOptions extends LogDirOptions {
 	level?: LogLevel;
@@ -38,7 +39,7 @@ export interface LoggerOptions extends LogDirOptions {
 	maxBytes?: number;
 	now?: () => number;
 	pid?: number;
-	/** `crust dev`: `debug` unless a level is set, and every written record streams to stderr. */
+	/** `crust dev`: `debug` unless a level is set, and every written record streams to the console. */
 	dev?: boolean;
 }
 
@@ -78,8 +79,17 @@ function makeState(options: LoggerOptions): State {
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	return {
 		dirs,
-		sink: createSink({ file: dirs.file, errorsFile: dirs.errors, generations, maxBytes }),
-		level: isLogLevel(options.level) ? options.level : options.dev === true ? "debug" : "info",
+		sink: createSink({
+			file: dirs.file,
+			errorsFile: dirs.errors,
+			generations,
+			maxBytes,
+		}),
+		level: isLogLevel(options.level)
+			? options.level
+			: options.dev === true
+				? "debug"
+				: "info",
 		mirror: options.console === true || options.dev === true,
 		dev: options.dev === true,
 		now: options.now ?? (() => Date.now()),
@@ -123,7 +133,13 @@ export function setLoggerLevel(level: unknown): boolean {
 export function repointLogFile(root: string, file: string): string {
 	const next = state();
 	const logs = dirname(file);
-	next.dirs = { ...next.dirs, root, logs, file, errors: join(logs, ERRORS_FILE) };
+	next.dirs = {
+		...next.dirs,
+		root,
+		logs,
+		file,
+		errors: join(logs, ERRORS_FILE),
+	};
 	next.sink = createSink({
 		file,
 		errorsFile: next.dirs.errors,
@@ -133,26 +149,15 @@ export function repointLogFile(root: string, file: string): string {
 	return file;
 }
 
-/** The human line a person reads in a terminal or `console`. */
-function humanLine(record: ReturnType<typeof buildRecord>): string {
-	return `${record.ts} ${record.level.toUpperCase()} ${record.source} ${record.event} ${record.msg}`;
-}
-
-function mirror(record: ReturnType<typeof buildRecord>, active: State): void {
-	if (!active.mirror) return;
-	const recordLevel = SEVERITY[record.level];
-	if (!active.dev && recordLevel > SEVERITY.warn) return;
-	console.error(humanLine(record));
-}
-
 /** One record, written and mirrored. The plugin's `write` command awaits this. */
 export async function writeRecord(input: LogInput): Promise<WriteResult> {
 	const active = state();
-	if (!isLogLevel(input.level)) return { written: false, reason: "bad-level" };
+	if (!isLogLevel(input.level))
+		return { written: false, reason: "bad-level" };
 	if (SEVERITY[input.level] > SEVERITY[active.level])
 		return { written: false, reason: "below-level" };
 	const record = buildRecord(input, active.now(), active.pid, ++sequence);
-	mirror(record, active);
+	mirrorRecord(record, active);
 	const outcome = await active.sink.write(record);
 	if (!outcome.written) {
 		// No `line` here: a record the sink refused was never stored, and saying otherwise is the
@@ -176,7 +181,7 @@ export function logEvent(input: LogInput): void {
 	if (!isLogLevel(input.level)) return;
 	if (SEVERITY[input.level] > SEVERITY[active.level]) return;
 	const record = buildRecord(input, active.now(), active.pid, ++sequence);
-	mirror(record, active);
+	mirrorRecord(record, active);
 	void active.sink.write(record).catch(() => undefined);
 }
 
