@@ -276,7 +276,30 @@ jobs:
                   '@
                   Set-Content -Path (Join-Path $project 'main.ts') -Value $mainTs -Encoding utf8
                   Set-Content -Path (Join-Path $project 'public\app.js') -Value $appJs -Encoding utf8
-                  Write-Host 'patched main.ts and public/app.js with the resize proof'
+
+                  # The scaffold is deny-by-default and grants only `app:greet` (ce1f65b), so the
+                  # `viewport` command this proof adds must be granted here. This never widens
+                  # templates/default: the proof names its own action, exactly as a user would.
+                  # `logging.console` mirrors warn and above, which is where `bridge.refuse` sits,
+                  # so a refusal prints its reason instead of leaving the page's .catch silent.
+                  $configPath = Join-Path $project 'crust.config.ts'
+                  $config = Get-Content -Raw $configPath
+                  $grant = 'actions: ["app:greet"]'
+                  if (-not $config.Contains($grant)) {
+                    throw "the scaffold config no longer names $grant; update the proof's patch"
+                  }
+                  $config = $config.Replace($grant, 'actions: ["app:greet", "app:viewport"]')
+                  $logging = "`t// Added by .github/workflows/windows-arm-runtime.yml: this proof calls a second`r`n"
+                  $logging += "`t// app command, so it grants that action and mirrors refusals to the console.`r`n"
+                  $logging += "`tlogging: { level: `"debug`", console: true },`r`n"
+                  $tail = '} satisfies CrustConfig;'
+                  if (-not $config.Contains($tail)) {
+                    throw "the scaffold config no longer ends with $tail; update the proof's patch"
+                  }
+                  $config = $config.Replace($tail, $logging + $tail)
+                  Set-Content -Path $configPath -Value $config -Encoding utf8 -NoNewline
+
+                  Write-Host 'patched main.ts, public/app.js and crust.config.ts with the resize proof'
 
             # `init` writes the dependency as link:<checkout>, so this installs the very
             # source whose shim is being proven, not a registry copy.
@@ -351,6 +374,9 @@ jobs:
                   # resize; a frozen page never produces one, and the app's own settle timer
                   # prints the numbers it stayed at, so a failure names them.
                   if (-not $resized) {
+                    $diagnostics = "$text`n$errText"
+                    $refused = [regex]::Match($diagnostics, '(?m)^.*\bforbidden\b.*$')
+                    if ($refused.Success) { throw "resize never proved: the bridge refused a call: $($refused.Value.Trim())" }
                     $stopped = [regex]::Match($text, 'resize\s+failed:\s*(.+)')
                     if ($stopped.Success) { throw "resize never proved: $($stopped.Groups[1].Value.Trim())" }
                     $seen = [regex]::Matches($text, 'viewport\s+\S+\s+page=(\d+)x(\d+)')
