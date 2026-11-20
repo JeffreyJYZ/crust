@@ -1,6 +1,10 @@
 /** The one table of CLI contract rows. The runner lives in cli-contract.test.ts. */
 
+import { LOG_ROWS } from "./cli-log-rows.ts";
+import { bad, HINT, ok, type Row } from "./cli-row-shape.ts";
 import { VERSION } from "./util.ts";
+
+export { HINT, type Row } from "./cli-row-shape.ts";
 
 export const HELP = [
 	"crust — a Bun-native desktop app framework",
@@ -8,33 +12,6 @@ export const HELP = [
 	"crust init",
 	"crust doctor",
 ];
-export const HINT = 'run "crust --help" for usage';
-
-export interface Row {
-	name: string;
-	args: string[];
-	code: number;
-	out?: string[];
-	err?: string[];
-	outNot?: string[];
-	/** Pin that a stream is completely empty. */
-	outEmpty?: boolean;
-	errEmpty?: boolean;
-	/** Replace the `<DIR>` token in args with a fresh empty temp directory. */
-	freshDir?: boolean;
-	/** Environment overrides, so credential refusals do not depend on this machine. */
-	env?: Record<string, string>;
-}
-
-/** A success row: help or version on stdout, stderr empty. */
-function ok(name: string, args: string[], out: string[], outNot: string[] = []): Row {
-	return { name, args, code: 0, out, outNot, errEmpty: true };
-}
-
-/** A rejection row: a message on stderr, stdout empty. */
-function bad(name: string, args: string[], err: string[], extra: Partial<Row> = {}): Row {
-	return { name, args, code: 1, err, outEmpty: true, ...extra };
-}
 
 export const ROWS: Row[] = [
 	ok("--version prints VERSION, exit 0", ["--version"], [VERSION]),
@@ -42,7 +19,7 @@ export const ROWS: Row[] = [
 	ok(
 		"--help prints full help, exit 0",
 		["--help"],
-		[...HELP, "--format", "--react", "--sign", "--notarize", "--dmg"],
+		[...HELP, "--format", "--react", "--sign", "--notarize", "--dmg", "--log-level"],
 	),
 	ok("-h is the same as --help", ["-h"], HELP),
 	{ name: "no arguments print help but exit 1", args: [], code: 1, out: HELP, errEmpty: true },
@@ -93,6 +70,7 @@ export const ROWS: Row[] = [
 		["--dir needs a value", HINT],
 	),
 	bad("an unknown option is a usage error", ["build", "--wat"], ["unknown option --wat", HINT]),
+	...LOG_ROWS,
 	bad(
 		"init with two positionals refuses the second",
 		["init", "a", "b"],

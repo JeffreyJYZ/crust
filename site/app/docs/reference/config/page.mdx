@@ -99,7 +99,7 @@ Absent, the loader discovers `extensions/*.ts`; present, it loads exactly those 
 
 | key           | type             | default       | what it does                                                                                       |
 | ------------- | ---------------- | ------------- | -------------------------------------------------------------------------------------------------- |
-| `level`       | string           | `"info"`      | quietest level written: `trace`, `debug`, `info`, `warn` or `error`; `crust dev` starts at `debug` |
+| `level`       | string           | `"info"`      | quietest level written: `trace`, `debug`, `info`, `warn` or `error`; `--log-level` and `CRUST_LOG` beat it |
 | `console`     | boolean          | `false`       | mirror `warn` and above to stderr with the human one-line form                                     |
 | `dir`         | string           | `"logs"`      | directory for the JSONL files, relative to the app's data directory                                |
 | `generations` | positive integer | `3`           | rotated `app.N.jsonl` archives kept; the oldest is deleted last                                    |

@@ -69,22 +69,49 @@ set instead of breaking the read, so one truncated write cannot hide the rest of
 A page reaches it like any namespace: once `security.capabilities` is present, that window label needs
 `logging:tail` in its grant.
 
+## What each record costs
+
+The level is chosen by what a person needs, so the default is worth reading:
+
+| record                        | level                                                     |
+| ----------------------------- | --------------------------------------------------------- |
+| `app.*`, `window.create`/`close` | `info` — the run's shape: started, ready, window open, quit |
+| `bridge.invoke` (success)     | `debug` — one line per call, and the firehose this flag exists for |
+| `bridge.invoke` (failure)     | `warn`, or `error` for `handler-error`/`not-implemented`  |
+| `bridge.refuse`               | `warn` — a refusal is why the page did nothing, at every default |
+| `page.console`                | the console method's own level                            |
+| `page.error`                  | `error`                                                   |
+| `platform.refuse`             | `error`                                                   |
+
+So `info` keeps the lifecycle and every refusal, and `warn` keeps the refusals and errors while
+silencing invokes and lifecycle. Invokes are the reason `debug` is a level away rather than on.
+
 ## Raising the level
 
-`info` is the default. Anything quieter is dropped before it is written, so the file stays small:
+`info` is the default, in `crust dev` and in a built app. Anything quieter is dropped before it is
+written, so the file stays small. Four sources decide it, and the first one set wins:
 
-```ts
-// crust.config.ts
-export default {
-	// …
-	logging: { level: "debug" },
-} satisfies CrustConfig;
-```
+1. `crust dev --log-level <level>` — this run only.
+2. `CRUST_LOG=<level>` in the environment — a shell can set it once.
+3. `logging.level` in `crust.config.ts`:
 
-`debug` adds the detail worth having while building — window frames, invocation boundaries, the
-page's own console — and is what `crust dev` already streams to the terminal, so a person watching
-sees each event without opening a file. A built app writes files and stays quiet unless you set
-`console: true`, which mirrors `warn` and above with the human one-line form.
+   ```ts
+   // crust.config.ts
+   export default {
+   	// …
+   	logging: { level: "debug" },
+   } satisfies CrustConfig;
+   ```
+
+4. The default, `info`.
+
+A bad value is refused rather than falling back: `crust dev --log-level loud` prints
+`unknown log level "loud" — expected trace, debug, info, warn or error` and exits 1, and an
+unrecognised `CRUST_LOG` says so once and leaves `logging.level` (or the default) in force.
+
+`debug` adds the detail worth having while building — invocation boundaries and the page's own
+`console.debug` — and is what `--log-level debug` is for. A built app writes files and stays quiet
+unless you set `console: true`, which mirrors `warn` and above with the human one-line form.
 
 The mirror follows severity: `debug` and `info` go to stdout, `warn` through `console.warn` and
 `error` to stderr. That keeps `2>` meaningful — redirecting stderr to a file gives you what went
@@ -118,8 +145,9 @@ word: `keys: ["a", "b"]` is logged verbatim, while the same array under `apiKey`
 
 ## Seeing it while you work
 
-`crust dev` starts the level at `debug` and streams each event to the terminal, so the run you are
-watching prints its own record as it happens — no `tail` call, no file to open. Set `logging.level`
-explicitly and dev respects it instead. To read the same events from a built app, call `logging.tail`
-or open `app.jsonl`; see [the config reference](/docs/reference/config#logging) for the block's
-defaults.
+`crust dev` streams each written record to the terminal, so the run you are watching prints its own
+lifecycle and refusals without a `tail` call or a file to open. It starts at `info`: lifecycle and
+refusals appear, while invokes — one line per call — appear only when you ask with
+`crust dev --log-level debug` (or `CRUST_LOG=debug`). To read the same events from a built app, call
+`logging.tail` or open `app.jsonl`; see [the config reference](/docs/reference/config#logging) for
+the block's defaults.

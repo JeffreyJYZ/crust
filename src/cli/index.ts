@@ -24,6 +24,7 @@ import { COMMANDS, isCommand, type CommandName } from "./commands.ts";
 import {
 	BASIC_EXAMPLES,
 	COMMAND_DESCRIPTIONS,
+	LOG_LEVEL_DESCRIPTION,
 	NOTARIZE_CREDENTIALS,
 	OPTION_DESCRIPTIONS,
 	PUBLISHED_LIMITS,
@@ -47,6 +48,8 @@ for (const [name, description] of Object.entries(OPTION_DESCRIPTIONS)) {
 	const takesValue = VALUE_FLAGS.some((flag) => flag === name);
 	cli.option(takesValue ? `--${name} <value>` : `--${name}`, description);
 }
+// The one option whose name and parsed key differ (`--log-level` arrives as `logLevel`).
+cli.option("--log-level <level>", LOG_LEVEL_DESCRIPTION);
 // The tagline leads the first example (cac prints only the bare command name
 // above it), followed by three real invocations, then the two prose blocks.
 // Their leading newlines survive cac's "\n" example join as blank separators.

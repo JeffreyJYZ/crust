@@ -29,6 +29,7 @@ One binary, five commands. From a checkout `bun run src/cli/index.ts` is the sam
 | `--config <path>` | all        | config file, relative to `--dir`                                      |
 | `--entry <path>`  | all        | backend entry, relative to `--dir`, default `src/main.ts` then `main.ts` |
 | `--format <fmt>`  | package    | `dmg`, `appimage` or `nsis`; repeat the flag for several               |
+| `--log-level <level>` | dev    | `trace`, `debug`, `info`, `warn` or `error` for this run; default `info` |
 | `--sign`          | build      | Developer ID sign the app, replacing the ad-hoc signature (needs `CRUST_SIGNING_IDENTITY`) |
 | `--notarize`      | build      | notarize and staple the signed app; implies `--sign`                   |
 | `--dmg`           | build      | build a disk image from the signed app (macOS)                         |
@@ -40,7 +41,7 @@ One binary, five commands. From a checkout `bun run src/cli/index.ts` is the sam
 | `--help`, `-h`    | all        | print the usage text, exit 0                                          |
 | `--version`, `-v` | all        | print the version, exit 0                                             |
 
-The five init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1. Any stage flag on a command other than `build` fails with `--<flag> only applies to build`.
+The five init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1. Any stage flag on a command other than `build` fails with `--<flag> only applies to build`, and `--log-level` outside `dev` with `--log-level only applies to dev`. A value `--log-level` does not recognise is refused by name — `unknown log level "verbose" — expected trace, debug, info, warn or error` — rather than quietly running at the default.
 
 The stages refuse before any build work runs. `--notarize` without `--sign` is `notarize requires --sign — an ad-hoc signature cannot be submitted; add --sign with CRUST_SIGNING_IDENTITY`. `--sign` without the identity is `sign requires CRUST_SIGNING_IDENTITY — set "Developer ID Application: Name (TEAMID)"`. Off macOS, `--dmg` and `--sign` refuse with `--dmg has no disk image on <platform> — a disk image is macOS only` and `--sign needs codesign, which is macOS-only (this platform is <platform>)`. `--notarize` without a credential or Developer ID signature names which is missing.
 
@@ -59,6 +60,7 @@ The config is built in memory: id `crust.single.<slug>`, name and window title f
 - Backend edits restart the runtime process. Under `dev.url`, saves of `.tsx`, `.jsx`, `.css`, `.scss`, `.sass`, `.less`, `.html` and image files do not, because the dev server owns them and a restart rotates the bridge token.
 - `.ts` and `.js` always restart it, since the backend entry is one of them — `crust doctor` reports page-side `.ts` files as a note for exactly this reason.
 - Change watching skips `public`, `dist`, `node_modules`, `.next`, `out` and `.crust`.
+- The runtime logs at `info`: lifecycle and refusals reach the terminal, successful invokes do not. `--log-level debug` brings the invokes back, and `warn` silences lifecycle while keeping refusals and errors.
 
 ## `crust doctor`
 
@@ -78,5 +80,6 @@ The `extensions` block reports `zig`, `rustc` and `clang` as found with their ve
 | `CRUST_NOTARY_PASSWORD`  | `crust build --notarize`                       | the app-specific password for that Apple ID                                                                         |
 | `CRUST_NOTARY_TEAM_ID`   | `crust build --notarize`                       | the team the Apple ID belongs to                                                                                    |
 | `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `<cwd>/.crust/dev.json`                                                          |
+| `CRUST_LOG`              | `crust dev`, every crust runtime                | minimum log level: `trace`, `debug`, `info`, `warn` or `error`; beats `logging.level`, loses to `--log-level`        |
 
 An uncaught command failure prints `crust <command>: <message>` and exits 1. Nothing prints a stack trace and nothing exits 0 on a refusal.

@@ -310,7 +310,8 @@ invoke with `durMs` and a `code`, page console and errors — as JSON lines in
 "crust"` and `log.info("sync finished", { files: 12, ms: 340 })` — the fields land as JSON, `source`
 is `app`, and the configured level filters it like any framework line. Read the tail from the page
 with `window.crust.invoke("logging", "tail", { level, source, since, limit })`, or let `crust dev`
-stream `debug` to the terminal for you.
+stream lifecycle and refusals to the terminal — it starts at `info`, and `--log-level debug` adds a
+line per invoke.
 
 ## Test an app
 

@@ -112,8 +112,8 @@ export interface FsConfig {
 
 /**
  * The framework's own structured log. Absent means the defaults: `info`, files only, `logs/`, three
- * generations of 5 MiB. `crust dev` raises the level to `debug` and streams every record to the
- * terminal unless `level` or `console` is set.
+ * generations of 5 MiB. `crust dev` streams every written record to the terminal but no longer
+ * raises the level; `--log-level` then `CRUST_LOG` beat this key, which beats the default.
  */
 export interface LoggingConfig {
 	/** Minimum level written: `trace | debug | info | warn | error`. */

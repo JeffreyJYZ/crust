@@ -48,7 +48,7 @@ export interface LoggingAdapter {
 	/** `logging.generations` and `logging.maxBytes`. */
 	generations?: number;
 	maxBytes?: number;
-	/** `crust dev`: `debug` unless a level is set, and every record streams to stderr. */
+	/** `crust dev`: every written record streams to stderr. It does not raise the level. */
 	dev?: boolean;
 }
 

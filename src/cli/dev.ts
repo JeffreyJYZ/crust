@@ -56,6 +56,10 @@ export async function devBackendEntry(
 }
 
 export async function dev(options: CliOptions): Promise<number> {
+	// The loudest source becomes the env the runtime child reads, because `spawn.ts` forwards
+	// `process.env` to every child and a single-file run forks its own. So `--log-level` beats a
+	// shell's `CRUST_LOG`, and the child needs no third mechanism.
+	if (options.logLevel !== undefined) process.env.CRUST_LOG = options.logLevel;
 	const detected = await detectSingle(options);
 	if (detected.kind === "error") return fail("dev", detected.message);
 	// Every dev path spawns a runtime child that inherits process.env, so this is the same

@@ -5,6 +5,13 @@
  */
 
 export * from "./types.ts";
+export {
+	configuredLogLevel,
+	envLogLevel,
+	LEVEL_NAMES,
+	type LevelSources,
+	resolveLogLevel,
+} from "./level.ts";
 export { redactFields, redactText, redactValue, isSecretName, REDACTED } from "./redact.ts";
 export { buildRecord, isoAt, parseLine, serializeRecord, sinceMs } from "./record.ts";
 export { archivePath, rotateChain } from "./rotate.ts";

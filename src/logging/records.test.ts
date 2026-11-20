@@ -28,6 +28,7 @@ describe("bridge.invoke", () => {
 		});
 		expect(record.source).toBe("bridge");
 		expect(record.event).toBe("bridge.invoke");
+		expect(record.level).toBe("debug");
 		expect(record.fields).toMatchObject({
 			window: "main",
 			ns: "fs",
@@ -74,9 +75,10 @@ describe("bridge.refuse", () => {
 		});
 	});
 
-	test("a token refusal is debug, so pre-auth noise stays out of an info-level build", () => {
-		expect(refuseRecord({ reason: "token" }).level).toBe("debug");
-		expect(refuseRecord({ reason: "origin" }).level).toBe("debug");
+	test("every refusal is a warning, so it survives an info-level run", () => {
+		expect(refuseRecord({ reason: "capability" }).level).toBe("warn");
+		expect(refuseRecord({ reason: "token" }).level).toBe("warn");
+		expect(refuseRecord({ reason: "origin" }).level).toBe("warn");
 	});
 });
 

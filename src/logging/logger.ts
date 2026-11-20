@@ -12,6 +12,7 @@
 
 import { dirname, join } from "node:path";
 
+import { configuredLogLevel } from "./level.ts";
 import { mirrorRecord } from "./mirror.ts";
 import { type LogDirOptions, type LogDirs, logDirs } from "./paths.ts";
 import { buildRecord } from "./record.ts";
@@ -39,7 +40,7 @@ export interface LoggerOptions extends LogDirOptions {
 	maxBytes?: number;
 	now?: () => number;
 	pid?: number;
-	/** `crust dev`: `debug` unless a level is set, and every written record streams to the console. */
+	/** `crust dev`: every written record streams to the console. It no longer raises the level. */
 	dev?: boolean;
 }
 
@@ -85,11 +86,10 @@ function makeState(options: LoggerOptions): State {
 			generations,
 			maxBytes,
 		}),
-		level: isLogLevel(options.level)
-			? options.level
-			: options.dev === true
-				? "debug"
-				: "info",
+		// `crust dev` forwards `--log-level` as `CRUST_LOG`, so the env is the loudest source; a
+		// process started by hand or as a build reads the env then `logging.level`. `dev` no longer
+		// implies `debug`: a person who wants invokes asks, and a refusal stays visible at `info`.
+		level: configuredLogLevel(options.level),
 		mirror: options.console === true || options.dev === true,
 		dev: options.dev === true,
 		now: options.now ?? (() => Date.now()),
@@ -152,8 +152,7 @@ export function repointLogFile(root: string, file: string): string {
 /** One record, written and mirrored. The plugin's `write` command awaits this. */
 export async function writeRecord(input: LogInput): Promise<WriteResult> {
 	const active = state();
-	if (!isLogLevel(input.level))
-		return { written: false, reason: "bad-level" };
+	if (!isLogLevel(input.level)) return { written: false, reason: "bad-level" };
 	if (SEVERITY[input.level] > SEVERITY[active.level])
 		return { written: false, reason: "below-level" };
 	const record = buildRecord(input, active.now(), active.pid, ++sequence);

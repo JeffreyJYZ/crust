@@ -4,6 +4,18 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.7] — 2026-11-20
+
+### Fixed
+
+- **A field named `keys` is no longer deleted.** The redactor matched any field name containing a secret-ish word, plurals included, so `{ keys: ["a", "b"] }` was written as `[redacted]` and the array was gone — one app renamed its field to `shape` to get it back. The names are curated now: `token`, `seed`, `secret`, `password`, `passphrase`, `credential`, `authorization`, `cookie`, `keychain` and the compounds `apiKey`/`privateKey` in both casings, plus their plurals. `key`, `keys`, `publicKey` and `keyCount` survive, because a bare `key` is as often a lookup table as a secret and over-redaction costs information nothing can recover. A token inside a URL query is still masked.
+- **Log lines are no longer all red.** The mirror called `console.error` for every record, so `debug` and `info` landed on stderr and any terminal that tints stderr painted the whole stream red — and `crust dev 2>` captured everything. The mirror routes by level: `debug`/`info` to stdout, `warn` to `console.warn`, `error` to stderr.
+
+### Changed
+
+- **`crust dev` starts at `info`, not `debug`.** A line per invoke is useful when chasing one and noise the rest of the time: `bridge.invoke` on success is `debug`, a failed invoke is `warn` (`error` for `handler-error`/`not-implemented`), `bridge.refuse` and `platform.refuse` stay visible, and lifecycle (`app.*`, `window.*`) is `info`.
+- **The level is yours to set**, first one wins: `crust dev --log-level <level>` for one run, `CRUST_LOG=<level>` for a shell, `logging.level` in `crust.config.ts` for the app, then `info`. `--log-level` is validated (`unknown log level "loud" — expected trace, debug, info, warn or error`), it is refused on any command but `dev`, and a malformed `CRUST_LOG` says so once and keeps the config or default rather than silently falling back.
+
 ## [0.2.6] — 2026-11-20
 
 ### Added

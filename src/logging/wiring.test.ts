@@ -36,7 +36,9 @@ afterEach(async () => {
 
 async function startAt(): Promise<{ bridge: BridgeHandle; root: string }> {
 	root = await mkdtemp(join(tmpdir(), "crust-wiring-"));
-	configureLogger({ root, level: "info" });
+	// `debug`, because a successful invoke is now a `debug` line: this test asserts both halves of
+	// the wiring, and the level filter's own behaviour is `level.test.ts`.
+	configureLogger({ root, level: "debug" });
 	const started = startBridge({
 		handlers: [plugin],
 		security: {
@@ -102,6 +104,7 @@ describe("bridge wiring", () => {
 		const ok = invokes.find((record) => record.ok === true);
 		const failed = invokes.find((record) => record.ok === false);
 		expect(ok?.code).toBeUndefined();
+		expect(ok?.level).toBe("debug");
 		expect(typeof ok?.durMs).toBe("number");
 		expect(failed?.code).toBe("forbidden");
 		expect(typeof failed?.durMs).toBe("number");

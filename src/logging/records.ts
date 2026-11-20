@@ -38,7 +38,9 @@ export function invokeRecord(fields: InvokeFields): LogInput {
 	const target = fields.window === undefined ? fields.ns : `${fields.window} ${fields.ns}`;
 	const verdict = fields.ok ? "ok" : code;
 	return {
-		level: fields.ok ? "info" : failureLevel(code),
+		// One line per call is a firehose, so a success is `debug`; a failure keeps the severity it
+		// earned and is never quieter than the call it failed.
+		level: fields.ok ? "debug" : failureLevel(code),
 		source: "bridge",
 		event: "bridge.invoke",
 		msg: oneLine(
@@ -62,10 +64,10 @@ export function invokeRecord(fields: InvokeFields): LogInput {
 export type RefusalReason = "origin" | "token" | "capability";
 
 /**
- * `bridge.refuse`. A capability refusal is a page asking for something it was not granted, so it is
- * a warning; a token or origin refusal is pre-auth noise any local process can generate, so it is
- * `debug` and a built app at `info` keeps it out of the file. The event names which happened either
- * way, so `crust dev`'s `debug` stream shows all three.
+ * `bridge.refuse`. Every refusal is a `warn`: a page asking for something it was not granted, or a
+ * request that failed the token or origin check, is the first thing a person needs at the default
+ * level — a refused invoke is why the page did nothing. A capability refusal carries the action in
+ * `detail`, so the record already says what to grant.
  */
 export function refuseRecord(fields: {
 	reason: RefusalReason;
@@ -75,7 +77,7 @@ export function refuseRecord(fields: {
 	detail?: string;
 }): LogInput {
 	return {
-		level: fields.reason === "capability" ? "warn" : "debug",
+		level: "warn",
 		source: "bridge",
 		event: "bridge.refuse",
 		msg: oneLine(
@@ -148,4 +150,4 @@ export function platformRecord(fields: {
 	};
 }
 
-export { pageRecord, type PageLogPayload } from "./records-page.ts";
+export { type PageLogPayload, pageRecord } from "./records-page.ts";

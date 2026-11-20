@@ -45,6 +45,13 @@ export const OPTION_DESCRIPTIONS = {
 	solid: "init only: copy the Solid + Vite template",
 } as const;
 
+/**
+ * `crust dev --log-level`, registered by `index.ts` itself: cac camel-cases the raw key to
+ * `logLevel`, so it cannot ride the loop that names each option from its description key.
+ */
+export const LOG_LEVEL_DESCRIPTION =
+	"dev only: trace, debug, info, warn or error (default: info); sets CRUST_LOG for the runtime";
+
 /** Leading newline survives cac's "\n" example join as a blank separator. */
 export const NOTARIZE_CREDENTIALS = `\nnotarize credentials come from the environment, never from argv:
   CRUST_SIGNING_IDENTITY      "Developer ID Application: Name (TEAMID)"

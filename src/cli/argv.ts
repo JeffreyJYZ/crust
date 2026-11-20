@@ -4,6 +4,8 @@
  * this file owns only the flag vocabulary and the wording cac's defaults fight.
  */
 
+import { LEVEL_NAMES } from "@/logging/level.ts";
+import { isLogLevel } from "@/logging/types.ts";
 import type { CommandName } from "./commands.ts";
 import type { InitOptions } from "./init.ts";
 import { parseFormats } from "./package/format.ts";
@@ -17,6 +19,7 @@ const KNOWN = new Set<string>([
 	...VALUE_FLAGS,
 	...SCAFFOLDS,
 	...STAGE_FLAGS,
+	"logLevel",
 	"help",
 	"h",
 	"version",
@@ -44,6 +47,8 @@ export function translate(
 		const parsed = parseFormats(values);
 		if (parsed.ok) options.formats = parsed.formats;
 	}
+	const logLevel = Array.isArray(raw.logLevel) ? raw.logLevel.at(-1) : raw.logLevel;
+	if (isLogLevel(logLevel)) options.logLevel = logLevel;
 	return options;
 }
 
@@ -55,6 +60,16 @@ export function validate(
 ): string | undefined {
 	for (const key of Object.keys(raw)) {
 		if (!KNOWN.has(key)) return `unknown option ${key.length > 1 ? `--${key}` : `-${key}`}`;
+	}
+	// `--log-level` is dev's, and its bad value is refused by name rather than falling back to the
+	// default: a run at `info` because of a typo is the confusion this flag exists to remove.
+	if (raw.logLevel !== undefined) {
+		if (command !== "dev") return "--log-level only applies to dev";
+		const value = Array.isArray(raw.logLevel) ? raw.logLevel.at(-1) : raw.logLevel;
+		if (value === true) return "--log-level needs a value";
+		if (!isLogLevel(value)) {
+			return `unknown log level "${String(value)}" — expected ${LEVEL_NAMES}`;
+		}
 	}
 	const allowed = POSITIONAL_COMMANDS.has(command) ? 1 : 0;
 	if (positionals.length > allowed) return `unexpected argument ${positionals[allowed]}`;

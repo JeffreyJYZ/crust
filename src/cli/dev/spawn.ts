@@ -52,7 +52,9 @@ export async function spawnRuntime(options: RuntimeOptions) {
 			...run.env,
 			...options.env,
 			CRUST_DEV_URL: options.devUrl ?? "",
-			// The logging default in a dev run: `debug` level, every record streamed to this terminal.
+			// The logging default in a dev run is the logger's own `info`, and `CRUST_LOG` is already
+			// in `process.env` when `--log-level` or a shell set it. Every written record streams to
+			// this terminal.
 			CRUST_DEV: "1",
 			// Only a `crust dev` run has one. Absent, the app opens at its configured size and
 			// remembers nothing, which is what a build output gets.

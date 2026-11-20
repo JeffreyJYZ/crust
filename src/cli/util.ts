@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import type { LogLevel } from "@/logging/types.ts";
 import packageJson from "../../package.json";
 import { htmlModuleEntry } from "./dev.ts";
 import type { PackageFormat } from "./package/format.ts";
@@ -34,6 +35,8 @@ export interface CliOptions {
 	single?: string;
 	/** `crust package` formats, already validated; the command defaults to `["dmg"]`. */
 	formats?: PackageFormat[];
+	/** `crust dev --log-level`; forwarded to the runtime child as `CRUST_LOG`. */
+	logLevel?: LogLevel;
 	/** `crust build` release stages, run in sign → notarize/staple → dmg order. */
 	sign?: boolean;
 	notarize?: boolean;
@@ -169,30 +172,5 @@ export async function findBuildArtifact(
 	return undefined;
 }
 
-/**
- * Why `bun install` has not been run here, when that is the state. A declared dependency set with no `node_modules` is what a fresh clone or a `rm -rf` leaves; the frontend command then cannot find its tool locally, and `bun x` silently resolves one from the global cache — vite starts, dies on the missing react, and the user gets a rolldown stack with crust reporting "the frontend build failed", which points at the wrong thing entirely.
- */
-export async function missingInstall(dir: string): Promise<string | undefined> {
-	const manifest = Bun.file(join(dir, "package.json"));
-	if (!(await manifest.exists())) return undefined;
-
-	let declared = 0;
-	try {
-		const parsed = (await manifest.json()) as {
-			dependencies?: Record<string, string>;
-			devDependencies?: Record<string, string>;
-		};
-		declared =
-			Object.keys(parsed.dependencies ?? {}).length +
-			Object.keys(parsed.devDependencies ?? {}).length;
-	} catch {
-		return undefined;
-	}
-	if (declared === 0) return undefined;
-	if (await exists(join(dir, "node_modules"), "dir")) return undefined;
-	return (
-		`node_modules is missing in ${resolve(dir)} — run \`bun install\` first. ` +
-		"Without it the frontend command resolves its tool from a global cache and fails " +
-		"on the packages it cannot find"
-	);
-}
+/** Kept exported here so every command's import path stayed the same when the body moved. */
+export { missingInstall } from "./install.ts";
