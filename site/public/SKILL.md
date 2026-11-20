@@ -380,6 +380,9 @@ others).
 - **A window's URL must be same-origin as the bridge** unless `dev.url` names it. Absolute foreign
   origins are refused.
 - **`bun test` in your app is yours, not crust's** — crust's own suite is not part of your project.
+- **`security.microphone` grants capture in a built macOS bundle only** — `crust dev` denies
+  `getUserMedia` because an unbundled run carries no purpose string, and Windows and Linux deny it
+  today; test capture in a `crust build` app.
 
 ## Full reference
 

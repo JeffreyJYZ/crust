@@ -12,6 +12,8 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 - **One writer per file.** Give lanes disjoint file sets; two agents on one file is how a merge
   silently keeps one of them.
 - **Merging and tagging here need no permission** — the owner waived the approval step for crust on 2026-11-17, so land PRs and cut tags directly; a tag push is still one tag at a time (user, 2026-11-17).
+- **After every release is published, refresh the installed skill: `skills update crust`** (user, 2026-11-20) — `~/.agents/skills/crust` is a copy of `main` taken at install time, so without the update it keeps the previous tag's pin and silently misses docs that landed after the last install; verify with `rg -n "v0\\.2\\.[0-9]" ~/.agents/skills/crust/SKILL.md` matching the tag you just cut.
+- **The same refresh covers the two installed CLIs: `brew upgrade crust` and `bun add -g github:JeffreyJYZ/crust#<tag>`** (user, 2026-11-20) — `~/.bun/bin` precedes `/opt/homebrew/bin`, so the Bun copy is what `crust` resolves to and brew updates a binary nobody invokes; update both and verify with `which -a crust` plus each path's own `--version`.
 
 ## The gate
 
