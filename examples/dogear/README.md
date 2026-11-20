@@ -84,7 +84,8 @@ dist/Dogear.app/Contents/MacOS/crust-app
 under `dist/web`, compiles the backend, assembles `Dogear.app` and ad-hoc signs it.
 Launch the binary inside the bundle directly — never `open` it, which routes
 through LaunchServices, raises Gatekeeper dialogs and hides the real exit status.
-macOS arm64 only; a recipient on another Mac needs
+Built for the host architecture — arm64 on an Apple silicon Mac, x64 on an Intel one; a
+recipient on another Mac needs
 `xattr -dr com.apple.quarantine "Dogear.app"`.
 
 ## Prove it works

@@ -8,9 +8,10 @@
  * (`app:invoke`) — the defect `docs/reviews/next-wave/api-design.md` §1 names.
  *
  * The wire action stays a second candidate, so a capability that deliberately grants `app:invoke`
- * still reaches every app command. The scaffolds grant exactly that, and existing apps must not
- * break. Narrow grants now work: `app:notes.save` covers only that command. Once a label holds only
- * the narrow grant, naming a different command is a `forbidden` that names `app:<that command>`.
+ * still reaches every app command. Apps scaffolded before the narrow grant landed hold exactly
+ * that, and they must not break. Narrow grants now work: `app:notes.save` covers only that command.
+ * Once a label holds only the narrow grant, naming a different command is a `forbidden` that names
+ * `app:<that command>`.
  */
 
 import { APP_NAMESPACE } from "../../app-types.ts";

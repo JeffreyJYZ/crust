@@ -82,8 +82,8 @@ describe("app command grants", () => {
 	});
 
 	test("the legacy flat app:invoke grant still reaches every app command", async () => {
-		// The scaffolds grant `app:invoke`; keeping it as a second candidate means adding
-		// per-command scoping does not break an app that opted into capabilities earlier.
+		// The scaffolds grant `app:greet`; keeping the wire key as a second candidate means
+		// per-command scoping does not break an app that opted into the flat grant earlier.
 		const bridge = start(secured(["app:invoke"]));
 		expect((await call(bridge, "notes.save")).status).toBe(200);
 		expect((await call(bridge, "notes.delete")).status).toBe(200);

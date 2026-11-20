@@ -53,6 +53,6 @@ export const NOTARIZE_CREDENTIALS = `\nnotarize credentials come from the enviro
 
 /** Leading newline survives cac's "\n" example join as a blank separator. */
 export const PUBLISHED_LIMITS =
-	"\nThe published limits: ~85 MiB per app (Bun ships its runtime), macOS arm64 only, " +
+	"\nThe published limits: ~85 MiB per app (Bun ships its runtime), macOS arm64 or x64, " +
 	"and an ad-hoc signature that Gatekeeper refuses on other machines; use " +
 	"`crust build --sign --notarize --dmg` with a Developer ID for release.";

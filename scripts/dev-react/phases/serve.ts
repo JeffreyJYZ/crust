@@ -26,7 +26,7 @@ export interface Served {
 
 /**
  * The window label the probe claims, and the reason it must: the scaffold declares
- * `security.capabilities`, which makes the bridge deny-by-default and grants `app:invoke` to
+ * `security.capabilities`, which makes the bridge deny-by-default and grants `app:greet` to
  * `main` alone. A real dev page is navigated as `?window=main`, so its client sends this label on
  * every call; a probe that omitted it would make a request no page makes, and the gate refuses it.
  */

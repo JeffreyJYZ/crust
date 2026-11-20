@@ -53,9 +53,9 @@ A page calls its own commands through `app.invoke({ name: "notes.save" })`. That
 There are two ways to grant an app command:
 
 - `app:notes.save` — the narrow form, `app:<name>`; covers only that command.
-- `app:invoke` — the broad alias; still covers every app command, so existing apps and the scaffolds keep working without a config edit.
+- `app:invoke` — the broad alias; still covers every app command, so an app that granted it earlier keeps working without a config edit.
 
-A grant of either authorizes the call. Every scaffold grants the broad `app:invoke` deliberately: a new app's own commands work without a second config edit, and the app can narrow later.
+A grant of either authorizes the call. Every scaffold grants the narrow form instead — `app:greet`, the one command its page calls — with a comment saying a new command needs its own action there, or `app:invoke` if the app deliberately wants the broad alias. A scaffold therefore starts at least privilege, and widening is a decision the author makes.
 
 The `*` caveat matters here. `app:notes.*` matches every command under that prefix, `delete` as well as `save`. So this grant:
 
