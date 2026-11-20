@@ -111,7 +111,7 @@ unrecognised `CRUST_LOG` says so once and leaves `logging.level` (or the default
 
 `debug` adds the detail worth having while building — invocation boundaries and the page's own
 `console.debug` — and is what `--log-level debug` is for. A built app writes files and stays quiet
-unless you set `console: true`, which mirrors `warn` and above with the human one-line form.
+unless you set `console: true`, which mirrors every written record with the human one-line form.
 
 The mirror follows severity: `debug` and `info` go to stdout, `warn` through `console.warn` and
 `error` to stderr. That keeps `2>` meaningful — redirecting stderr to a file gives you what went
