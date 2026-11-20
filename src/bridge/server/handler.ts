@@ -13,6 +13,8 @@
  */
 
 import { CrustError } from "../errors";
+import { logEvent } from "@/logging/logger";
+import { refuseRecord } from "@/logging/records";
 import { TOKEN_PARAM, tokenFromSearch, windowLabelFromSearch } from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
@@ -20,6 +22,7 @@ import { type DocumentTokenLedger, mintDocumentToken } from "./document-tokens.t
 import type { Events } from "./events.ts";
 import { bearer, contentTypeOf, errorResponse, hasExtension } from "./http.ts";
 import { invokeRequest, type Run } from "./invoke.ts";
+import { PAGE_LOG_PATH, pageLogRequest } from "./page-log.ts";
 import type { StartBridgeOptions } from "./types.ts";
 
 export const INVOKE_PATH = "/_crust/invoke";
@@ -111,6 +114,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		) {
 			try {
 				if (!allowedOrigin(origin, devOrigins, state.port())) {
+					logEvent(refuseRecord({ reason: "origin", detail: origin ?? "absent" }));
 					return errorResponse(
 						new CrustError("bad-origin", `origin not allowed: ${origin ?? "<absent>"}`),
 						cors,
@@ -146,6 +150,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		// same-origin GET, and the token below is the credential either way. A
 		// *present* and foreign Origin is a hostile page, and stays refused.
 		if (!allowedOrigin(origin, devOrigins, state.port())) {
+			logEvent(refuseRecord({ reason: "origin", detail: origin ?? "absent" }));
 			return errorResponse(
 				new CrustError("bad-origin", `origin not allowed: ${origin ?? "<absent>"}`),
 				cors,
@@ -161,6 +166,7 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		const issued = (value: string | null): value is string =>
 			value !== null && state.labels.has(value);
 		if (!issued(headerToken) && !issued(queryToken)) {
+			logEvent(refuseRecord({ reason: "token", detail: url.pathname }));
 			return errorResponse(
 				new CrustError("unauthorized", "missing or bad bearer token"),
 				cors,
@@ -169,6 +175,14 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 
 		if (url.pathname === EVENTS_PATH && request.method === "GET") {
 			return events.stream(state.port(), cors);
+		}
+
+		if (url.pathname === PAGE_LOG_PATH && request.method === "POST") {
+			return await pageLogRequest(
+				request,
+				cors,
+				state.labels.get(headerToken ?? queryToken ?? token),
+			);
 		}
 
 		if (url.pathname === INVOKE_PATH && request.method === "POST") {

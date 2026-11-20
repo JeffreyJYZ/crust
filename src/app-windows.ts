@@ -7,6 +7,8 @@
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { withToken, withWindowLabel } from "@/bridge/window-identity.ts";
 import type { CrustConfig, WindowConfig } from "@/config";
+import { logEvent } from "@/logging/logger";
+import { windowRecord } from "@/logging/records";
 import type { Platform } from "./app-types.ts";
 import type { FrameMemory } from "./plugins/window-frame-memory.ts";
 
@@ -64,14 +66,24 @@ export async function openWindows(
 			url: windowUrl(window, config.dev?.url, bridge),
 		});
 		const frame = saved[window.label];
+		// The frame the window actually ends with: the restored one when the memory accepted it, the
+		// configured size otherwise. One event name (`window.create`) for both this path and the
+		// plugin's, so a reader never has to know which internal route made the window.
+		let width = window.width;
+		let height = window.height;
 		if (frame !== undefined && memory !== undefined) {
 			try {
 				memory.place(window.label, frame);
+				width = frame.width;
+				height = frame.height;
 			} catch {
 				// One frame the platform refuses is that window at the configured size, never a
 				// failed launch: the window is already up and the human can move it.
 			}
 		}
+		logEvent(
+			windowRecord({ event: "create", label: window.label, width, height, visible: true }),
+		);
 		// A window that exists but never appears is the worst failure: the page runs, the
 		// bridge answers, and the screen is empty. Say what was created so a silent window
 		// is visible in the log rather than inferred from a user's "nothing happened".

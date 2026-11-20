@@ -7,6 +7,7 @@ import { app, type App, type CommandHandler, type Platform } from "@/app.ts";
 import { loadDarwinPlatform, loadPlatform } from "./app-loop.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig, validateConfig } from "@/config";
+import { configureLogger } from "@/logging/logger";
 import { type DarwinPlatform } from "@/platform/darwin";
 import { PluginRegistry } from "@/plugins";
 import {
@@ -48,6 +49,14 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 	const appPlugin = createAppNamespacePlugin();
 
 	const core = (await import("@/plugins")).corePlugins;
+	// The logger points at this app's data root before the entry runs, so a `main.ts` command
+	// registered a moment from now already logs to the right file. `crust dev` raises the default
+	// level to `debug` and streams every record to the terminal.
+	configureLogger({
+		appId: config.app.id,
+		...config.logging,
+		dev: process.env.CRUST_DEV === "1",
+	});
 	const attachPlatform = options.attachPlatform !== false;
 	// One running copy per app id: the lock is claimed before the platform
 	// exists, so a second launch raises the copy already running and never

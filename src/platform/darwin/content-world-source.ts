@@ -79,8 +79,7 @@ export const CONTENT_WORLD_SOURCE = `(function () {
 					window: label
 				})
 			});
-		};
-		send().then(function (response) {
+		};		send().then(function (response) {
 			return response.text().then(function (text) {
 				try {
 					var body = JSON.parse(text);
@@ -118,6 +117,20 @@ export const CONTENT_WORLD_SOURCE = `(function () {
 				error: { code: "no-fetch", message: "the bridge is unreachable", status: 0 }
 			});
 		});
+	});
+	// The page world taps its own console and uncaught errors and dispatches them as one DOM event;
+	// this world owns the credential, so it is the half that can send them. A failed send is a lost
+	// log line, never a page error.
+	document.addEventListener("crust:log", function (event) {
+		var payload = typeof event.detail === "string" ? event.detail : "";
+		if (!payload) return;
+		try {
+			fetch(origin + "/_crust/log", {
+				method: "POST",
+				headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+				body: payload
+			}).catch(function () {});
+		} catch (error) {}
 	});
 })();`;
 

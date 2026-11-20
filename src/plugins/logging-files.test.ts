@@ -1,23 +1,19 @@
 /**
- * `crust:logging` on disk, split from the level and ring proofs so each file stays one subject: the
- * file `logDirs` names (which `crust:os` `paths` reports, so the two cannot drift), and rotation — past
- * 1 MiB the live file becomes `app.log.1` before the next line is appended, so the archive holds every
- * earlier line and nothing is lost across the move. The last test pins the generation count: an older
- * `.1` is replaced, never appended to, so the sink costs at most two files of disk.
+ * `crust:logging` on disk, split from the level and tail proofs so each file stays one subject: the
+ * names `logDirs` reports (which `crust:os` `paths` shares, so `appLog` cannot drift), rotation
+ * across generations, and the warn-and-above error file with its single archive.
+ *
+ * `maxBytes: 1` makes rotation deterministic: the first write creates the live file, and every
+ * write after it rotates first, so generation N holds the (N+1)th-newest record with no timing.
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-	createLoggingPlugin,
-	logDirs,
-	ROTATE_BYTES,
-	ROTATED_NAME,
-	type WriteResult,
-} from "@/plugins/logging";
+import { parseLine, type LogRecord } from "@/logging";
+import { createLoggingPlugin, logDirs, type WriteResult } from "@/plugins/logging";
 
 const AT = Date.parse("2026-11-15T00:00:00.000Z");
 
@@ -25,8 +21,8 @@ async function scratch(): Promise<string> {
 	return await mkdtemp(join(tmpdir(), "crust-rotate-"));
 }
 
-function pluginAt(root: string): ReturnType<typeof createLoggingPlugin> {
-	return createLoggingPlugin({ root, now: () => AT, level: "debug" });
+function pluginAt(root: string, extra: Record<string, unknown> = {}) {
+	return createLoggingPlugin({ root, now: () => AT, level: "debug", maxBytes: 1, ...extra });
 }
 
 function call<T>(plugin: ReturnType<typeof createLoggingPlugin>, name: string, args?: unknown): T {
@@ -36,26 +32,39 @@ function call<T>(plugin: ReturnType<typeof createLoggingPlugin>, name: string, a
 	return handler(args);
 }
 
-/** The file's lines, without the trailing newline reading as an empty one. */
-async function lines(path: string): Promise<string[]> {
-	return (await readFile(path, "utf8")).split("\n").filter(Boolean);
+async function exists(path: string): Promise<boolean> {
+	return await stat(path).then(
+		() => true,
+		() => false,
+	);
+}
+
+async function events(path: string): Promise<string[]> {
+	const text = await readFile(path, "utf8").catch(() => "");
+	return text
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => parseLine(line))
+		.filter((line): line is LogRecord => line !== undefined && !("raw" in line))
+		.map((record) => record.event);
 }
 
 describe("logging directories", () => {
-	test("the sink writes to the file logDirs names, so crust:os paths cannot drift", async () => {
+	test("the sink writes logs/app.jsonl, and logDirs names it", async () => {
 		const root = await scratch();
 		try {
-			const written = await (call(pluginAt(root), "write", {
+			const written = await call<WriteResult>(pluginAt(root), "write", {
 				level: "info",
 				message: "where",
-			}) as Promise<WriteResult>);
+			});
 			expect(written.path).toBe(logDirs({ root }).file);
-			expect(written.path).toBe(join(root, "logs", "app.log"));
+			expect(written.path).toBe(join(root, "logs", "app.jsonl"));
 			expect(logDirs({ home: "/h", appId: "id" })).toEqual({
 				home: "/h",
 				root: "/h/Library/Application Support/id",
 				logs: "/h/Library/Application Support/id/logs",
-				file: "/h/Library/Application Support/id/logs/app.log",
+				file: "/h/Library/Application Support/id/logs/app.jsonl",
+				errors: "/h/Library/Application Support/id/logs/errors.jsonl",
 			});
 		} finally {
 			await rm(root, { recursive: true, force: true });
@@ -63,63 +72,45 @@ describe("logging directories", () => {
 	});
 });
 
-describe("logging rotation", () => {
-	test(`past ${ROTATE_BYTES} bytes app.log becomes ${ROTATED_NAME} with no line lost`, async () => {
+describe("rotation across generations", () => {
+	test("app.jsonl shifts into app.1.jsonl and upward, keeping three archives", async () => {
 		const root = await scratch();
 		try {
-			const plugin = pluginAt(root);
-			const live = join(root, "logs", "app.log");
-			const archive = join(root, "logs", ROTATED_NAME);
-			const padding = "p".repeat(1000);
-			const written: string[] = [];
-			for (let index = 0; index < 2000; index += 1) {
-				const result = await (call(plugin, "write", {
-					level: "info",
-					message: `${index} ${padding}`,
-				}) as Promise<WriteResult>);
-				expect(result.written).toBe(true);
-				written.push(result.line ?? "");
-				const size = (await stat(live).catch(() => ({ size: 0 }))).size;
-				if (size > ROTATE_BYTES) break;
+			const plugin = pluginAt(root, { generations: 3 });
+			for (let index = 0; index < 6; index += 1) {
+				await call(plugin, "write", { level: "info", message: `line ${index}` });
 			}
-			expect((await stat(live)).size).toBeGreaterThan(ROTATE_BYTES);
-
-			// This write rotates first, so the whole pre-rotation file is the archive.
-			const after = await (call(plugin, "write", {
-				level: "info",
-				message: "after rotation",
-			}) as Promise<WriteResult>);
-			expect(after.rotated).toBe(archive);
-			written.push(after.line ?? "");
-
-			const archived = await lines(archive);
-			const current = await lines(live);
-			expect(archived).toEqual(written.slice(0, -1));
-			expect(current).toEqual(written.slice(-1));
-			expect([...archived, ...current]).toEqual(written);
+			const logs = join(root, "logs");
+			expect(await exists(join(logs, "app.jsonl"))).toBe(true);
+			expect(await exists(join(logs, "app.1.jsonl"))).toBe(true);
+			expect(await exists(join(logs, "app.2.jsonl"))).toBe(true);
+			expect(await exists(join(logs, "app.3.jsonl"))).toBe(true);
+			// Three generations is the cap: the fourth archive is deleted, oldest first.
+			expect(await exists(join(logs, "app.4.jsonl"))).toBe(false);
+			// The live file is the newest write, and each archive is one write older than the last.
+			const live = await events(join(logs, "app.jsonl"));
+			expect(live).toEqual(["log.write"]);
+			expect(await readFile(join(logs, "app.1.jsonl"), "utf8")).toContain("line 4");
+			expect(await readFile(join(logs, "app.2.jsonl"), "utf8")).toContain("line 3");
+			expect(await readFile(join(logs, "app.3.jsonl"), "utf8")).toContain("line 2");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
 
-	test("an older app.log.1 is replaced rather than appended to", async () => {
+	test("errors.jsonl holds warn and above and keeps one archive", async () => {
 		const root = await scratch();
 		try {
+			const plugin = pluginAt(root);
+			await call(plugin, "write", { level: "info", message: "quiet" });
+			await call(plugin, "write", { level: "warn", message: "first warning" });
+			await call(plugin, "write", { level: "warn", message: "second warning" });
 			const logs = join(root, "logs");
-			await mkdir(logs, { recursive: true });
-			const live = join(logs, "app.log");
-			const archive = join(logs, ROTATED_NAME);
-			const oversized = "x".repeat(ROTATE_BYTES + 1);
-			await writeFile(archive, "stale generation\n", "utf8");
-			await writeFile(live, oversized, "utf8");
-
-			const result = await (call(pluginAt(root), "write", {
-				level: "info",
-				message: "fresh",
-			}) as Promise<WriteResult>);
-			expect(result.rotated).toBe(archive);
-			expect(await readFile(archive, "utf8")).toBe(oversized);
-			expect(await lines(live)).toEqual(["2026-11-15T00:00:00.000Z INFO fresh"]);
+			const errors = await readFile(join(logs, "errors.jsonl"), "utf8");
+			expect(errors).toContain("second warning");
+			expect(errors).not.toContain("quiet");
+			expect(await readFile(join(logs, "errors.1.jsonl"), "utf8")).toContain("first warning");
+			expect(await exists(join(logs, "errors.2.jsonl"))).toBe(false);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

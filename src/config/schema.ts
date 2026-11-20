@@ -9,6 +9,7 @@ import { validateBuild } from "./validate-build.ts";
 import { validateDev } from "./validate-dev.ts";
 import { validateExtensions } from "./validate-extensions.ts";
 import { validateFs } from "./validate-fs.ts";
+import { validateLogging } from "./validate-logging.ts";
 import { validateSecurity } from "./validate-security.ts";
 import { validateShell } from "./validate-shell.ts";
 import { validateUpdater } from "./validate-updater.ts";
@@ -29,6 +30,7 @@ const ROOT_KEYS = [
 	"fs",
 	"shell",
 	"updater",
+	"logging",
 ] as const;
 
 /**
@@ -53,6 +55,7 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		validateFs(v, root.fs);
 		validateShell(v, root.shell);
 		validateUpdater(v, root.updater);
+		validateLogging(v, root.logging);
 	}
 
 	if (v.issues.length > 0) throw new ConfigError(source, v.issues);

@@ -15,6 +15,7 @@ export const LAUNCHERS = [
 	"e2e-dev.ts",
 	"e2e-dogear.ts",
 	"e2e-fullscreen.ts",
+	"e2e-logs.ts",
 	"e2e-media.ts",
 	"e2e-native.ts",
 	"e2e-notes.ts",

@@ -4,6 +4,8 @@
  */
 
 import type { NotImplemented } from "./define";
+import { logEvent } from "@/logging/logger";
+import { windowRecord } from "@/logging/records";
 import { readFlag, readPoint, readSize, unknownAdapter } from "./window-state-args.ts";
 import type {
 	WindowAlwaysOnTopResult,
@@ -44,6 +46,15 @@ export function windowStateCommands(adapter?: WindowNative) {
 					const size = readSize(args);
 					if (!size.ok) return size.failure;
 					native.setSize?.(label, size.value);
+					logEvent(
+						windowRecord({
+							event: "resize",
+							label,
+							width: size.value.width,
+							height: size.value.height,
+							visible: true,
+						}),
+					);
 					return { ok: true as const, label, ...size.value };
 				},
 				args,

@@ -4,6 +4,8 @@
 
 import { currentBridgeToken, isBridgeOrigin, withToken } from "@/bridge/window-identity.ts";
 import { withForcedWindowLabel, withoutWindowLabel } from "@/bridge/window-query.ts";
+import { logEvent } from "@/logging/logger";
+import { windowRecord } from "@/logging/records";
 import type { NotImplemented } from "./define";
 import { duplicateLabel, failure, missingWindow, parseCreate } from "./window-args.ts";
 import type {
@@ -93,5 +95,14 @@ export function createWindowCommand(
 	} catch (error) {
 		return failure(error, options.label);
 	}
+	logEvent(
+		windowRecord({
+			event: "create",
+			label: options.label,
+			width: options.width,
+			height: options.height,
+			visible: true,
+		}),
+	);
 	return { ok: true as const, label: options.label, created: true as const };
 }

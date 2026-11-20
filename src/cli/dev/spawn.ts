@@ -52,6 +52,8 @@ export async function spawnRuntime(options: RuntimeOptions) {
 			...run.env,
 			...options.env,
 			CRUST_DEV_URL: options.devUrl ?? "",
+			// The logging default in a dev run: `debug` level, every record streamed to this terminal.
+			CRUST_DEV: "1",
 			// Only a `crust dev` run has one. Absent, the app opens at its configured size and
 			// remembers nothing, which is what a build output gets.
 			...(options.frameDir === undefined ? {} : { CRUST_WINDOW_STATE_DIR: options.frameDir }),

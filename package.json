@@ -36,6 +36,7 @@
 		"e2e:fullscreen": "bun run scripts/e2e-fullscreen.ts",
 		"e2e:dogear": "bun run scripts/e2e-dogear.ts",
 		"e2e:capability": "bun run scripts/e2e-capability.ts",
+		"e2e:logs": "bun run scripts/e2e-logs.ts",
 		"check:lines": "bun run scripts/line-cap.ts",
 		"skill": "bun run scripts/skill.ts",
 		"skill:check": "bun run scripts/skill.ts --check",

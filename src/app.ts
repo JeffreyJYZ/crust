@@ -2,6 +2,14 @@
  * The public app surface: `main.ts` registers commands, mounts plugins and adds listeners, then awaits `app.run()`. The window machinery stays behind the `Platform` seam in `app-types.ts`, so macOS plugs in without this file knowing AppKit exists.
  * Through `startApp` (dev and built apps) the platform and config are attached before `main.ts` is imported and the bridge is created on the first `run()`, so a plugin mounted there is in the table the bridge snapshots; called bare (`bun src/main.ts`) it loads both itself, importing the platform lazily so macOS is not linked into a process that never opens a window.
  */
+import {
+	ensureAppLogger,
+	logAppQuit,
+	logAppReady,
+	logAppStart,
+	logCommandRegistered,
+} from "./app-log.ts";
+import { flushLogger } from "@/logging/logger";
 import { CrustError } from "@/bridge/errors";
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
@@ -14,7 +22,6 @@ import {
 	mountable,
 	openWindows,
 	watchLifecycle,
-	watchWindows,
 } from "./app-loop.ts";
 import {
 	APP_NAMESPACE,
@@ -25,9 +32,9 @@ import {
 	type Platform,
 	PUMP_INTERVAL_MS,
 } from "./app-types.ts";
-import { emitOnQuit } from "./app-watch.ts";
 import { invokeCommand, type PluginDefinition } from "./plugins/define.ts";
 import { frameMemory } from "./plugins/window-frame-memory.ts";
+import { watchAllClosed } from "./app-window-watch.ts";
 
 export type { AppInfo } from "./app-info.ts";
 export * from "./app-types.ts";
@@ -44,12 +51,7 @@ export class App {
 	#windowCheck?: ReturnType<typeof setInterval>;
 	#lifecycleCheck?: ReturnType<typeof setInterval>;
 
-	/**
-	 * Wire the native platform and the loaded config into this app instance.
-	 * `startApp` calls this before importing the user's `main.ts`; tests call it
-	 * with a fake platform, and `bridge` is what a page needs to load — its
-	 * address and the token the document route demands.
-	 */
+	/** Wire the platform and config in; `startApp` does this before `main.ts`, a test with a fake. */
 	attach(platform: Platform, config: CrustConfig, bridge?: BridgeTarget): this {
 		if (this.#started) throw new Error("crust: cannot attach a platform to a running app");
 		this.#platform = platform;
@@ -79,11 +81,23 @@ export class App {
 	/** Register the handler behind `invoke("<name>")` on the page side. */
 	command(name: string, handler: CommandHandler): this {
 		if (!name) throw new Error("crust: command name must not be empty");
+		// `for (const name of COMMANDS) app.command(name, allHandlers[name])` is the usual table, and
+		// a missing entry registers `undefined` silently; the failure then lands at call time, in
+		// whatever panel happened to invoke it, as someone else's TypeError. Refuse here, where the
+		// table is written, and say what arrived.
+		if (typeof handler !== "function") {
+			throw new Error(
+				`crust: command "${name}" needs a function handler, got ${typeof handler}`,
+			);
+		}
 		if (this.#started)
 			throw new Error(`crust: cannot register command "${name}" after app.run() has started`);
 		if (this.#commands.has(name))
 			throw new Error(`crust: command "${name}" is already registered`);
 		this.#commands.set(name, handler);
+		// The whole command surface a run started with, at `debug` so a built app at `info` stays
+		// quiet and `crust dev` shows it interleaved with the framework's own events.
+		logCommandRegistered(name);
 		return this;
 	}
 
@@ -119,19 +133,14 @@ export class App {
 		return appInfo(this.#config);
 	}
 
-	/**
-	 * Resolve a command for the bridge. The bridge passes the page's payload
-	 * through unchanged; an unknown name is an error, never a silent undefined.
-	 */
+	/** Resolve a command for the bridge; an unknown name is an error, never a silent undefined. */
 	async invoke(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
 		const handler = this.#commands.get(name);
 		if (!handler) throw new Error(`crust: unknown command "${name}"`);
 		return await invokeCommand(handler, args);
 	}
 
-	/**
-	 * Start the platform, open the configured windows, emit `ready` and hand the run loop to `pump`. Resolves once the app is up; the pump timer keeps the process alive. With nothing attached it loads the config from the working directory and imports macOS on demand — the bare `bun src/main.ts` path.
-	 */
+	/** Start the platform, open the configured windows, emit `ready`, then hand the run loop to `pump`. */
 	async run(): Promise<void> {
 		if (this.#started) throw new Error("crust: app.run() was already called");
 		const config = this.#config ?? (await loadConfig()).config;
@@ -145,6 +154,8 @@ export class App {
 		}
 
 		this.#started = true;
+		ensureAppLogger(config);
+		logAppStart(config, platform);
 		await platform.start();
 		await installLaunchDeepLink();
 		await openWindows(platform, config, this.#bridge, frameMemory());
@@ -152,37 +163,30 @@ export class App {
 		const frameQuit = frameQuitListener();
 		if (frameQuit !== undefined) this.on("before-quit", frameQuit);
 		await emit(this.#listeners, "ready");
+		logAppReady(platform);
 		platform.pump(PUMP_INTERVAL_MS);
 		const lifecycle = platform.lifecycle?.();
 		if (lifecycle) this.#lifecycleCheck = watchLifecycle(this.#listeners, lifecycle);
 
 		if (this.#listeners.get("window-all-closed")?.size) {
-			this.#windowCheck = watchWindows(config, platform, () => {
-				// The platform's lifecycle source only sees a user's ⌘Q, so emit the save-on-quit
-				// events here too: the most common quit is every window closing, and a listener
-				// that throws must not keep a windowless process alive. `emitOnQuit` names the
-				// error and still lets the next event and the quit run.
-				void emitOnQuit(this.#listeners, "window-all-closed")
-					.then(() => emitOnQuit(this.#listeners, "before-quit"))
-					.then(() => emitOnQuit(this.#listeners, "will-quit"))
-					.then(() => frameMemory()?.flush())
-					.then(() => platform.quit());
-			});
+			this.#windowCheck = watchAllClosed(this.#listeners, config, platform);
 		}
 	}
 
 	/** Quit the application, closing every window and stopping the pump timer. */
 	quit(): void {
+		logAppQuit("app.quit()");
 		quitAfterSaving(() => {
 			this.#stopWatching();
-			this.#platform?.quit();
+			// The logger's queue is async; the last records must reach the file before the process ends.
+			void flushLogger().finally(() => this.#platform?.quit());
 		});
 	}
 
 	#stopWatching(): void {
-		if (this.#windowCheck) clearInterval(this.#windowCheck);
-		this.#windowCheck = undefined;
+		clearInterval(this.#windowCheck);
 		clearInterval(this.#lifecycleCheck);
+		this.#windowCheck = undefined;
 		this.#lifecycleCheck = undefined;
 	}
 }
@@ -192,8 +196,5 @@ export function createApp(platform: Platform, config: CrustConfig, bridge?: Brid
 	return new App().attach(platform, config, bridge);
 }
 
-/**
- * The singleton `main.ts` imports as `import { app } from "crust"`.
- * It is inert until the platform and config are attached.
- */
+/** The singleton `main.ts` imports as `import { app } from "crust"`; inert until attached. */
 export const app = new App();

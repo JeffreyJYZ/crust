@@ -11,6 +11,9 @@ import {
 	type Platform,
 } from "./app-types.ts";
 import type { CrustConfig, WindowConfig } from "./config/index.ts";
+import { logLifecycleError } from "./app-log.ts";
+import { logEvent } from "@/logging/logger";
+import { appRecord } from "@/logging/records";
 import { emit } from "./app-loop.ts";
 
 /** How often the lifecycle queue is drained. One tick is a cheap native call, not a poll of the OS. */
@@ -143,6 +146,7 @@ export function watchLifecycle(
 			// stays legal on every platform, and a real lifecycle source never enters this branch.
 			clearInterval(handle);
 			const error = cause instanceof Error ? cause : new Error(String(cause));
+			logLifecycleError(error);
 			const errorListeners = listeners.get("error");
 			if (errorListeners?.size) {
 				for (const listener of errorListeners) {
@@ -163,6 +167,7 @@ export function watchLifecycle(
 			// The page hears it from this same loop, before the backend listeners are awaited, so the
 			// forward happens exactly once per drained event and the two cannot drift.
 			publishPageEvent(event);
+			logEvent(appRecord(`app.${event}`, event, { event }));
 			void emit(listeners, event)
 				.catch((error: unknown) => {
 					const text = error instanceof Error ? error.message : String(error);

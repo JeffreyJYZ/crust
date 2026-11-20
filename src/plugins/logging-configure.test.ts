@@ -7,16 +7,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-	createLoggingPlugin,
-	type LogLevel,
-	ROTATE_BYTES,
-	type WriteResult,
-} from "@/plugins/logging";
+import { parseLine, type LogRecord } from "@/logging";
+import { createLoggingPlugin, type LogLevel, type WriteResult } from "@/plugins/logging";
 import { type ConfigureResult, resolveLogFile } from "@/plugins/logging-configure";
 
 const AT = Date.parse("2026-11-15T00:00:00.000Z");
@@ -26,7 +22,8 @@ async function scratch(): Promise<string> {
 }
 
 function pluginAt(root: string) {
-	return createLoggingPlugin({ root, now: () => AT });
+	// `maxBytes: 1` makes the next write rotate, so the archive's location is proved without 5 MiB.
+	return createLoggingPlugin({ root, now: () => AT, maxBytes: 1 });
 }
 
 function call<T>(plugin: ReturnType<typeof createLoggingPlugin>, name: string, args?: unknown): T {
@@ -40,6 +37,13 @@ async function written(plugin: ReturnType<typeof createLoggingPlugin>, message: 
 	return await (call(plugin, "write", { level: "info", message }) as Promise<WriteResult>);
 }
 
+async function recordAt(path: string): Promise<LogRecord | undefined> {
+	const line = (await readFile(path, "utf8")).split("\n").filter(Boolean)[0];
+	if (line === undefined) return undefined;
+	const parsed = parseLine(line);
+	return parsed !== undefined && !("raw" in parsed) ? parsed : undefined;
+}
+
 describe("logging.configure level", () => {
 	test("moves the level in one call and refuses an unknown one without changing it", async () => {
 		const root = await scratch();
@@ -47,7 +51,7 @@ describe("logging.configure level", () => {
 			const plugin = pluginAt(root);
 			expect(call<ConfigureResult>(plugin, "configure", { level: "debug" })).toEqual({
 				ok: true,
-				file: join(root, "logs", "app.log"),
+				file: join(root, "logs", "app.jsonl"),
 				level: "debug",
 			});
 			expect(call<LogLevel>(plugin, "level")).toBe("debug");
@@ -68,20 +72,18 @@ describe("logging.configure file", () => {
 		const root = await scratch();
 		try {
 			const plugin = pluginAt(root);
-			const oldFile = join(root, "logs", "app.log");
-			const newFile = join(root, "elsewhere", "runtime.log");
+			const oldFile = join(root, "logs", "app.jsonl");
+			const newFile = join(root, "elsewhere", "runtime.jsonl");
 			expect(call<ConfigureResult>(plugin, "configure", { file: newFile }).file).toBe(
 				newFile,
 			);
 			expect((await written(plugin, "after repoint")).path).toBe(newFile);
-			expect(await readFile(newFile, "utf8")).toContain("INFO after repoint");
-			await expect(readFile(oldFile, "utf8")).rejects.toHaveProperty("code", "ENOENT");
+			expect((await recordAt(newFile))?.msg).toBe("after repoint");
+			expect(await readFile(oldFile, "utf8").catch(() => undefined)).toBe(undefined);
 
 			// Rotation uses the sibling of the live file, not the original logs directory.
-			await writeFile(newFile, "x".repeat(ROTATE_BYTES + 1));
-			expect((await written(plugin, "rotated")).rotated).toBe(
-				join(root, "elsewhere", "app.log.1"),
-			);
+			const rotated = await written(plugin, "rotated");
+			expect(rotated.rotated).toBe(join(root, "elsewhere", "runtime.1.jsonl"));
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -91,7 +93,7 @@ describe("logging.configure file", () => {
 		const root = await scratch();
 		try {
 			const plugin = pluginAt(root);
-			const newFile = join(root, "trace.log");
+			const newFile = join(root, "trace.jsonl");
 			const result = call<ConfigureResult>(plugin, "configure", {
 				file: newFile,
 				level: "trace",
@@ -102,7 +104,7 @@ describe("logging.configure file", () => {
 				message: "both",
 			}) as Promise<WriteResult>);
 			expect(write.path).toBe(newFile);
-			expect(write.line).toContain("TRACE both");
+			expect((await recordAt(newFile))?.level).toBe("trace");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -114,15 +116,15 @@ describe("logging.configure containment", () => {
 		const root = await scratch();
 		try {
 			const plugin = pluginAt(root);
-			const outside = join(`${root}-other`, "leak.log");
-			const link = join(root, "link.log");
+			const outside = join(`${root}-other`, "leak.jsonl");
+			const link = join(root, "link.jsonl");
 			await symlink(outside, link);
-			for (const bad of ["relative.log", join(root, "..", "escape.log"), outside, link]) {
+			for (const bad of ["relative.jsonl", join(root, "..", "escape.jsonl"), outside, link]) {
 				const result = call<ConfigureResult>(plugin, "configure", { file: bad });
 				expect(result.ok, bad).toBe(false);
 				expect(result.error, bad).toContain("logging.configure");
 			}
-			expect((await written(plugin, "stayed")).path).toBe(join(root, "logs", "app.log"));
+			expect((await written(plugin, "stayed")).path).toBe(join(root, "logs", "app.jsonl"));
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -133,7 +135,7 @@ describe("logging.configure containment", () => {
 		try {
 			const nested = join(root, "deep", "dir");
 			await mkdir(nested, { recursive: true });
-			const target = join(nested, "nested.log");
+			const target = join(nested, "nested.jsonl");
 			expect(resolveLogFile(root, target)).toBe(target);
 		} finally {
 			await rm(root, { recursive: true, force: true });

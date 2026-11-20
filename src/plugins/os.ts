@@ -34,7 +34,7 @@ export interface OsPathsResult {
 	home: string;
 	/** The per-app data root, `~/Library/Application Support/<appId>` by default. */
 	appData: string;
-	/** The directory `crust:logging` writes `app.log` into. */
+	/** The directory `crust:logging` writes `app.jsonl` into. */
 	appLog: string;
 	/** The system temp directory. */
 	temp: string;

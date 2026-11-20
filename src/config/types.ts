@@ -111,6 +111,24 @@ export interface FsConfig {
 }
 
 /**
+ * The framework's own structured log. Absent means the defaults: `info`, files only, `logs/`, three
+ * generations of 5 MiB. `crust dev` raises the level to `debug` and streams every record to the
+ * terminal unless `level` or `console` is set.
+ */
+export interface LoggingConfig {
+	/** Minimum level written: `trace | debug | info | warn | error`. */
+	level?: "trace" | "debug" | "info" | "warn" | "error";
+	/** Mirror warn and above to stderr. In `crust dev`, every written record does. */
+	console?: boolean;
+	/** Directory under the app data root, relative. Defaults to `logs`. */
+	dir?: string;
+	/** `app.jsonl` archives kept. Defaults to 3. */
+	generations?: number;
+	/** Live-file size that starts a rotation. Defaults to 5 MiB. */
+	maxBytes?: number;
+}
+
+/**
  * The updater's defaults; the section existing is what registers `crust:updater`, so an app with no
  * update story carries no download-and-replace surface at all.
  */
@@ -140,6 +158,7 @@ export interface CrustConfig {
 	fs?: FsConfig;
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
+	logging?: LoggingConfig;
 }
 
 export interface ConfigIssue {

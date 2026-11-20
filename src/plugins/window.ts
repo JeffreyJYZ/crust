@@ -9,6 +9,8 @@ import {
 	type PluginContext,
 	type PluginDefinition,
 } from "./define";
+import { logEvent } from "@/logging/logger";
+import { windowRecord } from "@/logging/records";
 import { failure, invalidLabel, knownWindow, missingWindow, readLabel } from "./window-args.ts";
 import { type WindowCaptureCommands, windowCaptureCommands } from "./window-capture.ts";
 import { type WindowChromeCommands, windowChromeCommands } from "./window-chrome.ts";
@@ -78,6 +80,7 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 					"close",
 					(native, label) => {
 						native.close(label);
+						logEvent(windowRecord({ event: "close", label, visible: false }));
 						return { ok: true as const, label, closed: true as const };
 					},
 					args,
@@ -87,6 +90,7 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 					"focus",
 					(native, label) => {
 						native.focus(label);
+						logEvent(windowRecord({ event: "focus", label, visible: true }));
 						return { ok: true as const, label, focused: true as const };
 					},
 					args,
