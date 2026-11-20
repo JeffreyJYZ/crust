@@ -160,6 +160,11 @@ const answer = await window.crust.invoke("greet", { name: "Ada" });   // routes 
 const files  = await window.crust.invoke("fs", "list", { path: "." }); // plugin:command form
 ```
 
+**App commands are never called through the `app` namespace.** `invoke("greet", args)` is the only
+form: the client turns it into `app.invoke { name: "greet", args }`, and the grant resolves as
+`app:greet`. `invoke("app", "greet", args)` addresses a namespace named `app` that has no such
+command, so it answers `unknown-command` — and a grant of `app:greet` would not authorise it either.
+
 - `window.crust` is injected by the bridge. **Never import crust in page code** — two clients.
 - A refused command rejects with a `code`. A command answering a typed failure
   (`{ ok: false, code }`) resolves with it and the transport carries a 4xx/5xx.
