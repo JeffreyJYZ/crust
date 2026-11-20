@@ -92,7 +92,7 @@ describe("checkTemplates", () => {
 
 	test("passes when every scaffold is present", async () => {
 		const root = await project();
-		const all = ["default", "react", "next", "svelte", "vue"];
+		const all = ["default", "react", "next", "svelte", "vue", "solid"];
 		for (const name of all) {
 			await page(join(root, "templates", name), "package.json");
 		}

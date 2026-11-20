@@ -1,0 +1,20 @@
+{
+	"name": "{{package}}",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "crust dev",
+		"build": "crust build",
+		"frontend": "bun --bun ./node_modules/.bin/vite build"
+	},
+	"dependencies": {
+		"@solidjs/web": "^2.0.0",
+		"crust": "{{crust_dep}}",
+		"solid-js": "^2.0.0"
+	},
+	"devDependencies": {
+		"@solidjs/vite-plugin": "^3.0.1",
+		"vite": "^8.3.8"
+	}
+}

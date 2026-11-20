@@ -11,20 +11,28 @@ const TEMPLATES = {
 	next: "templates/next",
 	svelte: "templates/svelte",
 	vue: "templates/vue",
+	solid: "templates/solid",
 } as const;
 
 type TemplateName = keyof typeof TEMPLATES;
 type Framework = Exclude<TemplateName, "vanilla">;
 
 /** The flags init accepts, in the order errors name them. */
-const FRAMEWORKS = ["react", "next", "svelte", "vue"] as const satisfies readonly Framework[];
+const FRAMEWORKS = [
+	"react",
+	"next",
+	"svelte",
+	"vue",
+	"solid",
+] as const satisfies readonly Framework[];
 
-/** `--react`, `--next`, `--svelte`, `--vue` and the scaffolds they copy. */
+/** `--react`, `--next`, `--svelte`, `--vue`, `--solid` and the scaffolds they copy. */
 const DESCRIPTION: Record<Framework, string> = {
 	react: "React + Vite",
 	next: "Next.js with a static export",
 	svelte: "Svelte + Vite",
 	vue: "Vue + Vite",
+	solid: "Solid + Vite",
 };
 
 /** `crust init` options: the shared CLI options plus the template flags. */
@@ -37,6 +45,8 @@ export interface InitOptions extends CliOptions {
 	svelte?: boolean;
 	/** `--vue`: copy the Vue + Vite template. */
 	vue?: boolean;
+	/** `--solid`: copy the Solid + Vite template. */
+	solid?: boolean;
 }
 
 const VITE_HINT = "bun run build          (vite build → dist/web, then crust build → dist/)";
@@ -47,6 +57,7 @@ const BUILD_HINT: Partial<Record<TemplateName, string>> = {
 	next: "bun run build          (next build → out/, then crust build → dist/)",
 	svelte: VITE_HINT,
 	vue: VITE_HINT,
+	solid: VITE_HINT,
 };
 
 /** A directory name become a package name: lowercase, dots and dashes kept. */
@@ -59,8 +70,8 @@ function packageName(raw: string): string {
 }
 
 /**
- * `crust init [dir] [--react | --next | --svelte | --vue]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync. A checkout running `init` pins the dependency as `link:` so `bun install && bunx crust dev` works against the live tree; a release pins the matching `v<version>` tag so two people scaffolding a week apart get the same code.
- * No flag is `templates/default/` (plain HTML, no bundler); `--react`, `--svelte` and `--vue` are Vite apps into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Two flags at once are refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
+ * `crust init [dir] [--react | --next | --svelte | --vue | --solid]` — copy a template into an empty directory. The templates ship as real files rather than string literals, so a user can read what they will get and this command has nothing to keep in sync. A checkout running `init` pins the dependency as `link:` so `bun install && bunx crust dev` works against the live tree; a release pins the matching `v<version>` tag so two people scaffolding a week apart get the same code.
+ * No flag is `templates/default/` (plain HTML, no bundler); `--react`, `--svelte`, `--vue` and `--solid` are Vite apps into `dist/web/`, `--next` is Next's app router with `output: "export"` into `out/`. Two flags at once are refused naming each, and a non-empty directory is refused rather than merged — silently overwriting someone's `public/index.html` is worse than stopping.
  */
 export async function init(options: InitOptions): Promise<number> {
 	const chosen = FRAMEWORKS.filter((flag) => options[flag] === true);

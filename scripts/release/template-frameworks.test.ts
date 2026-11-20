@@ -89,7 +89,7 @@ for (const row of VITE_TEMPLATES) {
 }
 
 test("every scaffold registers window-all-closed so closing its window ends the app", async () => {
-	for (const name of ["default", "next", "react", "svelte", "vue"]) {
+	for (const name of ["default", "next", "react", "svelte", "vue", "solid"]) {
 		const main = await file(name, "main.ts");
 		expect(main, `${name}/main.ts registers window-all-closed`).toContain(
 			'app.on("window-all-closed"',

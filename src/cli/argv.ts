@@ -10,7 +10,7 @@ import { parseFormats } from "./package/format.ts";
 
 export type RawOptions = Record<string, unknown>;
 export const VALUE_FLAGS = ["dir", "config", "entry", "format"] as const;
-const SCAFFOLDS = ["react", "next", "svelte", "vue"] as const;
+const SCAFFOLDS = ["react", "next", "svelte", "vue", "solid"] as const;
 const STAGE_FLAGS = ["sign", "notarize", "dmg"] as const;
 const KNOWN = new Set<string>([
 	"--",

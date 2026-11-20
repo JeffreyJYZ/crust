@@ -76,7 +76,7 @@ export async function checkAssets(dir: string, config: CrustConfig): Promise<Che
 	};
 }
 
-const TEMPLATES = ["default", "react", "next", "svelte", "vue"] as const;
+const TEMPLATES = ["default", "react", "next", "svelte", "vue", "solid"] as const;
 
 /**
  * The scaffolds ship inside the package, so a tarball without `templates/`

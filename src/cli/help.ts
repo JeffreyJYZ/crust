@@ -42,6 +42,7 @@ export const OPTION_DESCRIPTIONS = {
 	next: "init only: copy the Next.js template (static export)",
 	svelte: "init only: copy the Svelte + Vite template",
 	vue: "init only: copy the Vue + Vite template",
+	solid: "init only: copy the Solid + Vite template",
 } as const;
 
 /** Leading newline survives cac's "\n" example join as a blank separator. */

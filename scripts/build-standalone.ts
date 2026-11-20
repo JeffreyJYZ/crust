@@ -23,6 +23,7 @@ const SCAFFOLD_COUNTS = [
 	["--react", 6],
 	["--svelte", 7],
 	["--vue", 7],
+	["--solid", 9],
 	["", 6],
 ] as const;
 

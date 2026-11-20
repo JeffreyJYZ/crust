@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 /** Files the standalone gate counts, excluding the dotfile it checks apart. */
-const COUNTS = { react: 6, svelte: 7, vue: 7, "": 6 } as const;
+const COUNTS = { react: 6, svelte: 7, vue: 7, solid: 9, "": 6 } as const;
 
 /** Glob the way scripts/build-standalone.ts does, so the two agree by shape. */
 function listed(dir: string): string[] {
@@ -39,7 +39,7 @@ function listed(dir: string): string[] {
 }
 
 describe("init framework flags", () => {
-	for (const flag of ["react", "svelte", "vue"] as const) {
+	for (const flag of ["react", "svelte", "vue", "solid"] as const) {
 		test(`--${flag} scaffolds its template and substitutes every token`, async () => {
 			const target = join(await scratch(), "My App");
 			const options: InitOptions = { dir: target };
@@ -75,10 +75,10 @@ describe("init framework flags", () => {
 	// The four "flag outside init is refused" argv rows now live in
 	// cli-contract.test.ts, which drives the real entry point instead of parse().
 
-	test("help lists all four scaffolds", () => {
+	test("help lists every scaffold", () => {
 		// cac renders these descriptions in both help screens; there is no
 		// hand-written USAGE block to read them back out of any more.
-		for (const flag of ["react", "next", "svelte", "vue"] as const)
+		for (const flag of ["react", "next", "svelte", "vue", "solid"] as const)
 			expect(Object.keys(OPTION_DESCRIPTIONS)).toContain(flag);
 	});
 

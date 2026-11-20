@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const WORKFLOW = ".github/workflows/release.yml";
-const TEMPLATES = ["default", "react", "next", "svelte", "vue"] as const;
+const TEMPLATES = ["default", "react", "next", "svelte", "vue", "solid"] as const;
 
 describe("every scaffold ships a release workflow", () => {
 	for (const name of TEMPLATES) {

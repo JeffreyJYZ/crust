@@ -115,7 +115,7 @@ export const ROWS: Row[] = [
 			"Next.js",
 		],
 	),
-	...["react", "next", "svelte", "vue"].map<Row>((flag) =>
+	...["react", "next", "svelte", "vue", "solid"].map<Row>((flag) =>
 		bad(
 			`--${flag} on a non-init command is refused`,
 			["build", `--${flag}`],
