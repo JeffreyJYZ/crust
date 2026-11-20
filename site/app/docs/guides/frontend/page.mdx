@@ -49,6 +49,10 @@ Static export is the whole mode: `output: "export"` and `images: { unoptimized: 
 
 In `next dev` the page has no `window.crust`, because nothing injects the client into a document `next dev` serves. It says so in the window. A built app works, because its bridge injects its own client.
 
+## Solid
+
+`--solid` scaffolds a Vite app with Solid 2. It is not SolidStart: Solid 2 retired it, and `dev.url` wants one SPA on one origin.
+
 ## Asset embedding
 
 ```ts

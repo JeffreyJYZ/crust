@@ -19,7 +19,7 @@ index is <https://crust.jyz.land/docs>.
 
 ```sh
 bunx github:JeffreyJYZ/crust#v0.2.2 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.2.2 init my-app --react   # also --next, --svelte, --vue
+bunx github:JeffreyJYZ/crust#v0.2.2 init my-app --react   # also --next, --svelte, --vue, --solid
 cd my-app && bun install
 bun run dev        # crust dev
 ```
@@ -34,8 +34,9 @@ bun run dev        # crust dev
 | `main.ts` | the backend: `app.command(...)`, `app.on(...)`, `await app.run()` |
 | `public/` | what the window loads. `index.html` required. Served by the bridge itself. |
 
-`--react` / `--svelte` / `--vue` / `--next` replace `public/` with a Vite or Next frontend and add
-`dev.url`, so `crust dev` runs your dev server and points the window at it.
+`--react` / `--svelte` / `--vue` / `--solid` / `--next` replace `public/` with a Vite or Next frontend
+and add `dev.url`, so `crust dev` runs your dev server and points the window at it. `--solid` is Vite
+plus Solid 2, not SolidStart: Solid 2 retired it, and `dev.url` wants one SPA on one origin.
 
 ## `crust.config.ts`
 
@@ -231,7 +232,7 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 
 | command | does |
 | --- | --- |
-| `crust init <dir> [--react\|--next\|--svelte\|--vue]` | scaffold into an empty directory |
+| `crust init <dir> [--react\|--next\|--svelte\|--vue\|--solid]` | scaffold into an empty directory |
 | `crust dev [file]` | watch the backend, restart on change, keep the frontend's own dev server |
 | `crust build [file]` | compile; **macOS** assembles `X.app` in `dist/` and ad-hoc signs it. Linux/Windows produce the flat binary. `--sign --notarize --dmg` add the release stages in that order |
 | `crust package --format <fmt>` | release artefacts: `dmg`, `appimage`, `nsis`; repeatable, defaults to `dmg` |

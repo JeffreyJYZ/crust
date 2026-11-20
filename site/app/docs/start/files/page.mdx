@@ -41,6 +41,7 @@ await app.run();
 | `--react`  | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.tsx`, `package.json`, `.gitignore`                        |
 | `--svelte` | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.ts`, `src/App.svelte`, `package.json`, `.gitignore`      |
 | `--vue`    | `crust.config.ts`, `main.ts`, `vite.config.ts`, `index.html`, `src/main.ts`, `src/App.vue`, `package.json`, `.gitignore`         |
+| `--solid`  | Vite + Solid 2; not SolidStart, which Solid 2 retired — `dev.url` wants one SPA on one origin                                     |
 | `--next`   | `crust.config.ts`, `main.ts`, `next.config.mjs`, `tsconfig.json`, `app/layout.tsx`, `app/page.tsx`, `app/about/page.tsx`, `package.json`, `.gitignore` |
 
 `package.json` always carries a `dev` and a `build` script that call `crust`, so `bun run dev` and `bun run build` are the short forms.

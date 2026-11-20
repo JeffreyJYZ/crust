@@ -11,6 +11,7 @@ One binary, five commands. From a checkout `bun run src/cli/index.ts` is the sam
 | `crust init <dir> --next`        | the Next.js scaffold, static export only                                                                                     |
 | `crust init <dir> --svelte`      | the Svelte + Vite scaffold                                                                                                   |
 | `crust init <dir> --vue`         | the Vue + Vite scaffold                                                                                                      |
+| `crust init <dir> --solid`       | the Solid + Vite scaffold: Solid 2, no SolidStart                                                                            |
 | `crust dev [file]`               | watch the backend, restart it on change, keep the frontend with its own dev server                                           |
 | `crust build [file]`             | compile the binary; on macOS assemble `X.app` in `dist/` and ad-hoc sign it; `--sign --notarize --dmg` add the release stages |
 | `crust package [--format <fmt>]` | release artefacts for `dmg`, `appimage` or `nsis`; `--format` is repeatable and defaults to `dmg`                            |
@@ -35,10 +36,11 @@ One binary, five commands. From a checkout `bun run src/cli/index.ts` is the sam
 | `--next`          | init       | copy the Next.js template                                             |
 | `--svelte`        | init       | copy the Svelte + Vite template                                       |
 | `--vue`           | init       | copy the Vue + Vite template                                          |
+| `--solid`         | init       | copy the Vite + Solid 2 template                                      |
 | `--help`, `-h`    | all        | print the usage text, exit 0                                          |
 | `--version`, `-v` | all        | print the version, exit 0                                             |
 
-The four init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1. Any stage flag on a command other than `build` fails with `--<flag> only applies to build`.
+The five init flags are different scaffolds; passing two is refused before anything is written, naming each flag with the scaffold it copies. Any of them outside `init` fails with `crust: --svelte only applies to init`. `init` takes the directory once — a positional and `--dir` together is `init takes one directory — pass <dir> or --dir, not both`. An unknown option, a second positional, or a flag missing its value prints `crust: <reason>` then `run "crust --help" for usage`, and exits 1. Any stage flag on a command other than `build` fails with `--<flag> only applies to build`.
 
 The stages refuse before any build work runs. `--notarize` without `--sign` is `notarize requires --sign — an ad-hoc signature cannot be submitted; add --sign with CRUST_SIGNING_IDENTITY`. `--sign` without the identity is `sign requires CRUST_SIGNING_IDENTITY — set "Developer ID Application: Name (TEAMID)"`. Off macOS, `--dmg` and `--sign` refuse with `--dmg has no disk image on <platform> — a disk image is macOS only` and `--sign needs codesign, which is macOS-only (this platform is <platform>)`. `--notarize` without a credential or Developer ID signature names which is missing.
 

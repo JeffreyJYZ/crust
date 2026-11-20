@@ -17,6 +17,7 @@ Scaffold, install, dev. `crust init` writes into an empty directory and refuses 
 | React, or a Vite frontend   | `--react`   | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
 | Svelte, or a Vite frontend  | `--svelte`  | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
 | Vue, or a Vite frontend     | `--vue`     | Vite on :5173, `dev.url`, `build.assets: "dist/web"` |
+| Solid, or a Vite frontend   | `--solid`   | Vite on :5173 with Solid 2, `dev.url`, `build.assets: "dist/web"` |
 | Next.js, app router         | `--next`    | `next dev` on :3000, static export to `out/`         |
 
 The flag is the whole difference. Plain is the default, and passing any two flags is refused before anything is written.
@@ -34,7 +35,9 @@ crust dev — /…/my-app/crust.config.ts
   greet     hello crust (page call answered)
 ```
 
-`--react` and `--next` print the dev-server URL instead of "served by the bridge", and `crust dev` starts that server through `beforeDevCommand`, then waits until it accepts a connection before creating the window.
+Every Vite scaffold, and `--next`, prints the dev-server URL instead of "served by the bridge", and `crust dev` starts that server through `beforeDevCommand`, then waits until it accepts a connection before creating the window.
+
+`--solid` bundles Vite with Solid 2 rather than SolidStart: Solid 2 retired SolidStart, and `dev.url` wants one SPA on one origin.
 
 ## What the window is
 
