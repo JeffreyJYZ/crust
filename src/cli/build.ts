@@ -9,6 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadConfig } from "@/config";
+import { extensionErrorLines, validateExtensionEntries } from "@/extensions/entry-source.ts";
 import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import { bundlesApp } from "@/packaging/app";
 import { buildApp, formatBytes } from "@/packaging/build";
@@ -111,10 +112,17 @@ export async function build(options: CliOptions, seams: StageSeams = {}): Promis
 			return fail("build", `extensions entry ${file} does not exist`);
 		}
 	}
-	if (extensionFiles.length > 0) {
+	// `crust dev` already refuses a bad default export and a duplicate name, naming the file and why.
+	// Apply that gate here too: embedding either compiles fine and then throws in registry.register
+	// before startApp, so the artefact dies at startup with no hint about the offending file.
+	const validated = await validateExtensionEntries(extensionFiles);
+	if (validated.errors.length > 0) {
+		return fail("build", extensionErrorLines(validated.errors).join("; "));
+	}
+	if (validated.files.length > 0) {
 		line(
 			"extensions",
-			`${extensionFiles.length} file${extensionFiles.length === 1 ? "" : "s"} embedded`,
+			`${validated.files.length} file${validated.files.length === 1 ? "" : "s"} embedded`,
 		);
 	}
 
@@ -129,7 +137,7 @@ export async function build(options: CliOptions, seams: StageSeams = {}): Promis
 			runtimePath: resolve(crustRoot, "src/runtime.ts"),
 			extensionsPath: resolve(crustRoot, "src/extensions/registry.ts"),
 			projectDir: options.dir,
-			extensionFiles,
+			extensionFiles: validated.files,
 		}),
 		"utf8",
 	);
