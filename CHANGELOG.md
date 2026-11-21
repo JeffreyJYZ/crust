@@ -12,6 +12,17 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 - **A probe can drive an app without taking the front.** `testing.activation` in `crust.config.ts` chooses `"auto"` (today's launch), `"none"` (never activates; `accessibility.elementCount` answers a typed `needs-activation` instead of the empty tree an inactive app gives) or `"on-demand"` (activates once for the first accessibility read that needs it). Page-level `testing.*` and `window.capture` work in all three modes.
 - **`window.create { activate: false }`** shows a window with `orderFrontRegardless` (macOS), `SW_SHOWNOACTIVATE` (Windows) or the plain show (Linux) and never makes it key or brings the app forward. Proven by a real probe on a Mac: capture and drive a page while the frontmost app stays the same.
 
+## [0.2.11] — 2026-11-21
+
+### Added
+
+- **`window.capture` on Linux.** WebKitGTK's own `get_snapshot` renders the app's webview, so a Linux app's page can now be photographed the same way macOS and Windows can: `{ ok, width, height, scale, png }` with a base64 PNG, no focus and no Screen Recording grant, because the picture comes from the view rather than the screen. Proven in the real GTK smoke — `480x320 at scale 1, 2849 PNG bytes, signature 89504e470d0a1a0a` — which is also the first time an agent could see a Linux crust page at all.
+- `browser.capture` still refuses on Linux by name: the app's own view and a placed browser surface render through different calls, and screenshotting the screen would return something other than the surface. The docs say that rather than implying parity.
+
+### Retired
+
+- `0.2.12` and `0.2.13` are not cut. Their content shipped inside `0.2.9` and `0.2.10` — the Windows and Linux browser surfaces, the Windows preview host, and the Linux statement that no embedded system preview API exists. Parallel lanes landed them under one version, and a tag with nothing new would claim a change that did not happen.
+
 ## [0.2.10] — 2026-11-21
 
 ### Added
