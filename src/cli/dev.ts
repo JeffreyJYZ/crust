@@ -93,10 +93,12 @@ export async function dev(options: CliOptions): Promise<number> {
 
 	// A dev-server page is not the bridge's document, so the client must arrive through
 	// the page: `crust/vite` injects `window.__CRUST__`. The runtime mints one document token
-	// (never the seed) where the bridge binds and writes it to `.crust/dev.json`, which the
-	// plugin reads per document. These two forward an existing shell value, so an operator can
+	// (never the seed) where the bridge binds and writes it to `devHandshakePath()` in the OS
+	// temp dir, which the plugin reads per document. These two forward an existing shell value, so an operator can
 	// point the page at a bridge by hand.
-	const env = bridgeEnv(devUrl);
+	// The dev server is a separate child with its own cwd, so it needs the temp
+	// handshake path explicitly; deriving it from cwd in the child is not enough.
+	const env = bridgeEnv(devUrl, resolve(options.dir));
 
 	const projectDir = resolve(options.dir);
 	const configPath = resolve(projectDir, loaded.path);
@@ -144,6 +146,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		projectDir,
 		configPath,
 		devUrl,
+		ignore: config.dev?.ignore,
 		env,
 		extensionFiles: extensions.loaded,
 		nativeDir: (await exists(nativeDir, "dir")) ? nativeDir : undefined,

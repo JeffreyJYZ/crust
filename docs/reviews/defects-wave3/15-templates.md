@@ -68,4 +68,4 @@ only when `crustRoot/.git` exists (a checkout); bun's `github:` installs keep no
 intentional and documented in `start/install`, so not reported as a defect.
 Did not execute builds, e2e or the full suite (shared tree, per brief), so runtime
 behaviour of the built templates is inferred from source. Next area of interest:
-the generated dev entry and `.crust/dev.json` handoff, owned by other hunters.
+the generated dev entry and dev handshake handoff, owned by other hunters.

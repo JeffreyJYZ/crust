@@ -11,7 +11,7 @@ Reports live under `../defects-wave3/`; this file is the ledger of what landed.
 | 01#5 `__crustBytes`/`__proto__` | bridge         | `bytes.ts` + `invoke.ts` skip depth 0, carry keys through `defineProperty` | same                   |
 | 01#6 byte cap vs UTF-16         | bridge         | `invoke.ts` measures `byteLength`, not `text.length`                  | same                        |
 | 01#7 unescaped SSE event name   | bridge         | `events.ts` refuses/strips a newline in the name                      | same                        |
-| 20#3 token file 0644            | bridge         | `runtime.ts` writes `.crust/dev.json` with `mode: 0o600`              | `runtime` suite             |
+| 20#3 token file 0644            | bridge         | `runtime.ts` writes the temp handshake with `mode: 0o600`             | `runtime` suite             |
 | 20#4 docstring vs origin gate   | bridge         | `server.ts` states the real posture: absent origin allowed, token is the credential | — |
 | 20#1 token in the public doc    | token-lane     | token rides the navigation URL; the document answers 401 without it    | `server-document.test.ts`   |
 | 02#1 frame scanner blind spots  | windows-frames | `frames.ts` parses pointers, 2-D bounds, initialisers, multi-declarator | `frame.test.ts`          |

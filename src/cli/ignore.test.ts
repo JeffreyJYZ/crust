@@ -11,7 +11,7 @@ describe("isIgnoredWatchPath", () => {
 			"public/index.html",
 			"dist/crust-app",
 			"node_modules/react/index.js",
-			".crust/dev.json",
+			".crust/cache.json",
 		])
 			expect({ path, ignored: isIgnoredWatchPath(path) }).toEqual({ path, ignored: true });
 	});

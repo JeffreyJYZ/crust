@@ -3,9 +3,24 @@
  */
 const IGNORED = /(^|[/\\])(public|dist|node_modules|\.next|out|\.crust)([/\\]|$)/;
 
-/** True when a watched change belongs to the frontend or to build output, not the backend. */
-export function isIgnoredWatchPath(filename: string | null | undefined): boolean {
-	return IGNORED.test(String(filename ?? ""));
+/**
+ * True when a watched change belongs to the frontend or to build output, not the backend.
+ * `extra` carries `dev.ignore`: output a capture or a renderer writes next to main.ts
+ * cannot be named by the framework's extension list, so the author names it there.
+ */
+export function isIgnoredWatchPath(
+	filename: string | null | undefined,
+	extra: readonly string[] = [],
+): boolean {
+	const path = String(filename ?? "").replace(/\\/g, "/");
+	if (IGNORED.test(path)) return true;
+	return extra.some((entry) => {
+		const part = entry.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+		return (
+			part !== "" &&
+			(path === part || path.startsWith(`${part}/`) || path.includes(`/${part}/`))
+		);
+	});
 }
 
 /**

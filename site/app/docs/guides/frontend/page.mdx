@@ -15,7 +15,7 @@ export default defineConfig({
 });
 ```
 
-The plugin is serve-only. It injects `window.__CRUST__` and the page client into every document, resolving the bridge pair per request from `CRUST_BRIDGE_URL` and `CRUST_BRIDGE_TOKEN`, then from `.crust/dev.json`, which the runtime writes on first `run()`.
+The plugin is serve-only. It injects `window.__CRUST__` and the page client into every document, resolving the bridge pair per request from `CRUST_BRIDGE_URL` and `CRUST_BRIDGE_TOKEN`, then from the temp handshake named by `CRUST_DEV_FILE` (or `devHandshakePath()`), which the runtime writes on first `run()`.
 
 `strictPort` is required: the bridge allows exactly the origin `dev.url` names, so a Vite port move makes every invoke `bad-origin`.
 

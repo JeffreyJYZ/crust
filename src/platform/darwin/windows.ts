@@ -43,7 +43,7 @@ export class WindowRegistry {
 	}
 
 	/**
-	 * The absolute URL a tracked window was asked to load — what a later `window.create` resolves a relative URL against. The bridge URL is the runtime's private state (only a dev handshake puts it in `CRUST_BRIDGE_URL` or `.crust/dev.json`, neither readable by a built app running from `/`), while the document the app's windows were loaded with is here, absolute and verified by the webview.
+	 * The absolute URL a tracked window was asked to load — what a later `window.create` resolves a relative URL against. The bridge URL is the runtime's private state (only a dev handshake puts it in `CRUST_BRIDGE_URL` or the temp file at `devHandshakePath()`, neither readable by a built app running from `/`), while the document the app's windows were loaded with is here, absolute and verified by the webview.
 	 */
 	url(label: string): string | undefined {
 		return this.#windows.get(label)?.url;

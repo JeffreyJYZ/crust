@@ -30,6 +30,20 @@ export function extensionDirs(files: readonly string[] | undefined, nativeDir?: 
 const BACKEND_SOURCE = /\.(?:ts|c|rs|zig)$/;
 
 /**
+ * The one watch decision, pure so it is testable with no fs watcher and no child.
+ * A restart rotates the bridge token and breaks the page already in front of the
+ * author, so anything the frontend owns — or `dev.ignore` names — is never a reason.
+ */
+export function shouldRestartRuntime(
+	filename: string | null | undefined,
+	options: { ignore?: readonly string[] } = {},
+): boolean {
+	if (isIgnoredWatchPath(filename, options.ignore)) return false;
+	if (isFrontendSource(filename)) return false;
+	return true;
+}
+
+/**
  * Run the runtime, restarting it on a backend file change. The watch covers
  * the backend entry's directory, which is where `main.ts` and anything it
  * imports live; a change under `public/` is HMR's and is ignored.
@@ -73,11 +87,7 @@ export async function watchRuntime(options: RuntimeOptions): Promise<number> {
 		// frontend should own — and a restart rotates the bridge token, so the
 		// loaded page then fails with a missing bearer token.
 		if (isIgnoredWatchPath(filename)) return;
-		// A dev-server project's backend entry sits at the project root, so the watch
-		// covers every UI file too. Editing one restarted the runtime — rotating the
-		// bridge token and rebuilding the window — while the dev server's own reload was
-		// already handling that file. Frontend extensions are its business, not ours.
-		if (options.devUrl !== undefined && isFrontendSource(filename)) return;
+		if (!shouldRestartRuntime(filename, { ignore: options.ignore })) return;
 		restart();
 	});
 

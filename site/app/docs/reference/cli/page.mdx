@@ -79,7 +79,7 @@ The `extensions` block reports `zig`, `rustc` and `clang` as found with their ve
 | `CRUST_NOTARY_APPLE_ID`  | `crust build --notarize`                       | the Apple ID for the one-shot credential route                                                                      |
 | `CRUST_NOTARY_PASSWORD`  | `crust build --notarize`                       | the app-specific password for that Apple ID                                                                         |
 | `CRUST_NOTARY_TEAM_ID`   | `crust build --notarize`                       | the team the Apple ID belongs to                                                                                    |
-| `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `<cwd>/.crust/dev.json`                                                          |
+| `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `devHandshakePath()` in the OS temp dir                                          |
 | `CRUST_LOG`              | `crust dev`, every crust runtime                | minimum log level: `trace`, `debug`, `info`, `warn` or `error`; beats `logging.level`, loses to `--log-level`        |
 
 An uncaught command failure prints `crust <command>: <message>` and exits 1. Nothing prints a stack trace and nothing exits 0 on a refusal.

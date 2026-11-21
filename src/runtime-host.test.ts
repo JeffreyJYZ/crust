@@ -9,12 +9,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start, stopAll } from "./bridge/server/fixtures.ts";
+import { devHandshakePath } from "./dev-handshake-path.ts";
 import { publishDevHandshake } from "./runtime-host.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "./vite.ts";
 
 afterEach(() => {
 	delete process.env[BRIDGE_URL_VAR];
 	delete process.env[BRIDGE_TOKEN_VAR];
+	delete process.env.CRUST_DEV_FILE;
 	return stopAll();
 });
 
@@ -30,7 +32,8 @@ describe("publishing the dev handshake", () => {
 					},
 				}),
 			).toThrow(/window\.crust/);
-			expect(existsSync(join(dir, ".crust", "dev.json"))).toBe(false);
+			expect(existsSync(devHandshakePath(dir))).toBe(false);
+			expect(existsSync(join(dir, ".crust"))).toBe(false);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -41,7 +44,7 @@ describe("publishing the dev handshake", () => {
 		const dir = mkdtempSync(join(tmpdir(), "crust-handshake-ok-"));
 		try {
 			publishDevHandshake(dir, bridge);
-			const written = JSON.parse(readFileSync(join(dir, ".crust", "dev.json"), "utf8")) as {
+			const written = JSON.parse(readFileSync(devHandshakePath(dir), "utf8")) as {
 				url: string;
 				token: string;
 			};

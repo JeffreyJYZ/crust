@@ -42,6 +42,25 @@ async function detectConfiglessSingle(options: CliOptions): Promise<SingleDetect
 	return await detectSingle({ single: file, dir: options.dir });
 }
 
+/**
+ * The interpreter `crust build` actually spawns. A standalone crust binary carries
+ * bun inside itself but the compile step runs bare `bun`, so printing Bun.version
+ * without resolving it on PATH used to report a host where building cannot work.
+ */
+export function bunCheck(
+	which: (name: string) => string | null | undefined = (name) => Bun.which(name),
+): Check {
+	const path = which("bun");
+	if (path === null || path === undefined || path === "") {
+		return {
+			name: "bun",
+			status: "fail",
+			detail: "bun is not on PATH — crust build spawns it; install bun or add it to PATH",
+		};
+	}
+	return { name: "bun", status: "ok", detail: `bun ${Bun.version} at ${path}` };
+}
+
 export async function checkEnvironment(options: CliOptions): Promise<Environment> {
 	const checks: Check[] = [];
 	const push = (name: string, status: Status, detail: string): void => {
@@ -59,8 +78,9 @@ export async function checkEnvironment(options: CliOptions): Promise<Environment
 		push("platform", "ok", `darwin ${process.arch}`);
 	}
 
-	// Runtime.
-	push("bun", "ok", `${Bun.version} at ${process.execPath}`);
+	// Runtime: resolve the interpreter build spawns, not merely the one running us.
+	const runtime = bunCheck();
+	checks.push(runtime);
 
 	// macOS version floor, when the config asks for one.
 	const osVersion = await shellOutput(["sw_vers", "-productVersion"]);

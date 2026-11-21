@@ -25,8 +25,12 @@ async function fixture(options: { icon?: boolean; bundle?: boolean } = {}): Prom
 	);
 	if (options.icon !== false) await writeFile(join(root, "icon.png"), PNG);
 	await mkdir(join(root, "dist"), { recursive: true });
-	if (options.bundle !== false)
-		await mkdir(join(root, "dist", "Example.app"), { recursive: true });
+	if (options.bundle !== false) {
+		const contents = join(root, "dist", "Example.app", "Contents");
+		await mkdir(join(contents, "MacOS"), { recursive: true });
+		await writeFile(join(contents, "Info.plist"), "<plist/>");
+		await writeFile(join(contents, "MacOS", "crust-app"), "binary");
+	}
 	await writeFile(join(root, "dist", "crust-app"), "#!/bin/sh\n");
 	return root;
 }

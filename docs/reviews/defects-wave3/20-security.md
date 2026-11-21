@@ -14,7 +14,7 @@ The only credential the bridge accepts (`token`) is injected into the HTML that 
 **Breaks:** arbitrary file read from outside the app's frontend root on Windows by a local request such as `GET /%2e%2e%5csecret` or `/a%5c..%5c..%5csecret`.
 **Evidence:** `src/bridge/server/assets.ts:32` — `if (key.includes("\0") || key.split("/").some((part) => part === ".."))` then `src/bridge/server/assets.ts:42` — `const file = Bun.file(join(options.root, relative));`. Measured: `decodeURIComponent("/%2e%2e%5csecret")` → `"/..\\secret"`, `path.win32.join("C:\\root", "..\\secret")` → `C:\secret`.
 
-### 3. Bridge token written world-readable to `.crust/dev.json` — MEDIUM
+### 3. Bridge token written world-readable to the project-root dev handshake — MEDIUM
 `src/runtime.ts:127-130`
 The per-launch bearer token is persisted with `writeFileSync` and no `mode`, so the file inherits the process umask (commonly 0644). Other local users can read the token and invoke every bridge command. The same file is written with an explicit 0600 nowhere, unlike the other secret stores in the repo.
 **Breaks:** token disclosure to every local account on a shared machine in `crust dev`.

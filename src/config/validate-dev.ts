@@ -1,6 +1,6 @@
 import type { Validator } from "./validator.ts";
 
-export const DEV_KEYS = ["url", "beforeDevCommand"] as const;
+export const DEV_KEYS = ["url", "beforeDevCommand", "ignore"] as const;
 
 /**
  * `dev.url` loads the page in `crust dev` once, with no retry. A string like `localhost:5173`
@@ -20,6 +20,7 @@ export function validateDev(v: Validator, value: unknown): void {
 	const url = v.string(dev, "url", "dev", false);
 	if (url !== undefined && !isDevUrl(url)) v.fail("dev.url", DEV_URL, url);
 	v.string(dev, "beforeDevCommand", "dev", false);
+	v.stringArray(dev, "ignore", "dev");
 }
 
 function isDevUrl(value: string): boolean {

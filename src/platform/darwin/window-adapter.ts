@@ -25,7 +25,7 @@ export function darwinWindowAdapter(platform: DarwinPlatform): WindowNative {
 	};
 
 	/**
-	 * The app's own document, as an absolute base URL. Neither `CRUST_BRIDGE_URL` nor `.crust/dev.json` is usable — the runtime publishes them only when a dev server exists, and a built app runs from `/` with no handshake — so the base is the first tracked window whose URL is a real web URL, skipping one loaded as `about:blank` because resolving against it yields nothing loadable.
+	 * The app's own document, as an absolute base URL. Neither `CRUST_BRIDGE_URL` nor the temp handshake at `devHandshakePath()` is usable — the runtime publishes them only when a dev server exists, and a built app runs from `/` with no handshake — so the base is the first tracked window whose URL is a real web URL, skipping one loaded as `about:blank` because resolving against it yields nothing loadable.
 	 */
 	const documentBase = (): URL => {
 		for (const label of platform.windowLabels()) {
