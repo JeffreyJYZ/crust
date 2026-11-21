@@ -12,12 +12,13 @@ import type { LinuxDialogShim } from "./dialog-ffi.ts";
 import { linkError } from "./preflight.ts";
 import { shimSource } from "./shim-source.ts";
 import { shimSymbols } from "./shim-symbols.ts";
+import type { SnapshotSymbols } from "./snapshot-ffi.ts";
 
 /**
  * The entry points this shim exports, as JS sees them. Declared by hand because the argument types are the contract a fake has to satisfy: every `cstring` argument is a NUL-terminated byte buffer, never a JavaScript string — bun:ffi throws `a JavaScript string is not valid here` on one, measured against real GTK.
  * The file panels' optional members come from `dialog-ffi.ts`, split out at the line cap and because they are the one namespace that can be absent on an older GTK.
  */
-export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
+export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim, SnapshotSymbols {
 	shim_lib_open(): number;
 	shim_lib_error_text(): string | null;
 	shim_gtk_init(): number;
@@ -93,21 +94,6 @@ export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
 	shim_widget_set_opacity?(win: bigint, value: number): number;
 	/** -1 when unavailable: 0 is a real opacity. */
 	shim_widget_opacity?(win: bigint): number;
-
-	/**
-	 * The WebKitGTK snapshot half, resolved lazily. `ready` answers 0 with `shim_lib_error_text`
-	 * naming the missing API; `take` answers 0 started, 1 no API, 2 no view, 3 not realised.
-	 * The callback fills the picture before `state` leaves 0, so a reader that sees 1 has all bytes.
-	 */
-	shim_snapshot_ready?(): number;
-	shim_snapshot_take?(web: bigint): number;
-	shim_snapshot_state?(): number;
-	shim_snapshot_failure?(): string | null;
-	shim_snapshot_width?(): number;
-	shim_snapshot_height?(): number;
-	shim_snapshot_scale?(): number;
-	shim_snapshot_length?(): number;
-	shim_snapshot_read?(dst: Uint8Array, cap: number): number;
 
 	/** 1 when GDK carries every entry point the display list needs; 0 names a GTK too old for it. */
 	shim_screen_ready?(): number;
