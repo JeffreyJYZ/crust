@@ -26,6 +26,16 @@ export {
 	windowPlugin,
 } from "./window";
 export { createClipboardPlugin, clipboardPlugin, type ClipboardAdapter } from "./clipboard";
+export {
+	createPtyPlugin,
+	type CloseOutcome as PtyCloseOutcome,
+	type ListOutcome as PtyListOutcome,
+	type OpenOutcome as PtyOpenOutcome,
+	type PtyCommands,
+	type PtyFailure as PtyRefusal,
+	type ResizeOutcome as PtyResizeOutcome,
+	type WriteOutcome as PtyWriteOutcome,
+} from "./pty";
 export { createOpenerPlugin, openerPlugin, type OpenerAdapter } from "./opener";
 export { createOsPlugin, osPlugin, type OsAdapter } from "./os";
 export { createShortcutsPlugin, shortcutsPlugin, type ShortcutAdapter } from "./shortcuts";

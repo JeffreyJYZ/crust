@@ -62,6 +62,10 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 		],
 	},
 	{
+		reason: "drives a pty and a shell process only: no window or app is launched, so nothing takes the screen",
+		files: ["e2e-pty.ts"],
+	},
+	{
 		reason: "a module or a unit test, imported rather than run as a suite",
 		files: [
 			"butter-sweep-commands.ts",
