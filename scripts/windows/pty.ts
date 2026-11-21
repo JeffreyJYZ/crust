@@ -91,26 +91,23 @@ async function rawProbe(): Promise<PtyCheck> {
 	if (index < 0) {
 		return { name: "pty:raw", ok: false, detail: shim.shim_pty_reason() ?? "open refused" };
 	}
+	// A ConPTY emits its own VT setup before the client's first line, so "one byte arrived" says
+	// nothing about the data path. Read until the marker or the deadline.
 	const deadline = performance.now() + 10000;
-	while (performance.now() < deadline && Number(shim.shim_pty_total(index)) <= 0) {
-		await Bun.sleep(25);
-	}
-	const total = Number(shim.shim_pty_total(index));
 	const buffer = new Uint8Array(8192);
 	let seen = "";
-	for (;;) {
+	while (performance.now() < deadline) {
 		const got = Number(shim.shim_pty_read(index, ptr(buffer), buffer.length));
-		if (got <= 0) break;
-		seen += Buffer.from(buffer.slice(0, got)).toString("utf8");
+		if (got > 0) seen += Buffer.from(buffer.slice(0, got)).toString("utf8");
+		else if (seen.includes("conpty-raw")) break;
+		else await Bun.sleep(25);
 	}
+	const total = Number(shim.shim_pty_total(index));
 	shim.shim_pty_close(index);
 	return {
 		name: "pty:raw",
 		ok: seen.includes("conpty-raw"),
-		detail:
-			total > 0
-				? `${total} byte(s) from cmd /c echo: ${JSON.stringify(seen.slice(0, 80))}`
-				: "the console wrote nothing within 10 s",
+		detail: `${total} byte(s) from cmd /c echo: ${JSON.stringify(seen.slice(0, 160))}`,
 	};
 }
 
@@ -139,14 +136,21 @@ export async function provePty(): Promise<PtyCheck[]> {
 
 	// Arithmetic, not a literal: the console echoes the command line, so only real output carries
 	// the sum. A page decodes base64, so the assertion is on the bytes, never on the frame text.
-	pty.write({ id, data: "set /a 1234+5678\r\n" });
+	// Wait for the prompt first: a shell that has not started reading input yet is not a pty bug.
+	const ready = await waitForText(text, ">");
+	const typed = pty.write({ id, data: "set /a 1234+5678\r\n" });
 	const produced = await waitForText(text, "6912");
 	checks.push({
 		name: "pty:output",
-		ok: produced && frames.every((frame) => /^[A-Za-z0-9+/=]+$/.test(frame)),
+		ok:
+			ready &&
+			typed.ok === true &&
+			produced &&
+			frames.every((frame) => /^[A-Za-z0-9+/=]+$/.test(frame)),
 		detail: produced
 			? `6912 arrived in ${frames.length} base64 pty-data frame(s)`
-			: `no output after typing; the last frames were: ${text().slice(-120) || "none"}; ` +
+			: `prompt ${ready}, write ${JSON.stringify(typed)}; ` +
+				`the last frames were: ${JSON.stringify(text().slice(-160))}; ` +
 				`shim: ${conptyShim().shim_pty_reason() ?? "no reason recorded"}`,
 	});
 
