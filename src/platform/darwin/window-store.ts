@@ -5,6 +5,7 @@
  */
 import type { WindowHandle } from "@/app.ts";
 import { S } from "./objc.ts";
+import { previewWindowClosed } from "./preview.ts";
 import { type NativeWindowPointers, WindowRegistry } from "./windows.ts";
 
 /** Everything `DarwinPlatform` asks of its windows, including closing exactly one of them. */
@@ -40,6 +41,9 @@ export function createWindowStore(app: () => number): DarwinWindowStore {
 		destroy(label) {
 			const win = registry.native(label);
 			if (win === undefined) return;
+			// A preview panel floats over a specific window and is its own window, so it has to be
+			// ordered out before that window closes or it is left over an empty desktop.
+			previewWindowClosed(win);
 			S.v0(win, "close");
 			registry.handle(label);
 		},
