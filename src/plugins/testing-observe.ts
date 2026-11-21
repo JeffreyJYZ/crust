@@ -38,27 +38,39 @@ export function observeCommands(run: Runner) {
 				asked !== undefined &&
 				(typeof asked !== "number" || !Number.isFinite(asked) || asked < 0)
 			) {
-				throw new CrustError("bad-request", 'testing.waitFor "timeoutMs" must be a number >= 0');
+				throw new CrustError(
+					"bad-request",
+					'testing.waitFor "timeoutMs" must be a number >= 0',
+				);
 			}
 			const timeout = asked ?? WAIT_DEFAULT_MS;
-			let waited = 0;
+			// A poll's own cost counts. Counting WAIT_INTERVAL_MS per iteration reported the configured
+			// budget rather than the wall time whenever a query blocked (a modal sheet, a slow page).
+			const started = performance.now();
+			const elapsed = (): number => Math.round(performance.now() - started);
 			for (;;) {
 				const probe = await run<QueryResult>("query", { selector, label: args?.label });
 				if ("exists" in probe) {
-					if (probe.exists) return { ok: true as const, found: true as const, waitedMs: waited };
+					if (probe.exists)
+						return { ok: true as const, found: true as const, waitedMs: elapsed() };
 				} else if (probe.code !== "not-found") {
-					// A window that is gone or a page that threw will not fix itself by waiting.
-					return probe;
+					// A window that is gone or a page that threw will not fix itself by waiting. Wrap it
+					// as this wait's own failure instead of handing back the page's raw answer.
+					const failure = {
+						ok: false as const,
+						code: probe.code,
+						message: `testing.waitFor: ${selector} probe failed after ${elapsed()} ms: ${probe.message}`,
+					};
+					return "requires" in probe ? { ...failure, requires: probe.requires } : failure;
 				}
-				if (waited >= timeout) {
+				if (elapsed() >= timeout) {
 					return {
 						ok: false as const,
 						code: "not-found" as const,
-						message: `testing.waitFor: ${selector} did not appear within ${timeout} ms`,
+						message: `testing.waitFor: ${selector} did not appear within ${timeout} ms (waited ${elapsed()} ms)`,
 					};
 				}
 				await pause(WAIT_INTERVAL_MS);
-				waited += WAIT_INTERVAL_MS;
 			}
 		},
 		/** The page's console entries, recorded by the bridge's page-world tap from document start. */

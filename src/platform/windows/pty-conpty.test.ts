@@ -128,7 +128,6 @@ describe("opening", () => {
 		expect(shim.envBlocks[0]).toBe("PATH=C:\\bin\0TERM=xterm-256color\0\0");
 		terminal.close();
 	});
-
 });
 
 describe("the stream", () => {

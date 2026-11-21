@@ -77,19 +77,27 @@ function bodyOf(name: TestingScriptName, args: Record<string, unknown>): string 
 		case "click": {
 			const selector = json(args.selector);
 			return `var element = elementFor(${selector});
+var observed = false;
+var watcher = function () { observed = true; };
+if (typeof element.addEventListener === "function") element.addEventListener("click", watcher);
 if (typeof element.scrollIntoView === "function") element.scrollIntoView({ block: "center", inline: "center" });
 if (typeof element.focus === "function") element.focus();
 element.click();
-return JSON.stringify({ ok: true, clicked: true });`;
+if (typeof element.removeEventListener === "function") element.removeEventListener("click", watcher);
+return JSON.stringify({ ok: true, clicked: observed, verified: observed });`;
 		}
 		case "clickAt": {
 			const x = Number(args.x);
 			const y = Number(args.y);
 			return `var element = document.elementFromPoint(${x}, ${y});
 if (!element) fail("not-found", "nothing is painted at ${x},${y}");
+var observed = false;
+var watcher = function () { observed = true; };
+if (typeof element.addEventListener === "function") element.addEventListener("click", watcher);
 if (typeof element.focus === "function") element.focus();
 element.click();
-return JSON.stringify({ ok: true, clicked: true });`;
+if (typeof element.removeEventListener === "function") element.removeEventListener("click", watcher);
+return JSON.stringify({ ok: true, clicked: observed, verified: observed });`;
 		}
 		case "type": {
 			const selector = json(args.selector);

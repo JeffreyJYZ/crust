@@ -13,6 +13,10 @@ import type {
 
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** `exitCode` or a signal means the OS has already reaped the child, as in `shell.kill`. */
+const departed = (child: SidecarChild): boolean =>
+	child.exitCode !== null || child.signalCode !== null;
+
 const unknownId = (id: string): SidecarFailure => ({
 	ok: false,
 	code: "sidecar-unknown-id",
@@ -92,6 +96,12 @@ export function makeControlCommands(deps: {
 		}
 		const live = running.get(args.id);
 		if (live === undefined) return unknownId(args.id);
+		if (departed(live.child)) {
+			// The exit event may not have pruned the record yet; this call kills nothing.
+			if (live.killTimer !== undefined) clearTimeout(live.killTimer);
+			running.delete(args.id);
+			return { ok: true, id: args.id, killed: false };
+		}
 		try {
 			live.child.kill(args.signal ?? "SIGTERM");
 		} catch (error) {
@@ -102,17 +112,21 @@ export function makeControlCommands(deps: {
 			};
 		}
 		// A child that ignores SIGTERM gets SIGKILL after the grace. The exit handler clears the
-		// timer, so the exit event fires exactly once and no timer outlives the child.
+		// timer, so the exit event fires exactly once and no timer outlives the child. A child that
+		// left in the meantime is pruned rather than signalled a second time.
 		live.killTimer = setTimeout(() => {
-			if (running.has(live.id)) {
-				try {
-					live.child.kill("SIGKILL");
-				} catch {
-					// Already gone; the exit handler will retire the record.
-				}
+			if (!running.has(live.id)) return;
+			if (departed(live.child)) {
+				running.delete(live.id);
+				return;
+			}
+			try {
+				live.child.kill("SIGKILL");
+			} catch {
+				running.delete(live.id);
 			}
 		}, grace);
-		return { ok: true, id: args.id };
+		return { ok: true, id: args.id, killed: true };
 	};
 
 	return { write, list, kill };

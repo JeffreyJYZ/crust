@@ -18,6 +18,13 @@ import { conptyShim, type WindowsPtyShim } from "./pty-ffi.ts";
 const READ_BYTES = 8192;
 /** One tick at 50 Hz. */
 const POLL_MS = 20;
+/**
+ * One tick drains at most this many frames. The C ring already drops its oldest byte when full, so
+ * a flood that outruns the page loses bytes at the source; a bounded loop keeps that flood from
+ * holding the JS pump with an unbounded `for(;;)`. Frames still leave the ring in order, so the
+ * bytes that do arrive reach the page in the terminal's own order.
+ */
+const MAX_DRAIN_FRAMES = 8;
 
 /** Why `open` refused, in the C's own words — a machine missing an export names the export. */
 function refuseOpen(shim: WindowsPtyShim): string {
@@ -79,7 +86,7 @@ function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTermina
 	// Everything the reader thread has collected, in order; a page that stops polling loses the
 	// oldest bytes in the C ring rather than blocking the console.
 	const drain = (): void => {
-		for (;;) {
+		for (let frame = 0; frame < MAX_DRAIN_FRAMES; frame++) {
 			const got = Number(shim.shim_pty_read(index, ptr(buffer), READ_BYTES));
 			if (got <= 0) return;
 			request.onData(buffer.slice(0, got));

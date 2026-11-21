@@ -37,7 +37,7 @@ describe("the CRUST_TEST gate", () => {
 		const registry = registryFor({ CRUST_TEST: "1" });
 		expect(registry.has("testing")).toBe(true);
 		const answer = await registry.invoke("testing", "click", { selector: "#go" }, ctx);
-		expect(answer).toEqual({ ok: true, clicked: true });
+		expect(answer).toEqual({ ok: true, clicked: true, verified: true, fake: true });
 		expect(button.clicks).toBe(1);
 	});
 

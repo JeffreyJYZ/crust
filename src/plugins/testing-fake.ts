@@ -81,7 +81,7 @@ export function fakeAdapter(document = new FakeDocument(), label = "main"): Fake
 				"console",
 				`return ${source};`,
 			);
-			return run(
+			const answer = run(
 				document,
 				win,
 				FakeEvent,
@@ -96,6 +96,19 @@ export function fakeAdapter(document = new FakeDocument(), label = "main"): Fake
 				}),
 				log,
 			);
+			// Every answer from this double is marked. The selector matcher is deliberately not a CSS
+			// engine and its computed style reads only inline declarations, so an unmarked answer
+			// could certify a selector or a visibility a real page would answer differently.
+			if (typeof answer !== "string") return answer;
+			try {
+				const parsed: unknown = JSON.parse(answer);
+				if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+					return JSON.stringify({ ...parsed, fake: true });
+				}
+			} catch {
+				// A non-JSON answer is reported by `answered()`; leave it for that layer.
+			}
+			return answer;
 		},
 	};
 	return { adapter, document, window: win, console: log };

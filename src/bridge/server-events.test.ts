@@ -98,6 +98,28 @@ describe("events", () => {
 		expect(frame.split("\n\n")).toHaveLength(2);
 		expect(frame).toContain("event: tick data: forged  event: other\n");
 	});
+
+	test("a subscriber whose queue is full is skipped, so a flood cannot grow it without bound", () => {
+		const events = new Events();
+		const delivered: string[] = [];
+		let desired = 0;
+		type Probe = { enqueue(frame: string): void; desiredSize: number };
+		const subscribers = (events as unknown as { subscribers: Set<Probe> }).subscribers;
+		subscribers.add({
+			enqueue(frame) {
+				delivered.push(frame);
+			},
+			get desiredSize() {
+				return desired;
+			},
+		});
+		events.emit("drop", { n: 1 });
+		expect(delivered).toEqual([]);
+		desired = 2;
+		events.emit("keep", { n: 2 });
+		expect(delivered).toHaveLength(1);
+		expect(delivered[0]).toContain("event: keep");
+	});
 });
 
 describe("payloads", () => {

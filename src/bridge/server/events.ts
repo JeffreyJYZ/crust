@@ -10,7 +10,15 @@ import { basename, dirname } from "node:path";
 
 interface Subscriber {
 	enqueue(frame: string): void;
+	/** The stream's remaining queue capacity. A full one drops new frames rather than growing forever. */
+	readonly desiredSize?: number;
 }
+
+/**
+ * Frames buffered for one stalled page before new ones are dropped. A normal burst (dozens of
+ * frames, 20 in the ordering test) fits; an absent reader stops growing the queue here instead.
+ */
+export const EVENT_HIGH_WATER_MARK = 256;
 
 /** The one event plain-HTML dev pushes. The page client listens for this literal name. */
 export const DEV_RELOAD_EVENT = "dev:reload";
@@ -82,6 +90,9 @@ export class Events {
 	emit(event: string, data: unknown): void {
 		const frame = sseFrame(event, data);
 		for (const subscriber of this.subscribers) {
+			// A consumer that is not reading has already filled its queue. Dropping here bounds the
+			// memory a flood can use; frames that are kept still go out in the original call order.
+			if (subscriber.desiredSize !== undefined && subscriber.desiredSize <= 0) continue;
 			try {
 				subscriber.enqueue(frame);
 			} catch {
@@ -93,35 +104,41 @@ export class Events {
 	/** The SSE response for one connected page, ready frame included. */
 	stream(port: number, cors?: Record<string, string>): Response {
 		let detached: () => void = () => {};
-		const stream = new ReadableStream<Uint8Array>({
-			start: (controller) => {
-				const encoder = new TextEncoder();
-				const subscriber: Subscriber = {
-					enqueue(frame: string) {
-						controller.enqueue(encoder.encode(frame));
-					},
-				};
-				this.subscribers.add(subscriber);
-				subscriber.enqueue(sseFrame("crust:ready", { port, protocol: 1 }));
-				detached = () => {
-					// The closure is in `cleanups` too, so it must leave the set as well: a page
-					// reload or an EventSource reconnect makes one per stream, and without the
-					// delete every disconnect retains its controller and subscriber for the
-					// process lifetime (and `stop()` re-runs each stale one).
-					this.cleanups.delete(detached);
-					this.subscribers.delete(subscriber);
-					try {
-						controller.close();
-					} catch {
-						// already closed
-					}
-				};
-				this.cleanups.add(detached);
+		const stream = new ReadableStream<Uint8Array>(
+			{
+				start: (controller) => {
+					const encoder = new TextEncoder();
+					const subscriber: Subscriber = {
+						enqueue(frame: string) {
+							controller.enqueue(encoder.encode(frame));
+						},
+						get desiredSize() {
+							return controller.desiredSize ?? 0;
+						},
+					};
+					this.subscribers.add(subscriber);
+					subscriber.enqueue(sseFrame("crust:ready", { port, protocol: 1 }));
+					detached = () => {
+						// The closure is in `cleanups` too, so it must leave the set as well: a page
+						// reload or an EventSource reconnect makes one per stream, and without the
+						// delete every disconnect retains its controller and subscriber for the
+						// process lifetime (and `stop()` re-runs each stale one).
+						this.cleanups.delete(detached);
+						this.subscribers.delete(subscriber);
+						try {
+							controller.close();
+						} catch {
+							// already closed
+						}
+					};
+					this.cleanups.add(detached);
+				},
+				cancel: () => {
+					detached();
+				},
 			},
-			cancel: () => {
-				detached();
-			},
-		});
+			{ highWaterMark: EVENT_HIGH_WATER_MARK },
+		);
 		return new Response(stream, {
 			headers: {
 				"content-type": "text/event-stream",

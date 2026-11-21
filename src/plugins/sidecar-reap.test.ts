@@ -158,7 +158,7 @@ describe("sidecar.kill is unchanged by the reap", () => {
 		if (!spawned.ok) throw new Error(spawned.message);
 		const pid = await waitForPid(pidFile);
 		const result = await plugin.commands.kill({ id: spawned.id }, ctx as never);
-		expect(result).toEqual({ ok: true, id: spawned.id });
+		expect(result).toEqual({ ok: true, id: spawned.id, killed: true });
 		expect(await gone(pid)).toBe(true);
 		// The grace timer must not fire a second kill, so exactly one exit arrives even after it.
 		await sleep(200);
