@@ -3,6 +3,7 @@
  */
 
 import { join, resolve } from "node:path";
+import { devCspNotice } from "@/bridge/server/csp.ts";
 import { loadConfig } from "@/config";
 import { DEV_INSPECT_ENV } from "@/platform/darwin/devtools.ts";
 import { publishReload, RELOAD_ENV, RELOAD_FILE, watchPublic } from "./dev/reload.ts";
@@ -86,6 +87,9 @@ export async function dev(options: CliOptions): Promise<number> {
 	const devUrl = config.dev?.url;
 	if (devUrl) line("frontend", `${devUrl} (HMR stays with the dev server)`);
 	else line("frontend", "served by the bridge (public/index.html, no dev server)");
+	// A dev-server page carries no crust policy — that server sets the headers — so this is the only
+	// moment a page author can learn that the built app will enforce `DEFAULT_CSP`, not the dev run.
+	if (devUrl) line("security", devCspNotice(devUrl, config.security?.csp));
 
 	// A dev-server page is not the bridge's document, so the client must arrive through
 	// the page: `crust/vite` injects `window.__CRUST__`. The runtime mints one document token
