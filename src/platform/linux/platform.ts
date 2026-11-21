@@ -133,7 +133,7 @@ export class LinuxPlatform implements Platform {
 			this.#windows.delete(label);
 			return undefined;
 		}
-		return { win: entry.win, web: entry.web, url: entry.url };
+		return { win: entry.win, web: entry.web, box: entry.box, url: entry.url };
 	}
 
 	/**

@@ -23,6 +23,7 @@ export const shimSymbols = {
 	shim_pump: { args: [], returns: I32 },
 
 	shim_window_new: { args: [CS, I32, I32, I32, I32], returns: P },
+	shim_window_container: { args: [P], returns: P },
 	shim_window_attach: { args: [P, P], returns: I32 },
 	shim_window_show: { args: [P], returns: V },
 	shim_window_destroy: { args: [P], returns: V },
@@ -30,6 +31,8 @@ export const shimSymbols = {
 
 	shim_webview_new: { args: [], returns: P },
 	shim_webview_load: { args: [P, CS], returns: I32 },
+	// A surface is placed into a window's container at a rectangle in points: box, view, x, y, w, h.
+	shim_webview_place: { args: [P, P, I32, I32, I32, I32], returns: I32 },
 
 	shim_window_api_ready: { args: [], returns: I32 },
 	shim_window_api_missing: { args: [], returns: CS },
@@ -80,9 +83,10 @@ export const shimSymbols = {
 	shim_dialog_release: { args: [], returns: V },
 
 	shim_webview_title: { args: [P], returns: CS },
-	shim_webview_load_state: { args: [], returns: I32 },
-	shim_webview_load_text: { args: [], returns: CS },
+	// Keyed by the view: two webviews in one window answer for themselves.
+	shim_webview_load_state: { args: [P], returns: I32 },
+	shim_webview_load_text: { args: [P], returns: CS },
 	shim_webview_eval: { args: [P, CS], returns: I32 },
-	shim_webview_eval_state: { args: [], returns: I32 },
-	shim_webview_eval_text: { args: [], returns: CS },
+	shim_webview_eval_state: { args: [P], returns: I32 },
+	shim_webview_eval_text: { args: [P], returns: CS },
 };

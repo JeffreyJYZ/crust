@@ -11,6 +11,8 @@ import { join } from "node:path";
 import prelude from "./shim/10_prelude.c" with { type: "text" };
 import pointerCore from "./shim/11_pointer_core.c" with { type: "text" };
 import styleDecls from "./shim/11_win32_style.c" with { type: "text" };
+import previewDecls from "./shim/11_preview_decls.c" with { type: "text" };
+import previewIds from "./shim/12_preview_ids.c" with { type: "text" };
 import win32 from "./shim/12_win32.c" with { type: "text" };
 import guard from "./shim/14_guard.c" with { type: "text" };
 import windowClass from "./shim/20_class.c" with { type: "text" };
@@ -33,6 +35,9 @@ import osInfo from "./shim/52_osinfo.c" with { type: "text" };
 import dialog from "./shim/48_dialog.c" with { type: "text" };
 import dialogPaths from "./shim/48_dialog_paths.c" with { type: "text" };
 import dialogCalls from "./shim/49_dialog.c" with { type: "text" };
+import previewHost from "./shim/53_preview_host.c" with { type: "text" };
+import preview from "./shim/54_preview.c" with { type: "text" };
+import previewInit from "./shim/55_preview_init.c" with { type: "text" };
 
 /**
  * LF, always. A Windows checkout can hand back CRLF, and the source-scanning assertions in this
@@ -63,6 +68,10 @@ export const SHIM_PARTS = [
 	lf(pointerCore),
 	// The style/opacity/placement/pointer table, on the same rule: before `12_win32.c` binds it.
 	lf(styleDecls),
+	// The preview host's own table and the ids it hands COM. Bound by `54_preview.c` on first use,
+	// never by `12_win32.c`: a machine missing shlwapi refuses `preview` and still opens a window.
+	lf(previewDecls),
+	lf(previewIds),
 	lf(win32),
 	lf(guard),
 	lf(windowClass),
@@ -89,6 +98,12 @@ export const SHIM_PARTS = [
 	lf(clipboard),
 	lf(opener),
 	lf(osInfo),
+	// The preview host: the child window and the CLSID lookup, then the COM sequence that puts a
+	// handler in it. Before the pointer, because `20_class.c`'s struct is what registers its class and
+	// nothing it does needs the cursor's forward declaration.
+	lf(previewHost),
+	lf(preview),
+	lf(previewInit),
 	// The pointer: no hwnd, so no place in `40_window.c`'s table — but `20_class.c`'s WM_SETCURSOR
 	// re-applies it, and the prelude's forward declaration is what keeps its position free.
 	lf(cursorMembers),
@@ -105,6 +120,8 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/10_prelude.c",
 	"src/platform/windows/shim/11_pointer_core.c",
 	"src/platform/windows/shim/11_win32_style.c",
+	"src/platform/windows/shim/11_preview_decls.c",
+	"src/platform/windows/shim/12_preview_ids.c",
 	"src/platform/windows/shim/12_win32.c",
 	"src/platform/windows/shim/14_guard.c",
 	"src/platform/windows/shim/20_class.c",
@@ -126,6 +143,9 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/50_clipboard.c",
 	"src/platform/windows/shim/51_opener.c",
 	"src/platform/windows/shim/52_osinfo.c",
+	"src/platform/windows/shim/53_preview_host.c",
+	"src/platform/windows/shim/54_preview.c",
+	"src/platform/windows/shim/55_preview_init.c",
 	"src/platform/windows/shim/49_cursor.c",
 ] as const;
 

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { WindowsShim } from "./backend.ts";
 import { coreSymbols } from "./ffi-core.ts";
 import { dialogSymbols } from "./ffi-dialog.ts";
+import { previewSymbols } from "./ffi-preview.ts";
 import { webviewSymbols } from "./ffi-webview.ts";
 import { shimSource } from "./shim-source.ts";
 
@@ -127,6 +128,9 @@ export function compile(): WindowsShim {
 
 				// The file panels: their own table, on the same rule.
 				...dialogSymbols,
+
+				// The preview host: the shell's IPreviewHandler in a child window.
+				...previewSymbols,
 
 				// The surface table, the WebView2 steps and the probe readbacks: their own table, on the
 				// same rule, because the handle refactor pushed this map past the line cap.

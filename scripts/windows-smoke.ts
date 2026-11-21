@@ -25,8 +25,9 @@ import { createWithAbortRetry } from "./windows/cold-abort.ts";
 import { FRAME_ADVICE } from "./windows/frame.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 import { provePump } from "./windows/pump.ts";
+import { provePreview } from "./windows/preview.ts";
 import { runStages } from "./windows/stages.ts";
-import { runSurfaces } from "./windows/surfaces.ts";
+import { checkSurfaces } from "./windows/surfaces.ts";
 import { freshUserData } from "./windows/user-data.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
@@ -174,16 +175,13 @@ async function main(): Promise<number> {
 		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
 	);
 
-	// 7. Two surfaces on one environment. The handle table is the only thing that keeps a second
+	// 7. The preview host: the shell's IPreviewHandler in a child window of this one.
+	const preview = provePreview(hwnd);
+	for (const check of preview) verdict.check(check.name, check.ok, check.detail);
+
+	// 8. Two surfaces on one environment. The handle table is the only thing that keeps a second
 	//    webview from overwriting the first's object, and nothing but this runtime can prove it.
-	const surfaces = await runSurfaces();
-	verdict.check(
-		"surfaces",
-		surfaces === 0,
-		surfaces === 0
-			? "two handles kept separate webview, bounds and Navigate state on one environment"
-			: "the two-surface child failed — the last `surface` line above names the call",
-	);
+	await checkSurfaces(verdict);
 
 	console.log(
 		"not proven here: a loaded document, page JS, invoke — the window loads about:blank.",

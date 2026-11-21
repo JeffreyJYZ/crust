@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cstring } from "../../src/platform/windows/cstring.ts";
 import { compile } from "../../src/platform/windows/ffi.ts";
+import type { Verdict } from "../e2e-harness.ts";
 import { addr, skipped, slotReport, stage, stageHr } from "./report.ts";
 
 const APP = "crust-surfaces";
@@ -135,6 +136,18 @@ async function steps(): Promise<number> {
 export async function runSurfaces(): Promise<number> {
 	const child = Bun.spawn([process.execPath, import.meta.path], { stdout: "inherit" });
 	return child.exited;
+}
+
+/** The smoke's verdict line for this child, kept here so `windows-smoke.ts` stays under the cap. */
+export async function checkSurfaces(verdict: Verdict): Promise<void> {
+	const code = await runSurfaces();
+	verdict.check(
+		"surfaces",
+		code === 0,
+		code === 0
+			? "two handles kept separate webview, bounds and Navigate state on one environment"
+			: "the two-surface child failed — the last `surface` line above names the call",
+	);
 }
 
 if (import.meta.main) {

@@ -91,6 +91,9 @@ void *shim_webkit_handle(void) { return shim_webkit; }
 int shim_webkit_resolve(void);
 int shim_gtk_resolve(void);
 int shim_pump_resolve(void);
+// The positioned container's entry points, resolved with the rest of GTK: a
+// window whose box cannot exist has nowhere to put its own webview.
+int shim_container_resolve(void);
 
 // A failed open leaves no live handles: the user retries after installing the
 // package named in `shim_error`, and keeping the old references would leak one
@@ -122,6 +125,10 @@ int shim_lib_open(void) {
 		return 0;
 	}
 	if (!shim_webkit_resolve() || !shim_gtk_resolve() || !shim_pump_resolve()) {
+		shim_close_libraries();
+		return 0;
+	}
+	if (!shim_container_resolve()) {
 		shim_close_libraries();
 		return 0;
 	}

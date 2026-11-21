@@ -35,12 +35,17 @@ The check lives in the invoke path, ahead of the handler, so both payload kinds 
 
 An action is `plugin:command`. `*` is the only metacharacter and matches any run of characters, including none:
 
-| pattern       | covers                               |
-| ------------- | ------------------------------------ |
-| `dialog:*`    | every command in the `dialog` plugin |
-| `fs:read*`    | `fs:readTextFile`, `fs:readFile`, …  |
-| `shell:spawn` | exactly `shell.spawn`                |
-| `shell:*`     | every `shell` command                |
+| pattern        | covers                               |
+| -------------- | ------------------------------------ |
+| `dialog:*`     | every command in the `dialog` plugin |
+| `fs:read*`     | `fs:readTextFile`, `fs:readFile`, …  |
+| `shell:spawn`  | exactly `shell.spawn`                |
+| `shell:*`      | every `shell` command                |
+| `pty:open`     | exactly `pty.open`                   |
+| `preview:show` | exactly `preview.show`               |
+| `browser:open` | exactly `browser.open`               |
+
+`pty:open` is the terminal ([Pty](/docs/guides/pty)) and is never implied by a `shell` grant: `shell:spawn` runs an allowlisted program, and a pty is an interactive shell. `preview:show` shows the embedded panel and `browser:open` loads an origin the [browser](/docs/guides/browser) allow list names — each is its own surface, granted per label.
 
 The colon is part of the match, so `dialog:*` does not cover `dialogx.openPanel`. Names are compared case-sensitively. The dotted spelling (`shell.spawn`) is refused at startup rather than accepted as a second spelling — one action with two spellings is how a grant looks right and covers nothing.
 

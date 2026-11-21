@@ -32,3 +32,16 @@ export {
 	windowsDialogAdapter,
 	type WindowsDialogShim,
 } from "./dialog.ts";
+export {
+	PREVIEW_STATUS,
+	PREVIEW_STEP,
+	isFile,
+	previewDetail,
+	windowsPreviewHost,
+	type PreviewFailure,
+	type PreviewOutcome,
+	type PreviewRect,
+	type PreviewShowOptions,
+	type WindowsPreviewHost,
+	type WindowsPreviewShim,
+} from "./preview.ts";

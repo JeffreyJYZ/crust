@@ -116,6 +116,26 @@ const win32: ReadonlyArray<readonly [string, string, string]> = [
 	["shell32.dll", "SHGetPathFromIDListW", "a picked folder has no path to read"],
 	["kernel32.dll", "WideCharToMultiByte", "no panel answer reaches JavaScript as text"],
 	["ole32.dll", "CoTaskMemFree", "every picked folder leaks its PIDL"],
+	// The preview host. `AssocQueryStringW` and `SHCreateStreamOnFileEx` are shlwapi rather than
+	// shell32, and they are bound on first use by `54_preview.c`: a machine missing one refuses
+	// `preview` by name instead of failing at the first window.
+	[
+		"shlwapi.dll",
+		"AssocQueryStringW",
+		"preview.show cannot find the handler registered for a file type",
+	],
+	[
+		"shlwapi.dll",
+		"SHCreateStreamOnFileEx",
+		"a handler that accepts only a stream cannot be initialised",
+	],
+	[
+		"shell32.dll",
+		"SHCreateItemFromParsingName",
+		"a handler that accepts only a shell item cannot be initialised",
+	],
+	["ole32.dll", "CoCreateInstance", "preview.show cannot create a registered preview handler"],
+	["ole32.dll", "CLSIDFromString", "a registered handler's class id cannot be read"],
 ];
 
 /** Every entry point the shim calls, checked before a window is attempted. */

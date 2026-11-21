@@ -64,4 +64,30 @@ export interface WindowsNamespaceShim {
 	shim_dialog_error(): number;
 	/** The comdlg32 or shell32 entry point that did not resolve; empty when the panels are usable. */
 	shim_dialog_missing(): string | null;
+
+	/**
+	 * The preview host: the shell's `IPreviewHandler`, created from the file's registered CLSID and
+	 * hosted in a child window. `show` answers 0 shown, 1 no-handler (nothing is registered for that
+	 * extension — an ordinary answer, not a defect) and 2 preview-failed, with `step`/`hresult`
+	 * naming the call that refused. `ready` is 1 when shlwapi, ole32 and shell32 export everything
+	 * the sequence needs; only this surface asks for shlwapi, so it is bound on first use.
+	 */
+	shim_preview_ready(): number;
+	shim_preview_show(
+		path: Uint8Array,
+		length: number,
+		parent: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): number;
+	shim_preview_hide(): number;
+	shim_preview_size(x: number, y: number, width: number, height: number): number;
+	/** The host HWND, 0 when nothing is shown. */
+	shim_preview_hwnd(): number;
+	/** The step the last show reached; the names are `PREVIEW_STEP` in `preview.ts`. */
+	shim_preview_step(): number;
+	/** The HRESULT that stopped that step, sign-extended; 0 when it was not a COM refusal. */
+	shim_preview_hresult(): number;
 }

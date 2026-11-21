@@ -28,6 +28,13 @@ export type FakeNamespaceShim = Pick<
 	| "shim_dialog_path"
 	| "shim_dialog_error"
 	| "shim_dialog_missing"
+	| "shim_preview_ready"
+	| "shim_preview_show"
+	| "shim_preview_hide"
+	| "shim_preview_size"
+	| "shim_preview_hwnd"
+	| "shim_preview_step"
+	| "shim_preview_hresult"
 >;
 
 export function fakeNamespaces(calls: string[], options: FakeOptions = {}): FakeNamespaceShim {
@@ -80,5 +87,21 @@ export function fakeNamespaces(calls: string[], options: FakeOptions = {}): Fake
 		shim_dialog_path: () => "",
 		shim_dialog_error: () => 0,
 		shim_dialog_missing: () => "",
+
+		// The preview host is stubbed the same way: `no-handler` is the honest default for a fake with
+		// no COM, and a test that wants a shown preview builds its own six-member fake.
+		shim_preview_ready: () => 1,
+		shim_preview_show: () => {
+			calls.push("preview_show");
+			return 1;
+		},
+		shim_preview_hide: () => {
+			calls.push("preview_hide");
+			return 1;
+		},
+		shim_preview_size: () => 1,
+		shim_preview_hwnd: () => 0,
+		shim_preview_step: () => 0,
+		shim_preview_hresult: () => 0,
 	};
 }

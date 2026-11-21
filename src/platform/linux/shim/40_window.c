@@ -12,6 +12,12 @@ static void (*shim_show_all)(void *);
 static void (*shim_destroy)(void *);
 static void *(*shim_connect)(void *, const char *, void *, void *, void *, int);
 
+// The positioned container, defined in the part below: a window holds one
+// container, and the app's own webview is attached through it so a surface has
+// somewhere to be placed. Forward-declared because the window arrives first.
+void *shim_window_container(void *win);
+void shim_container_forget(void *win);
+
 int shim_gtk_resolve(void) {
 	void *h = shim_gtk_handle();
 	return shim_sym(h, "gtk_window_new", (void **)&shim_window_new_fn) &&
@@ -51,6 +57,7 @@ static void shim_slot_release(void *win) {
 static void shim_on_destroy(void *widget, void *data) {
 	(void)data;
 	shim_slot_release(widget);
+	shim_container_forget(widget);
 }
 
 int shim_window_alive(void *win) {
@@ -94,9 +101,13 @@ void *shim_window_new(const char *title, int w, int h, int min_w, int min_h) {
 
 int shim_window_attach(void *win, void *child) {
 	if (!win || !child || !shim_container_add) return 0;
-	// GTK_CONTAINER is a cast macro and GtkWindow is a GtkContainer, so the
-	// pointer is the same address with no wrapper built.
-	shim_container_add(win, child);
+	// The app's own webview goes into the window's container, not the window: a
+	// GtkWindow holds one child, and that slot belongs to the container so a
+	// surface opened later has somewhere to be placed over the page.
+	void *box = shim_window_container(win);
+	if (!box) return 0;
+	// `gtk_container_add` on the container is its main child, which fills the window.
+	shim_container_add(box, child);
 	return 1;
 }
 
@@ -111,4 +122,5 @@ void shim_window_destroy(void *win) {
 	// `shim_destroy` emits the destroy signal, but release explicitly too: a
 	// handler that was never connected must not leave the slot occupied.
 	shim_slot_release(win);
+	shim_container_forget(win);
 }

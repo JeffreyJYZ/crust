@@ -24,8 +24,9 @@ function fakeBackend(overrides: Partial<LinuxBackend> = {}) {
 			calls.urls.push(url);
 			const win = next++;
 			open.add(win);
-			return { win, web: win + 1000n, url };
+			return { win, web: win + 1000n, box: win + 2000n, url };
 		},
+		placeWebview: () => true,
 		isOpen(win) {
 			return open.has(win);
 		},

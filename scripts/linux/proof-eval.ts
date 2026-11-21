@@ -40,8 +40,8 @@ export async function evaluate(
 	if (shim.shim_webview_eval(web, cstring(script)) !== 1) {
 		return { ok: false, text: "webkit_web_view_evaluate_javascript is not on this machine" };
 	}
-	const settled = await waitFor(() => shim.shim_webview_eval_state() !== EVAL_PENDING, ms);
+	const settled = await waitFor(() => shim.shim_webview_eval_state(web) !== EVAL_PENDING, ms);
 	if (!settled) return { ok: false, text: `no answer within ${ms} ms` };
-	const state = shim.shim_webview_eval_state();
-	return { ok: state === EVAL_ANSWERED, text: String(shim.shim_webview_eval_text() ?? "") };
+	const state = shim.shim_webview_eval_state(web);
+	return { ok: state === EVAL_ANSWERED, text: String(shim.shim_webview_eval_text(web) ?? "") };
 }
