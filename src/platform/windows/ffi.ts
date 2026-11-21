@@ -91,7 +91,7 @@ export function compile(): WindowsShim {
 				shim_post_quit: { args: [], returns: V },
 				shim_window_post_null: { args: [P], returns: I32 },
 
-				shim_window_new: { args: [CS, I32, I32, CS], returns: P },
+				shim_window_new: { args: [CS, I32, I32, CS, I32], returns: P },
 				shim_window_is_open: { args: [P], returns: I32 },
 				shim_window_set_title: { args: [P, CS], returns: I32 },
 				shim_window_destroy: { args: [P], returns: I32 },

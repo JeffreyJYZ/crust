@@ -7,7 +7,9 @@
 
 // CreateWindowExW needs the class atom's *name*, which is why the caller passes it: crust
 // registers one class per app name and every window is an instance of it.
-shim_h shim_window_new(const char *title, int w, int h, const char *cls) {
+// `activate` 0 is the passive create: shown with SW_SHOWNOACTIVATE, so the window appears without
+// becoming the active window or taking the foreground from whatever the human is using.
+shim_h shim_window_new(const char *title, int w, int h, const char *cls, int activate) {
 	shim_wchar clsBuf[256];
 	shim_wchar titleBuf[512];
 	shim_h hwnd;
@@ -18,7 +20,7 @@ shim_h shim_window_new(const char *title, int w, int h, const char *cls) {
 	if (!hwnd) return 0;
 	// The TS caller clamped the create size to the configured minimum; record it as the drag floor.
 	shim_window_set_min(hwnd, w, h);
-	ShowWindow(hwnd, SHIM_SW_SHOW);
+	ShowWindow(hwnd, activate ? SHIM_SW_SHOW : SHIM_SW_SHOWNOACTIVATE);
 	UpdateWindow(hwnd);
 	return hwnd;
 }

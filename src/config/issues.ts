@@ -1,4 +1,12 @@
-import type { ConfigIssue } from "./types.ts";
+/** One thing wrong with a config, with the path and the shape that would have been accepted. */
+export interface ConfigIssue {
+	/** Dotted path to the offending key, e.g. `windows[0].label`. */
+	path: string;
+	/** What that key should have been. */
+	expected: string;
+	/** What was there instead, as short a form as possible. */
+	received?: string;
+}
 
 /** Short form of a received value, for the `got …` half of an issue line. */
 export function describe(value: unknown): string {

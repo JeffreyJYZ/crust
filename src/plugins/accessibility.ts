@@ -13,47 +13,32 @@
  * drops it, so the answer reports both facts instead of claiming a policy the OS does not apply.
  */
 
-import { definePlugin, notImplemented, type PluginDefinition } from "./define";
 import {
-	pageCommands,
 	type AnnounceArgs,
 	type AnnounceResult,
 	type FocusArgs,
 	type FocusResult,
 	type PageGuards,
+	pageCommands,
 	type TitleArgs,
 	type TitleResult,
 } from "./accessibility-page";
 import { accessibilityNeed, accessibilityRequires } from "./accessibility-requires";
 import {
-	trustCommands,
 	type ElementCountResult,
 	type PromptFailure,
 	type PromptResult,
 	type TrustedResult,
+	trustCommands,
 } from "./accessibility-trust";
 import type {
 	AccessibilityAdapter,
 	AccessibilityFailure,
 	AnnouncePriority,
+	NeedsActivationFailure,
 } from "./accessibility-types";
-import { type NotImplemented } from "./define";
+import { definePlugin, type NotImplemented, notImplemented, type PluginDefinition } from "./define";
 
-export {
-	type AccessibilityAdapter,
-	type AccessibilityFailure,
-	type AnnouncePriority,
-	type AnnounceReport,
-	AX_STATUS,
-	type AxElementReport,
-	type FocusReport,
-	type TitleReport,
-} from "./accessibility-types";
-export {
-	accessibilityNeed,
-	accessibilityRequires,
-	hasAnnouncement,
-} from "./accessibility-requires";
 export type {
 	AnnounceArgs,
 	AnnounceResult,
@@ -62,12 +47,28 @@ export type {
 	TitleArgs,
 	TitleResult,
 } from "./accessibility-page";
+export {
+	accessibilityNeed,
+	accessibilityRequires,
+	hasAnnouncement,
+} from "./accessibility-requires";
 export type {
 	ElementCountResult,
 	PromptFailure,
 	PromptResult,
 	TrustedResult,
 } from "./accessibility-trust";
+export {
+	type AccessibilityAdapter,
+	type AccessibilityFailure,
+	type AnnouncePriority,
+	type AnnounceReport,
+	AX_STATUS,
+	type AxElementReport,
+	type FocusReport,
+	type NeedsActivationFailure,
+	type TitleReport,
+} from "./accessibility-types";
 
 /** The commands in the order this plugin declares them. */
 export const ACCESSIBILITY_COMMANDS = [
@@ -92,7 +93,7 @@ export function createAccessibilityPlugin(
 	{
 		trusted: () => Promise<TrustedResult | NotImplemented>;
 		prompt: () => Promise<PromptResult | PromptFailure | NotImplemented>;
-		elementCount: () => Promise<ElementCountResult | NotImplemented>;
+		elementCount: () => Promise<ElementCountResult | NeedsActivationFailure | NotImplemented>;
 		announce: (
 			args: AnnounceArgs | undefined,
 		) => Promise<AnnounceResult | AccessibilityFailure | NotImplemented>;
