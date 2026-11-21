@@ -20,14 +20,22 @@ typedef long long shim_i64;
 extern shim_h LoadLibraryA(const char *name);
 extern void *GetProcAddress(shim_h module, const char *name);
 
+// `COORD`: two shorts, x then y. Both console calls take it **by value**, not by pointer — passing
+// a pointer reads the low 32 bits of an address as the size, which CreatePseudoConsole tolerates
+// and ResizePseudoConsole refuses with E_INVALIDARG (measured on windows-latest 2026-11-21).
+typedef struct {
+	short x;
+	short y;
+} shim_pty_coord;
+
 static unsigned int (*MultiByteToWideChar)(unsigned int cp, unsigned int flags, const char *src,
                                            int srclen, shim_wchar *dst, int dstlen);
 static unsigned int (*GetLastError)(void);
 static int (*CreatePipe)(void *read, void *write, void *attrs, unsigned int size);
 static int (*CloseHandle)(shim_h handle);
-static int (*CreatePseudoConsole)(void *size, shim_h input, shim_h output, unsigned int flags,
-                                  void **console);
-static int (*ResizePseudoConsole)(void *console, void *size);
+static int (*CreatePseudoConsole)(shim_pty_coord size, shim_h input, shim_h output,
+                                  unsigned int flags, void **console);
+static int (*ResizePseudoConsole)(void *console, shim_pty_coord size);
 static void (*ClosePseudoConsole)(void *console);
 static int (*CreateProcessW)(const shim_wchar *image, shim_wchar *cmdline, void *procAttrs,
                              void *threadAttrs, int inherit, unsigned int flags, void *env,
@@ -55,12 +63,6 @@ static void (*InitializeCriticalSection)(void *lock);
 static void (*EnterCriticalSection)(void *lock);
 static void (*LeaveCriticalSection)(void *lock);
 static void (*DeleteCriticalSection)(void *lock);
-
-// `COORD`: two shorts, x then y. The size CreatePseudoConsole and ResizePseudoConsole take.
-typedef struct {
-	short x;
-	short y;
-} shim_pty_coord;
 
 // `STARTUPINFOW` (104 bytes on x64) plus the attribute-list pointer `EXTENDED_STARTUPINFO_PRESENT`
 // adds: 112 bytes. The layout is the ABI, and `pty-abi.test.ts` measures every offset against a

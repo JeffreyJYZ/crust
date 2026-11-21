@@ -9,6 +9,7 @@
  * thread JavaScript may block is none of them. 20 ms is one frame at 50 Hz — a keystroke echo lands
  * well inside the time a person can notice, and an idle terminal costs one shim call per tick.
  */
+import { ptr } from "bun:ffi";
 import type { PtyBackend, PtyOpenRequest, PtyTerminal } from "@/plugins/pty-backend";
 import { cstring } from "./cstring.ts";
 import { conptyShim, type WindowsPtyShim } from "./pty-ffi.ts";
@@ -56,7 +57,7 @@ function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTermina
 	// oldest bytes in the C ring rather than blocking the console.
 	const drain = (): void => {
 		for (;;) {
-			const got = Number(shim.shim_pty_read(index, buffer, READ_BYTES));
+			const got = Number(shim.shim_pty_read(index, ptr(buffer), READ_BYTES));
 			if (got <= 0) return;
 			request.onData(buffer.slice(0, got));
 		}

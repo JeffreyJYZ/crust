@@ -57,7 +57,7 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	void *console = 0;
 	// `CreatePseudoConsole` answers an HRESULT, not a BOOL: `S_OK` is 0, so success is `hr >= 0`
 	// and testing `!hr` would read every opened console as a refusal.
-	int opened = CreatePseudoConsole(&size, in_read, out_write, 0, &console);
+	int opened = CreatePseudoConsole(size, in_read, out_write, 0, &console);
 	if (opened < 0) {
 		CloseHandle(in_read);
 		CloseHandle(in_write);

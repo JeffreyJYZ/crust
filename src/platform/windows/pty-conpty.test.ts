@@ -7,6 +7,7 @@
  * resize is a throw the plugin turns into `terminal-closed` rather than a silent no-op.
  */
 import { describe, expect, test } from "bun:test";
+import { at } from "./fake-bytes.ts";
 import type { WindowsPtyShim } from "./pty-ffi.ts";
 import { windowsPtyBackend } from "./pty-conpty.ts";
 
@@ -43,7 +44,7 @@ function fake(overrides: Partial<WindowsPtyShim> = {}): Fake {
 			const next = chunks[0];
 			if (next === undefined) return 0;
 			const take = Math.min(cap, next.length);
-			dst.set(next.subarray(0, take));
+			at(dst, take).set(next.subarray(0, take));
 			if (take === next.length) chunks.shift();
 			else chunks[0] = next.subarray(take);
 			return take;

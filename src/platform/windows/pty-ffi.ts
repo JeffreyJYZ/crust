@@ -35,8 +35,8 @@ export interface WindowsPtyShim {
 	/** A slot index ≥ 0, or -1 with `shim_pty_reason` explaining which call refused. */
 	shim_pty_open(shell: Uint8Array, cwd: Uint8Array, cols: number, rows: number): number;
 	shim_pty_pid(index: number): number;
-	/** Bytes that arrived since the last read, up to `cap`; 0 none, -1 a bad index. */
-	shim_pty_read(index: number, dst: Uint8Array, cap: number): number;
+	/** Bytes that arrived since the last read, up to `cap`; 0 none, -1 a bad index. `dst` is `ptr()`. */
+	shim_pty_read(index: number, dst: number, cap: number): number;
 	/** Bytes the console accepted, or -1. */
 	shim_pty_write(index: number, data: Uint8Array, length: number): number;
 	/** 1 resized, 0 refused. */

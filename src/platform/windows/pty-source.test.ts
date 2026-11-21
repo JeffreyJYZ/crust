@@ -58,7 +58,7 @@ describe("the pseudo-console", () => {
 	});
 
 	test("both pipe pairs are closed on the console's side as soon as it has them", () => {
-		expect(OPEN).toContain("CreatePseudoConsole(&size, in_read, out_write, 0, &console)");
+		expect(OPEN).toContain("CreatePseudoConsole(size, in_read, out_write, 0, &console)");
 		expect(OPEN).toContain("CloseHandle(in_read);");
 		expect(OPEN).toContain("CloseHandle(out_write);");
 	});
@@ -80,11 +80,22 @@ describe("the pseudo-console", () => {
 		// Measured on windows-latest 2026-11-21: `!CreatePseudoConsole(...)` read a successful
 		// `S_OK` as a refusal and every `pty.open` answered spawn-failed with no GetLastError.
 		expect(CODE).toContain(
-			"int opened = CreatePseudoConsole(&size, in_read, out_write, 0, &console)",
+			"int opened = CreatePseudoConsole(size, in_read, out_write, 0, &console)",
 		);
 		expect(CODE).toContain("if (opened < 0)");
-		expect(CODE).toContain("int resized = ResizePseudoConsole(slot->console, &size)");
+		expect(CODE).toContain("int resized = ResizePseudoConsole(slot->console, size)");
 		expect(CODE).toContain("if (resized < 0)");
+	});
+
+	test("both take COORD by value, because a pointer there is read as the size", () => {
+		// The same run: ResizePseudoConsole answered E_INVALIDARG (0x80070057) because the pointer's
+		// low 32 bits arrived as the COORD, and CreatePseudoConsole had accepted that garbage size.
+		expect(CODE).toContain("static int (*CreatePseudoConsole)(shim_pty_coord size,");
+		expect(CODE).toContain(
+			"static int (*ResizePseudoConsole)(void *console, shim_pty_coord size)",
+		);
+		expect(CODE).not.toContain("CreatePseudoConsole)(void *size");
+		expect(CODE).not.toContain("ResizePseudoConsole)(void *console, void *size)");
 	});
 
 	test("the startup struct and both handle structs stay on the C stack", () => {
