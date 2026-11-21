@@ -117,7 +117,14 @@ export function createDockPlugin(adapter?: DockAdapter): PluginDefinition<
 			/** Read back what the tile currently shows; the empty string means no badge. */
 			badgeLabel: async (): Promise<DockLabelResult | DockFailure | NotImplemented> => {
 				if (!adapter) return missing("badgeLabel");
-				return { ok: true, label: await adapter.badgeLabel() };
+				const label = await adapter.badgeLabel();
+				// The native read returns "" both for "no badge" and for "the C unit did not compile".
+				// Re-apply what we just read — an idempotent set, so the tile does not change — to prove
+				// the tile is reachable. Without that probe a failed read would be reported as an empty
+				// badge, and every other dock command would refuse on the same machine.
+				const probe = await adapter.setBadge(label);
+				if (!probe.ok) return refusal(probe.reason);
+				return { ok: true, label };
 			},
 
 			/** Bounce the dock icon until the app is frontmost, or once. */

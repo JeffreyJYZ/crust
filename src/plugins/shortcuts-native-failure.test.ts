@@ -58,6 +58,41 @@ describe("shortcut native failures", () => {
 		expect(os.calls).toEqual(["command+k", "command+k"]);
 	});
 
+	test("an unregisterAll that removes nothing reports a failure and keeps the registry", async () => {
+		const os = fake();
+		const adapter: ShortcutAdapter = {
+			...os.adapter,
+			// The darwin adapter swallows a thrown native unregister into 0; the plugin must not
+			// answer { removed: 0 } while the hot key is still registered and still firing.
+			unregisterAll: () => 0,
+		};
+		const plugin = createShortcutsPlugin(adapter);
+		await plugin.commands.register({ accelerator: "Cmd+K" }, quiet);
+		const answer = await plugin.commands.unregisterAll();
+		expect(answer).toMatchObject({ ok: false, code: "native-failed" });
+		expect(plugin.commands.list()).toEqual(["command+k"]);
+		expect(plugin.commands.isRegistered({ accelerator: "Cmd+K" })).toBe(true);
+	});
+
+	test("a thrown unregisterAll is a typed failure, not a rejected invoke", async () => {
+		const os = fake();
+		const adapter: ShortcutAdapter = {
+			...os.adapter,
+			unregisterAll: () => {
+				throw new Error("the hot key unit did not compile");
+			},
+		};
+		const plugin = createShortcutsPlugin(adapter);
+		await plugin.commands.register({ accelerator: "Cmd+K" }, quiet);
+		const answer = await plugin.commands.unregisterAll();
+		expect(answer).toMatchObject({
+			ok: false,
+			code: "native-failed",
+			message: expect.stringContaining("the hot key unit did not compile"),
+		});
+		expect(plugin.commands.list()).toEqual(["command+k"]);
+	});
+
 	test("dispose detaches the press handler once, so a fired key reaches nobody", async () => {
 		const os = fake();
 		const plugin = createShortcutsPlugin(os.adapter);
