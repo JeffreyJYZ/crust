@@ -93,6 +93,9 @@ A green gate is the only proof a landing is safe.
   pins how many files `crust init --next/--react/(none)` writes (the glob skips `.gitignore`, which is
   checked separately). Adding the `/about` route took `--next` from 7 to 8 and left the macOS job red
   until the number was updated, so change the count in the same commit as the template.
+- **A template capability names its commands, so a CI proof that patches in one must grant it** — `windows-arm-runtime` added a `viewport` command while the scaffold granted only `app:greet`, so the bridge refused it deny-by-default and the workflow stayed red on five tags (2026-11-20).
+- **A page `.catch` is invisible in a built app** — the log mirror is off unless `logging.console`, so a refused invoke reads as silence and waits out whatever timeout the harness set; set `console: true` in a proof app so a refusal prints `forbidden` with its reason (2026-11-20).
+- **`bun test <dir>` matches a vendored path by substring** — `bun test scripts/windows` also runs `research/electrobun/repo/package/scripts/windows-release-validation.test.mjs`, whose 5 s watchdog test fails here, so a subset run reads 1 fail while the gate is clean (2026-11-20); name the file, not the directory.
 - **Never `open` a built bundle** — it routes through LaunchServices and raises Gatekeeper dialogs.
   Run `X.app/Contents/MacOS/<bin>` directly; that is the only launch path that reports exit 0.
 - **After a probe that launches or activates a GUI app, hand focus back to whichever app was frontmost

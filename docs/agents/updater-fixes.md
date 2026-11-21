@@ -35,11 +35,13 @@ response in chunks and `writeFile`s the bounded bytes instead of `Bun.write(path
 returned `bytes` is the count actually written. Refusal code is `download-failed`, naming the URL and
 the cap.
 
-**6. `fetch` followed redirects (LOW)** — same file. Both `fetchJson` and `download` pass
-`redirect: "manual"`, and `redirectFailure` turns any 3xx (or an opaque redirect) into
-`download-failed: … answered a redirect to <location>, and download follows no redirect`. So the
-`https`-only policy in `updater-url.ts` covers the bytes actually fetched, not just the URL the page
-passed. `fetchJson` gets the same guard, because a manifest cheap-check has no reason to hop either.
+**6. `fetch` refused redirects (LOW, superseded 2026-11-21)** — same file. `fetchJson` and `download`
+passed `redirect: "manual"` and turned any 3xx into a `download-failed` naming the location. That made
+`https://github.com/…/releases/latest/download/…` unusable, because GitHub answers 302, and the guide
+presented GitHub Releases as the normal host. `fetchFollowing` in `updater-fetch.ts` now follows at most
+five `https`→`https` hops, re-checks every `location` and refuses any `http:` target before requesting
+it. The security boundary is the pinned Ed25519 `updater.pubkey` over the artefact bytes, never the
+hostname, so a redirect that changes host does not widen what can be installed.
 
 ## Tests added
 
@@ -51,10 +53,11 @@ passed. `fetchJson` gets the same guard, because a manifest cheap-check has no r
 - `src/plugins/updater-archive.test.ts` — three `finding 2` cases: a truncated archive, a central
   directory whose `nameLength` is 0xffff with no bytes behind it, and a real `download` of a truncated
   zip answering `invalid-archive` with the archive named and no engine offset text.
-- `src/plugins/updater-fetch.test.ts` — a real `Bun.serve` on loopback: a 302 answers
-  `follows no redirect` for both `download` and `fetchJson` while a 200 still parses; a declared
-  `content-length` over a 16-byte cap refuses before reading; a chunked body with no header is stopped
-  mid-stream; the default cap is the number reported.
+- `src/plugins/updater-fetch.test.ts` — a real `Bun.serve` on loopback: a 302 to an https object is
+  followed and the object's body is what arrives; a 302 to `http:` is refused before the plaintext
+  request is made (one request, not two); a redirect loop stops at the five-hop bound; a 200 still
+  parses; a declared `content-length` over a 16-byte cap refuses before reading; a chunked body with no
+  header is stopped mid-stream; the default cap is the number reported.
 
 `bun test src/plugins/updater` — 62 pass, 0 fail. `bun check` reports nothing under `src/plugins`.
 `bun fmt` applied to the seven touched files only. `bun run check:lines` fails on
@@ -79,7 +82,9 @@ updater file stays at or under 200 (`updater-node.ts` 171, `updater-archive.ts` 
 - `fetch(..., { redirect: "manual" })` returns the 3xx itself in Bun (status 302, `type: "default"`,
   `location` header readable) rather than an opaque redirect; checking both `status >= 300 && < 400`
   and `type === "opaqueredirect"` covers either runtime. `redirect: "error"` also refuses but throws a
-  `TypeError` naming neither the URL nor the location.
+  `TypeError` naming neither the URL nor the location. A hop is only safe because the signature names the
+  bytes: `https://github.com/…/releases/latest/download/…` answers 302 and must be followed for GitHub
+  Releases to work at all (2026-11-21).
 - `Bun.write(path, response)` consumes the whole body with no cap. Reading `response.body` in a
   `for await` and accumulating gives the byte count as it grows, so the refusal lands before the disk
   does.
