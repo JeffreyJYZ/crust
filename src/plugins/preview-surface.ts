@@ -14,6 +14,8 @@ export interface SurfaceRequest {
 	path: string;
 	width: number;
 	height: number;
+	/** The calling window's label, used to find the native owner the panel must die with. */
+	window?: string;
 }
 
 /** A panel that is up. `window` is its own window number where the platform has one, else 0. */
@@ -45,7 +47,9 @@ export interface PreviewSurface {
  */
 export interface DarwinAdapter {
 	available(): { available: boolean; reason: string };
-	show(options: { path: string; width?: number; height?: number }): {
+	/** The live `NSWindow *` for the caller's label, or 0 when no owner can be found. */
+	owner(label?: string): number;
+	show(options: { path: string; width?: number; height?: number; window?: number }): {
 		ok: boolean;
 		reason: string;
 	};
@@ -70,7 +74,11 @@ export function darwinSurface(adapter: DarwinAdapter): PreviewSurface {
 		show(request) {
 			const state = adapter.available();
 			if (!state.available) return refused(state.reason);
-			const outcome = adapter.show(request);
+			const owner = adapter.owner(request.window);
+			// QLPreviewPanel is a system singleton, not a child of the app window. An ownerless panel
+			// survives every close path, so show refuses rather than installing one nothing can veto.
+			if (owner === 0) return refused("preview.show needs an open owner window to float over");
+			const outcome = adapter.show({ ...request, window: owner });
 			if (!outcome.ok) return refused(outcome.reason);
 			return { ok: true, window: adapter.windowNumber() };
 		},

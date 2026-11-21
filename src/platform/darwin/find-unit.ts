@@ -15,7 +15,10 @@ import { join } from "node:path";
 
 // A compiled binary has no readable `import.meta.dir`, so the C unit travels inside the
 // binary as text and is materialised before `cc()` sees it.
-import source from "./shim/108_find.c" with { type: "text" };
+import blockPart from "./shim/108_find.c" with { type: "text" };
+import idPart from "./shim/109_find_ids.c" with { type: "text" };
+
+const source = `${blockPart}\n${idPart}`;
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -53,6 +56,7 @@ export interface FindUnit {
 			length: number,
 			backwards: number,
 			caseSensitive: number,
+			id: number,
 		) => number;
 		crust_find_repeat: (web: number, backwards: number, caseSensitive: number) => number;
 		/** 1 when the global completion block is built. */
@@ -73,7 +77,7 @@ function compile(): FindUnit {
 		symbols: {
 			crust_find_set_sink: { args: [P], returns: V },
 			crust_find_available: { args: [P], returns: I32 },
-			crust_find_search: { args: [P, P, I64, I32, I32], returns: I32 },
+			crust_find_search: { args: [P, P, I64, I32, I32, I32], returns: I32 },
 			crust_find_repeat: { args: [P, I32, I32], returns: I32 },
 			crust_find_block_ready: { args: [], returns: I32 },
 		},

@@ -21,6 +21,8 @@ export interface BrowserPorts {
 	/** Put the webview inside the host view; the one AppKit send the adapter makes itself. */
 	addWebview(host: number, web: number): void;
 	removeWebview(web: number): void;
+	/** Drop the +1 retain the host view was built with; `removeWebview` handles the webview's. */
+	releaseView(view: number): void;
 	load(web: number, url: string): number;
 	navInstall(web: number): number;
 	navUninstall(web: number): void;
@@ -42,14 +44,22 @@ export function realPorts(): BrowserPorts {
 			// A fresh configuration per surface: none of the app's user scripts or scheme handlers.
 			const configuration = Number(shim().symbols.shim_webview_configuration() ?? 0);
 			if (configuration === 0) return 0;
-			return Number(shim().symbols.shim_webview_new(configuration, 0, 0) ?? 0);
+			const web = Number(shim().symbols.shim_webview_new(configuration, 0, 0) ?? 0);
+			// WebKit copies the configuration at creation. Its +1 is ours and is no longer needed;
+			// keeping it leaked one WKWebViewConfiguration per surface.
+			S.v0(configuration, "release");
+			return web;
 		},
 		addWebview: (host, web) => {
 			S.v1(host, "addSubview:", web);
 		},
 		removeWebview: (web) => {
 			S.v0(web, "removeFromSuperview");
+			// `-initWithFrame:configuration:` returned +1 and removing from the superview drops only
+			// that retain, so this is the matching release for the webview we built here.
+			S.v0(web, "release");
 		},
+		releaseView: (view) => native.shim_browser_view_release(view),
 		load: (web, url) => Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0),
 		navInstall: (web) => Number(navigationUnit().symbols.crust_nav_install(web) ?? 1),
 		navUninstall: (web) => {

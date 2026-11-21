@@ -15,6 +15,7 @@ import {
 	type PreviewNative,
 	previewOwnerCheck,
 	previewWindowClosed,
+	setPreviewOwnerResolver,
 } from "./preview.ts";
 
 /** The C half, faked so a refusal is proved to send nothing to AppKit. */
@@ -149,6 +150,19 @@ describe("the preview adapter", () => {
 		expect(native.calls.at(-1)).toBe("hide");
 		expect(adapter.visible()).toBe(false);
 		expect(adapter.windowNumber()).toBe(0);
+	});
+});
+
+describe("the panel's owner", () => {
+	test("the registered resolver names the window a panel floats over", () => {
+		setPreviewOwnerResolver((label) => (label === "side" ? 909 : 4242));
+		try {
+			const adapter = darwinPreviewAdapter(new FakePreview());
+			expect(adapter.owner("side")).toBe(909);
+			expect(adapter.owner()).toBe(4242);
+		} finally {
+			setPreviewOwnerResolver(() => 0);
+		}
 	});
 });
 

@@ -119,12 +119,17 @@ int crust_ax_element_count(void) {
 		ax_t window = CFArrayGetValueAtIndex(windows, 0);
 		if (!window) {
 			ax_reason_set("the first window was not an AX element");
+			// -1 is reserved for an empty AXWindows list. Every other negative is a refusal, and
+			// the value names the call: -2 AXWindows, -3 AXChildren. A refused AXChildren used to
+			// return -1, so the TS adapter reported a permission failure as "no windows listed".
+			count = -3;
 		} else {
 			ax_t children = 0;
 			int child_status = AXUIElementCopyAttributeValue(
 			    window, __CFStringMakeConstantString("AXChildren"), &children);
 			if (child_status != AX_OK || !children) {
 				ax_reason_code("the AX API refused AXChildren on the first window", child_status);
+				count = -3;
 			} else {
 				count = (int)CFArrayGetCount(children);
 				CFRelease(children);

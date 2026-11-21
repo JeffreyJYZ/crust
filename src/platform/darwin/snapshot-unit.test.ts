@@ -47,18 +47,18 @@ function shim(options: {
 	const seam = {
 		listened: 0,
 		available: () => true,
-		take(view: number) {
+		take(view: number, id: number) {
 			void view;
-			if (when === "during") seam.channel?.(answer);
-			if (when === "after") queueMicrotask(() => seam.channel?.(answer));
+			if (when === "during") seam.channel?.(id, answer);
+			if (when === "after") queueMicrotask(() => seam.channel?.(id, answer));
 			return status;
 		},
 		read: () => bytes,
-		setChannel(onAnswer: (ok: boolean) => void) {
+		setChannel(onAnswer: (id: number, ok: boolean) => void) {
 			seam.listened++;
 			seam.channel = onAnswer;
 		},
-		channel: undefined as ((ok: boolean) => void) | undefined,
+		channel: undefined as ((id: number, ok: boolean) => void) | undefined,
 	};
 	return seam;
 }
@@ -72,7 +72,7 @@ describe("snapshot unit", () => {
 	test.skipIf(notDarwin)("a null webview is refused instead of sending into nil", () => {
 		const { symbols } = snapshotUnit();
 		expect(Number(symbols.crust_shot_available(0) ?? -1)).toBe(0);
-		expect(Number(symbols.crust_shot_take(0) ?? -1)).toBe(SNAPSHOT_STATUS.unavailable);
+		expect(Number(symbols.crust_shot_take(0, 1) ?? -1)).toBe(SNAPSHOT_STATUS.unavailable);
 		// Nothing was taken, so the reads say so rather than answering stale bytes.
 		expect(Number(symbols.crust_shot_length() ?? 0)).toBe(-1);
 		expect(Number(symbols.crust_shot_read(0, 0) ?? 0)).toBe(-1);
@@ -129,5 +129,44 @@ describe("the capture promise", () => {
 		const second = takeSnapshot(2, shim());
 		await expect(first).rejects.toThrow("superseded this one");
 		expect((await second).width).toBe(2200);
+	});
+
+	test("a late completion from the older render cannot answer the newer capture", async () => {
+		let channel: ((id: number, ok: boolean) => void) | undefined;
+		let picture = PICTURE;
+		const ids: number[] = [];
+		const seam: SnapshotShim = {
+			available: () => true,
+			take(_view, id) {
+				ids.push(id);
+				// The first WebKit render is already in flight when the second capture starts; its
+				// completion lands through the sink the second capture installed.
+				if (ids.length === 1) queueMicrotask(() => channel?.(id, true));
+				return SNAPSHOT_STATUS.started;
+			},
+			read: () => picture,
+			setChannel: (onAnswer) => {
+				channel = onAnswer;
+			},
+		};
+		const first = takeSnapshot(1, seam);
+		const second = takeSnapshot(2, seam);
+		await expect(first).rejects.toThrow("superseded this one");
+
+		// The stale completion now lands. If it settled `second`, this picture would be returned.
+		picture = { ...PICTURE, width: 111 };
+		await Promise.resolve();
+		await Promise.resolve();
+		let settled = false;
+		void second.then(
+			() => (settled = true),
+			() => (settled = true),
+		);
+		await Promise.resolve();
+		expect(settled).toBe(false);
+
+		picture = { ...PICTURE, width: 222 };
+		channel?.(ids[1] as number, true);
+		expect((await second).width).toBe(222);
 	});
 });

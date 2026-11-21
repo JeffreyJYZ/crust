@@ -122,14 +122,17 @@ const char *menu_api_read_key(int index) {
 	return menu_read_string(menu_read_row(index), "keyEquivalent");
 }
 
-// Is the bar the one crust installed: two entries, the first titled after the app.
-// Compared by content, never identity — a rebuild has new objects with equal titles.
+// Defined here, before 99_menu_context.c is concatenated into the same unit; that part marks it
+// when crust installs the default bar, and this part compares against it.
+static obj_t menu_default_bar = 0;
+
+// Is the live bar the one crust installed, by pointer identity. A shape check (two roots, the
+// first titled after the app) let a caller-built bar claim to be the default after it had thrown
+// away the documented ⌘C/⌘V/⌘Q rows. `app_name` stays in the ABI for the readback caller but is
+// no longer the test: identity cannot be forged from page-visible data.
 int menu_api_is_default(const char *app_name, long long len) {
+	(void)app_name;
+	(void)len;
 	obj_t main_menu = menu_read_main();
-	if (!main_menu || !app_name || len <= 0) return 0;
-	if (menu_read_total(main_menu) != 2) return 0;
-	const char *title = menu_read_string(menu_read_at(main_menu, 0), "title");
-	long i = 0;
-	while (i < len && title[i] == app_name[i]) i++;
-	return (i == len && title[i] == 0) ? 1 : 0;
+	return main_menu && menu_default_bar && main_menu == menu_default_bar ? 1 : 0;
 }

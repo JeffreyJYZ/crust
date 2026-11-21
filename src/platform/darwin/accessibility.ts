@@ -78,15 +78,18 @@ function reasonOf(unit: AccessibilityUnit, fallback: string): string {
 	return reason.length > 0 ? reason : fallback;
 }
 
-/** A count of 0 or more is `counted`; the C unit's own negatives are the two refusals. */
-function report(unit: AccessibilityUnit, answer: number): AxElementReport {
-	const reason = reasonOf(unit, `crust_ax_element_count answered ${answer}`);
+/** A count of 0 or more is `counted`. Only -1 means an empty AX list; -2/-3 are refusals. */
+export function axElementReport(reason: string, answer: number): AxElementReport {
 	if (answer >= 0) return { count: answer, status: AX_STATUS.counted, reason };
 	return {
 		count: 0,
 		status: answer === -1 ? AX_STATUS.noWindowsListed : AX_STATUS.refused,
 		reason,
 	};
+}
+
+function report(unit: AccessibilityUnit, answer: number): AxElementReport {
+	return axElementReport(reasonOf(unit, `crust_ax_element_count answered ${answer}`), answer);
 }
 
 /** The page unit, or the reason it could not be compiled — a refusal, never a throw. */

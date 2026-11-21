@@ -81,27 +81,38 @@ static obj_t shim_default_mode(void) { return __CFStringMakeConstantString("kCFR
 // AppKit's rendering, and no amount of slice tuning will help.
 int shim_on_main_runloop(void) { return CFRunLoopGetMain() == CFRunLoopGetCurrent(); }
 
+// Every tick builds autoreleased NSDate, NSEvent, NSString and NSValue objects, and several other
+// shim units leave their +0 objects "to the pool the pump drains". Without a pool here those
+// objects live for the whole process; the three pool exports exist for exactly this purpose.
 int shim_pump(obj_t mode) {
+	obj_t pool = shim_pool_new();
+	int result = 0;
+	if (pool) shim_pool_init(pool);
 	if (!mode) mode = shim_default_mode();
 	obj_t app = ((obj_t (*)(void *, void *))objc_msgSend)(
 	    objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
-	if (!app) return CFRunLoopRunInMode(mode, 0.004, 0);
+	if (!app) {
+		result = CFRunLoopRunInMode(mode, 0.004, 0);
+	} else {
+		obj_t deadline = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSDate"),
+		                                                          sel_registerName("date"));
+		if (deadline) deadline = ((obj_t (*)(void *, void *, double))objc_msgSend)(
+		    deadline, sel_registerName("dateByAddingTimeInterval:"), 0.004);
 
-	obj_t deadline = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSDate"),
-	                                                          sel_registerName("date"));
-	if (deadline) deadline = ((obj_t (*)(void *, void *, double))objc_msgSend)(
-	    deadline, sel_registerName("dateByAddingTimeInterval:"), 0.004);
-
-	obj_t event = ((obj_t (*)(void *, void *, unsigned long, obj_t, obj_t, signed char))
-	                   objc_msgSend)(
-	    app, sel_registerName("nextEventMatchingMask:untilDate:inMode:dequeue:"), ~0UL,
-	    deadline, mode, 1);
-	if (event) {
-		((void (*)(void *, void *, obj_t))objc_msgSend)(app, sel_registerName("sendEvent:"),
-		                                               event);
-		((void (*)(void *, void *))objc_msgSend)(app, sel_registerName("updateWindows"));
-		return 1;
+		obj_t event = ((obj_t (*)(void *, void *, unsigned long, obj_t, obj_t, signed char))
+		                   objc_msgSend)(
+		    app, sel_registerName("nextEventMatchingMask:untilDate:inMode:dequeue:"), ~0UL,
+		    deadline, mode, 1);
+		if (event) {
+			((void (*)(void *, void *, obj_t))objc_msgSend)(app, sel_registerName("sendEvent:"),
+			                                               event);
+			((void (*)(void *, void *))objc_msgSend)(app, sel_registerName("updateWindows"));
+			result = 1;
+		} else {
+			result = CFRunLoopRunInMode(mode, 0.002, 0);
+		}
 	}
-	return CFRunLoopRunInMode(mode, 0.002, 0);
+	if (pool) shim_pool_drain(pool);
+	return result;
 }
 

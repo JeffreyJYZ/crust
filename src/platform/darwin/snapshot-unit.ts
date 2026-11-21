@@ -17,9 +17,10 @@ import { join } from "node:path";
 
 // A compiled binary has no readable `import.meta.dir`, so the C parts travel inside it as text.
 import blockPart from "./shim/123_snapshot.c" with { type: "text" };
+import idPart from "./shim/125_snapshot_ids.c" with { type: "text" };
 import readPart from "./shim/124_snapshot_read.c" with { type: "text" };
 
-export const snapshotSource = `${blockPart}\n${readPart}`;
+export const snapshotSource = `${blockPart}\n${idPart}\n${readPart}`;
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -52,7 +53,7 @@ export interface SnapshotUnit {
 	symbols: {
 		crust_shot_set_sink: (sink: number) => void;
 		crust_shot_available: (web: number) => number;
-		crust_shot_take: (web: number) => number;
+		crust_shot_take: (web: number, id: number) => number;
 		crust_shot_width: () => number;
 		crust_shot_height: () => number;
 		crust_shot_scale: () => number;
@@ -75,7 +76,7 @@ function compile(): SnapshotUnit {
 		symbols: {
 			crust_shot_set_sink: { args: [P], returns: V },
 			crust_shot_available: { args: [P], returns: I32 },
-			crust_shot_take: { args: [P], returns: I32 },
+			crust_shot_take: { args: [P, I32], returns: I32 },
 			crust_shot_width: { args: [], returns: I64 },
 			crust_shot_height: { args: [], returns: I64 },
 			crust_shot_scale: { args: [], returns: F64 },

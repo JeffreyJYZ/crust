@@ -189,5 +189,9 @@ int crust_nav_uninstall(void *web) {
 		                                                 sel_registerName("setNavigationDelegate:"),
 		                                                 0);
 	objc_setAssociatedObject(web, &nav_key, 0, NAV_RETAIN);
+	// The association's RETAIN is one owner; `[cls new]` at install was a second, +1 owner that
+	// clearing the association does not touch. Without this release every surface cycle leaks a
+	// CrustNavigationDelegate.
+	((void (*)(void *, void *))objc_msgSend)(delegate, sel_registerName("release"));
 	return 1;
 }

@@ -77,9 +77,12 @@ describe("find-in-page reaches the window it was asked for", () => {
 		await expect(
 			adapter.search({ text: "crust", forward: true, matchCase: false }, "prefs"),
 		).rejects.toThrow();
+		await expect(
+			adapter.search({ text: "main", forward: true, matchCase: false }, "main"),
+		).rejects.toThrow();
 		await expect(adapter.next("main")).rejects.toThrow();
 		await expect(adapter.previous()).rejects.toThrow();
-		expect(seen).toEqual([PREFS, MAIN, MAIN]);
+		expect(seen).toEqual([PREFS, MAIN, MAIN, MAIN]);
 	});
 
 	test("an unknown label is a bad request and searches nothing", () => {

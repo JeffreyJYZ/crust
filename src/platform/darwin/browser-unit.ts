@@ -54,8 +54,10 @@ export interface BrowserUnit {
 		) => void;
 		shim_browser_attach: (parent: number, view: number) => number;
 		shim_browser_detach: (view: number) => void;
+		shim_browser_view_release: (view: number) => void;
 		shim_browser_ui_install: (web: number) => number;
 		shim_browser_ui_installed: (web: number) => number;
+		shim_browser_ui_uninstall: (web: number) => void;
 		shim_browser_set_sink: (sink: number) => void;
 		shim_browser_popups: () => number;
 		shim_browser_popup_url: (dst: number, cap: number) => number;
@@ -82,8 +84,10 @@ function compile(): BrowserUnit {
 			shim_browser_view_set_frame: { args: [P, F64, F64, F64, F64], returns: V },
 			shim_browser_attach: { args: [P, P], returns: I32 },
 			shim_browser_detach: { args: [P], returns: V },
+			shim_browser_view_release: { args: [P], returns: V },
 			shim_browser_ui_install: { args: [P], returns: I32 },
 			shim_browser_ui_installed: { args: [P], returns: I32 },
+			shim_browser_ui_uninstall: { args: [P], returns: V },
 			shim_browser_set_sink: { args: [P], returns: V },
 			shim_browser_popups: { args: [], returns: I32 },
 			shim_browser_popup_url: { args: [P, I64], returns: I64 },

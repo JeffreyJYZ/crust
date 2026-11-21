@@ -1,11 +1,14 @@
 /**
- * The macOS half of `crust:findinpage`: the promise, the timeout and the adapter.
+ * The macOS half of `crust:findinpage`: the promise, the request id and the adapter.
  * `-findString:withConfiguration:completionHandler:` takes a block, which may not cross
- * `bun:ffi`, so `shim/108_find.c` builds a GLOBAL block and reports the one BOOL it carries
- * through a `JSCallback`. The answer therefore arrives later than the send, and every command
- * here is a promise settled by that callback.
- * `WKFindConfiguration` has no `findNext`/`findPrevious`: advancing repeats the last search
- * with `backwards` flipped, which is what `next()` and `previous()` do.
+ * `bun:ffi`, so `shim/108_find.c` builds a GLOBAL block and reports the request id plus the one BOOL
+ * it carries through a `JSCallback`. The answer therefore arrives later than the send, and every
+ * command here is a promise settled by that callback. A second search fails the older promise but
+ * cannot cancel the older WebKit find, so the id is what stops a stale completion from answering
+ * the newer search.
+ * `WKFindConfiguration` has no `findNext`/`findPrevious`: advancing repeats the last search with
+ * `backwards` flipped. The text is kept **per webview** here, so two windows cannot overwrite each
+ * other's query the way C's one process-wide `find_last` did.
  */
 
 import { FFIType, JSCallback, ptr } from "bun:ffi";
@@ -16,7 +19,6 @@ import type { LabeledAdapter, WebviewFor } from "./webview-target.ts";
 export { FIND_STATUS, findStartReason, findUnit };
 export type { FindNative, FindUnit } from "./find-unit";
 
-const P = FFIType.ptr;
 const I32 = FFIType.i32;
 
 /**
@@ -28,7 +30,13 @@ export const FIND_TIMEOUT_MS = 4000;
 
 /** One sink per process: C keeps a single function pointer, so a second JSCallback is never reached. */
 let sink: JSCallback | undefined;
-let pending: { settle: (outcome: FindOutcome) => void; fail: (error: Error) => void } | undefined;
+interface Pending {
+	id: number;
+	settle: (outcome: FindOutcome) => void;
+	fail: (error: Error) => void;
+}
+let pending: Pending | undefined;
+let generation = 0;
 
 function callbackPointer(callback: JSCallback): number {
 	const raw: unknown = callback.ptr;
@@ -37,19 +45,26 @@ function callbackPointer(callback: JSCallback): number {
 	return value;
 }
 
+/** The sink body, exported so a suite can deliver a completion without a live WebKit. */
+export function deliverFind(id: number, found: number): void {
+	// A completion from a superseded search must never settle the newer promise.
+	if (id !== pending?.id) return;
+	const answer = pending;
+	pending = undefined;
+	// WKFindResult carries no count, so the one BOOL is both the answer and the only number this
+	// can report honestly.
+	const hit = Number(found) === 1;
+	answer.settle({ matches: hit ? 1 : 0, found: hit });
+}
+
 function channel(native: FindNative): void {
 	if (sink === undefined) {
 		sink = new JSCallback(
-			(found: number) => {
-				const answer = pending;
-				pending = undefined;
-				// WKFindResult carries no count, so the one BOOL is both the answer and the only
-				// number this can report honestly.
-				const hit = Number(found) === 1;
-				answer?.settle({ matches: hit ? 1 : 0, found: hit });
+			(id: number, found: number) => {
+				deliverFind(id, found);
 				return 0;
 			},
-			{ args: [I32], returns: I32 },
+			{ args: [I32, I32], returns: I32 },
 		);
 	}
 	native.crust_find_set_sink(callbackPointer(sink));
@@ -66,7 +81,7 @@ function supersede(): void {
  * Start one search and await WebKit's completion. The pending resolver is installed before the
  * send, because a completion that arrived during `findString:` would otherwise be lost.
  */
-function ask(native: FindNative, start: () => number): Promise<FindOutcome> {
+function ask(native: FindNative, id: number, start: () => number): Promise<FindOutcome> {
 	supersede();
 	return new Promise<FindOutcome>((resolve, reject) => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -75,6 +90,7 @@ function ask(native: FindNative, start: () => number): Promise<FindOutcome> {
 			timer = undefined;
 		};
 		pending = {
+			id,
 			settle: (outcome) => {
 				done();
 				resolve(outcome);
@@ -120,49 +136,53 @@ export function darwinFindAdapter(
 		}
 		return pointer;
 	};
-	/**
-	 * The case flag the last search sent, per webview: a repeat re-runs that window's own
-	 * search, so two windows cannot overwrite each other's flag.
-	 */
-	const matchCase = new Map<number, boolean>();
+	/** Each window's own last query; a repeat never reads another window's text. */
+	const last = new Map<number, { text: string; matchCase: boolean }>();
+
+	const run = (
+		view: number,
+		text: string,
+		matchCase: boolean,
+		backwards: boolean,
+	): Promise<FindOutcome> => {
+		channel(native);
+		const bytes = new TextEncoder().encode(text);
+		const id = ++generation;
+		return ask(native, id, () =>
+			Number(
+				native.crust_find_search(
+					view,
+					ptr(bytes),
+					bytes.length,
+					backwards ? 1 : 0,
+					matchCase ? 1 : 0,
+					id,
+				) ?? FIND_STATUS.unavailable,
+			),
+		);
+	};
 
 	return {
-		search: (query, label?: string) => {
+		search: (query, label?) => {
 			const view = target(label);
-			matchCase.set(view, query.matchCase);
-			channel(native);
-			const bytes = new TextEncoder().encode(query.text);
-			return ask(native, () =>
-				Number(
-					native.crust_find_search(
-						view,
-						ptr(bytes),
-						bytes.length,
-						query.forward ? 0 : 1,
-						query.matchCase ? 1 : 0,
-					) ?? FIND_STATUS.unavailable,
-				),
-			);
+			last.set(view, { text: query.text, matchCase: query.matchCase });
+			return run(view, query.text, query.matchCase, !query.forward);
 		},
-		next: (label?: string) => {
+		next: (label?) => {
 			const view = target(label);
-			channel(native);
-			return ask(native, () =>
-				Number(
-					native.crust_find_repeat(view, 0, matchCase.get(view) ? 1 : 0) ??
-						FIND_STATUS.unavailable,
-				),
-			);
+			const query = last.get(view);
+			if (query === undefined) {
+				throw new Error("crust: findinpage.next needs a search in this window first");
+			}
+			return run(view, query.text, query.matchCase, false);
 		},
-		previous: (label?: string) => {
+		previous: (label?) => {
 			const view = target(label);
-			channel(native);
-			return ask(native, () =>
-				Number(
-					native.crust_find_repeat(view, 1, matchCase.get(view) ? 1 : 0) ??
-						FIND_STATUS.unavailable,
-				),
-			);
+			const query = last.get(view);
+			if (query === undefined) {
+				throw new Error("crust: findinpage.previous needs a search in this window first");
+			}
+			return run(view, query.text, query.matchCase, true);
 		},
 	};
 }

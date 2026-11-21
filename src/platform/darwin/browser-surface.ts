@@ -62,6 +62,13 @@ export class SurfaceStore {
 
 /** Remove one surface's views and delegates; each step is tolerant of a window that already went. */
 export function teardown(surface: Surface, ports: BrowserPorts): void {
+	// Both delegates were installed with two retains each: the associated-object retain and the
+	// +1 from `[cls new]`. Uninstall clears and releases both before the webview itself goes.
+	try {
+		ports.native.shim_browser_ui_uninstall(surface.web);
+	} catch {
+		// The delegate may already be gone with a closed window.
+	}
 	try {
 		ports.navUninstall(surface.web);
 	} catch {
@@ -70,6 +77,7 @@ export function teardown(surface: Surface, ports: BrowserPorts): void {
 	try {
 		ports.removeWebview(surface.web);
 		ports.native.shim_browser_detach(surface.view);
+		ports.releaseView(surface.view);
 	} catch {
 		// A webview already detached by its window is not an error.
 	}

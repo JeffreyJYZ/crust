@@ -1,9 +1,11 @@
 // --- snapshot: the page as the webview rendered it -------------------------
 // `-[WKWebView takeSnapshotWithConfiguration:completionHandler:]` takes a block, and a block
-// cannot cross bun:ffi, so this unit builds a GLOBAL block the way 108_find.c and
+// cannot cross bun:ffi, so this unit builds GLOBAL blocks the way 108_find.c and
 // 70_sheet_block.c do: plain memory { isa, flags, reserved, invoke, descriptor }, isa from
 // objc_getClass("__NSGlobalBlock__"), bit 28 set and bit 30 (BLOCK_HAS_SIGNATURE) deliberately
 // clear, because setting it without a real signature makes the runtime read past the struct.
+// One block per in-flight capture id lives in 125_snapshot_ids.c, so a completion can say which
+// render it finished — see that unit for why a single block cross-talks.
 //
 // The picture never leaves C either. The handler encodes it to PNG at once, keeps that NSData,
 // and reports the byte length, so the caller can ask again with an exact-size buffer exactly as
@@ -26,26 +28,11 @@ enum { SHOT_PNG_TYPE = 4 };
 /** `crust_shot_take`'s answers; only `started` means a picture is on its way. */
 enum { SHOT_STARTED = 0, SHOT_UNAVAILABLE = 1, SHOT_NO_CONFIG = 2, SHOT_NO_BLOCK = 3 };
 
-typedef struct {
-	unsigned long reserved;
-	unsigned long size;
-} shot_block_descriptor;
+/** The block a capture's id owns, chosen in 125_snapshot_ids.c before the send. */
+static void *shot_block_for(int id);
 
-// (^)(NSImage *image, NSError *error) — the block itself is the hidden first argument.
-typedef struct {
-	void *isa;
-	int flags;
-	int reserved;
-	void (*invoke)(void *, void *, void *);
-	void *descriptor;
-} shot_block_t;
-
-static shot_block_descriptor shot_desc;
-static shot_block_t shot_block;
-static int shot_block_ready;
-
-/** The JSCallback bun:ffi hands out: 1 for a picture, 0 for a refusal. */
-static int (*shot_sink)(int ok) = 0;
+/** The JSCallback bun:ffi hands out: (id, 1) for a picture, (id, 0) for a refusal. */
+static int (*shot_sink)(int id, int ok) = 0;
 
 /** The last picture: a retained PNG NSData, its pixel size, and the scale measured from it. */
 static shot_t shot_png = 0;
@@ -119,31 +106,14 @@ static shot_t shot_encode(shot_t image, long long *w, long long *h) {
 	return ((shot_t (*)(void *, void *))objc_msgSend)(png, sel_registerName("retain"));
 }
 
-static void shot_invoke(void *block, void *image, void *error);
-
-static int shot_block_init(void) {
-	if (shot_block_ready) return 1;
-	shot_t isa = objc_getClass("__NSGlobalBlock__");
-	if (!isa) return 0;
-	shot_desc.reserved = 0;
-	shot_desc.size = sizeof(shot_block_t);
-	shot_block.isa = isa;
-	shot_block.flags = SHOT_BLOCK_IS_GLOBAL;
-	shot_block.reserved = 0;
-	shot_block.invoke = shot_invoke;
-	shot_block.descriptor = &shot_desc;
-	shot_block_ready = 1;
-	return 1;
-}
-
-// Runs on the main thread once WebKit has rendered. The encode happens here, before the caller is
-// told, so a caller that wakes reads one complete picture rather than a half-written one.
-static void shot_invoke(void *block, void *image, void *error) {
+// Runs on the main thread once WebKit has rendered one known id. The encode happens here, before
+// the caller is told, so a caller that wakes reads one complete picture rather than a half-written
+// one. The sink carries the id, so a render superseded in JS cannot settle the newer promise.
+static void shot_finish(void *image, void *error, int id) {
 	long long w = 0;
 	long long h = 0;
 	shot_t png;
 	int ok = 0;
-	(void)block;
 	shot_clear();
 	if (image && !error) {
 		png = shot_encode(image, &w, &h);
@@ -155,10 +125,10 @@ static void shot_invoke(void *block, void *image, void *error) {
 			ok = 1;
 		}
 	}
-	if (shot_sink) shot_sink(ok);
+	if (shot_sink) shot_sink(id, ok);
 }
 
-void crust_shot_set_sink(void *sink) { shot_sink = (int (*)(int))sink; }
+void crust_shot_set_sink(void *sink) { shot_sink = (int (*)(int, int))sink; }
 
 // 1 when the webview can render a picture at all: the configuration class, the global block class
 // and the selector, so a system without them is refused by name instead of sending into nil.
@@ -171,19 +141,21 @@ int crust_shot_available(void *web) {
 
 // 0 started, 1 no webview or no snapshot selector, 2 the configuration did not build, 3 the
 // completion block could not be built. The configuration is a default one: no `snapshotWidth`, so
-// WebKit renders the view's own bounds, and a default rect, which is the whole view.
-int crust_shot_take(void *web) {
+// WebKit renders the view's own bounds, and a default rect, which is the whole view. `id` is the
+// capture generation the caller will use to discard a completion that is no longer wanted.
+int crust_shot_take(void *web, int id) {
 	shot_t config;
+	void *block;
 	if (!crust_shot_available(web)) return SHOT_UNAVAILABLE;
-	if (!shot_block_init()) return SHOT_NO_BLOCK;
+	block = shot_block_for(id);
+	if (!block) return SHOT_NO_BLOCK;
 	config = ((shot_t (*)(void *, void *))objc_msgSend)(
 	    objc_getClass("WKSnapshotConfiguration"), sel_registerName("new"));
 	if (!config) return SHOT_NO_CONFIG;
 	shot_clear();
 	shot_frame_w = shot_width_points(web);
 	((void (*)(void *, void *, shot_t, void *))objc_msgSend)(
-	    web, sel_registerName("takeSnapshotWithConfiguration:completionHandler:"), config,
-	    (void *)&shot_block);
+	    web, sel_registerName("takeSnapshotWithConfiguration:completionHandler:"), config, block);
 	((void (*)(void *, void *))objc_msgSend)(config, sel_registerName("release"));
 	return SHOT_STARTED;
 }

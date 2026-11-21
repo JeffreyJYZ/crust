@@ -12,7 +12,7 @@ import { applyDockIcon } from "./dock-icon.ts";
 import { ptrValue, S } from "./objc.ts";
 import type { DarwinOptions } from "./platform-options.ts";
 import { createPump } from "./pump.ts";
-import { previewOwnerCheck } from "./preview.ts";
+import { previewOwnerCheck, setPreviewOwnerResolver } from "./preview.ts";
 import { createNativeWindow } from "./window-create.ts";
 import { type DarwinWindowStore, createWindowStore } from "./window-store.ts";
 
@@ -40,6 +40,13 @@ export class DarwinPlatform implements Platform {
 		// `featurePlugins` builds the browser plugin before the darwin arm of `runtime-plugins.ts`
 		// is reached, so the surface looks its host windows up through this one registration.
 		bindBrowserWindows(this);
+		// The native owner of a QuickLook panel comes from the same registry a `window` command
+		// uses, so a closed label cannot own a panel: show refuses before one is installed.
+		setPreviewOwnerResolver((label) => {
+			const chosen = label ?? this.#windows.labels()[0];
+			if (chosen === undefined || this.#windows.handle(chosen) === undefined) return 0;
+			return this.#windows.native(chosen) ?? 0;
+		});
 	}
 
 	/**

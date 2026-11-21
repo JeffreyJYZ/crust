@@ -86,20 +86,27 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 		setFrames(native, view, web, input.bounds);
 		p.addWebview(view, web);
 
+		// A half-built surface owns a +1 view, webview and configuration just like a live one.
+		// Use the same teardown path as `close`, or a refused delegate or load leaks all three.
+		const discard = () =>
+			teardown(
+				{ label: input.label, web, view, owner: owner.label },
+				p,
+			);
 		const ui = Number(native.shim_browser_ui_install(web) ?? BROWSER_UI_STATUS.missing);
 		if (ui !== BROWSER_UI_STATUS.installed && ui !== BROWSER_UI_STATUS.already) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(`browser.open: the surface's UI delegate was refused (status ${ui})`);
 		}
 		const navigation = p.navInstall(web);
 		if (navigation !== 0) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(
 				`browser.open: the navigation delegate was refused (status ${navigation})`,
 			);
 		}
 		if (!p.load(web, input.url)) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(`browser.open: the surface could not load ${input.url}`);
 		}
 		channel(native);
