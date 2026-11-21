@@ -13,6 +13,7 @@ import {
 	type PluginDefinition,
 } from "./define";
 import { loadUrlCommand } from "./navigation-load";
+import { NavigationListeners } from "./navigation-listeners";
 import { failure, target } from "./navigation-target";
 import type {
 	NavigationAdapter,
@@ -73,10 +74,9 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 			"WKNavigationDelegate",
 		);
 
-	// A callback fires outside any command, and `emit` only exists for the length of one, so the
-	// most recent context is the channel it has. The delegate cannot exist before `start` ran,
-	// which is what makes that channel already set.
-	let sink: PluginContext["emit"] | undefined;
+	// Per-target delegate bookkeeping lives in its own file; see navigation-listeners.ts for why
+	// a second `start` must not reach the adapter again.
+	const listeners = new NavigationListeners();
 
 	/**
 	 * The one path every command takes: refuse without an adapter, read the window, then run.
@@ -102,47 +102,14 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 		name: "navigation",
 		commands: {
 			/** Install the delegate on one window. Every later callback reaches this page as an event. */
-			start: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("start", args, (web, label) => {
-					const installed = web.start((kind, payload) => {
-						try {
-							sink?.(`navigation:${kind}`, payload);
-						} catch {
-							// A page handler that throws must not unwind into AppKit's delegate call.
-						}
-					}, label);
-					if (!installed.ok) {
-						return {
-							ok: false as const,
-							code: "handler-error" as const,
-							message: installed.reason,
-						};
-					}
-					return { ok: true, status: installed.status, reason: installed.reason };
-				});
-			},
+			start: (args: NavigationArgs | undefined, ctx: PluginContext) =>
+				run("start", args, (web, label) => listeners.start(web, label, ctx.emit)),
 			/** Remove the delegate; the webview keeps loading, it just stops reporting. */
-			stop: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("stop", args, (web, label) => {
-					try {
-						web.stop(label);
-						return { ok: true as const, stopped: true as const };
-					} catch (error) {
-						// An unknown label is the resolver's refusal, which the caller can fix;
-						// any other throw still means the delegate is gone either way, which is
-						// what `stop` promised.
-						const refused = failure(error);
-						if (refused.code === "bad-request") return refused;
-						return { ok: true as const, stopped: false as const };
-					}
-				});
-			},
+			stop: (args: NavigationArgs | undefined, ctx: PluginContext) =>
+				run("stop", args, (web, label) => listeners.stop(web, label, ctx.emit)),
 			/** The address, title and history flags at this moment. */
-			state: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("state", args, (web, label) => {
+			state: (args: NavigationArgs | undefined) =>
+				run("state", args, (web, label) => {
 					const state = web.state(label);
 					if (state === null) {
 						return {
@@ -153,45 +120,28 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 						};
 					}
 					return { ok: true as const, ...state };
-				});
-			},
+				}),
 			/** Reload the page in place. `reloaded: false` means nothing was sent. */
-			reload: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("reload", args, (web, label) => ({
+			reload: (args: NavigationArgs | undefined) =>
+				run("reload", args, (web, label) => ({
 					ok: true as const,
 					reloaded: web.reload(label),
-				}));
-			},
+				})),
 			/** One entry back. `moved: false` is an empty history, not a failure. */
-			goBack: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("goBack", args, (web, label) => ({
+			goBack: (args: NavigationArgs | undefined) =>
+				run("goBack", args, (web, label) => ({
 					ok: true as const,
 					moved: web.goBack(label),
-				}));
-			},
+				})),
 			/** One entry forward. `moved: false` is an empty history, not a failure. */
-			goForward: (args: NavigationArgs | undefined, ctx: PluginContext) => {
-				sink = ctx.emit;
-				return run("goForward", args, (web, label) => ({
+			goForward: (args: NavigationArgs | undefined) =>
+				run("goForward", args, (web, label) => ({
 					ok: true as const,
 					moved: web.goForward(label),
-				}));
-			},
+				})),
 			/** Point one window's webview at `url`. `loaded: false` means no webview was there. */
 			loadUrl: (args: NavigationLoadUrlArgs, ctx: PluginContext) =>
-				loadUrlCommand(
-					{
-						adapter: native,
-						missing,
-						setSink: (emit) => {
-							sink = emit;
-						},
-					},
-					args,
-					ctx,
-				),
+				loadUrlCommand({ adapter: native, missing }, args, ctx),
 		},
 	});
 }

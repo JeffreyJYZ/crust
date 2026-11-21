@@ -1,113 +1,12 @@
 /**
  * The page half of `crust:accessibility`, exercised through the injected bytes a page receives.
  *
- * A small fake DOM supplies only what the commands read: `querySelector`, `getElementById`,
- * `textContent`, attributes, children and `focus()`. Nothing here imports a parallel copy of the
- * implementation — the snippet is evaluated with `new Function` exactly as `installPage` does, so
- * a module-scope reference in the serialised function would surface as a failure here.
+ * The fake DOM lives in `a11y-page-fake.ts` so this file holds only the proofs. Nothing here imports
+ * a parallel copy of the implementation — the snippet is evaluated with `new Function` exactly as
+ * `installPage` does, so a module-scope reference in the serialised function would surface here.
  */
 import { describe, expect, test } from "bun:test";
-import type { PageA11y } from "./a11y-page-types.ts";
-import { bootstrapSource, pageClientSource } from "./bootstrap.ts";
-
-class FakeEl {
-	readonly tagName: string;
-	private readonly attrs: Record<string, string>;
-	readonly children: FakeEl[] = [];
-	textContent = "";
-	doc?: FakeDoc;
-
-	constructor(tag: string, attrs: Record<string, string> = {}, text = "") {
-		this.tagName = tag;
-		this.attrs = attrs;
-		this.textContent = text;
-	}
-
-	getAttribute(name: string): string | null {
-		return Object.prototype.hasOwnProperty.call(this.attrs, name) ? (this.attrs[name] ?? null) : null;
-	}
-
-	append(...kids: FakeEl[]): FakeEl {
-		this.children.push(...kids);
-		return this;
-	}
-
-	focus(): void {
-		if (!this.doc) return;
-		// A real browser refuses focus() on a div with no tabindex. The stub must do the same or it
-		// would hide the refusal the command is meant to report.
-		const tag = this.tagName.toLowerCase();
-		const native =
-			tag === "button" ||
-			tag === "input" ||
-			tag === "select" ||
-			tag === "textarea" ||
-			(tag === "a" && this.getAttribute("href") !== null) ||
-			this.getAttribute("contenteditable") === "true";
-		const ti = this.getAttribute("tabindex");
-		if (!native && (ti === null || Number(ti) < 0)) return;
-		this.doc.activeElement = this;
-	}
-}
-
-class FakeDoc {
-	readonly body: FakeEl;
-	activeElement: FakeEl | null = null;
-	private readonly ids = new Map<string, FakeEl>();
-
-	constructor(body: FakeEl) {
-		this.body = body;
-		this.register(body);
-	}
-
-	private register(el: FakeEl): void {
-		el.doc = this;
-		const id = el.getAttribute("id");
-		if (id) this.ids.set(id, el);
-		for (const kid of el.children) this.register(kid);
-	}
-
-	getElementById(id: string): FakeEl | null {
-		return this.ids.get(id) ?? null;
-	}
-
-	querySelector(selector: string): FakeEl | null {
-		const all: FakeEl[] = [];
-		const gather = (el: FakeEl) => {
-			all.push(el);
-			for (const kid of el.children) gather(kid);
-		};
-		gather(this.body);
-		const sel = selector.trim();
-		if (sel.startsWith("#")) return all.find((el) => el.getAttribute("id") === sel.slice(1)) ?? null;
-		if (sel.startsWith("."))
-			return all.find((el) => (el.getAttribute("class") ?? "").split(/\s+/).includes(sel.slice(1))) ?? null;
-		return all.find((el) => el.tagName.toLowerCase() === sel.toLowerCase()) ?? null;
-	}
-}
-
-/** A page with a heading, a labelled button, an image and an unfocusable div. */
-function pageDocument(): FakeDoc {
-	const heading = new FakeEl("h1", { id: "title" }, "Quarterly report");
-	const save = new FakeEl("button", { id: "save", "aria-label": "Save report" }, "Save");
-	const logo = new FakeEl("img", { alt: "Crust" });
-	const box = new FakeEl("div", { id: "box" }, "Not a control");
-	const main = new FakeEl("main").append(heading, save, logo, box);
-	return new FakeDoc(main);
-}
-
-function install(source: "served" | "dev", document: FakeDoc): { a11y?: PageA11y } {
-	const snippet = source === "served"
-		? bootstrapSource({ baseUrl: "http://127.0.0.1:1", token: "t", port: 1 })
-		: pageClientSource();
-	const target: Record<string, any> = { document };
-	if (source === "dev") target.__CRUST__ = { url: "http://127.0.0.1:1", token: "t" };
-	const factory = new Function("window", "location", `return ${snippet};`) as (
-		scope: Record<string, any>,
-		location: { search: string },
-	) => { a11y?: PageA11y };
-	return factory(target, { search: "?token=t" });
-}
+import { install, pageDocument, shadowDocument } from "./a11y-page-fake.ts";
 
 describe("crust.a11y.pageTree", () => {
 	test("returns role, label, focusability and reading order for a known subtree", () => {
@@ -118,7 +17,11 @@ describe("crust.a11y.pageTree", () => {
 			expect(result.source).toBe("dom");
 			expect(result.root).toBe("body");
 			expect(result.nodes.map((node) => node.role)).toEqual([
-				"main", "heading", "button", "img", "generic",
+				"main",
+				"heading",
+				"button",
+				"img",
+				"generic",
 			]);
 			const heading = result.nodes.find((node) => node.role === "heading")!;
 			expect(heading.label).toBe("Quarterly report");
@@ -147,6 +50,15 @@ describe("crust.a11y.pageTree", () => {
 		if (result.ok) return;
 		expect(result.message).toContain("#missing");
 	});
+
+	test("walks into a shadow root instead of hiding web component content", () => {
+		const result = install("served", shadowDocument()).a11y!.pageTree();
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		// The host and its inner button are both present; no fake row is invented for the fragment.
+		expect(result.nodes.map((node) => node.label)).toEqual(["", "Widget", "Inner action"]);
+		expect(result.nodes[2]).toMatchObject({ role: "button", focusable: true });
+	});
 });
 
 describe("crust.a11y.focusElement", () => {
@@ -166,6 +78,15 @@ describe("crust.a11y.focusElement", () => {
 		if (result.ok) return;
 		expect(result.message).toContain("tabindex");
 		expect(doc.activeElement).toBeNull();
+	});
+
+	test("reports focus that landed inside a shadow root, whose host is the document's activeElement", () => {
+		const doc = shadowDocument();
+		const result = install("served", doc).a11y!.focusElement("#inner");
+		expect(result).toMatchObject({ ok: true, focused: true, selector: "#inner" });
+		expect(doc.activeElement?.getAttribute("id")).toBe("host");
+		if (!result.ok) return;
+		expect(result.active).toEqual({ role: "button", label: "Inner action" });
 	});
 
 	test("refuses an empty or unmatched selector", () => {

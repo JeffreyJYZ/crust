@@ -110,6 +110,11 @@ export function createBrowserPlugin(
 				if ("ok" in bounds) return bounds;
 
 				const onPopup = popupReporter(label, ctx, adapter, policy);
+				// One decision per surface, bound to the same policy the entry checks used. A page can
+				// navigate itself after `open`, so the platform must call this on every commit and
+				// redirect, not just on the URL we loaded first.
+				const onNavigate = (target: string): boolean =>
+					policy.refusal(target, "navigate") === undefined;
 
 				const input: BrowserOpenInput = {
 					label,
@@ -117,6 +122,7 @@ export function createBrowserPlugin(
 					bounds,
 					...(ctx.window === undefined ? {} : { owner: ctx.window }),
 					onPopup,
+					onNavigate,
 				};
 				return guard(() => adapter.open(input));
 			},

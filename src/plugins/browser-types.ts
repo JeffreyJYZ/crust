@@ -52,6 +52,27 @@ export interface BrowserOpenInput {
 	/** The window label the calling page named; an absent one is the app's first open window. */
 	owner?: string;
 	onPopup?: (url: string) => void;
+	/**
+	 * The surface's navigation decision — the origin gate AFTER `open`. Entry checks in the plugin
+	 * cannot see a load the page starts by itself, so this callback is the only place the allowlist
+	 * can hold once the surface exists.
+	 *
+	 * EVERY adapter MUST consult it before committing EVERY navigation of this surface: the first
+	 * load, clicks, scripted `location =`, every hop of a redirect chain, and the `target=_blank`
+	 * handoff to the system opener. When it answers false the adapter MUST refuse the navigation —
+	 * cancel it, never load the target, never hand the URL on. An adapter that merely stores this
+	 * callback and ignores it leaves `browser.origins` gating entry only, which is the HIGH finding
+	 * this contract exists to close; a real platform that skips it is broken in every built app.
+	 *
+	 * The three platform calls that owe this decision:
+	 *   - macOS: WKNavigationDelegate `webView:decidePolicyForNavigationAction:decisionHandler:`
+	 *   - Windows: WebView2 `NavigationStarting` (`put_Cancel(TRUE)` when the decision is false)
+	 *   - Linux: WebKitGTK `decide-policy` (ignore the decision when the answer is false)
+	 * The plugin only decides; the platform owns the cancel. `assertNavigationDecision` in
+	 * `browser-navigation-contract.ts` checks any adapter that implements this interface, and fails
+	 * a stub that ignores the callback.
+	 */
+	onNavigate?: (url: string) => boolean;
 }
 
 /** What handing a refused popup to the OS opener answered. */

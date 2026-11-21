@@ -64,10 +64,12 @@ function readBody(
 		);
 	}
 	const bytes = body === undefined ? 0 : Buffer.byteLength(body, "utf8");
-	if (bytes > NETWORK_BODY_LIMIT) {
+	// The native buffer is NETWORK_BODY_LIMIT bytes including the NUL the C side needs, so it
+	// delivers at most NETWORK_BODY_LIMIT - 1. Refuse the last value that would be silently cut.
+	if (bytes >= NETWORK_BODY_LIMIT) {
 		throw new CrustError(
 			"bad-request",
-			`network.setRules: rule ${index} serves ${bytes} bytes, and ${NETWORK_BODY_LIMIT} is the whole native buffer`,
+			`network.setRules: rule ${index} serves ${bytes} bytes, and ${NETWORK_BODY_LIMIT - 1} is the most the native buffer can deliver`,
 		);
 	}
 	const typeBytes = type === undefined ? 0 : Buffer.byteLength(type, "utf8");

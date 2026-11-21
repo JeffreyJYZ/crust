@@ -21,9 +21,14 @@ export class FakeBrowser implements BrowserAdapter {
 	frames: Array<{ label: string; bounds: BrowserBounds }> = [];
 	closed: string[] = [];
 	externalAnswer: BrowserExternalOutcome = { opened: true };
+	/** The decision each surface carries, keyed by label; what a platform would install on commit. */
+	decisions = new Map<string, (url: string) => boolean>();
+	/** Every URL a navigation tried to commit, allowed or refused, in order. */
+	attempts: Array<{ label: string; url: string; allowed: boolean }> = [];
 
 	open(input: BrowserOpenInput) {
 		this.opened.push(input);
+		if (input.onNavigate) this.decisions.set(input.label, input.onNavigate);
 		this.state_[input.label] = {
 			url: input.url,
 			title: "Remote Title",
@@ -34,9 +39,10 @@ export class FakeBrowser implements BrowserAdapter {
 		return { ok: true as const, label: input.label };
 	}
 	navigate(label: string, url: string) {
-		const state = this.state_[label];
-		if (state) state.url = url;
-		return { ok: true as const, loaded: true };
+		// A conforming adapter consults the decision even for a navigation the plugin asked for;
+		// a native redirect reaches the same path without a plugin command in front of it.
+		const committed = this.commit(label, url);
+		return { ok: true as const, loaded: committed === url };
 	}
 	state(label: string) {
 		const state = this.state_[label];
@@ -57,6 +63,21 @@ export class FakeBrowser implements BrowserAdapter {
 	external(url: string) {
 		this.extended.push(url);
 		return this.externalAnswer;
+	}
+
+	/**
+	 * What a platform delegate does with a navigation or a redirect hop: ask the surface's decision,
+	 * commit only when it allows, and leave the reported URL where it stopped. Returns the URL that
+	 * actually committed (the last allowed one), so a test can prove a chain stopped at the foreign hop.
+	 */
+	commit(label: string, url: string): string | undefined {
+		const decide = this.decisions.get(label);
+		const allowed = decide === undefined ? false : decide(url);
+		this.attempts.push({ label, url, allowed });
+		if (!allowed) return undefined;
+		const state = this.state_[label];
+		if (state) state.url = url;
+		return url;
 	}
 }
 
