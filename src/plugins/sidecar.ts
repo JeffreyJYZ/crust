@@ -5,6 +5,7 @@
  * The four commands (spawn/write/list/kill) share one live-child registry in `sidecar-control.ts`.
  */
 
+import { installReapOnExit } from "../child-reap.ts";
 import { definePlugin, type PluginDefinition } from "./define";
 import { makeSidecarCommands } from "./sidecar-control";
 import { declaredSidecars, defaultSidecarDir } from "./sidecar-locate";
@@ -25,6 +26,9 @@ export function createSidecarPlugin(
 	// Explicit names win (tests and hosts that read config themselves); otherwise the build
 	// manifest beside the binary is the declaration, so a spawned name must have been shipped.
 	const names = new Set(options.names ?? declaredSidecars(dir));
+	// A spawned daemon is otherwise ended only by `sidecar.kill`, so quitting or a dev restart
+	// left it running beside the next start. The reap covers both.
+	installReapOnExit();
 	return definePlugin({
 		name: "sidecar",
 		commands: makeSidecarCommands({ dir, names, options }),

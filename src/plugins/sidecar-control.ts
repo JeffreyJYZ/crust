@@ -5,6 +5,7 @@
 
 import { existsSync } from "node:fs";
 
+import { trackChild } from "../child-reap.ts";
 import { makeControlCommands, type LiveSidecar } from "./sidecar-commands";
 import { resolveSidecar } from "./sidecar-locate";
 import { bunSpawn, KILL_GRACE_MS, streamText } from "./sidecar-process";
@@ -77,6 +78,9 @@ export function makeSidecarCommands(config: {
 		const id = `sidecar-${++next}`;
 		const live: LiveSidecar = { id, name, pid: child.pid, startedAt: Date.now(), child };
 		running.set(id, live);
+		// `sidecar.kill` was the only thing that ended a sidecar, so a quit or a dev restart left
+		// every daemon running; the process-wide reap covers both.
+		trackChild(child);
 		const stdout = (data: string) =>
 			ctx.emit("sidecar-stdout", { id, name, text: data } satisfies SidecarStdout);
 		void streamText(child.stdout, stdout).catch(() => undefined);
