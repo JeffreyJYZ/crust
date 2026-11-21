@@ -3,9 +3,9 @@
  * Values come from the runtime, never from a round trip here: the runtime mints one document token where the bridge is bound and writes it to `.crust/dev.json` (or `CRUST_DEV_FILE`), with `CRUST_BRIDGE_URL`/`CRUST_BRIDGE_TOKEN` as explicit overrides. The plugin only reads and injects — a fetch inside HTML transformation raced the bridge bind and could silently leave the page with no client.
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Plugin } from "vite";
 import { pageClientSource } from "./bridge/client.ts";
+import { devHandshakePath, DEV_HANDSHAKE_DENY } from "./dev-handshake-path.ts";
 
 /** The variable `crust dev` sets to the bridge's absolute URL. */
 export const BRIDGE_URL_VAR = "CRUST_BRIDGE_URL";
@@ -43,7 +43,7 @@ export function crust(options: CrustOptions = {}): Plugin {
 		// The handshake carries one token per window label. Prefer it when present:
 		// an env override is a single main token and cannot express the labels.
 		try {
-			const file = process.env.CRUST_DEV_FILE ?? join(process.cwd(), ".crust", "dev.json");
+			const file = process.env.CRUST_DEV_FILE ?? devHandshakePath(process.cwd());
 			const parsed = JSON.parse(readFileSync(file, "utf8")) as {
 				url?: string;
 				token?: string;
@@ -75,6 +75,10 @@ export function crust(options: CrustOptions = {}): Plugin {
 	return {
 		name: "crust",
 		apply: "serve",
+		// Defence in depth: even if a future change puts a handshake back under the
+		// project, the dev server refuses to serve it to a page. A main page must
+		// never be able to fetch the other labels' tokens from a static file.
+		config: () => ({ server: { fs: { deny: [...DEV_HANDSHAKE_DENY] } } }),
 		transformIndexHtml: {
 			order: "pre",
 			async handler(html, ctx) {

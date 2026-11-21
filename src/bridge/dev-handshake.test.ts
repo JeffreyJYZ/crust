@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CrustConfig } from "../config/index.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "../vite.ts";
+import { devHandshakePath } from "../dev-handshake-path.ts";
 import { startApp } from "../runtime.ts";
 
 const config: CrustConfig = {
@@ -22,6 +23,7 @@ const config: CrustConfig = {
 afterEach(() => {
 	delete process.env[BRIDGE_URL_VAR];
 	delete process.env[BRIDGE_TOKEN_VAR];
+	delete process.env.CRUST_DEV_FILE;
 });
 
 describe("the dev handshake", () => {
@@ -35,7 +37,7 @@ describe("the dev handshake", () => {
 				entryModule: async () => {},
 			});
 			try {
-				const file = join(dir, ".crust", "dev.json");
+				const file = devHandshakePath(dir);
 				const mode = statSync(file).mode & 0o777;
 				expect(mode).toBe(0o600);
 				const written = JSON.parse(readFileSync(file, "utf8")) as {

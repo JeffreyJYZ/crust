@@ -2,10 +2,11 @@
  * `startApp`'s host questions — which port to bind, which document to serve, which entry module to import — none of which needs the app instance, so they live beside `runtime.ts` rather than inside it.
  */
 
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AssetTable, BridgeHandle } from "@/bridge/server.ts";
 import { DEFAULT_WINDOW_LABEL } from "@/bridge/window-identity.ts";
+import { devHandshakePath } from "./dev-handshake-path.ts";
 import { BRIDGE_TOKEN_VAR, BRIDGE_URL_VAR } from "@/vite.ts";
 
 /** The origin a dev server serves from, or undefined when the URL is unusable. */
@@ -57,7 +58,7 @@ let exitHooked = false;
 
 /** Remove this project's dev handshake, so no later page can inject a dead or foreign token. */
 export function removeDevHandshake(projectDir: string): void {
-	const handshake = join(projectDir, ".crust", "dev.json");
+	const handshake = devHandshakePath(projectDir);
 	rmSync(handshake, { force: true });
 	exitCleanups.delete(handshake);
 }
@@ -88,15 +89,15 @@ export function publishDevHandshake(
 			tokens[label] = token;
 		}
 		const pageToken = tokens[DEFAULT_WINDOW_LABEL] ?? Object.values(tokens)[0] ?? "";
-		const dir = join(projectDir, ".crust");
-		mkdirSync(dir, { recursive: true });
+		// Outside the served project root: no page can fetch a token it was not given.
+		const handshake = devHandshakePath(projectDir);
 		// 0600: the file carries bearer credentials, and without an explicit mode a 0644 umask
 		// lets every local account drive the bridge. chmod also tightens a pre-existing file.
-		const handshake = join(dir, "dev.json");
 		writeFileSync(handshake, JSON.stringify({ url: bridge.url, token: pageToken, tokens }), {
 			mode: 0o600,
 		});
 		chmodSync(handshake, 0o600);
+		process.env.CRUST_DEV_FILE = handshake;
 		process.env[BRIDGE_URL_VAR] = bridge.url;
 		process.env[BRIDGE_TOKEN_VAR] = pageToken;
 		exitCleanups.set(handshake, () => rmSync(handshake, { force: true }));
