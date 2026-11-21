@@ -11,6 +11,7 @@ import {
 } from "./app-log.ts";
 import { flushLogger } from "@/logging/logger";
 import { CrustError } from "@/bridge/errors";
+import { reapChildren } from "./child-reap.ts";
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
 import { frameQuitListener, quitAfterSaving } from "./app-frames.ts";
@@ -173,21 +174,19 @@ export class App {
 		}
 	}
 
-	/** Quit the application, closing every window and stopping the pump timer. */
+	/** Quit the application, asking children to stop, closing every window and stopping the pump timers. */
 	quit(): void {
 		logAppQuit("app.quit()");
 		quitAfterSaving(() => {
-			this.#stopWatching();
+			clearInterval(this.#windowCheck);
+			clearInterval(this.#lifecycleCheck);
+			this.#windowCheck = undefined;
+			this.#lifecycleCheck = undefined;
+			// A child that handles TERM exits during the flush below; the exit listener escalates to KILL.
+			reapChildren("SIGTERM");
 			// The logger's queue is async; the last records must reach the file before the process ends.
 			void flushLogger().finally(() => this.#platform?.quit());
 		});
-	}
-
-	#stopWatching(): void {
-		clearInterval(this.#windowCheck);
-		clearInterval(this.#lifecycleCheck);
-		this.#windowCheck = undefined;
-		this.#lifecycleCheck = undefined;
 	}
 }
 
