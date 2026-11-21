@@ -24,6 +24,25 @@ export function navigationAllowed(
 	}
 }
 
+/**
+ * The surface's own first load already passed the plugin's entry check. Let it through untouched; a
+ * redirect or any later navigation goes through the decision. Keeping this in both adapters makes
+ * the Windows and Linux semantics identical.
+ */
+export function firstLoadAware(
+	configured: string,
+	decide: (url: string) => boolean,
+): (url: string) => boolean {
+	let first = true;
+	return (url) => {
+		if (first) {
+			first = false;
+			if (url === configured) return true;
+		}
+		return decide(url);
+	};
+}
+
 /** Per-surface decisions, keyed by the label the adapter already owns. */
 export class NavigationDecisions {
 	readonly #map = new Map<string, (url: string) => boolean>();

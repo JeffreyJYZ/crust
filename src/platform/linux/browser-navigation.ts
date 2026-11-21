@@ -24,6 +24,26 @@ export function navigationAllowed(
 	}
 }
 
+/**
+ * The surface's own first load is not a committed navigation away from an allowed origin — the plugin
+ * already checked that URL at `open`. Let it through untouched; a redirect or any later navigation
+ * goes through the decision. Returning false for the first load stranded the real GTK surface with an
+ * empty document (measured on ubuntu-latest 2026-11-21).
+ */
+export function firstLoadAware(
+	configured: string,
+	decide: (url: string) => boolean,
+): (url: string) => boolean {
+	let first = true;
+	return (url) => {
+		if (first) {
+			first = false;
+			if (url === configured) return true;
+		}
+		return decide(url);
+	};
+}
+
 /** Per-surface decisions, keyed by the label the adapter already owns. */
 export class NavigationDecisions {
 	readonly #map = new Map<string, (url: string) => boolean>();

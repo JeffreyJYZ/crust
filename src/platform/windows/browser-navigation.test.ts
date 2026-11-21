@@ -9,6 +9,7 @@ import { windowsBrowserAdapter } from "./browser.ts";
 import { FakePorts } from "./browser-fake.ts";
 import {
 	decideNavigation,
+	firstLoadAware,
 	type NavigationParts,
 	NavigationDecisions,
 	navigationAllowed,
@@ -107,5 +108,19 @@ describe("the Windows committed-navigation gate", () => {
 
 	test("a throwing decision refuses rather than slips past the gate", () => {
 		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
+	});
+
+	test("the surface's first load is allowed, but its redirect and later commits are gated", () => {
+		const seen: string[] = [];
+		const gate = firstLoadAware(TRUSTED, (url) => {
+			seen.push(url);
+			return !url.includes("169.254");
+		});
+		expect(gate(TRUSTED)).toBe(true);
+		expect(seen).toEqual([]);
+		expect(gate("https://redirect.example/")).toBe(true);
+		expect(seen).toEqual(["https://redirect.example/"]);
+		expect(gate(FOREIGN)).toBe(false);
+		expect(seen).toContain(FOREIGN);
 	});
 });

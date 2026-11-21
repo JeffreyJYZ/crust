@@ -29,25 +29,24 @@ function refuseOpen(shim: WindowsPtyShim): string {
 }
 
 /**
- * `CreateProcessW` takes a double-NUL UTF-16 block of `KEY=VALUE` pairs, not a JS object. The plugin
- * builds the complete environment (`process.env` plus `TERM`), so passing 0 here silently dropped
- * every override and left shells without a terminal type. Windows expects the pairs sorted by key.
+ * `CreateProcessW` with CREATE_UNICODE_ENVIRONMENT takes a UTF-16 block of `KEY=VALUE` entries,
+ * separated by one NUL and ended by two. The order must be case-insensitive Unicode (code-unit)
+ * order; `localeCompare` is locale-aware and fails that rule. Windows also rejects a name containing
+ * `=` (the hidden `=C:` drive variables Bun exposes in `process.env`), so those are dropped.
  */
 export function environmentBlock(env: Record<string, string>): Uint8Array {
-	const parts = Object.keys(env)
-		.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase(), "en"))
-		.map((key) => Buffer.from(`${key}=${env[key] ?? ""}\0`, "utf16le"));
-	const end = Buffer.from("\0", "utf16le");
-	const block = new Uint8Array(
-		parts.reduce((size, part) => size + part.length, end.length),
-	);
-	let at = 0;
-	for (const part of parts) {
-		block.set(part, at);
-		at += part.length;
-	}
-	block.set(end, at);
-	return block;
+	const names = Object.keys(env)
+		.filter((key) => key.length > 0 && !key.includes("=") && !key.includes("\0"))
+		.sort((a, b) => {
+			const left = a.toUpperCase();
+			const right = b.toUpperCase();
+			if (left !== right) return left < right ? -1 : 1;
+			// Case-insensitive ties still need a stable ordinal order; Windows uses Unicode order.
+			return a < b ? -1 : a > b ? 1 : 0;
+		});
+	const entries = names.map((key) => `${key}=${String(env[key] ?? "").replace(/\0/g, "")}`);
+	// One NUL between entries, two at the end — including when there are no entries.
+	return new Uint8Array(Buffer.from(`${entries.join("\0")}\0\0`, "utf16le"));
 }
 
 function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTerminal {

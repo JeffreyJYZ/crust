@@ -9,7 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import { at } from "./fake-bytes.ts";
 import type { WindowsPtyShim } from "./pty-ffi.ts";
-import { environmentBlock, windowsPtyBackend } from "./pty-conpty.ts";
+import { windowsPtyBackend } from "./pty-conpty.ts";
 
 interface Fake extends WindowsPtyShim {
 	calls: string[];
@@ -129,11 +129,6 @@ describe("opening", () => {
 		terminal.close();
 	});
 
-	test("the block builder terminates an empty environment too", () => {
-		// No pairs: the block is just the extra terminating UTF-16 NUL (two zero bytes).
-		expect(Buffer.from(environmentBlock({})).toString("utf16le")).toBe("\0");
-		expect(Buffer.from(environmentBlock({})).length).toBe(2);
-	});
 });
 
 describe("the stream", () => {

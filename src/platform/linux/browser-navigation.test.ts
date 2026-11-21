@@ -12,6 +12,7 @@ import { linuxBrowserAdapter } from "./browser.ts";
 import { FakePorts } from "./browser-fake.ts";
 import {
 	decideNavigation,
+	firstLoadAware,
 	type NavigationParts,
 	NavigationDecisions,
 	navigationAllowed,
@@ -113,6 +114,24 @@ describe("the Linux committed-navigation gate", () => {
 	test("a throwing decision refuses rather than slips past the gate", () => {
 		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
 	});
+
+	/**
+	 * The first load already passed the plugin's entry check. Cancelling it left a real GTK surface
+	 * with no document (ubuntu-latest 2026-11-21); a redirect or later navigation is still gated.
+	 */
+	test("the surface's first load is allowed, but its redirect and later commits are gated", () => {
+		const seen: string[] = [];
+		const gate = firstLoadAware(TRUSTED, (url) => {
+			seen.push(url);
+			return !url.includes("169.254");
+		});
+		expect(gate(TRUSTED)).toBe(true);
+		expect(seen).toEqual([]);
+		expect(gate("https://redirect.example/")).toBe(true);
+		expect(seen).toEqual(["https://redirect.example/"]);
+		expect(gate(FOREIGN)).toBe(false);
+		expect(seen).toContain(FOREIGN);
+	});
 });
 
 describe("the decide-policy hook in the shim", () => {
@@ -122,6 +141,10 @@ describe("the decide-policy hook in the shim", () => {
 		expect(browser).toContain('webkit_navigation_action_get_request');
 		expect(browser).toContain('webkit_uri_request_get_uri');
 		expect(browser).toContain('shim_view_connect(web, "decide-policy"');
+		// Only navigation-action decisions are gated; a NEW_WINDOW_ACTION belongs to browser-popup.
+		expect(browser).toContain("if (type != 0) return 0;");
+		// An unreadable URI is not a reason to cancel the surface's first load.
+		expect(browser).toContain("if (!shim_browser_popup[0]) return 0;");
 		// A refusal ignores the decision and handles the signal so WebKit's default use() cannot run.
 		expect(browser).toContain("shim_policy_ignore(decision)");
 		expect(browser).toContain("shim_browser_decision_sink(1, shim_browser_count, web)");

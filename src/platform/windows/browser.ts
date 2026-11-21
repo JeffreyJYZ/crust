@@ -28,7 +28,7 @@ import type {
 import { asFailure } from "@/plugins/browser-failures";
 import { type Surface, SurfaceStore } from "@/plugins/browser-surfaces";
 import { type NotImplemented, notImplemented } from "@/plugins/define";
-import { NavigationDecisions, navigationAllowed, navigationChannel } from "./browser-navigation.ts";
+import { firstLoadAware, NavigationDecisions, navigationAllowed, navigationChannel } from "./browser-navigation.ts";
 import { realPorts, type WindowsBrowserPorts } from "./browser-ports";
 
 export type { WindowsBrowserPorts } from "./browser-ports";
@@ -107,7 +107,7 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 				}
 				channel();
 				const decide = (input as NavigateInput).onNavigate;
-				if (decide !== undefined) decisions.set(input.label, decide);
+				if (decide !== undefined) decisions.set(input.label, firstLoadAware(input.url, decide));
 				store.set({
 					label: input.label,
 					web: { handle, child },

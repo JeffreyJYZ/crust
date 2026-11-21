@@ -73,6 +73,9 @@ static int shim_browser_decide(void *web, void *decision, int type, void *data) 
 	shim_browser_resolve();
 	void *action = shim_policy_action ? shim_policy_action(decision) : 0;
 	shim_browser_record(action);
+	// No URI means there is nothing to gate: an older WebKit without the request getters, or a
+	// decision without an action, must not turn into a cancelled first load.
+	if (!shim_browser_popup[0]) return 0;
 	shim_browser_count++;
 	int allowed = shim_browser_decision_sink
 	                  ? shim_browser_decision_sink(1, shim_browser_count, web)

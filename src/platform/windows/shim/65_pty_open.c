@@ -150,7 +150,8 @@ int shim_pty_open(const char *shell, const char *args, const char *cwd, const sh
 	const shim_wchar *working = shim_pty_wide(cwd, directory, 512) >= 0 ? directory : 0;
 	// `env` is a complete, double-NUL UTF-16 environment block built by the adapter (including
 	// TERM). Passing 0 here inherited the host's environment and dropped every plugin override.
-	int spawned = CreateProcessW(0, command, 0, 0, 0, SHIM_PTY_EXTENDED, (void *)env, working,
+	int spawned = CreateProcessW(0, command, 0, 0, 0,
+	                             SHIM_PTY_EXTENDED | SHIM_PTY_UNICODE_ENV, (void *)env, working,
 	                             &startup, &info);
 	DeleteProcThreadAttributeList(list);
 	HeapFree(heap, 0, list);

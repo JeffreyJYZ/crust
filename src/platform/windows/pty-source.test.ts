@@ -52,9 +52,8 @@ describe("the pseudo-console", () => {
 		expect(CODE).toContain("#define SHIM_PTY_ATTRIBUTE 0x00020016ULL");
 		expect(CODE).toContain("#define SHIM_PTY_EXTENDED 0x00080000u");
 		expect(OPEN).toContain("UpdateProcThreadAttribute(list, 0, SHIM_PTY_ATTRIBUTE, console,");
-		expect(OPEN).toContain(
-			"CreateProcessW(0, command, 0, 0, 0, SHIM_PTY_EXTENDED, (void *)env, working",
-		);
+		expect(OPEN).toContain("SHIM_PTY_EXTENDED | SHIM_PTY_UNICODE_ENV, (void *)env, working");
+		expect(CONTRACT).toContain("#define SHIM_PTY_UNICODE_ENV 0x00000400u");
 		// `bInheritHandles` is FALSE: the console owns the pipes, not the child's inheritance table.
 		expect(OPEN).not.toContain("CreateProcessW(0, command, 0, 0, 1,");
 	});
