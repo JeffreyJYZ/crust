@@ -62,7 +62,11 @@ export interface LooseInvoke {
 export interface CrustApi<Schema extends CommandSchema = CommandSchema> {
 	readonly baseUrl: string;
 	readonly token?: string;
-	/** Resolves after the first handshake: the SSE stream opened, or an invoke answered. */
+	/**
+	 * Resolves after the first successful handshake (the SSE stream opened, or a 2xx invoke
+	 * answered). Rejects with a `CrustInvokeError` carrying `code: "bridge-refused"` and the HTTP
+	 * status if the first exchange is a 4xx — a stale token, a bad origin, or no bridge route.
+	 */
 	readonly ready: Promise<void>;
 	invoke: TypedInvoke<Schema> & LooseInvoke;
 	/**
@@ -73,8 +77,11 @@ export interface CrustApi<Schema extends CommandSchema = CommandSchema> {
 	a11y?: PageA11y;
 	/** Subscribe to a pushed event. Returns the unsubscribe function. */
 	listen<T = unknown>(event: string, fn: (payload: T) => void): () => void;
-	/** Resolve with the next payload of that event. */
-	once<T = unknown>(event: string): Promise<T>;
+	/**
+	 * Resolve with the next payload of that event, with a named `once-timeout` rejection after
+	 * `timeoutMs` (default 30s) if no emitter answers. The waiter is removed on either path.
+	 */
+	once<T = unknown>(event: string, timeoutMs?: number): Promise<T>;
 }
 
 /** What `installCrust` reads and writes. `window` in a page, a stub in a test. */

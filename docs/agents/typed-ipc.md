@@ -5,9 +5,15 @@
 `site/app/docs/guides/typed-ipc/page.mdx` (nav + parity row).
 
 **Design decisions.**
-- `typedHost` wraps `app.command` and `typedClient` wraps the client's *two-argument* `invoke(name, args)`,
-  which routes through the `app` namespace to `app.invoke`. No protocol change, no new wire format;
-  `run()` ordering, duplicate refusal and the after-`run()` guard are untouched.
+- `typedHost` wraps `app.command` and `typedClient.invoke` addresses the `app` namespace's `invoke`
+  command explicitly (the same POST as the old two-argument form). Naming it keeps a string `input`
+  from being read as a plugin name. No protocol change, no new wire format; `run()` ordering,
+  duplicate refusal and the after-`run()` guard are untouched.
+- A dotted map key can be an app command (`notes.create`, registered by `typedHost`) or a plugin
+  command (`fs.readTextFile`, written by hand). The name alone cannot tell which, so `typedClient`
+  never guesses: `invoke` is the app form, `invokePlugin` splits at the first dot into the client's
+  plugin form. Hunt-21 #64 was the documented plugin key failing at runtime; both calls are now
+  typed against the same map.
 - `CommandHost.command` takes `(...args: any[]) => any`. Pinning `CommandHandler` there re-checks
   `App.command` contravariantly and rejects a one-parameter handler — the map is the check, not the host.
 - The map must be a `type` alias of an object literal; an `interface` has no implicit index signature

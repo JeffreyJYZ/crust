@@ -190,6 +190,13 @@ form: the client turns it into `app.invoke { name: "greet", args }`, and the gra
 `app:greet`. `invoke("app", "greet", args)` addresses a namespace named `app` that has no such
 command, so it answers `unknown-command` — and a grant of `app:greet` would not authorise it either.
 
+`await window.crust.ready` resolves on the first 2xx handshake. A 4xx — stale token, bad origin, no
+route — rejects with a `CrustInvokeError` carrying `code: "bridge-refused"` and the HTTP `status`, so
+a refusal is no longer mistaken for a working client. A handler throw (5xx) still proves the bridge
+is reachable and resolves `ready`. `crust.once(event, timeoutMs?)` rejects with `code: "once-timeout"`
+after `timeoutMs` (default 30s) and drops its waiter; without the timeout an event with no emitter
+stayed pending for the page's whole life.
+
 - `window.crust` is injected by the bridge. **Never import crust in page code** — two clients.
 - A refused command rejects with a `code`. A command answering a typed failure
   (`{ ok: false, code }`) resolves with it and the transport carries a 4xx/5xx.

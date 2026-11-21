@@ -90,6 +90,20 @@ describe("invoke", () => {
 			code: "unauthorized",
 		});
 	});
+
+	test("a 401 refusal rejects ready with the status and the bridge's reason", async () => {
+		const bridge = start();
+		const { api } = installPage(bridge, { config: { token: "not-the-token" } });
+		await expect(api.invoke("test", "echo", {})).rejects.toMatchObject({
+			code: "unauthorized",
+		});
+		await expect(api.ready).rejects.toMatchObject({
+			code: "bridge-refused",
+			name: "CrustInvokeError",
+			status: 401,
+			message: expect.stringContaining("missing or bad bearer token"),
+		});
+	});
 });
 
 describe("events", () => {
@@ -118,6 +132,22 @@ describe("events", () => {
 		off();
 		source?.dispatch("tick", 4);
 		expect(seen).toEqual([1, 2, 3]);
+	});
+
+	test("once rejects with a named timeout and leaves no waiter behind", async () => {
+		const bridge = start();
+		const { api, source } = installPage(bridge);
+		await expect(api.once("never-fires", 20)).rejects.toMatchObject({
+			code: "once-timeout",
+			event: "never-fires",
+			timeoutMs: 20,
+			message: expect.stringContaining("never-fires"),
+		});
+		// The stale resolver must not consume a later event; a fresh waiter still settles.
+		source?.dispatch("never-fires", { late: true });
+		const next = api.once("tick", 500);
+		source?.dispatch("tick", 9);
+		expect(await next).toBe(9);
 	});
 
 	test("without EventSource, ready resolves after the first invoke", async () => {

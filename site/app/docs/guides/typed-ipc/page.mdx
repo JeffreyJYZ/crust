@@ -42,9 +42,10 @@ const note = await ipc.invoke("notes.create", { title: "a" });
 // note is { id: string }
 ```
 
-`typedClient` calls the client's own two-argument form, `invoke(name, args)`, which routes through the
-always-registered `app` namespace to `app.invoke`. No new wire format and no second protocol: the
-same POST the client already sends.
+`typedClient.invoke` addresses the always-registered `app` namespace's `invoke` command directly —
+the same POST the client's two-argument form sends. Naming it explicitly means a string `input`
+stays the command's argument: the client cannot mistake it for a plugin name. No new wire format and
+no second protocol.
 
 ## What the map catches
 
@@ -58,11 +59,22 @@ same POST the client already sends.
 
 ## Which half a command lives in
 
-A command registered on the `App` is reached by name; a command a plugin exposes is reached as
-`invoke(plugin, command, args)` and is already typed by the plugin's own definition (`SchemaOf`,
-`ArgsOf`, `ResultOf`). The map is for the app-level commands the host and page share — use it for
-those, and the plugin schema for the rest. Mixing the two into one map is fine as long as the keys you
-write are the names you actually register: `typedClient` does not rewrite them.
+A command registered on the `App` is reached by name with `ipc.invoke(name, args)`. A plugin command
+is reached with `ipc.invokePlugin("fs.readTextFile", args)`, which splits the dotted map key into
+the client's `invoke(plugin, command, args)` form. Use one call or the other deliberately: a dotted
+name alone does not say which half owns it, and `typedClient` never guesses.
+
+```ts
+type Ipc = { "notes.create": { input: { title: string }; output: { id: string } } };
+const ipc = typedClient<Ipc>(window.crust);
+await ipc.invoke("notes.create", { title: "a" }); // app command
+await ipc.invokePlugin("fs.readTextFile", { path: "a.txt" }); // plugin command, map keyed by hand
+```
+
+Plugins also remain callable directly through `window.crust.invoke(plugin, command, args)` and are
+typed by the plugin's own definition (`SchemaOf`, `ArgsOf`, `ResultOf`). Mixing app and plugin keys
+into one map is fine as long as the keys you write are the names you actually register — the wrapper
+splits a plugin key at the first dot and sends the two parts unchanged.
 
 ## The test, and why it looks odd
 

@@ -35,13 +35,22 @@ export const PAGE_CONSOLE_SOURCE = `(function () {
 			document.dispatchEvent(new CustomEvent("crust:log", { detail: JSON.stringify(payload) }));
 		} catch (error) {}
 	};
+	var typeName = function (value) {
+		if (value === null) return "null";
+		if (Array.isArray(value)) return "array";
+		return typeof value;
+	};
 	var text = function (value) {
 		if (typeof value === "string") return value;
+		var json;
 		try {
-			var json = JSON.stringify(value);
-			return json === undefined ? String(value) : json;
-		} catch (error) {
+			json = JSON.stringify(value);
+		} catch (error) {}
+		if (json !== undefined) return json;
+		try {
 			return String(value);
+		} catch (error) {
+			return "[unprintable " + typeName(value) + "]";
 		}
 	};
 	var names = ["log", "info", "warn", "error", "debug"];
@@ -50,11 +59,11 @@ export const PAGE_CONSOLE_SOURCE = `(function () {
 			var original = console[name];
 			if (typeof original !== "function") return;
 			console[name] = function () {
-				var args = [];
-				for (var slot = 0; slot < arguments.length; slot++) args.push(text(arguments[slot]));
-				entries.push({ level: name, args: args, at: Date.now() });
+				var entry = { level: name, args: [], at: Date.now() };
+				entries.push(entry);
 				if (entries.length > limit) entries.splice(0, entries.length - limit);
-				send({ kind: "console", level: name, args: args.slice(0, 50) });
+				for (var slot = 0; slot < arguments.length; slot++) entry.args.push(text(arguments[slot]));
+				send({ kind: "console", level: name, args: entry.args.slice(0, 50) });
 				return original.apply(console, arguments);
 			};
 		})(names[index]);

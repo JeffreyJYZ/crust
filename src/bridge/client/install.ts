@@ -41,14 +41,31 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	const waiters = new Map<string, Array<(payload: unknown) => void>>();
 	let handshaken = false;
 	let resolveReady: (() => void) | undefined;
-	const ready = new Promise<void>((resolve) => {
+	let rejectReady: ((reason?: unknown) => void) | undefined;
+	const ready = new Promise<void>((resolve, reject) => {
 		resolveReady = resolve;
+		rejectReady = reject;
 	});
+	// A refusal rejects `ready`; a page that never awaits it is not an unhandled rejection.
+	void ready.catch(() => {});
 
-	const markHandshake = () => {
+	// Only a completed 2xx exchange is readiness. A 4xx is the bridge refusing this page — a stale
+	// token, a bad origin, no route — and rejects with its status and reason, so the page can tell a
+	// refusal from "no bridge". A 5xx is a handler that threw; the bridge is reachable, so it counts.
+	const markHandshake = (status: number, reason?: string) => {
 		if (handshaken) return;
 		handshaken = true;
-		resolveReady?.();
+		if (status < 400 || status >= 500) {
+			resolveReady?.();
+			return;
+		}
+		const error = new Error(
+			`crust: bridge refused (${status})${reason ? `: ${reason}` : ""}`,
+		) as Error & { name: string; code: string; status: number };
+		error.name = "CrustInvokeError";
+		error.code = "bridge-refused";
+		error.status = status;
+		rejectReady?.(error);
 	};
 
 	// A frame's `data` is JSON on the wire and a string in a `CustomEvent`, so both transports hand
@@ -91,14 +108,15 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		resolved.window,
 		markHandshake,
 		(event: string, payload: unknown) => {
-			if (event === "crust:ready") markHandshake();
+			if (event === "crust:ready") markHandshake(200);
 			dispatch(event, decode(payload));
 		},
 	);
 
 	// The page's own DOM view. Absent only for a hand-built install that did not pass the factory;
 	// the bridge's two injected sources always pass it, so a real page always has `crust.a11y`.
-	const a11y: PageA11y | undefined = typeof a11yFactory === "function" ? a11yFactory(scope) : undefined;
+	const a11y: PageA11y | undefined =
+		typeof a11yFactory === "function" ? a11yFactory(scope) : undefined;
 
 	const listen = <T = unknown>(event: string, fn: (payload: T) => void): (() => void) => {
 		const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();
@@ -112,12 +130,32 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 		};
 	};
 
-	const once = <T = unknown>(event: string): Promise<T> =>
-		new Promise<T>((resolve) => {
+	// A waiter is one entry in `waiters`; it goes away when the event arrives or when its timer
+	// fires. Without the timer an event with no emitter retains its resolver for the page's life.
+	const ONCE_TIMEOUT = 30000;
+	const once = <T = unknown>(event: string, timeoutMs = ONCE_TIMEOUT): Promise<T> =>
+		new Promise<T>((resolve, reject) => {
 			const pending = waiters.get(event) ?? [];
 			if (!waiters.has(event)) waiters.set(event, pending);
-			pending.push(resolve as (payload: unknown) => void);
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const settle = (payload: unknown) => {
+				if (timer !== undefined) clearTimeout(timer);
+				resolve(payload as T);
+			};
+			pending.push(settle);
 			call.attach(event);
+			timer = setTimeout(() => {
+				const at = pending.indexOf(settle);
+				if (at >= 0) pending.splice(at, 1);
+				if (pending.length === 0) waiters.delete(event);
+				const error = new Error(
+					`crust: timed out after ${timeoutMs}ms waiting for "${event}"`,
+				) as Error & { code: string; event: string; timeoutMs: number };
+				error.code = "once-timeout";
+				error.event = event;
+				error.timeoutMs = timeoutMs;
+				reject(error);
+			}, timeoutMs);
 		});
 
 	// Two call forms on one entry point, and the same code on every serving

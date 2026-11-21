@@ -15,11 +15,12 @@ import type { CommandHandler, MaybePromise, PluginContext } from "../plugins/def
 
 /**
  * The wire contract. One entry per command, keyed by the name the page passes to `invoke` — the
- * same string `app.command(name, …)` registers.
+ * same string `app.command(name, …)` registers. The client's `invoke` reaches those app commands.
  *
- * A plugin's commands are addressed the same way as an app command, so an app that only uses
- * plugins can still write the map by hand with `"fs.readTextFile"` style keys if that is how it
- * exposes them; nothing here inspects the name.
+ * A plugin's commands use the same map, written by hand with `"fs.readTextFile"` style keys, but
+ * are called with `typedClient(...).invokePlugin("fs.readTextFile", input)`: an app command goes
+ * through `app.invoke`, a plugin command through the plugin's own namespace. The two cannot share
+ * one call because a dotted name alone does not say which half owns it — the wrapper never guesses.
  */
 export interface InvokeMap {
 	[command: string]: { input: unknown; output: unknown };
@@ -56,8 +57,21 @@ export interface TypedHost<M extends InvokeMap> {
 }
 
 export interface TypedClient<M extends InvokeMap> {
-	/** Call one command. A name not in `M`, or an `input` that does not match, does not compile. */
+	/**
+	 * Call an app command registered with `typedHost`. A name not in `M`, or an `input` that does
+	 * not match, does not compile. Routed through `app.invoke`, so a string `input` is data, not a
+	 * second argument the client might read as a plugin name.
+	 */
 	invoke<K extends keyof M & string>(name: K, input: M[K]["input"]): Promise<M[K]["output"]>;
+	/**
+	 * Call a plugin command. `name` is the map's dotted `"plugin.command"` key, split at the first
+	 * dot into the two arguments the client's plugin form takes. Without a dot the call rejects —
+	 * a plugin name without a command is never a valid target.
+	 */
+	invokePlugin<K extends keyof M & string>(
+		name: K,
+		input: M[K]["input"],
+	): Promise<M[K]["output"]>;
 }
 
 /**
@@ -76,14 +90,32 @@ export function typedHost<M extends InvokeMap>(app: CommandHost): TypedHost<M> {
 }
 
 /**
- * Wrap the page client so `invoke()` is checked against the same `M`. It calls the client's own
- * two-argument app form — `invoke(name, args)` — which routes to `app.invoke`, so a handler
- * registered with `typedHost` answers it.
+ * Wrap the page client so both calls are checked against the same `M`. `invoke` addresses the app
+ * namespace's `invoke` command directly — the same request the client's two-argument form builds,
+ * but with a string `input` no longer mistakable for a plugin name. `invokePlugin` splits a dotted
+ * map key into the client's `(plugin, command, args)` form.
  */
 export function typedClient<M extends InvokeMap>(bridge: TypedClientSource): TypedClient<M> {
+	const APP = "app";
+	const INVOKE = "invoke";
 	return {
 		invoke(name, input) {
-			return bridge.invoke(name, input) as Promise<M[typeof name]["output"]>;
+			return bridge.invoke(APP, INVOKE, { name, args: input }) as Promise<
+				M[typeof name]["output"]
+			>;
+		},
+		invokePlugin(name, input) {
+			const dot = name.indexOf(".");
+			if (dot < 0) {
+				return Promise.reject(
+					new Error(
+						`crust: typedClient.invokePlugin needs a "plugin.command" name, got ${JSON.stringify(name)}`,
+					),
+				);
+			}
+			return bridge.invoke(name.slice(0, dot), name.slice(dot + 1), input) as Promise<
+				M[typeof name]["output"]
+			>;
 		},
 	};
 }
