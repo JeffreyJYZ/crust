@@ -14,7 +14,7 @@ describe("click", () => {
 	test("scrolls the element into view, focuses it and clicks it", async () => {
 		const fake = testPage();
 		const answer = await createTestingPlugin(fake.adapter).commands.click({ selector: "#go" });
-		expect(answer).toEqual({ ok: true, clicked: true });
+		expect(answer).toEqual({ ok: true, clicked: true, verified: true, fake: true });
 		expect(fake.button.clicks).toBe(1);
 		expect(fake.button.scrolls).toBe(1);
 		expect(fake.button.focused).toBe(true);
@@ -22,14 +22,21 @@ describe("click", () => {
 
 	test("a selector that matches nothing is `not-found`", async () => {
 		const fake = testPage();
-		const answer = await createTestingPlugin(fake.adapter).commands.click({ selector: "#nope" });
-		expect(answer).toEqual({ ok: false, code: "not-found", message: "no element matches #nope" });
+		const answer = await createTestingPlugin(fake.adapter).commands.click({
+			selector: "#nope",
+		});
+		expect(answer).toEqual({
+			ok: false,
+			code: "not-found",
+			message: "no element matches #nope",
+			fake: true,
+		});
 	});
 
 	test("clickAt clicks whatever is painted at the point", async () => {
 		const fake = testPage();
 		const answer = await createTestingPlugin(fake.adapter).commands.clickAt({ x: 20, y: 20 });
-		expect(answer).toEqual({ ok: true, clicked: true });
+		expect(answer).toEqual({ ok: true, clicked: true, verified: true, fake: true });
 		expect(fake.button.clicks).toBe(1);
 	});
 
@@ -69,6 +76,7 @@ describe("query", () => {
 			text: "",
 			value: null,
 			attributes: {},
+			fake: true,
 		});
 	});
 

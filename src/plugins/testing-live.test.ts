@@ -108,7 +108,7 @@ describe("a live page", () => {
 			expect(ready).toMatchObject({ ok: true, found: true });
 
 			const clicked = await plugin.commands.click({ selector: "#go" });
-			expect(clicked).toEqual({ ok: true, clicked: true });
+			expect(clicked).toEqual({ ok: true, clicked: true, verified: true });
 			const out = await plugin.commands.query({ selector: "#out" });
 			expect(out).toMatchObject({ ok: true, exists: true, text: "clicked" });
 

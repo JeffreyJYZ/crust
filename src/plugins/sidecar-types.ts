@@ -88,6 +88,8 @@ export interface SidecarKillArgs {
 export interface SidecarKilled {
 	ok: true;
 	id: string;
+	/** False when the child had already exited: a departed child was not killed by this call. */
+	killed: boolean;
 }
 
 export interface SidecarStdout {

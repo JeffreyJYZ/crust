@@ -15,10 +15,20 @@ import {
 import { activationRefused, demandActivation } from "./activation-policy";
 import { type NotImplemented, notImplemented } from "./define";
 
-export interface TrustedResult {
-	ok: true;
-	trusted: boolean;
+/** A native refusal (e.g. the AX unit did not compile), converted from an adapter throw. */
+export interface PromptFailure {
+	ok: false;
+	code: "handler-error";
+	message: string;
 }
+
+/**
+ * These two reads include the adapter throw in their own result type, not just in the handler's:
+ * the public command map in `accessibility.ts` names only this alias, so widening here widens the
+ * page-facing contract without a second edit there. A caller branching on `ok` still gets the same
+ * success shape; the `ok: false` arm is the typed refusal the rest of the namespace promises.
+ */
+export type TrustedResult = { ok: true; trusted: boolean } | PromptFailure;
 
 export interface PromptResult {
 	ok: true;
@@ -27,24 +37,26 @@ export interface PromptResult {
 	prompted: true;
 }
 
-/** A native refusal (e.g. the AX unit did not compile), converted from an adapter throw. */
-export interface PromptFailure {
-	ok: false;
-	code: "handler-error";
-	message: string;
-}
-
-export interface ElementCountResult {
-	ok: true;
-	/** Children of the app's first window. Zero is a real answer here: a window with no children. */
-	count: number;
-}
+export type ElementCountResult =
+	| {
+			ok: true;
+			/** Children of the app's first window. Zero is a real answer here: a window with no children. */
+			count: number;
+	  }
+	| PromptFailure;
 
 export interface TrustCommandResults {
 	trusted: () => Promise<TrustedResult | NotImplemented>;
 	prompt: () => Promise<PromptResult | PromptFailure | NotImplemented>;
 	elementCount: () => Promise<ElementCountResult | NeedsActivationFailure | NotImplemented>;
 }
+
+/** One conversion for every adapter fault, so all three commands refuse in the same shape. */
+const adapterFault = (error: unknown): PromptFailure => ({
+	ok: false,
+	code: "handler-error",
+	message: error instanceof Error ? error.message : String(error),
+});
 
 export function trustCommands(
 	adapter: AccessibilityAdapter | undefined,
@@ -54,7 +66,11 @@ export function trustCommands(
 		/** Whether this process may use the AX API. A read: it never raises the dialog. */
 		trusted: async (): Promise<TrustedResult | NotImplemented> => {
 			if (!adapter) return missing("trusted");
-			return { ok: true, trusted: await adapter.trusted() };
+			try {
+				return { ok: true, trusted: await adapter.trusted() };
+			} catch (error) {
+				return adapterFault(error);
+			}
 		},
 
 		/** Raise the one system prompt that grants trust, and report the state after it. */
@@ -64,11 +80,7 @@ export function trustCommands(
 				const trusted = await adapter.prompt();
 				return { ok: true, trusted, prompted: true };
 			} catch (error) {
-				return {
-					ok: false,
-					code: "handler-error",
-					message: error instanceof Error ? error.message : String(error),
-				};
+				return adapterFault(error);
 			}
 		},
 
@@ -98,7 +110,12 @@ export function trustCommands(
 				};
 			}
 			demandActivation();
-			const report: AxElementReport = await adapter.elementCount();
+			let report: AxElementReport;
+			try {
+				report = await adapter.elementCount();
+			} catch (error) {
+				return adapterFault(error);
+			}
 			if (report.status === AX_STATUS.counted) return { ok: true, count: report.count };
 			if (report.status === AX_STATUS.noWindowsListed) {
 				return notImplemented(

@@ -19,7 +19,7 @@ describe("type", () => {
 			selector: "#name",
 			text: "ada",
 		});
-		expect(answer).toEqual({ ok: true, value: "ada" });
+		expect(answer).toEqual({ ok: true, value: "ada", fake: true });
 		expect(fake.field.value).toBe("ada");
 		expect(fake.field.focused).toBe(true);
 		// The trap: this is the answer a plain `element.value = …` could not produce.
@@ -65,6 +65,7 @@ describe("key", () => {
 			key: "Enter",
 			modifiers: { alt: false, ctrl: false, meta: false, shift: true },
 			target: "INPUT",
+			fake: true,
 		});
 	});
 });
@@ -76,7 +77,7 @@ describe("hover", () => {
 		fake.button.addEventListener("mouseover", () => seen.push("over"));
 		fake.button.addEventListener("mousemove", () => seen.push("move"));
 		const answer = await createTestingPlugin(fake.adapter).commands.hover({ selector: "#go" });
-		expect(answer).toEqual({ ok: true, hovered: true });
+		expect(answer).toEqual({ ok: true, hovered: true, fake: true });
 		expect(seen).toEqual(["over", "move"]);
 	});
 });

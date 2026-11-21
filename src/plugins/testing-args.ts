@@ -9,7 +9,13 @@
 import { CrustError } from "../bridge/errors";
 import type { NotImplemented } from "./define";
 import { notImplemented } from "./define";
-import type { PageAnswer, TestingArgs, TestingCode, TestingFailure, TestingSelectorArgs } from "./testing-types";
+import type {
+	PageAnswer,
+	TestingArgs,
+	TestingCode,
+	TestingFailure,
+	TestingSelectorArgs,
+} from "./testing-types";
 
 /** The refusal a platform that cannot evaluate a script answers, naming the call it lacks. */
 export const EVALUATE_REQUIRES = "WKWebView -evaluateJavaScript:completionHandler:";
@@ -49,7 +55,7 @@ export function requireSelector(args: TestingSelectorArgs | undefined): string {
 /** `type` needs text; an absent one is a caller bug, never an empty field typed silently. */
 export function requireText(args: { text?: unknown } | undefined): string {
 	if (typeof args?.text !== "string") {
-		throw new CrustError("bad-request", 'testing.type needs { text } as a string');
+		throw new CrustError("bad-request", "testing.type needs { text } as a string");
 	}
 	return args.text;
 }
@@ -89,17 +95,28 @@ export function answered(command: string, raw: unknown): PageAnswer | TestingFai
 			message: `testing.${command}: the page answered ${JSON.stringify(parsed)}`,
 		};
 	}
-	const answer = parsed as { ok?: unknown; code?: unknown; message?: unknown; requires?: unknown };
+	const answer = parsed as {
+		ok?: unknown;
+		code?: unknown;
+		message?: unknown;
+		requires?: unknown;
+		fake?: unknown;
+	};
 	if (answer.ok !== false) return parsed as PageAnswer;
 	const code: TestingCode =
 		typeof answer.code === "string" && CODES.has(answer.code)
 			? (answer.code as TestingCode)
 			: "handler-error";
 	const message =
-		typeof answer.message === "string" ? answer.message : `testing.${command}: the page refused`;
+		typeof answer.message === "string"
+			? answer.message
+			: `testing.${command}: the page refused`;
+	// The fake marks every answer; keep its mark on refusals too, or a suite could read a fake
+	// `not-found` as proof that a real page has no matching element.
+	const fake = answer.fake === true ? ({ fake: true } as const) : {};
 	return code === "not-implemented" && typeof answer.requires === "string"
-		? { ok: false, code, message, requires: answer.requires }
-		: { ok: false, code, message };
+		? { ok: false, code, message, requires: answer.requires, ...fake }
+		: { ok: false, code, message, ...fake };
 }
 
 /** Wait one interval without pulling a timer library in; `waitFor` is the only caller. */

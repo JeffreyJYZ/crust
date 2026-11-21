@@ -33,6 +33,8 @@ export interface TestingFailure {
 	readonly message: string;
 	/** The API a `not-implemented` answer is waiting on. */
 	readonly requires?: string;
+	/** Set only by the DOM test double, so a suite never reads its answers as real-page proof. */
+	readonly fake?: true;
 }
 
 /** Every command takes the window it acts on. Omitted means the app's first open window. */
@@ -79,23 +81,31 @@ export interface TestingConsoleArgs extends TestingArgs {
 	since?: number;
 }
 
-export interface ClickedResult {
-	readonly ok: true;
-	readonly clicked: true;
+/** The DOM test double marks every answer; a real page never sets this. */
+export interface FakeMarkedAnswer {
+	readonly fake?: true;
 }
 
-export interface HoveredResult {
+export interface ClickedResult extends FakeMarkedAnswer {
+	readonly ok: true;
+	/** True only when a listener on the element observed the dispatched click event. */
+	readonly clicked: boolean;
+	/** True only when an event was actually observed, so a click was never merely assumed. */
+	readonly verified: boolean;
+}
+
+export interface HoveredResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	readonly hovered: true;
 }
 
 /** What the field holds after `type` — read back, never assumed. */
-export interface TypedResult {
+export interface TypedResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	readonly value: string;
 }
 
-export interface KeyResult {
+export interface KeyResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	readonly key: string;
 	readonly modifiers: Required<TestingModifiers>;
@@ -104,7 +114,7 @@ export interface KeyResult {
 }
 
 /** The page as `query` reads it: presence, visibility, geometry, text, value and attributes. */
-export interface QueryResult {
+export interface QueryResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	readonly exists: boolean;
 	readonly visible: boolean;
@@ -115,7 +125,7 @@ export interface QueryResult {
 	readonly attributes: Record<string, string>;
 }
 
-export interface WaitResult {
+export interface WaitResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	readonly found: true;
 	readonly waitedMs: number;
@@ -128,22 +138,23 @@ export interface ConsoleEntry {
 	readonly at: number;
 }
 
-export interface ConsoleResult {
+export interface ConsoleResult extends FakeMarkedAnswer {
 	readonly ok: true;
 	/** False when the page-world tap is absent: the caller learns why instead of reading `[]`. */
 	readonly hooked: boolean;
 	readonly entries: readonly ConsoleEntry[];
 }
 
-/** What the page's own script answers: a JSON string of one of these shapes. */
-export type PageAnswer =
+/** What the page's own script answers. The test double marks every one of its answers `fake`. */
+export type PageAnswer = (
 	| ClickedResult
 	| HoveredResult
 	| TypedResult
 	| KeyResult
 	| QueryResult
 	| ConsoleResult
-	| TestingFailure;
+	| TestingFailure
+) & { readonly fake?: true };
 
 /** The namespace's command map, so a caller reads `commands.query` as a command rather than an index. */
 export interface TestingCommands extends CommandMap {
