@@ -2,8 +2,6 @@
 
 A terminal in the page, driven over the bridge. The section existing is what registers the plugin: a page-reachable pty is command execution, so an app that never declares one carries no `pty` namespace at all — naming `pty` in `plugins` is then the unknown-plugin error it should be.
 
-**Not implemented yet — ships in 0.2.9.** This page is the contract the release will keep: the section, the command and the grant are settled now, and calling one today answers `not-implemented` naming the release.
-
 ```ts
 // crust.config.ts
 pty: {
@@ -11,13 +9,48 @@ pty: {
 },
 ```
 
-`shell` is the program the terminal runs; absent means the user's login shell.
+`shell` is the program the terminal runs; absent means the user's login shell. It is also the only program: `pty.open` accepts a `program` argument only when it resolves to this same one, so a grant of `pty:open` opens *this* terminal, never an arbitrary command. Nothing but the host's config decides what runs.
+
+The pty is `Bun.Terminal`, so macOS and Linux need no native half. Windows has no `Bun.Terminal` and no ConPTY shim yet: `pty.open` answers `not-implemented` with `requires: "CreatePseudoConsole"` rather than registering a surface that cannot work.
+
+## Commands
+
+| command | args → answer |
+| --- | --- |
+| `open` | `{ cols?, rows? }` → `{ ok, id, pid }`, 80×24 by default and clamped to 500×200 |
+| `write` | `{ id, data }` → `{ ok, bytes }`; `data` is UTF-8 text, so a keystroke burst is one call |
+| `resize` | `{ id, cols, rows }` → `{ ok, id, cols, rows }` |
+| `close` | `{ id }` → `{ ok, closed, id }`; closing the master hangs the shell up, and a child that traps `SIGHUP` is signalled rather than left |
+| `list` | `{}` → `{ ok, ids }` — the handles still open |
+
+A refusal is a value with a `code`: `invalid-args`, `program-not-allowed`, `spawn-failed`, `unknown-terminal` (no such handle) and `terminal-closed` (the handle existed and is gone). None of them throws.
+
+## Events
+
+Bytes come back as server-sent events, never as a command's answer — a terminal is a stream, not a request:
+
+```js
+window.crust.listen("pty-data", ({ id, chunk }) => terminal.write(atob(chunk)));
+window.crust.listen("pty-exit", ({ id, exitCode, signal }) => console.log(id, exitCode, signal));
+```
+
+`chunk` is base64, because a pty delivers bytes: an ANSI escape sequence or a multi-byte character is routinely split across two reads, and a decoded string would corrupt it. Decode to bytes and hand them to your emulator. One frame carries at most 8 KiB, so a program that floods the pty produces many frames rather than one unbounded event.
+
+`pty-exit` carries the child's own status. It is not `Bun.Terminal`'s exit callback — that reports the pty's lifecycle (0 for EOF, 1 for error) and would report every clean `exit` as the wrong number.
 
 ## Capability
 
 The page calls `pty.open`, so a label needs the action `pty:open`. It is deliberately **not** implied by a shell grant: `shell:spawn` runs an allowlisted program with no terminal, while a pty is an interactive shell a page can type into, so the two are granted separately. See [Permissions](/docs/guides/permissions).
 
 Capabilities are per window label, so a pty can be held by a terminal window and refused to every other page in the app.
+
+## Lifetime
+
+Every terminal is tracked by the same reap `shell` uses: `app.quit()`, a `crust dev` restart's `SIGTERM` and a normal exit all signal the children, so a shell cannot outlive the app that opened it. `pty.close` is still the way a page ends one, and it is the only way to reap a shell without quitting.
+
+## What stays the app's job
+
+The screen. crust ships bytes and a size, never a terminal model: xterm.js (or any emulator), the scrollback and its budget, the theme and font, hyperlinks and search, keyboard chords and `setRawMode` are all the page's. So is choosing the program — that is `pty.shell`, the host's decision, not a default crust picks for you.
 
 ## When the section is absent
 
