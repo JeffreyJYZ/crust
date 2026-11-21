@@ -82,7 +82,9 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 		},
 	};
 	const plugin = createBrowserPlugin({ origins: [origin] }, linuxBrowserAdapter(wrapped));
-	const { events, ctx } = collector();
+	// No popup happens in this fixture page, so there is nothing for a stream to carry. The popup path
+	// is proved by the adapter's own tests and by the C signal handlers; this proof needs a context only.
+	const ctx = { emit: () => {} };
 	try {
 		const refused = plugin.commands.open(
 			{ label: "evil", url: "https://not-allowed.test/", bounds: FIRST },
@@ -133,6 +135,7 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 		// The view's own allocation, not the request: a placement that never reached GTK shows here.
 		const grew = await until(() => readAllocation(shim, web).width === FIRST.width, ALLOC_MS);
 		const before = readAllocation(shim, web);
+		const requested = readRequest(shim, web);
 		const moved = plugin.commands.setBounds({ label: "docs", bounds: MOVED }, ctx);
 		if (!("ok" in moved) || moved.ok !== true)
 			return {
@@ -144,13 +147,15 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 			ALLOC_MS,
 		);
 		const after = readAllocation(shim, web);
+		const requestAfter = readRequest(shim, web);
 		const closed = plugin.commands.close({ label: "docs" }, ctx);
 		const gone = plugin.commands.state({ label: "docs" }, ctx);
 		const detail =
 			`refused a foreign origin; "${state.title}" from ${state.url}; allocated ` +
 			`${before.width}x${before.height} then ${after.width}x${after.height} for ` +
-			`${MOVED.width}x${MOVED.height}; closed ${JSON.stringify(closed)} and state answered ` +
-			`${JSON.stringify(gone)}; ${events.length} event(s)`;
+			`${MOVED.width}x${MOVED.height} (GTK size request ${requested.width}x${requested.height} then ` +
+			`${requestAfter.width}x${requestAfter.height}); closed ${JSON.stringify(closed)} and state answered ` +
+			`${JSON.stringify(gone)}`;
 		return {
 			ok:
 				grew &&
@@ -164,6 +169,17 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 	} finally {
 		server.stop(true);
 	}
+}
+
+/** GTK's size request for one view, read back after each placement. */
+function readRequest(
+	shim: LinuxShim & LinuxProofShim,
+	web: bigint,
+): { width: number; height: number } {
+	return {
+		width: Number(shim.shim_webview_requested?.(web, 0) ?? 0),
+		height: Number(shim.shim_webview_requested?.(web, 1) ?? 0),
+	};
 }
 
 /** GTK's allocation for one view, as the two numbers the proof compares. */

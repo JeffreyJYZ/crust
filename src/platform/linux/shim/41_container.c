@@ -27,6 +27,8 @@ static void (*shim_set_margin_top)(void *, int);
 static void *(*shim_widget_parent)(void *);
 static int (*shim_widget_allocated_width)(void *);
 static int (*shim_widget_allocated_height)(void *);
+static void (*shim_queue_resize)(void *);
+static void (*shim_get_size_request)(void *, int *, int *);
 
 // Resolved by `shim_lib_open` with the rest of GTK: a window whose box cannot be
 // built is a window with nowhere to put its own page, so the absence belongs in
@@ -43,9 +45,9 @@ int shim_container_resolve(void) {
 	       shim_sym(h, "gtk_widget_get_parent", (void **)&shim_widget_parent);
 }
 
-// The allocation reads are optional: they exist for the proof, which asks whether a placed surface
-// really took the rectangle it was given, and an older GTK that lacks them answers 0 rather than
-// refusing the launch.
+// The allocation and size-request reads are optional: they exist for the proof, which asks whether a
+// placed surface really took the rectangle it was given, and an older GTK that lacks them answers 0
+// rather than refusing the launch.
 static void shim_container_resolve_reads(void) {
 	void *h = shim_gtk_handle();
 	if (!shim_widget_allocated_width)
@@ -54,6 +56,21 @@ static void shim_container_resolve_reads(void) {
 	if (!shim_widget_allocated_height)
 		shim_widget_allocated_height =
 		    (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_allocated_height");
+	if (!shim_queue_resize)
+		shim_queue_resize = (void (*)(void *))shim_sym_or_null(h, "gtk_widget_queue_resize");
+	if (!shim_get_size_request)
+		shim_get_size_request =
+		    (void (*)(void *, int *, int *))shim_sym_or_null(h, "gtk_widget_get_size_request");
+}
+
+/** The size request GTK holds for one view: 0 width, 1 height; 0 for a refused read. */
+int shim_webview_requested(void *web, int which) {
+	shim_container_resolve_reads();
+	int width = 0;
+	int height = 0;
+	if (!web || !shim_get_size_request) return 0;
+	shim_get_size_request(web, &width, &height);
+	return which == 0 ? width : height;
 }
 
 /** The allocation a placed widget actually received: 0 width, 1 height; 0 for a refused read. */
@@ -133,5 +150,10 @@ int shim_webview_place(void *box, void *web, int x, int y, int w, int h) {
 	// No size keeps the child's natural one, which is what a caller that only
 	// moves a surface relies on.
 	if (w > 0 && h > 0 && shim_set_size_request) shim_set_size_request(web, w, h);
+	// A size request on an already-allocated child does not necessarily reallocate it: GTK can keep the
+	// old rect until the container is told to lay its children out again. That was measured on the
+	// ubuntu gate — the request changed but the allocation stayed at the first rectangle — so the
+	// resize is queued on the overlay, not only on the child.
+	if (shim_queue_resize) shim_queue_resize(box);
 	return 1;
 }
