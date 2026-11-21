@@ -15,7 +15,9 @@
 // put_Handled. Only the two this layer calls are named.
 #define SHIM_SLOT_NEWWINDOW_GET_URI 3
 #define SHIM_SLOT_NEWWINDOW_PUT_HANDLED 6
-// ICoreWebView2NavigationStartingEventArgs, after IUnknown: get_IsUserInitiated, get_Uri,
-// get_Cancel, put_Cancel. The two this layer calls decide whether a navigation is committed.
-#define SHIM_SLOT_NAV_ARGS_GET_URI 4
-#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 6
+// ICoreWebView2NavigationStartingEventArgs, after IUnknown: get_Uri, get_IsUserInitiated,
+// get_IsRedirected, get_RequestHeaders, get_Cancel, put_Cancel, GetNavigationId. The two this layer
+// calls decide whether a navigation is committed. Off-by-one here writes a BOOL over a LPWSTR*
+// (then dereferences 1) and calls get_RequestHeaders as put_Cancel — a real WebView2 crash.
+#define SHIM_SLOT_NAV_ARGS_GET_URI 3
+#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 8

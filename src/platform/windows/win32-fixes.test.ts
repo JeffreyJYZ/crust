@@ -77,8 +77,8 @@ describe("the committed-navigation gate in the shim", () => {
 
 	test("the nav-argument vtable slots are derived from the published order", () => {
 		const slots = readShimPart("11_browser_slots.c");
-		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_GET_URI 4");
-		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 6");
+		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_GET_URI 3");
+		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 8");
 	});
 });
 
