@@ -27,7 +27,6 @@ import { fsPlugin } from "./fs";
 import { loggingPlugin } from "./logging";
 import { notificationPlugin } from "./notification";
 import { PluginRegistry } from "./registry";
-import { strongholdPlugin } from "./stronghold";
 import { testingPlugin } from "./testing";
 import { trayPlugin } from "./tray";
 
@@ -42,8 +41,10 @@ const ALWAYS = [
 	trayPlugin,
 	autostartPlugin,
 	loggingPlugin,
-	strongholdPlugin,
 ] as const satisfies readonly PluginDefinition[];
+// `stronghold` is deliberately absent: it owns a file, so the runtime builds one with this app's
+// data root exactly as it builds `store` and `database`. A bare core instance would give every crust
+// app the same `~/Library/Application Support/crust/stronghold.json` and its password header.
 
 /** True when this process was started as a test run: the one gate the `testing` namespace has. */
 export function testingEnabled(env: PluginEnv = process.env): boolean {

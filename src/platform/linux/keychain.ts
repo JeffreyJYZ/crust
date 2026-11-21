@@ -47,7 +47,9 @@ export function linuxKeychainAdapter(
 	function open(): void {
 		if (opened) return;
 		if (Number(native.shim_keyring_open() ?? 0) !== 1) {
-			const detail = String(native.shim_lib_error_text() ?? "libsecret-1.so.0 could not load");
+			const detail = String(
+				native.shim_lib_error_text() ?? "libsecret-1.so.0 could not load",
+			);
 			throw new Error(`crust keychain: ${detail}\n  ${KEYRING_INSTALL_LINE}`);
 		}
 		opened = true;
@@ -60,6 +62,11 @@ export function linuxKeychainAdapter(
 	}
 
 	const set = (service: string, account: string, secret: string): void => {
+		// libsecret's sync API takes a NUL-terminated C string, so an interior NUL would store only
+		// the prefix. Refuse at the adapter too: callers can use this boundary without the plugin.
+		if (secret.includes("\0")) {
+			throw new Error("crust keychain: a secret may not contain a NUL");
+		}
 		open();
 		const ok = Number(
 			native.shim_keyring_set(cstring(service), cstring(account), cstring(secret)) ?? 0,
@@ -72,7 +79,8 @@ export function linuxKeychainAdapter(
 		const status = new Int32Array(1);
 		const value = native.shim_keyring_get(cstring(service), cstring(account), status);
 		if (status[0] === KEYRING_STATUS.missing) return null;
-		if (status[0] === KEYRING_STATUS.tooLong) refused("secret is larger than the 64 KiB buffer");
+		if (status[0] === KEYRING_STATUS.tooLong)
+			refused("secret is larger than the 64 KiB buffer");
 		if (status[0] !== KEYRING_STATUS.found) refused("secret_password_lookupv_sync");
 		return value;
 	};

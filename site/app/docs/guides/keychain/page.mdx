@@ -44,6 +44,25 @@ caller named is gone. An empty `secret` is a real secret, so only a non-string i
 
 Both `service` and `account` must be non-empty and may not contain a NUL — a NUL would truncate the
 name inside the C string the OS is handed, which is how two credentials could collapse onto one entry.
+On Windows neither may contain a backslash either: `CredWriteW` keys a generic credential on one
+`service\account` target, so `("a", "b\c")` and `("a\b", "c")` would otherwise be the same entry.
+A `secret` may be empty but may not contain a NUL on any platform — libsecret takes a C string on
+Linux, so a NUL-bearing secret would come back as only its prefix there. Refuse it uniformly.
+
+## Ad-hoc builds cannot use the keychain
+
+`crust build` ad-hoc signs a macOS app; that signature carries no `application-identifier`
+entitlement, so the Keychain driver refuses the write. `keychain.set` then answers
+`{ ok: false, code: "handler-error", message: … }` naming the OS refusal, and nothing is stored. A
+later `keychain.get` answers `{ found: false }` — **do not read that as "nothing stored yet"**. Check
+the answer of `set`: `found: false` after a refused write means the credential store is unavailable,
+not that a first launch simply has no entry.
+
+There is no framework-level plaintext fallback. crust never writes a `0600` file and calls it a
+keychain. If a secret must work in an ad-hoc build, `stronghold` is the right tool — an AES-256-GCM
+file under a password the app supplies, which is a different contract from an OS-managed credential.
+To use the macOS keychain, ship a bundle signed with a Developer ID and the entitlement. Windows and
+Linux have no application-identifier entitlement; both work from an ad-hoc build.
 
 ## What each platform uses
 
@@ -67,11 +86,12 @@ name inside the C string the OS is handed, which is how two credentials could co
 
 | code               | when                                                                    |
 | ------------------ | ----------------------------------------------------------------------- |
-| `bad-request`      | `service` or `account` empty, a NUL in either, or a non-string `secret`  |
+| `bad-request`      | `service` or `account` empty or NUL-bearing, a backslash in either on Windows, a NUL in `secret`, or a non-string `secret` |
 | `not-implemented`  | no adapter on this platform, or `list` on Linux; `requires` names what is missing |
 | `handler-error`    | the OS refused the read, write or delete — a locked keychain, a denied prompt, or Linux's missing libsecret/provider |
 
-On macOS a secret is read into a caller-sized buffer and re-read at its exact length when the first
-buffer was too small, so a long private key is never truncated at a guess. Linux uses a fixed 64 KiB
-static buffer in the C shim and refuses a larger secret with `handler-error` rather than cutting it;
-no platform silently truncates a credential.
+On macOS and Windows a secret is read into a caller-sized buffer and re-read at its exact length when
+the first buffer was too small; if it keeps growing across three reads the command refuses rather
+than decoding a clamped prefix. Linux uses a fixed 64 KiB static buffer in the C shim and refuses a
+larger secret with `handler-error`, and a NUL-bearing secret is refused on every platform; no
+platform silently truncates a credential.

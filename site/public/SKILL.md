@@ -260,6 +260,15 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 | `shell` | `spawn {program,args?,cwd?,env?,stdin?}` (`stdin: "pipe"` to feed it) · `output`/`close`/`kill {id}` · `write {id,data}` · `list` |
 | `tray` | `setTitle`/`setTooltip {text}` · `setMenu {items:[{label,onClick?}]}` · `show`/`hide`/`destroy` |
 
+### `keychain` on ad-hoc builds
+
+An ad-hoc signed macOS bundle has no `application-identifier` entitlement, so the OS refuses
+`keychain.set` with `handler-error`. A later `get` answering `found: false` then means "nothing was
+stored", not "nothing stored yet" — check the answer of `set`. There is no framework-level plaintext
+fallback: use `stronghold` for a secret an ad-hoc build must keep. Windows and Linux have no such
+entitlement. `service`/`account` may not contain a NUL (nor a backslash on Windows); `secret` may be
+empty but not NUL-bearing.
+
 ## CLI
 
 | command | does |

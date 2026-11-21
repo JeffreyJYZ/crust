@@ -61,4 +61,16 @@ describe("the keychain plugin reaches a page", () => {
 		const linuxShim = read("src/platform/linux/shim/70_keyring.c");
 		expect(linuxShim).not.toContain("secret_service_search_sync");
 	});
+
+	test("the ad-hoc keychain refusal is documented where a reader and an agent see it", () => {
+		for (const text of [
+			read("site/app/docs/guides/keychain/page.mdx"),
+			read("site/public/SKILL.md"),
+		]) {
+			expect(text).toContain("application-identifier");
+			expect(text).toContain("found: false");
+			// The documented alternative is the encrypted file, never a plaintext fallback.
+			expect(text).toContain("stronghold");
+		}
+	});
 });

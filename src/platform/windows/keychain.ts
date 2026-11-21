@@ -28,11 +28,24 @@ export {
 /** The first buffer for a secret; anything larger is re-read at its exact length. */
 export const SECRET_CHUNK = 8 * 1024;
 
+/**
+ * `CredWriteW` keys a generic credential on one `service\account` target string. A backslash inside
+ * either name would let two different (service, account) pairs address the same target — a write
+ * under one pair would overwrite the other and `get` would answer it to both. Refuse it here, at the
+ * adapter boundary, rather than let a name collide in C.
+ */
+function assertName(service: string, account: string): void {
+	if (service.includes("\\") || account.includes("\\")) {
+		throw new Error("keychain: a service or account may not contain a backslash on Windows");
+	}
+}
+
 /** Build the keychain adapter. The unit compiles on the first command, not before. */
 export function windowsKeychainAdapter(
 	native: WindowsKeychainShim = windowsKeychainShim(),
 ): KeychainAdapter {
 	const set = (service: string, account: string, secret: string): void => {
+		assertName(service, account);
 		const status = native.set(service, account, secret);
 		if (status === WINDOWS_KEYCHAIN_STATUS.ok) return;
 		throw new Error(
@@ -43,24 +56,29 @@ export function windowsKeychainAdapter(
 	};
 
 	const get = (service: string, account: string): string | null => {
+		assertName(service, account);
 		let buffer = new Uint8Array(SECRET_CHUNK);
-		let length = native.get(service, account, buffer);
-		// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
-		if (length === WINDOWS_KEYCHAIN_STATUS.refused) return null;
-		if (length < 0) throw new Error("keychain: the Windows credential store refused the read");
-		// Re-read at the exact length rather than handing back a truncated secret.
-		if (length > buffer.length - 1) {
-			buffer = new Uint8Array(length + 1);
-			length = native.get(service, account, buffer);
+		// A secret can grow between the size probe and the read. Re-read at the reported size at
+		// most three times, then refuse: a truncated secret is worse than a refusal (a half token
+		// is silently wrong, a refusal is loud). Never decode a clamped prefix.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const length = native.get(service, account, buffer);
+			// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
 			if (length === WINDOWS_KEYCHAIN_STATUS.refused) return null;
 			if (length < 0)
 				throw new Error("keychain: the Windows credential store refused the read");
+			if (length <= buffer.length - 1) {
+				return new TextDecoder().decode(buffer.subarray(0, length));
+			}
+			buffer = new Uint8Array(length + 1);
 		}
-		const bytes = Math.min(length, buffer.length - 1);
-		return new TextDecoder().decode(buffer.subarray(0, bytes));
+		throw new Error(
+			"keychain: the secret kept growing between reads; refusing a truncated secret",
+		);
 	};
 
 	const remove = (service: string, account: string): boolean => {
+		assertName(service, account);
 		const status = native.delete(service, account);
 		if (status === 1) return true;
 		// Nothing stored is the same success: the entry the caller named is gone.
@@ -69,6 +87,7 @@ export function windowsKeychainAdapter(
 	};
 
 	const list = (service: string): string[] => {
+		assertName(service, "");
 		const accounts: string[] = [];
 		for (let index = 0; ; index++) {
 			const account = native.list(service, index);

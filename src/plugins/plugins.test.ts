@@ -51,10 +51,10 @@ describe("registry", () => {
 			"tray",
 			"autostart",
 			"logging",
-			"stronghold",
 		]);
-		expect(registry.size).toBe(7);
-		expect(corePlugins.length).toBe(7);
+		// `stronghold` is built by the runtime with the app's own data root, not the bare core set.
+		expect(registry.size).toBe(6);
+		expect(corePlugins.length).toBe(6);
 
 		const dir = await tempDir();
 		const path = join(dir, "note.txt");

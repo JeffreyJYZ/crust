@@ -124,11 +124,12 @@ export function createKeychainPlugin(
 				if (adapter === undefined) return missing("set");
 				const names = keys("set", args);
 				if ("ok" in names) return names;
-				// The empty string is a real secret — a token can legitimately be empty in a test —
-				// so only a non-string is refused.
-				if (typeof args?.secret !== "string") {
+				// Empty is a real secret; a NUL is not — libsecret's C string would store only its
+				// prefix on Linux, so every platform refuses it rather than returning a different secret.
+				if (typeof args?.secret !== "string")
 					return badRequest('keychain.set: "secret" must be a string');
-				}
+				if (args.secret.includes("\0"))
+					return badRequest('keychain.set: "secret" may not contain a NUL');
 				try {
 					adapter.set(names.service, names.account, args.secret);
 					return { ok: true, stored: true };

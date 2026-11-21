@@ -8,8 +8,15 @@
 import { join } from "node:path";
 
 import { definePlugin } from "./define";
+import { withFileLock } from "./store-file.ts";
 import { createStore, entryId, openStore, seal, unseal } from "./stronghold-crypto.ts";
-import { defaultStoreRoot, readStore, STORE_FILE, writeStore } from "./stronghold-file.ts";
+import {
+	defaultStoreRoot,
+	readStore,
+	reloadFile,
+	STORE_FILE,
+	writeStore,
+} from "./stronghold-file.ts";
 import {
 	failure,
 	reasonOf,
@@ -54,15 +61,6 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 	const path = join(options.root ?? defaultStoreRoot(options.app ?? "crust"), STORE_FILE);
 	const iterations = options.iterations;
 	let session: Session | undefined;
-	// One write at a time: two `set` calls racing would each start from the same entries, and the
-	// later rename would drop the earlier key.
-	let queue: Promise<unknown> = Promise.resolve();
-
-	const serial = <Result>(run: () => Promise<Result>): Promise<Result> => {
-		const next = queue.then(run, run);
-		queue = next.catch(() => undefined);
-		return next;
-	};
 
 	return definePlugin({
 		name: "stronghold",
@@ -73,18 +71,22 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 					return badRequest("stronghold.open needs a non-empty password");
 				}
 				try {
-					const read = await readStore(path);
-					if (!read.ok) return failure(read.code, read.message);
-					if (read.file === undefined) {
-						const created = await createStore(password, iterations);
-						await writeStore(path, created.file);
-						session = created;
+					// The lock is module-scoped and keyed by path, so a second instance opening the
+					// same vault cannot race this one's create or overwrite its header.
+					return await withFileLock(path, async () => {
+						const read = await readStore(path);
+						if (!read.ok) return failure(read.code, read.message);
+						if (read.file === undefined) {
+							const created = await createStore(password, iterations);
+							await writeStore(path, created.file);
+							session = created;
+							return { ok: true, opened: true };
+						}
+						const opened = await openStore(read.file, password);
+						if (!opened.ok) return opened;
+						session = opened.store;
 						return { ok: true, opened: true };
-					}
-					const opened = await openStore(read.file, password);
-					if (!opened.ok) return opened;
-					session = opened.store;
-					return { ok: true, opened: true };
+					});
 				} catch (error) {
 					return failure("io-error", reasonOf(error));
 				}
@@ -95,34 +97,38 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 				return { ok: true, closed: true };
 			},
 
-			set: (args: SetArgs) =>
-				serial(async (): Promise<SetResult | StrongholdFailure> => {
-					const active = session;
-					if (active === undefined) return locked("set");
-					const key = readKey(args);
-					if (key === undefined)
-						return badRequest("stronghold.set needs a non-empty key");
-					if (typeof args?.value !== "string") {
-						return badRequest("stronghold.set needs a string value");
-					}
-					try {
+			set: async (args: SetArgs): Promise<SetResult | StrongholdFailure> => {
+				const active = session;
+				if (active === undefined) return locked("set");
+				const key = readKey(args);
+				if (key === undefined) return badRequest("stronghold.set needs a non-empty key");
+				if (typeof args?.value !== "string") {
+					return badRequest("stronghold.set needs a string value");
+				}
+				try {
+					return await withFileLock(path, async () => {
+						const current = await reloadFile(path, active.file);
+						if ("ok" in current) return current;
 						const id = await entryId(active.keys.mac, key);
 						const entry = {
 							name: await seal(active.keys.aes, key),
 							value: await seal(active.keys.aes, args.value),
 						};
+						// Build from the file just read, not the snapshot captured at open: a second
+						// instance may have committed an entry while this command waited for the lock.
 						const file: StrongholdFile = {
-							...active.file,
-							entries: { ...active.file.entries, [id]: entry },
+							...current,
+							entries: { ...current.entries, [id]: entry },
 						};
 						await writeStore(path, file);
 						// A `close` that landed during the write must not be undone by this one.
 						if (session === active) session = { file, keys: active.keys };
 						return { ok: true, key };
-					} catch (error) {
-						return failure("io-error", reasonOf(error));
-					}
-				}),
+					});
+				} catch (error) {
+					return failure("io-error", reasonOf(error));
+				}
+			},
 
 			get: async (args: KeyArgs): Promise<GetResult | StrongholdFailure> => {
 				const active = session;
@@ -142,28 +148,30 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 				}
 			},
 
-			delete: (args: KeyArgs) =>
-				serial(async (): Promise<DeleteResult | StrongholdFailure> => {
-					const active = session;
-					if (active === undefined) return locked("delete");
-					const key = readKey(args);
-					if (key === undefined)
-						return badRequest("stronghold.delete needs a non-empty key");
-					try {
+			delete: async (args: KeyArgs): Promise<DeleteResult | StrongholdFailure> => {
+				const active = session;
+				if (active === undefined) return locked("delete");
+				const key = readKey(args);
+				if (key === undefined) return badRequest("stronghold.delete needs a non-empty key");
+				try {
+					return await withFileLock(path, async () => {
+						const current = await reloadFile(path, active.file);
+						if ("ok" in current) return current;
 						const id = await entryId(active.keys.mac, key);
-						if (active.file.entries[id] === undefined) {
+						if (current.entries[id] === undefined) {
 							return { ok: true, key, deleted: false };
 						}
-						const entries = { ...active.file.entries };
+						const entries = { ...current.entries };
 						delete entries[id];
-						const file: StrongholdFile = { ...active.file, entries };
+						const file: StrongholdFile = { ...current, entries };
 						await writeStore(path, file);
 						if (session === active) session = { file, keys: active.keys };
 						return { ok: true, key, deleted: true };
-					} catch (error) {
-						return failure("io-error", reasonOf(error));
-					}
-				}),
+					});
+				} catch (error) {
+					return failure("io-error", reasonOf(error));
+				}
+			},
 
 			keys: async (): Promise<KeysResult | StrongholdFailure> => {
 				const active = session;
