@@ -7,10 +7,28 @@
  */
 import { describe, expect, test } from "bun:test";
 import { createBrowserPlugin } from "@/plugins/browser";
+import {
+	assertNavigationDecision,
+	checkNavigationDecision,
+} from "@/plugins/browser-navigation-contract";
 import { ALLOWED, BOUNDS, collector, FakeBrowser } from "@/plugins/browser-fake";
+import type { BrowserOpenInput } from "@/plugins/browser-types";
 
 const TRUSTED = "https://trusted.example";
 const FOREIGN = "http://169.254.169.254/latest/meta-data/";
+
+/** The exact gap: an adapter that receives `onNavigate` and never consults it on a commit. */
+class IgnoringBrowser extends FakeBrowser {
+	override open(input: BrowserOpenInput) {
+		return super.open({ label: input.label, url: input.url, bounds: input.bounds });
+	}
+
+	override navigate(label: string, url: string) {
+		const state = this.state_[label];
+		if (state) state.url = url;
+		return { ok: true as const, loaded: true };
+	}
+}
 
 function surface(): FakeBrowser {
 	const fake = new FakeBrowser();
@@ -67,5 +85,24 @@ describe("browser committed-navigation decision", () => {
 		// somehow has a surface with no decision must fail closed rather than allow the commit.
 		expect(fake.decisions.has("none")).toBe(false);
 		expect(fake.commit("none", ALLOWED)).toBeUndefined();
+	});
+});
+
+describe("adapter-facing onNavigate contract", () => {
+	test("a conforming adapter passes the shared contract check", () => {
+		expect(checkNavigationDecision(new FakeBrowser())).toEqual({
+			ok: true,
+			label: "contract-surface",
+		});
+		expect(() => assertNavigationDecision(new FakeBrowser())).not.toThrow();
+	});
+
+	test("a stub ignoring onNavigate fails the check, so the native gap is visible in the suite", () => {
+		const ignoring = new IgnoringBrowser();
+		const answer = checkNavigationDecision(ignoring);
+		expect(answer).toMatchObject({ ok: false, code: "contract-violation" });
+		if (answer.ok) return;
+		expect(answer.message).toContain("ignored onNavigate");
+		expect(() => assertNavigationDecision(ignoring)).toThrow(/ignored onNavigate/);
 	});
 });

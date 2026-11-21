@@ -39,9 +39,10 @@ export class FakeBrowser implements BrowserAdapter {
 		return { ok: true as const, label: input.label };
 	}
 	navigate(label: string, url: string) {
-		const state = this.state_[label];
-		if (state) state.url = url;
-		return { ok: true as const, loaded: true };
+		// A conforming adapter consults the decision even for a navigation the plugin asked for;
+		// a native redirect reaches the same path without a plugin command in front of it.
+		const committed = this.commit(label, url);
+		return { ok: true as const, loaded: committed === url };
 	}
 	state(label: string) {
 		const state = this.state_[label];
