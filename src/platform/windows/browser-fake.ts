@@ -78,6 +78,11 @@ export class FakePorts implements WindowsBrowserPorts {
 	popupUrl() {
 		return "http://127.0.0.1:4321/popup";
 	}
+	/** The NavigationStarting URL the sink is deciding; set by a test to drive the native event. */
+	navUrlValue = "";
+	navUrl() {
+		return this.navUrlValue;
+	}
 	release(child: number) {
 		this.calls.push(`release:${child.toString(16)}`);
 	}

@@ -16,7 +16,7 @@
  * There is no picture: WebView2's `CapturePreview` needs an `IStream` implementation this layer does
  * not have, so `capture` answers `not-implemented` naming it rather than a screenshot of the screen.
  */
-import { FFIType, JSCallback } from "bun:ffi";
+import type { JSCallback } from "bun:ffi";
 import type {
 	BrowserAdapter,
 	BrowserBounds,
@@ -28,9 +28,16 @@ import type {
 import { asFailure } from "@/plugins/browser-failures";
 import { type Surface, SurfaceStore } from "@/plugins/browser-surfaces";
 import { type NotImplemented, notImplemented } from "@/plugins/define";
+import { NavigationDecisions, navigationAllowed, navigationChannel } from "./browser-navigation.ts";
 import { realPorts, type WindowsBrowserPorts } from "./browser-ports";
 
 export type { WindowsBrowserPorts } from "./browser-ports";
+
+/**
+ * The embedded-surfaces lane adds `onNavigate` to `BrowserOpenInput`. Declared as an intersection so
+ * this adapter compiles whether that lane has merged or not; it touches no plugin file.
+ */
+type NavigateInput = BrowserOpenInput & { onNavigate?: (url: string) => boolean };
 
 /** What one surface is on this platform: its handle in the table, and the child window holding it. */
 export interface WindowsSurface {
@@ -38,44 +45,26 @@ export interface WindowsSurface {
 	child: number;
 }
 
-const I32 = FFIType.i32;
-const P = FFIType.ptr;
-const V = FFIType.void;
-
-/** One callback for the process: C keeps a single function pointer. */
-let sink: JSCallback | undefined;
-
-function callbackPointer(callback: JSCallback): number {
-	const raw: unknown = callback.ptr;
-	const value = typeof raw === "number" ? raw : typeof raw === "bigint" ? Number(raw) : 0;
-	if (value === 0) throw new Error("crust: JSCallback exposed no usable pointer");
-	return value;
-}
-
 export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapter {
+	/** One callback for this adapter: C keeps a single function pointer. */
+	let sink: JSCallback | undefined;
 	const store = new SurfaceStore<WindowsSurface>();
+	const decisions = new NavigationDecisions();
 	let live: WindowsBrowserPorts | undefined = ports;
 	const port = (): WindowsBrowserPorts => (live ??= realPorts());
 
-	/** Report a refused new window to the surface that asked, and to nobody else. */
+	/** Install the one sink for refused windows (kind 0) and NavigationStarting (kind 1). */
 	const channel = (): void => {
 		if (sink !== undefined) return;
-		sink = new JSCallback(
-			(_count: number, web: number) => {
-				const surface = store
-					.values()
-					.find((entry) => port().webPointer(entry.web.handle) === Number(web));
-				if (surface === undefined) return 0;
-				try {
-					surface.onPopup?.(port().popupUrl());
-				} catch {
-					// A page listener that throws must not unwind into WebView2's callback.
-				}
-				return 0;
-			},
-			{ args: [I32, P], returns: V },
-		);
-		port().sink(callbackPointer(sink));
+		sink = navigationChannel({
+			find: (web) =>
+				store.values().find((entry) => port().webPointer(entry.web.handle) === web),
+			labelOf: (surface) => surface.label,
+			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().navUrl()),
+			decide: (label) => decisions.get(label),
+			onPopup: (surface, url) => surface.onPopup?.(url),
+			setSink: (pointer) => port().sink(pointer),
+		});
 	};
 
 	return {
@@ -117,6 +106,8 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 					);
 				}
 				channel();
+				const decide = (input as NavigateInput).onNavigate;
+				if (decide !== undefined) decisions.set(input.label, decide);
 				store.set({
 					label: input.label,
 					web: { handle, child },
@@ -129,9 +120,13 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 			}
 		},
 		navigate(label: string, url: string): { ok: true; loaded: boolean } | BrowserFailure {
-			const surface = store.mine(label, releasePort(port()));
+			const surface = store.mine(label, releasePort(port(), decisions));
 			if ("ok" in surface) return surface;
 			try {
+				// The same decision the native NavigationStarting event uses. A refused target is
+				// never handed to WebView2: the surface stays on its previous URL, silently.
+				if (!navigationAllowed(decisions.get(label), url))
+					return { ok: true, loaded: false };
 				return {
 					ok: true,
 					loaded: port().navigate(surface.web.handle, url),
@@ -141,7 +136,7 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 			}
 		},
 		state(label: string): (BrowserState & { ok: true }) | BrowserFailure | null {
-			const surface = store.mine(label, releasePort(port()));
+			const surface = store.mine(label, releasePort(port(), decisions));
 			if ("ok" in surface) return surface;
 			try {
 				return { ok: true, ...port().state(surface.web.handle) };
@@ -150,7 +145,7 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 			}
 		},
 		setBounds(label: string, bounds: BrowserBounds): { ok: true } | BrowserFailure {
-			const surface = store.mine(label, releasePort(port()));
+			const surface = store.mine(label, releasePort(port(), decisions));
 			if ("ok" in surface) return surface;
 			try {
 				// WM_SIZE resizes the controller to the new client area, so one call moves both.
@@ -163,12 +158,12 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 			}
 		},
 		close(label: string): { ok: true; closed: true } | BrowserFailure {
-			return store.close(label, releasePort(port()));
+			return store.close(label, releasePort(port(), decisions));
 		},
 		async capture(
 			label: string,
 		): Promise<(BrowserCapture & { ok: true }) | BrowserFailure | NotImplemented> {
-			const surface = store.mine(label, releasePort(port()));
+			const surface = store.mine(label, releasePort(port(), decisions));
 			if ("ok" in surface) return surface;
 			return notImplemented(
 				"browser.capture needs the surface's own render, and WebView2's CapturePreview wants an " +
@@ -190,10 +185,11 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 }
 
 /** The store's teardown, as a value so both `mine` and `close` share one release path. */
-function releasePort(ports: WindowsBrowserPorts) {
+function releasePort(ports: WindowsBrowserPorts, decisions: NavigationDecisions) {
 	return {
 		windowOpen: (label: string) => ports.windowOpen(label),
 		release: (surface: Surface<WindowsSurface>) => {
+			decisions.delete(surface.label);
 			ports.release(surface.web.child);
 		},
 	};

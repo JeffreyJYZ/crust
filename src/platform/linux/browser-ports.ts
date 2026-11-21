@@ -29,11 +29,14 @@ export interface LinuxBrowserPorts {
 	load(web: bigint, url: string): boolean;
 	watch(web: bigint): boolean;
 	denyCapture(web: bigint): boolean;
+	/** Connect `decide-policy` so every committed navigation reaches the gate. */
+	watchNav(web: bigint): boolean;
 	/** The same load call, by address: a navigation is not a new view. */
 	navigate(web: bigint, url: string): boolean;
 	state(web: bigint): BrowserState;
 	close(web: bigint): void;
 	sink(pointer: number): void;
+	decisionSink(pointer: number): void;
 	popupUrl(): string;
 	opener(url: string): { status: number; reason: string };
 }
@@ -92,6 +95,7 @@ export function realPorts(): LinuxBrowserPorts {
 		load: (web, url) => Number(symbols().shim_webview_load(web, cstring(url)) ?? 0) === 1,
 		watch: (web) => Number(symbols().shim_browser_watch_popups?.(web) ?? 0) === 1,
 		denyCapture: (web) => Number(symbols().shim_browser_deny_capture?.(web) ?? 0) === 1,
+		watchNav: (web) => Number(symbols().shim_browser_watch_nav?.(web) ?? 0) === 1,
 		navigate: (web, url) => Number(symbols().shim_webview_load(web, cstring(url)) ?? 0) === 1,
 		state: (web) => ({
 			url: String(symbols().shim_webview_uri?.(web) ?? ""),
@@ -105,6 +109,9 @@ export function realPorts(): LinuxBrowserPorts {
 		},
 		sink: (pointer) => {
 			symbols().shim_browser_set_sink?.(pointer);
+		},
+		decisionSink: (pointer) => {
+			symbols().shim_browser_set_decision_sink?.(pointer);
 		},
 		popupUrl: () => {
 			const buffer = new Uint8Array(2048);

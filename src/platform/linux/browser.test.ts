@@ -31,7 +31,9 @@ describe("linuxBrowserAdapter", () => {
 			`load:400:${STATE.url}`,
 			"watch:400",
 			"deny:400",
+			"watch_nav:400",
 			"sink:set",
+			"decision_sink:set",
 		]);
 	});
 

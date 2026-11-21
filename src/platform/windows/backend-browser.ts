@@ -24,15 +24,17 @@ export interface WindowsBrowserShim {
 	/**
 	 * The whole browser-surface create: the WebView2 composite, both policy handlers, then the first
 	 * load — in that order, because a handler installed after a fast completion leaves `loading` true.
-	 * Answers the handle, or 0 with the surface torn down.
+	 * Answers the handle (>= 1), or -1 with the surface torn down. 0 is the app's own webview.
 	 */
 	shim_browser_surface_new(child: number, url: Uint8Array, userData: Uint8Array): number;
 	/** Subscribe one surface to NavigationStarting/NavigationCompleted: 1 registered, 0 refused. */
 	shim_webview_watch(handle: number): number;
 	/** Refuse every `target=_blank` this surface asks for, reporting its URL instead. */
 	shim_webview_refuse_popups(handle: number): number;
-	/** The one sink a refused new window is reported through; the URL is read back below. */
+	/** One sink for refused windows (kind 0) and navigation decisions (kind 1); URLs read back below. */
 	shim_browser_set_sink(sink: number): void;
 	shim_browser_popups(): number;
 	shim_browser_popup_url(dst: Uint8Array, cap: number): number;
+	/** The target URI of the NavigationStarting event the sink is deciding on. */
+	shim_browser_nav_url(dst: Uint8Array, cap: number): number;
 }

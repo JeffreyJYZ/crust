@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { cc, FFIType } from "bun:ffi";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readShimPart } from "./shim-source.ts";
@@ -60,6 +60,25 @@ describe("the SetWindowPos flag a style write uses", () => {
 
 	test("a topmost write still changes the z-order", () => {
 		expect(Number(symbols.topmost_flags())).toBe(0x13);
+	});
+});
+
+describe("the committed-navigation gate in the shim", () => {
+	test("NavigationStarting asks the sink and cancels a refused commit", () => {
+		const events = readShimPart("58_browser_events.c");
+		expect(events).toContain("g_popup_sink)(0, g_popups, web)");
+		expect(events).toContain("g_popup_sink)(1, g_navs, sender)");
+		expect(events).toContain("handler->loading == 1 && !shim_nav_commit(args, sender)");
+		expect(events).toContain("SHIM_SLOT_NAV_ARGS_PUT_CANCEL");
+		expect(events).toContain("int shim_browser_nav_url(char *dst, int cap)");
+		const ffi = readFileSync(join(import.meta.dir, "ffi-webview.ts"), "utf8");
+		expect(ffi).toContain("shim_browser_nav_url: { args: [P, I32], returns: I32 }");
+	});
+
+	test("the nav-argument vtable slots are derived from the published order", () => {
+		const slots = readShimPart("11_browser_slots.c");
+		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_GET_URI 4");
+		expect(slots).toContain("#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 6");
 	});
 });
 

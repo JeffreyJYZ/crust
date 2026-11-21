@@ -15,3 +15,7 @@
 // put_Handled. Only the two this layer calls are named.
 #define SHIM_SLOT_NEWWINDOW_GET_URI 3
 #define SHIM_SLOT_NEWWINDOW_PUT_HANDLED 6
+// ICoreWebView2NavigationStartingEventArgs, after IUnknown: get_IsUserInitiated, get_Uri,
+// get_Cancel, put_Cancel. The two this layer calls decide whether a navigation is committed.
+#define SHIM_SLOT_NAV_ARGS_GET_URI 4
+#define SHIM_SLOT_NAV_ARGS_PUT_CANCEL 6

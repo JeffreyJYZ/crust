@@ -50,7 +50,9 @@ export const shimSymbols = {
 	shim_webview_close: { args: [P], returns: I32 },
 	shim_browser_watch_popups: { args: [P], returns: I32 },
 	shim_browser_deny_capture: { args: [P], returns: I32 },
+	shim_browser_watch_nav: { args: [P], returns: I32 },
 	shim_browser_set_sink: { args: [P], returns: V },
+	shim_browser_set_decision_sink: { args: [P], returns: V },
 	shim_browser_popups: { args: [], returns: I32 },
 	shim_browser_popup_url: { args: [P, I32], returns: I32 },
 

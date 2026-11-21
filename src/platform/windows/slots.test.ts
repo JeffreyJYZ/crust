@@ -116,6 +116,9 @@ const NEW_WINDOW = [
 	"get_WindowFeatures",
 ];
 
+/** NavigationStarting's arguments, same source; get_Uri and put_Cancel gate every commit. */
+const NAV_ARGS = ["get_IsUserInitiated", "get_Uri", "get_Cancel", "put_Cancel", "get_RequestHeaders", "SetRequestHeader", "get_NavigationId"];
+
 /** The slot a published method list puts a method at, counting from 3 (past IUnknown). */
 function slotOf(order: readonly string[], method: string): number {
 	const index = order.indexOf(method);
@@ -127,7 +130,7 @@ describe("the vtable slots", () => {
 	const defined = slots();
 
 	test("the parser saw the block it is meant to check", () => {
-		expect(defined.size).toBe(17);
+		expect(defined.size).toBe(19);
 	});
 
 	test("get_Source is slot 4 and Navigate is slot 5, not the thirty-seventh slot", () => {
@@ -160,6 +163,12 @@ describe("the vtable slots", () => {
 	test("the new-window argument slots are get_Uri and put_Handled", () => {
 		expect(defined.get("NEWWINDOW_GET_URI")).toBe(slotOf(NEW_WINDOW, "get_Uri"));
 		expect(defined.get("NEWWINDOW_PUT_HANDLED")).toBe(slotOf(NEW_WINDOW, "put_Handled"));
+	});
+
+	test("the navigation-starting slots are get_Uri and put_Cancel", () => {
+		expect(defined.get("NAV_ARGS_GET_URI")).toBe(slotOf(NAV_ARGS, "get_Uri"));
+		expect(defined.get("NAV_ARGS_PUT_CANCEL")).toBe(slotOf(NAV_ARGS, "put_Cancel"));
+		expect(slotOf(NAV_ARGS, "put_Cancel")).toBe(6);
 	});
 
 	test("the controller slots are put_Bounds, put_IsVisible, Close and get_CoreWebView2", () => {

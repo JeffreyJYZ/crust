@@ -50,6 +50,10 @@ export class FakePorts implements LinuxBrowserPorts {
 		this.calls.push(`deny:${web.toString(16)}`);
 		return true;
 	}
+	watchNav(web: bigint) {
+		this.calls.push(`watch_nav:${web.toString(16)}`);
+		return !this.signalsRefused;
+	}
 	navigate(web: bigint, url: string) {
 		this.calls.push(`navigate:${web.toString(16)}:${url}`);
 		return true;
@@ -62,6 +66,9 @@ export class FakePorts implements LinuxBrowserPorts {
 	}
 	sink(pointer: number) {
 		this.calls.push(`sink:${pointer > 0 ? "set" : "unset"}`);
+	}
+	decisionSink(pointer: number) {
+		this.calls.push(`decision_sink:${pointer > 0 ? "set" : "unset"}`);
 	}
 	popupUrl() {
 		return "http://127.0.0.1:4321/popup";
