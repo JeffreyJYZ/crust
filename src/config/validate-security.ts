@@ -86,35 +86,43 @@ function validateGrants(v: Validator, value: unknown, known: ReadonlySet<string>
 /**
  * A custom policy replaces the whole header. The bridge still injects its bootstrap as an inline
  * `<script>` with a per-response nonce, but it never rewrites an app's policy to admit that nonce.
- * A `script-src` that omits `'unsafe-inline'` therefore loads a page where `window.crust` never
- * installs and every invoke fails silently — refuse it here instead. When `script-src` is absent
- * CSP falls back to `default-src`, so a strict `default-src` blocks the bootstrap the same way.
+ * The effective directive is resolved the way a browser resolves it: `script-src-elem` first, then
+ * `script-src`, then `default-src`. A spelling that leaves that directive without `'unsafe-inline'`
+ * loads a page where `window.crust` never installs and every invoke fails silently — refuse it
+ * here, naming the directive that actually governs the bootstrap. `script-src-attr` is not in the
+ * chain: it governs event handlers, not inline `<script>` blocks.
  */
 const CSP_REASON =
 	"a custom policy cannot name the bridge's per-response nonce; without 'unsafe-inline' the " +
 	"inline bootstrap is blocked, window.crust never installs and every invoke fails silently";
 
-function cspExpectation(directive: "script-src" | "default-src"): string {
+type ScriptDirective = "script-src-elem" | "script-src" | "default-src";
+
+function cspExpectation(directive: ScriptDirective): string {
 	const base = `a policy whose ${directive} includes 'unsafe-inline' (${CSP_REASON})`;
+	if (directive === "script-src-elem") {
+		return `${base} — script-src-elem governs inline <script> blocks in CSP3 and overrides script-src and default-src`;
+	}
 	return directive === "default-src"
 		? `${base} — script-src falls back to default-src when absent; add a script-src that admits the nonce or loosen default-src`
 		: base;
 }
 
-/** The directive governing inline scripts: `script-src`, else `default-src`, else unrestricted. */
-function scriptDirective(
-	csp: string,
-): { name: "script-src" | "default-src"; value: string } | undefined {
-	let fallback: { name: "default-src"; value: string } | undefined;
+/** The most specific inline-script directive present, independent of its order in the policy. */
+function scriptDirective(csp: string): { name: ScriptDirective; value: string } | undefined {
+	let elem: { name: ScriptDirective; value: string } | undefined;
+	let script: { name: ScriptDirective; value: string } | undefined;
+	let fallback: { name: ScriptDirective; value: string } | undefined;
 	for (const directive of csp.split(";")) {
-		if (/^\s*script-src(?:\s|$)/i.test(directive)) {
-			return { name: "script-src", value: directive };
-		}
-		if (fallback === undefined && /^\s*default-src(?:\s|$)/i.test(directive)) {
-			fallback = { name: "default-src", value: directive };
+		if (/^\s*script-src-elem(?:\s|$)/i.test(directive)) {
+			elem ??= { name: "script-src-elem", value: directive };
+		} else if (/^\s*script-src(?:\s|$)/i.test(directive)) {
+			script ??= { name: "script-src", value: directive };
+		} else if (/^\s*default-src(?:\s|$)/i.test(directive)) {
+			fallback ??= { name: "default-src", value: directive };
 		}
 	}
-	return fallback;
+	return elem ?? script ?? fallback;
 }
 
 /** CSP directive names and source keywords are ASCII case-insensitive. */

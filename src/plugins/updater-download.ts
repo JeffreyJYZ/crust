@@ -5,6 +5,8 @@
  * extracted into a directory — is {@link materialiseArtifact}'s call.
  */
 
+import { dirname } from "node:path";
+
 import { materialiseArtifact } from "./updater-artifact";
 import {
 	errorOf,
@@ -18,6 +20,7 @@ import type { Receipts } from "./updater-receipt";
 import {
 	readSignatureArgs,
 	requiresPubkey,
+	requiresSignature,
 	signatureMismatch,
 	verifyEd25519,
 } from "./updater-signature";
@@ -40,13 +43,18 @@ export async function runDownload(
 		return { ...invalidArguments("download", detail, args), requires: "sha256" };
 	}
 	const signature = readString(args, "signature");
+	// A pinned key is a gate, not a hint: with only the digest, a server that answers both the
+	// manifest and the artifact chooses both, and an unsigned build would install unchecked.
+	if (signature === undefined && options.pubkey !== undefined) return requiresSignature(args);
 	if (signature !== undefined && options.pubkey === undefined) return requiresPubkey(args);
 	const signed = readSignatureArgs(args, options.pubkey);
 	if (signed === null) {
 		return invalidArguments("download", "refuses a pubkey that is not this app's", args);
 	}
+	const directory = await adapter.makeTempDir();
+	let keep = false;
 	try {
-		const file = await adapter.download(url, await adapter.makeTempDir());
+		const file = await adapter.download(url, directory);
 		const actual = (await adapter.sha256(file.path)).toLowerCase();
 		if (actual !== expected) return hashMismatch(file.path, actual, expected);
 		let signer: string | undefined;
@@ -59,12 +67,16 @@ export async function runDownload(
 			signer = signed.pubkey;
 		}
 		const artifact = await materialiseArtifact(adapter, file, actual);
+		const tempDirs =
+			artifact.archive === undefined ? [directory] : [directory, dirname(artifact.path)];
 		receipts.record({
 			path: artifact.path,
 			sha256: artifact.sha256,
 			signer,
 			archive: artifact.archive,
+			tempDirs,
 		});
+		keep = true;
 		return {
 			ok: true,
 			path: artifact.path,
@@ -75,5 +87,9 @@ export async function runDownload(
 		};
 	} catch (error) {
 		return { ok: false, ...errorOf(error, "download-failed") };
+	} finally {
+		// A refused download leaves nothing behind; a verified one keeps its dirs until install
+		// has re-checked the digests and moved the bundle.
+		if (!keep) await adapter.removeTempDir?.(directory);
 	}
 }

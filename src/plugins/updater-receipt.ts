@@ -9,6 +9,7 @@
 import { resolve } from "node:path";
 
 import type { UpdaterFailure } from "./updater-args";
+import type { UpdaterAdapter } from "./updater-types";
 
 /** What `download` verified, in the run that verified it. */
 export interface DownloadReceipt {
@@ -24,6 +25,8 @@ export interface DownloadReceipt {
 	 * that gets renamed.
 	 */
 	readonly archive?: { readonly path: string; readonly sha256: string };
+	/** Adapter-owned temp dirs holding this artifact; removed once `install` no longer needs them. */
+	readonly tempDirs?: readonly string[];
 }
 
 export interface Receipts {
@@ -40,6 +43,15 @@ export function createReceipts(): Receipts {
 		},
 		get: (path) => byPath.get(resolve(path)),
 	};
+}
+
+/** The artifact has been moved into place; its temp dirs have no further part in the update. */
+export async function discardTemps(
+	adapter: UpdaterAdapter,
+	dirs: readonly string[] | undefined,
+): Promise<void> {
+	if (adapter.removeTempDir === undefined || dirs === undefined) return;
+	for (const dir of dirs) await adapter.removeTempDir(dir).catch(() => undefined);
 }
 
 /** Nothing is installed from a path this run never verified, and the refusal says why. */

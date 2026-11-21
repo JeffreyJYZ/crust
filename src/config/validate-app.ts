@@ -1,3 +1,4 @@
+import { isContainedRelative } from "./path-rule.ts";
 import { validateActivate } from "./validate-activate.ts";
 import type { Validator } from "./validator.ts";
 
@@ -15,6 +16,11 @@ export function validateApp(v: Validator, value: unknown): void {
 	}
 	v.string(app, "name", "app", true);
 	v.string(app, "version", "app", true);
-	v.string(app, "icon", "app", false);
+	const icon = v.string(app, "icon", "app", false);
+	if (icon !== undefined && !isContainedRelative(icon)) {
+		// The build resolves this against `--dir`; an absolute spelling would read a PNG from
+		// anywhere on the build machine, not from the project that declared it.
+		v.fail("app.icon", "a relative PNG path inside the project, with no '..' segments", icon);
+	}
 	validateActivate(v, app);
 }

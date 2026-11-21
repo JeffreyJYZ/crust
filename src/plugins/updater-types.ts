@@ -3,7 +3,7 @@
  * Nothing here runs anything, so a test can type a fake without touching a filesystem.
  */
 
-import type { UpdaterError } from "./updater-args";
+import type { UpdaterError, UpdaterFailure } from "./updater-args";
 
 /** The one argument every bundle-touching command shares. */
 export interface BundleArgs {
@@ -67,6 +67,16 @@ export interface DownloadResult {
 	readonly archive?: { readonly path: string; readonly sha256: string };
 }
 
+/** `ok: false` from `install`, with the bundle paths a page needs to make sense of the failure. */
+export interface InstallFailure extends UpdaterFailure {
+	readonly appPath: string;
+	readonly backup: string;
+	/** The swap landed and only the launch failed; the new build is installed. */
+	readonly installed?: true;
+	/** The swap landed but the old bundle could not be restored; this is its only copy. */
+	readonly parkedAt?: string;
+}
+
 export interface InstallResult {
 	readonly ok: true;
 	readonly appPath: string;
@@ -93,6 +103,8 @@ export interface UpdaterAdapter {
 	readBytes(path: string): Promise<Uint8Array>;
 	/** A fresh directory the plugin may write into; the OS owns its lifetime. */
 	makeTempDir(): Promise<string>;
+	/** Remove one of those directories once no receipt needs it. */
+	removeTempDir?(path: string): Promise<void>;
 	/**
 	 * Extract a zip into a directory this adapter owns, answering the one `.app` it held, or
 	 * `undefined` when the artifact is not a zip and is installed as a file. A hostile entry — an

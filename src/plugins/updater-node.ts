@@ -21,7 +21,7 @@ import { dirname, join } from "node:path";
 
 import { isZip, readArchive, type Archive } from "./updater-archive";
 import { fileNameFor, UpdaterAdapterError } from "./updater-args";
-import { fetchFollowing, readBounded } from "./updater-fetch";
+import { fetchFollowing, readBounded, readJsonBounded } from "./updater-fetch";
 import type { UpdaterAdapter } from "./updater-types";
 
 /**
@@ -61,7 +61,7 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 			if (!response.ok) {
 				throw new UpdaterAdapterError("check-failed", `updater: ${url} ${response.status}`);
 			}
-			return await response.json();
+			return await readJsonBounded(response, url);
 		},
 		async download(url, directory) {
 			const response = await fetchFollowing(url);
@@ -91,6 +91,9 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 		async makeTempDir() {
 			return await mkdtemp(join(tmpdir(), "crust-update-"));
 		},
+		async removeTempDir(path) {
+			await rm(path, { recursive: true, force: true });
+		},
 		// Bun reads tar and no zip, and its tar extraction drops the unix mode, so a zip is read
 		// here. `readArchive` has already refused every escaping name, and the mode is applied so
 		// the bundle's executable stays executable.
@@ -108,21 +111,33 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 				);
 			}
 			const directory = await mkdtemp(join(tmpdir(), "crust-extract-"));
-			for (const entry of parsed.entries) {
-				const path = join(directory, entry.name);
-				if (entry.kind === "directory") {
-					// A directory the owner cannot traverse is not extractable, so the execute bits
-					// are forced on while the archive's group and other bits are kept.
-					await mkdir(path, { recursive: true, mode: (entry.mode || 0o755) | 0o700 });
-					continue;
+			try {
+				for (const entry of parsed.entries) {
+					const path = join(directory, entry.name);
+					if (entry.kind === "directory") {
+						// A directory the owner cannot traverse is not extractable, so the execute bits
+						// are forced on while the archive's group and other bits are kept.
+						await mkdir(path, { recursive: true, mode: (entry.mode || 0o755) | 0o700 });
+						continue;
+					}
+					await mkdir(dirname(path), { recursive: true });
+					if (entry.kind === "symlink") {
+						await symlink(entry.target ?? "", path);
+						continue;
+					}
+					const mode = entry.mode || 0o644;
+					await writeFile(path, entry.bytes ?? new Uint8Array(), { mode });
 				}
-				await mkdir(dirname(path), { recursive: true });
-				if (entry.kind === "symlink") {
-					await symlink(entry.target ?? "", path);
-					continue;
-				}
-				const mode = entry.mode || 0o644;
-				await writeFile(path, entry.bytes ?? new Uint8Array(), { mode });
+			} catch (error) {
+				// A hostile entry that collides on disk is an invalid archive, not a generic
+				// download failure with a raw Node error, and nothing is left behind to inspect.
+				await rm(directory, { recursive: true, force: true });
+				if (error instanceof UpdaterAdapterError) throw error;
+				const reason = error instanceof Error ? error.message : String(error);
+				throw new UpdaterAdapterError(
+					"invalid-archive",
+					`updater: the archive ${archive} could not be extracted: ${reason}`,
+				);
 			}
 			return { path: join(directory, parsed.root), entries: parsed.entries.length };
 		},
@@ -144,7 +159,17 @@ export function nodeUpdaterAdapter(): UpdaterAdapter {
 			try {
 				await rename(source, real);
 			} catch (error) {
-				await rename(backup, real).catch(() => undefined);
+				const reason = error instanceof Error ? error.message : String(error);
+				try {
+					await rename(backup, real);
+				} catch (rollback) {
+					const why = rollback instanceof Error ? rollback.message : String(rollback);
+					throw new UpdaterAdapterError(
+						"rollback-failed",
+						`updater: install failed (${reason}) and restoring ${backup} also failed (${why}); ` +
+							`the app at ${real} is absent and its only copy is parked at ${backup}`,
+					);
+				}
 				throw error;
 			}
 		},

@@ -55,7 +55,16 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		validateDev(v, root.dev);
 		validateBuild(v, root.build);
 
-		if (root.plugins !== undefined) v.stringArray(root, "plugins", "config");
+		if (root.plugins !== undefined) {
+			const plugins = v.stringArray(root, "plugins", "config");
+			plugins?.forEach((name, index) => {
+				// An empty name survives `pluginName` and fails at bridge start with a plain
+				// Error that names the value but no key. Make it a ConfigError with an index.
+				if (name.trim() === "") {
+					v.fail(`config.plugins[${index}]`, "a non-empty plugin name", name);
+				}
+			});
+		}
 
 		validateExtensions(v, root.extensions);
 		validateSecurity(v, root.security);

@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import type {
-	DownloadResult,
-	InstallResult,
-	UpdaterAdapter,
-	UpdaterFailure,
-} from "@/plugins/updater";
+import type { DownloadResult, UpdaterAdapter, UpdaterFailure } from "@/plugins/updater";
 import {
 	bundle,
 	delivering,
@@ -128,7 +123,7 @@ describe("updater.install with relaunch", () => {
 		}
 	});
 
-	test("a launch that fails is reported beside the install, never rolled back", async () => {
+	test("a launch that fails is a typed failure beside the install, never rolled back", async () => {
 		const dir = await scratch();
 		try {
 			const appPath = await bundle(dir, "Notes.app", "old");
@@ -147,11 +142,13 @@ describe("updater.install with relaunch", () => {
 				path,
 				appPath,
 				relaunch: true,
-			})) as InstallResult;
+			})) as UpdaterFailure;
 			expect(result).toMatchObject({
-				ok: true,
+				ok: false,
+				code: "relaunch-failed",
+				message: "open: killed",
 				backup: `${appPath}.old`,
-				relaunchError: { code: "relaunch-failed", message: "open: killed" },
+				installed: true,
 			});
 			expect(await readFile(join(appPath, MARKER), "utf8")).toBe("new");
 			expect(await readFile(join(`${appPath}.old`, MARKER), "utf8")).toBe("old");

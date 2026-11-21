@@ -93,13 +93,17 @@ export async function proveUpdater(): Promise<boolean> {
 			"utf8",
 		);
 
+		// `install` only replaces the bundle this process runs from, so the probe names the temp
+		// bundle as its own — the third argument exists for exactly that. Nothing real is touched.
+		const own = join(appPath, "Contents", "MacOS", "Old");
 		const updater = createUpdaterPlugin(
 			directoryAdapter(),
 			{ allowFileUrl: true, pubkey: pinned },
-			// `install` only replaces the bundle this process runs from, so the probe names the temp
-			// bundle as its own — the third argument exists for exactly that. Nothing real is touched.
-			join(appPath, "Contents", "MacOS", "Old"),
+			own,
 		);
+		// A `.app` is a tree and has no bytes to sign, so the bundle half runs on an instance with
+		// no pinned key: a pinned app now refuses a digest-only artifact by design.
+		const bundleUpdater = createUpdaterPlugin(directoryAdapter(), { allowFileUrl: true }, own);
 		const found = await updater.commands.check({
 			endpoint: pathToFileURL(manifest).href,
 			currentVersion: CURRENT,
@@ -116,7 +120,7 @@ export async function proveUpdater(): Promise<boolean> {
 		});
 		const verified = signed.ok === true && signed.signer === pinned;
 
-		const fetched = await updater.commands.download({
+		const fetched = await bundleUpdater.commands.download({
 			url: `file://${fresh}`,
 			sha256: treeDigest,
 		});
@@ -124,9 +128,9 @@ export async function proveUpdater(): Promise<boolean> {
 			console.log(`updater   download refused: ${JSON.stringify(fetched)}`);
 			return mark("updater", false);
 		}
-		const bare = await updater.commands.install({ path: fresh, appPath });
+		const bare = await bundleUpdater.commands.install({ path: fresh, appPath });
 		const refused = bare.ok === false && bare.code === "unverified-artifact";
-		const installed = await updater.commands.install({ path: fetched.path, appPath });
+		const installed = await bundleUpdater.commands.install({ path: fetched.path, appPath });
 		const parked = await readFile(join(`${appPath}.old`, "marker.txt"), "utf8").catch(() => "");
 		const live = await readFile(join(appPath, "marker.txt"), "utf8").catch(() => "");
 		const swapped = installed.ok === true && parked === OLD_MARKER && live === NEW_MARKER;

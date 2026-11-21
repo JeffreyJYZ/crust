@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path";
 import { resolveSidecar } from "@/plugins/sidecar";
+import { isContainedRelative } from "./path-rule.ts";
 import type { Validator } from "./validator.ts";
 
 export const BUILD_KEYS = [
@@ -16,7 +17,12 @@ export function validateBuild(v: Validator, value: unknown): void {
 	if (!build) return;
 	v.only(build, "build", BUILD_KEYS);
 	v.string(build, "beforeBuildCommand", "build", false);
-	v.string(build, "assets", "build", false);
+	const assets = v.string(build, "assets", "build", false);
+	if (assets !== undefined && !isContainedRelative(assets)) {
+		// resolveAssets joins this onto the project and embeds everything under it: an absolute
+		// value or a `..` climb would ship files the project never declared.
+		v.fail("build.assets", "a relative path inside the project, with no '..' segments", assets);
+	}
 	v.string(build, "minimumSystemVersion", "build", false);
 	v.string(build, "urlScheme", "build", false);
 	const sidecars = v.stringArray(build, "sidecars", "build");
