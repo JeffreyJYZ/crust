@@ -31,6 +31,8 @@ async function listen(root: string): Promise<string> {
 	return server.resolvedUrls?.local[0] ?? `http://127.0.0.1:${server.config.server.port}/`;
 }
 
+const FORBIDDEN = 403;
+
 describe("dev handshake exposure", () => {
 	test("the plugin denies .crust and every handshake file name", async () => {
 		const plugin = crust();
@@ -75,7 +77,7 @@ describe("dev handshake exposure", () => {
 
 			for (const path of [".crust/dev.json", "crust-dev-probe.json"]) {
 				const response = await fetch(`${base}${path}`);
-				expect([403, 404]).toContain(response.status);
+				expect([FORBIDDEN, 404]).toContain(response.status);
 				expect(await response.text()).not.toContain("ADMIN-TOKEN");
 			}
 

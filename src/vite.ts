@@ -1,6 +1,6 @@
 /**
  * `crust/vite` — the dev-server half of the bridge. With `dev.url` set the window loads a document the dev server serves, so the bridge's bootstrap never reaches it and `invoke("name", args)` has no `window.crust`; `transformIndexHtml` adds `window.__CRUST__` and the page-side client instead.
- * Values come from the runtime, never from a round trip here: the runtime mints one document token where the bridge is bound and writes it to `.crust/dev.json` (or `CRUST_DEV_FILE`), with `CRUST_BRIDGE_URL`/`CRUST_BRIDGE_TOKEN` as explicit overrides. The plugin only reads and injects — a fetch inside HTML transformation raced the bridge bind and could silently leave the page with no client.
+ * Values come from the runtime, never from a round trip here: the runtime mints one document token per window label where the bridge is bound and writes them to `devHandshakePath()` in the OS temp dir — never into the project root a dev server serves. The plugin finds that path through `CRUST_DEV_FILE` or the same project hash, with `CRUST_BRIDGE_URL`/`CRUST_BRIDGE_TOKEN` as explicit single-token overrides. It only reads and injects — a fetch inside HTML transformation raced the bridge bind and could silently leave the page with no client.
  */
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
