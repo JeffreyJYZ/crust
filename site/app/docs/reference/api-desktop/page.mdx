@@ -77,6 +77,8 @@ The rectangles are not the frame `window.setPosition` takes: the darwin half fli
 
 `trusted` is a read and never raises the dialog. `prompt` raises the one system prompt that grants trust and reports the state after it, so `trusted: false` is a common answer — a human has to answer. `elementCount` walks the app's own first window and counts its AX children; zero is a real answer for a window with no children.
 
+`elementCount` answers a typed `{ ok: false, code: "needs-activation", message }` when the launch was told not to activate (`testing.activation: "none"`): AppKit lists only windows on the active Space, so the empty tree that would follow is explained rather than reported as a count of zero. Under `"on-demand"` the same read raises the app once and then answers.
+
 `elementCount` answers `not-implemented` rather than a misleading zero when the AX window list came back empty (`requires: "AXUIElementCopyAttributeValue (AXWindows)"`) or the API refused the walk (`requires: "AXUIElementCopyAttributeValue"`). Without an adapter, all three answer `not-implemented` with `requires: "AXIsProcessTrusted"`.
 
 `elementCount` never sees web content. The page-local `crust.a11y.pageTree(selector?)` and `crust.a11y.focusElement(selector)` fill that gap without a bridge call or native half: the tree reports `{ role, label, focusable, readingOrder }` with `source: "dom"` and a note that this is the page's view, not the OS accessibility tree; focus calls `.focus()` and reports what actually took it, refusing with `code: "not-focusable"` when the browser declines. They are `window.crust` commands, not `invoke` command names. The full shapes are in the accessibility guide.

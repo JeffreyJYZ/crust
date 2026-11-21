@@ -8,8 +8,8 @@ import type { WindowsShim } from "./backend.ts";
 import type { FakeOptions } from "./fake-backend.ts";
 import { text } from "./fake-bytes.ts";
 import { fakeNamespaces } from "./fake-namespaces.ts";
-import { fakeWebView } from "./fake-webview.ts";
 import { fakeWindowStyle } from "./fake-style.ts";
+import { fakeWebView } from "./fake-webview.ts";
 
 /**
  * The shim a test drives, with its call log. Exported on its own so a test that only needs to record
@@ -68,8 +68,9 @@ export function fakeShim(
 			calls.push(`post_null:${Number(hwnd)}`);
 			return open.has(Number(hwnd)) ? 1 : 0;
 		},
-		shim_window_new: (title, width, height, className) => {
-			calls.push(`window_new:${text(title)}:${width}x${height}:${text(className)}`);
+		shim_window_new: (title, width, height, className, activate = 1) => {
+			const passive = Number(activate) === 0 ? ":passive" : "";
+			calls.push(`window_new:${text(title)}:${width}x${height}:${text(className)}${passive}`);
 			if (options.failWindow) return 0;
 			const hwnd = next++;
 			hwnds.push(hwnd);

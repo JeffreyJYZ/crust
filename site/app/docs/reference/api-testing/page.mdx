@@ -8,6 +8,16 @@ Every command is one JavaScript expression run through `-[WKWebView evaluateJava
 
 The namespace exists only when the process was started with `CRUST_TEST=1`. The gate is read when the core plugin set is built, so a normal `crust build` (or `crust dev`) has no `testing` name in its registry at all: `invoke("testing", …)` answers `unknown-plugin`, exactly what a misspelled namespace gets. It is an environment variable rather than a config key on purpose — a `testing` key would ship inside the app's own `crust.config.ts` and become a setting somebody could leave on, while `CRUST_TEST=1` is a property of the process that was started.
 
+## Activation
+
+A probe must not steal the front. The `testing` namespace itself never activates anything — its commands run scripts in the window's own webview — but the *launch* does by default, because `app.activate` is `"always"`. `testing.activation` in [`crust.config.ts`](/docs/reference/config) chooses:
+
+- `"auto"` (default) — an ordinary launch.
+- `"none"` — never activates, and `accessibility.elementCount` answers `needs-activation` instead of the empty tree an inactive app gives.
+- `"on-demand"` — launches without activating and raises the app once, on the first accessibility read that needs it.
+
+In all three, `testing.*` and `window.capture` keep working: they touch the page, not the display, so a probe can see and drive a window that never became key. `window.create { activate: false }` completes the picture for a window a probe opens itself.
+
 ## What it drives
 
 Input here is ordinary DOM, not the operating system. `click` calls `element.click()`, `key` dispatches a `KeyboardEvent`, `hover` dispatches `mouseover` and `mousemove`. Nothing posts a `CGEvent`, nothing moves the human's cursor, and no Accessibility or Screen Recording grant is ever asked for, because nothing leaves the webview.

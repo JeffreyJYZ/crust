@@ -68,6 +68,15 @@ export default {
 `label` (required, the handle every `window` command uses), `url` (default `/`), `width` 1100,
 `height` 760, `minWidth`, `minHeight`, `title`, `material` (`"none"`; vibrancy/mica/acrylic/tabbed).
 
+### `testing`
+
+`activation` — `"auto"` (default: an ordinary launch), `"none"` (never activates at launch, and
+`accessibility.elementCount` answers `needs-activation`) or `"on-demand"` (activates once for the
+first accessibility read that needs it). Page-level `testing.*` and `window.capture` work in all
+three, so a probe sees and drives a page without stealing focus. Pair with
+`invoke("window", "create", { label: "probe", activate: false })`, which shows a window without
+making it key.
+
 ### `dev`
 
 `url` — one dev-server origin every window loads verbatim; `windows[].url` is then ignored and that
@@ -236,7 +245,7 @@ eight a first app reaches for are below — names and arg shapes only; answers a
 | `store` | `get {key,name?}` · `set {key,value,name?}` · `delete {key,name?}` · `keys`/`clear`/`save {name?}`. `name` picks a separate `store.<name>.json`; omit it for the default store |
 | `fs` | `readTextFile {path}` · `writeTextFile {path,contents}` · `list`/`stat`/`readBinary {path}` · `writeBinary {path,bytes}` · `mkdir {path}` · `remove {path,recursive?}` · `rename {from,to}` · `scopeList` · `scopeAllow`/`scopeRevoke {path}` |
 | `dialog` | `openPanel {title?,multiple?,directory?,filters?}` · `savePanel {title?,suggestedName?,filters?}` · `cancel`. `{paths: []}` means the user cancelled |
-| `window` | `create {label,title?,width?,height?,url?}` · `list` · `label` · `close`/`focus`/`isOpen`/`minimize`/`unminimize`/`isMinimized`/`maximize`/`isMaximized`/`isDecorated`/`opacity`/`getSize`/`getPosition`/`isAlwaysOnTop`/`isFullscreen {label}` · `setTitle {label,title}` · `setSize {label,width,height}` · `setPosition {label,x,y}` · `setAlwaysOnTop`/`setFullscreen`/`setDecorations`/`setOpacity {label,value}` · `setCursor {cursor}` · `setCursorVisible {value}` |
+| `window` | `create {label,title?,width?,height?,url?,activate?}` · `list` · `label` · `close`/`focus`/`isOpen`/`minimize`/`unminimize`/`isMinimized`/`maximize`/`isMaximized`/`isDecorated`/`opacity`/`getSize`/`getPosition`/`isAlwaysOnTop`/`isFullscreen {label}` · `setTitle {label,title}` · `setSize {label,width,height}` · `setPosition {label,x,y}` · `setAlwaysOnTop`/`setFullscreen`/`setDecorations`/`setOpacity {label,value}` · `setCursor {cursor}` · `setCursorVisible {value}` |
 | `notification` | `notify {title,body?,id?,waitMs?}` · `requestPermission` |
 | `clipboard` | `read` · `write {text}` · `readImage` · `writeImage {png}` |
 | `shell` | `spawn {program,args?,cwd?,env?,stdin?}` (`stdin: "pipe"` to feed it) · `output`/`close`/`kill {id}` · `write {id,data}` · `list` |
@@ -361,6 +370,11 @@ which is the point: a shipped build cannot be driven. And it **drives the page w
 OS input**, so nothing moves a cursor and no Accessibility grant is involved; a synthetic `key` is
 one `KeyboardEvent` the page sees and no browser default follows it, so `key: "Enter"` submits
 nothing.
+
+Those commands never need the app active, but the launch does by default. Set `testing.activation`
+in `crust.config.ts` to `"none"` (never activates; an AX read answers `needs-activation`) or
+`"on-demand"` (activates once for the first AX read that needs it), and open any window a probe makes
+itself with `activate: false`, so a run never takes the human's front.
 
 That is also why `type` does not assign `.value`. A plain assignment leaves a framework's tracker
 holding its own copy of the value, so React sees no change, re-renders nothing, and the test passes

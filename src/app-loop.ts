@@ -12,6 +12,11 @@ import {
 	type LifecycleSource,
 	type Platform,
 } from "./app-types.ts";
+import {
+	launchActivateMode,
+	setActivationRaise,
+	setTestingActivation,
+} from "./plugins/activation-policy.ts";
 import { definePlugin, type PluginDefinition } from "./plugins/define.ts";
 import { corePlugins, windowPlugin } from "./plugins/index.ts";
 import { defaultStateRoot } from "./plugins/window-persist-store.ts";
@@ -35,12 +40,17 @@ export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
  * One arm per OS, each importing its own barrel, so a Linux launch never loads AppKit and a macOS launch never loads GTK.
  */
 export async function loadPlatform(config: CrustConfig): Promise<Platform> {
+	// Before the platform exists: a probe's activation policy is what the first window create
+	// reads, and `testing.activation` is honoured on every OS even though only macOS acts on it.
+	setTestingActivation(config.testing?.activation);
 	switch (process.platform) {
 		case "darwin": {
 			const darwin = await import("@/platform/darwin");
+			// The one call `testing.activation: "on-demand"` may make, installed before any read.
+			setActivationRaise((await import("@/platform/darwin/activation")).raiseAppOnce);
 			return darwin.createPlatform({
 				appName: config.app.name,
-				activate: config.app.activate,
+				activate: launchActivateMode(config.app.activate),
 				icon: config.app.icon,
 				microphone: config.security?.microphone !== undefined,
 			});
@@ -79,10 +89,12 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
  * through `loadPlatform`, which is the same call with a wider return.
  */
 export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPlatform> {
+	setTestingActivation(config.testing?.activation);
 	const darwin = await import("@/platform/darwin");
+	setActivationRaise((await import("@/platform/darwin/activation")).raiseAppOnce);
 	return darwin.createPlatform({
 		appName: config.app.name,
-		activate: config.app.activate,
+		activate: launchActivateMode(config.app.activate),
 		icon: config.app.icon,
 		microphone: config.security?.microphone !== undefined,
 	});

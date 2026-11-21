@@ -27,6 +27,12 @@ export interface WindowCreateOptions {
 	 * An absolute URL is handed through unchanged.
 	 */
 	url?: string;
+	/**
+	 * `false` shows the window (`orderFrontRegardless` on macOS, `SW_SHOWNOACTIVATE` on Windows, the
+	 * plain show on Linux) and never makes it key or brings the app forward. Absent is the platform's
+	 * ordinary create, which `app.activate` and `testing.activation` govern.
+	 */
+	activate?: boolean;
 }
 
 /** The native half, supplied by the platform. */
@@ -137,6 +143,7 @@ export interface WindowCreateArgs {
 	width?: number;
 	height?: number;
 	url?: string;
+	activate?: boolean;
 }
 
 export const WINDOW_COMMANDS = [

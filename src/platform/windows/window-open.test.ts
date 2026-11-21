@@ -35,7 +35,13 @@ describe("the create size is clamped to the configured minimum", () => {
 		const shim = fakeShim({}, calls);
 		openWindow(
 			shim,
-			{ label: "main", width: 600, height: 400, minWidth: 800, minHeight: 600 },
+			{
+				label: "main",
+				width: 600,
+				height: 400,
+				minWidth: 800,
+				minHeight: 600,
+			},
 			"crust",
 			"",
 		);
@@ -47,7 +53,13 @@ describe("the create size is clamped to the configured minimum", () => {
 		const shim = fakeShim({}, calls);
 		openWindow(
 			shim,
-			{ label: "main", width: 1000, height: 700, minWidth: 800, minHeight: 600 },
+			{
+				label: "main",
+				width: 1000,
+				height: 700,
+				minWidth: 800,
+				minHeight: 600,
+			},
 			"crust",
 			"",
 		);
@@ -62,7 +74,13 @@ describe("the create size is clamped to the configured minimum", () => {
 		const shim = fakeShim({}, calls);
 		openWindow(
 			shim,
-			{ label: "main", width: 1000, height: 700, minWidth: 800, minHeight: 600 },
+			{
+				label: "main",
+				width: 1000,
+				height: 700,
+				minWidth: 800,
+				minHeight: 600,
+			},
 			"crust",
 			"",
 		);
@@ -74,5 +92,21 @@ describe("the create size is clamped to the configured minimum", () => {
 		const shim = fakeShim({}, calls);
 		openWindow(shim, { label: "main", width: 900, height: 600 }, "crust", "");
 		expect(calls).toContain("min:0x0");
+	});
+});
+
+describe("window.create activate: false", () => {
+	test("asks the shim to show without activating", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(shim, { label: "probe", activate: false }, "crust", "");
+		expect(calls).toContain("window_new:probe:1100x760:crust:passive");
+	});
+
+	test("an ordinary create keeps SW_SHOW", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		openWindow(shim, { label: "main" }, "crust", "");
+		expect(calls).toContain("window_new:main:1100x760:crust");
 	});
 });

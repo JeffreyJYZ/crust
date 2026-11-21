@@ -33,6 +33,10 @@ Whether a window create raises the app, which is what puts the window on the act
 
 A second window of an already-active app is never re-raised, whatever the mode: the selector is guarded on `-[NSApplication isActive]`, and the once-per-process `-activate` is shared with `window.focus`.
 
+## `testing`
+
+`activation` (string, default `"auto"`) — how a probe run treats activation. `"auto"` is an ordinary launch and `app.activate` decides, so the first window create brings the app forward. `"none"` never activates, and [`accessibility.elementCount`](/docs/reference/api-desktop) then answers a typed `needs-activation` instead of the empty tree an inactive app gives. `"on-demand"` also launches without activating and raises the app once — `-activateIgnoringOtherApps:` — for the first accessibility read that needs it; later reads do not raise it again. Page-level testing needs no activation in any mode, because `testing.*` runs inside the window's own webview and `window.capture` renders that webview, so a probe still clicks, types, queries and captures a window that never takes the front. Pair it with `window.create { activate: false }` and nothing a probe does moves the human's focus.
+
 ## `windows`
 
 At least one entry. A missing or empty array is a config error, not a windowless app.

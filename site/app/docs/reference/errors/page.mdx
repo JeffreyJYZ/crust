@@ -36,7 +36,7 @@ Every bridge failure carries `code` and `message`, plus `requires` on a `not-imp
 | `forbidden`       | the action, the window label, and the capability that would have allowed it    | the label holds no capability covering the command             |
 | `outside-scope`   | `fs: <path> is outside the app's scope`                                        | the path resolves outside every prefix; the store and a page's own grant widening name the fix instead |
 
-`not-implemented` reaches the page as `{ "code": "not-implemented", "message": "…", "requires": "NSPasteboard" }`, so a caller can tell "this platform cannot do it" from "the call was wrong".
+`not-implemented` reaches the page as `{ "code": "not-implemented", "message": "…", "requires": "NSPasteboard" }`, so a caller can tell "this platform cannot do it" from "the call was wrong". A typed value's own code travels the same way: `needs-activation` from `accessibility.elementCount` is the read telling the caller the app was never activated, not a platform gap.
 
 A `definePlugin` violation is `bad-request` at declaration time, not at invoke time: `definePlugin: name must be a non-empty string`, `definePlugin: name "a.b" may not contain a dot`, `definePlugin: plugin "x" needs a commands object`, `definePlugin: plugin "x" has no commands`, `definePlugin: x.a.b may not contain a dot`, `definePlugin: x.y is not a function`.
 

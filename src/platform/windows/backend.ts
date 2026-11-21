@@ -46,6 +46,8 @@ export interface WindowsShim extends WindowsWebViewShim, WindowsNamespaceShim {
 		width: number,
 		height: number,
 		className: Uint8Array,
+		/** 1 shows with `SW_SHOW`, 0 with `SW_SHOWNOACTIVATE`, so a passive create never takes focus. */
+		activate: number,
 	): number;
 	shim_window_is_open(hwnd: number): number;
 	shim_window_set_title(hwnd: number, title: Uint8Array): number;

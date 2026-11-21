@@ -38,12 +38,15 @@ describe("a title-bar close hands the controller slot back", () => {
 		expect(arm).not.toContain("\n\t\tPostQuitMessage(0);\n");
 	});
 
-	test("42_webview.c exposes the live count and still compacts the table on close", () => {
-		expect(source).toContain("int shim_webview_live(void) { return g_windows; }");
+	test("42_webview.c releases the surface slot on close", () => {
+		expect(source).toContain("int shim_webview_live(void) { return shim_surface_live(); }");
 		const close = body("void shim_webview_close(shim_h hwnd) {");
-		expect(close).toContain("wv2_controller_close(g_ctrl[i])");
-		expect(close).toContain("g_windows--");
-		expect(close).toContain("g_ctrl[g_windows] = 0");
+		// The controller the *handle* names, never whatever `shim_controller_handle()` last built:
+		// with two surfaces that singleton is the other one's controller.
+		expect(close).toContain("ctrl = shim_surface_ctrl(handle)");
+		expect(close).toContain("wv2_controller_close(ctrl)");
+		// The slot goes back, so eight failed creates cannot end window creation for the process.
+		expect(close).toContain("shim_surface_release(handle)");
 	});
 
 	test("both functions are declared before the procedure that calls them", () => {
