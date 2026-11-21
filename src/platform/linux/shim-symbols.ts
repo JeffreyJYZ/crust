@@ -114,6 +114,10 @@ export const shimSymbols = {
 	// `long` (i64); JS wraps them with Number() before using them.
 	shim_snapshot_ready: { args: [], returns: I32 },
 	shim_snapshot_take: { args: [P], returns: I32 },
+	// The take's generation and the generation that published the current result. JS compares
+	// them so a callback from a timed-out take cannot answer a later capture.
+	shim_snapshot_generation: { args: [], returns: I64 },
+	shim_snapshot_result_generation: { args: [], returns: I64 },
 	shim_snapshot_state: { args: [], returns: I32 },
 	shim_snapshot_failure: { args: [], returns: CS },
 	shim_snapshot_width: { args: [], returns: I64 },

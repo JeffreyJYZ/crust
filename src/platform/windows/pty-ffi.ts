@@ -37,6 +37,8 @@ export interface WindowsPtyShim {
 		shell: Uint8Array,
 		args: Uint8Array,
 		cwd: Uint8Array,
+		/** A double-NUL UTF-16 environment block, or 0 to inherit the host's. */
+		env: Uint8Array,
 		cols: number,
 		rows: number,
 	): number;
@@ -117,7 +119,7 @@ export function compilePty(): WindowsPtyShim {
 			shim_pty_missing: { args: [], returns: CS },
 			shim_pty_reason: { args: [], returns: CS },
 			shim_pty_last_error: { args: [], returns: I32 },
-			shim_pty_open: { args: [CS, CS, CS, I32, I32], returns: I32 },
+			shim_pty_open: { args: [CS, CS, CS, P, I32, I32], returns: I32 },
 			shim_pty_pid: { args: [I32], returns: I32 },
 			shim_pty_read: { args: [I32, P, I32], returns: I32 },
 			shim_pty_write: { args: [I32, P, I32], returns: I32 },

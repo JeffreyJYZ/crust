@@ -32,8 +32,9 @@ static void *shim_host_for(void *web) {
 	void *host = shim_webview_host(web);
 	int slot = -1;
 	if (host || !web || !shim_fixed_new || !shim_container_add) return host;
-	host = shim_fixed_new();
-	if (!host) return 0;
+	// Find the slot *before* creating the widget. With all 32 taken, the old order built a
+	// GtkFixed that never reached a container and never got destroyed — one floating reference
+	// leaked per refused open.
 	for (int i = 0; i < SHIM_BOX_MAX; i++) {
 		if (!shim_host_view[i]) {
 			slot = i;
@@ -41,6 +42,8 @@ static void *shim_host_for(void *web) {
 		}
 	}
 	if (slot < 0) return 0;
+	host = shim_fixed_new();
+	if (!host) return 0;
 	shim_host_view[slot] = web;
 	shim_host_fixed[slot] = host;
 	return host;

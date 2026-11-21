@@ -79,6 +79,12 @@ describe("the mechanisms", () => {
 		expect(CODE).not.toContain("g_main_context_iteration");
 	});
 
+	test("the menu stops at the item count, so C cannot build more rows than JS has items", () => {
+		// A newline inside a label used to split into an extra native row; with the adapter now
+		// refusing that label, the count cap is the second half of the same invariant.
+		expect(TRAY).toContain("while (joined[i] && index < SHIM_TRAY_MAX && index < count)");
+	});
+
 	test("the install line names the package a missing library needs", () => {
 		expect(NOTIFY_TRAY_INSTALL_LINE).toContain("libnotify4");
 		expect(NOTIFY_TRAY_INSTALL_LINE).toContain("libgtk-3-0");

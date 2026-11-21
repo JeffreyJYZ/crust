@@ -42,14 +42,16 @@ shim_h shim_child_new(shim_h parent, int x, int y, int w, int h) {
 // rather than leaving a half-policed one.
 int shim_browser_surface_new(shim_h child, const char *url, const char *userData) {
 	int handle = shim_webview_create(child, userData);
-	if (handle < 0) return 0;
+	// -1 is the single failure sentinel. Returning 0 here used to look like success to the adapter,
+	// and 0 is the app's own webview — a failed surface would alias the page it was meant to cover.
+	if (handle <= 0) return -1;
 	if (!shim_webview_watch(handle) || !shim_webview_refuse_popups(handle)) {
 		shim_webview_close(child);
-		return 0;
+		return -1;
 	}
 	if (!shim_webview_navigate(handle, url)) {
 		shim_webview_close(child);
-		return 0;
+		return -1;
 	}
 	return handle;
 }

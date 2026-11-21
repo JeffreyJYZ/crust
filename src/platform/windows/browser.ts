@@ -96,7 +96,7 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 				if (child === 0)
 					return asFailure(new Error("browser.open: Win32 refused the child window"));
 				const handle = p.surface(child, input.url);
-				if (handle < 0) {
+				if (handle <= 0) {
 					p.release(child);
 					return asFailure(
 						new Error(`browser.open: the surface could not load ${input.url}`),

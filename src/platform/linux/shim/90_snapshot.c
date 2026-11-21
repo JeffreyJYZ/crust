@@ -36,6 +36,10 @@ static long shot_h;
 static double shot_scale;
 static int shot_state; // 0 pending, 1 picture, 2 refusal
 static char shot_error[256];
+// A late callback for a superseded take must not publish into the next capture's result.
+static unsigned long shot_generation;
+static unsigned long shot_current;
+static unsigned long shot_result_gen;
 
 enum { SHOT_STARTED = 0, SHOT_UNAVAILABLE = 1, SHOT_NO_VIEW = 2, SHOT_NOT_REALISED = 3 };
 
@@ -120,11 +124,14 @@ static int shim_snapshot_write(void *closure, const unsigned char *data, unsigne
 // Runs on the main context. The surface is finished, encoded and freed before the state is set, so
 // a JS reader that sees state 1 reads one complete picture, never a half-written one.
 static void shim_snapshot_done(void *source, void *result, void *user_data) {
+	unsigned long gen = (unsigned long)user_data;
 	void *error = 0;
 	void *surface = 0;
 	int status;
 	ShotGError *gerror;
-	(void)user_data;
+	// A take that timed out in JS is superseded; its late answer must not write this result.
+	if (gen != shot_current) return;
+	shot_result_gen = gen;
 	shot_len = 0;
 	if (shim_snapshot_finish) surface = shim_snapshot_finish(source, result, &error);
 	if (error) {
@@ -160,16 +167,21 @@ int shim_snapshot_take(void *web) {
 	if (!shim_snapshot_resolve()) return SHOT_UNAVAILABLE;
 	if (!web) return SHOT_NO_VIEW;
 	if (shim_widget_realized && !shim_widget_realized(web)) return SHOT_NOT_REALISED;
+	shot_current = ++shot_generation;
+	shot_result_gen = 0;
 	shot_state = 0;
 	shot_len = 0;
 	shot_w = 0;
 	shot_h = 0;
 	shot_scale = 1.0;
 	shot_error[0] = 0;
-	// WEBKIT_SNAPSHOT_REGION_VISIBLE = 0, WEBKIT_SNAPSHOT_OPTIONS_NONE = 0: the view's own render.
-	shim_snapshot_start(web, 0, 0, 0, shim_snapshot_done, 0);
+	// Region/options 0 is the view's own render; the generation is the callback's user_data.
+	shim_snapshot_start(web, 0, 0, 0, shim_snapshot_done, (void *)shot_current);
 	return SHOT_STARTED;
 }
+
+unsigned long shim_snapshot_generation(void) { return shot_current; }
+unsigned long shim_snapshot_result_generation(void) { return shot_result_gen; }
 
 int shim_snapshot_state(void) { return shot_state; }
 const char *shim_snapshot_failure(void) { return shot_error; }

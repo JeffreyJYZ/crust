@@ -28,6 +28,28 @@ function refuseOpen(shim: WindowsPtyShim): string {
 	return code === 0 ? reason : `${reason} [${code}]`;
 }
 
+/**
+ * `CreateProcessW` takes a double-NUL UTF-16 block of `KEY=VALUE` pairs, not a JS object. The plugin
+ * builds the complete environment (`process.env` plus `TERM`), so passing 0 here silently dropped
+ * every override and left shells without a terminal type. Windows expects the pairs sorted by key.
+ */
+export function environmentBlock(env: Record<string, string>): Uint8Array {
+	const parts = Object.keys(env)
+		.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase(), "en"))
+		.map((key) => Buffer.from(`${key}=${env[key] ?? ""}\0`, "utf16le"));
+	const end = Buffer.from("\0", "utf16le");
+	const block = new Uint8Array(
+		parts.reduce((size, part) => size + part.length, end.length),
+	);
+	let at = 0;
+	for (const part of parts) {
+		block.set(part, at);
+		at += part.length;
+	}
+	block.set(end, at);
+	return block;
+}
+
 function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTerminal {
 	if (Number(shim.shim_pty_load()) !== 1) throw new Error(refuseOpen(shim));
 	const index = Number(
@@ -35,6 +57,7 @@ function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTermina
 			cstring(request.shell),
 			cstring(request.args ?? ""),
 			cstring(request.cwd),
+			environmentBlock(request.env),
 			request.cols,
 			request.rows,
 		),

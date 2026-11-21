@@ -76,6 +76,22 @@ describe("windowsBrowserAdapter", () => {
 		expect(fake.calls).toContain("release:300");
 	});
 
+	/**
+	 * The shim used to return 0 on failure and the adapter only refused `< 0`, so a failed create
+	 * answered ok and aliased handle 0 — the app's own webview. Both sentinels must be refused.
+	 */
+	test("a create that answers handle 0 is a failure, not the app's own webview", () => {
+		const fake = new FakePorts();
+		fake.surfaceHandle = 0;
+		const adapter = windowsBrowserAdapter(fake);
+		expect(adapter.open({ label: "docs", url: STATE.url, bounds: BOUNDS })).toMatchObject({
+			ok: false,
+			code: "handler-error",
+		});
+		expect(fake.calls).toContain("release:300");
+		expect(fake.calls).not.toContain("watch:0");
+	});
+
 	test("a duplicate label is refused before a second child exists", () => {
 		const fake = new FakePorts();
 		const adapter = windowsBrowserAdapter(fake);

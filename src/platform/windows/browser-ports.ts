@@ -29,7 +29,7 @@ export interface WindowsBrowserPorts {
 	/** The child window one surface lives in. */
 	child(parent: number, bounds: BrowserBounds): number;
 	move(child: number, bounds: BrowserBounds): number;
-	/** The whole surface: composite, both policies, first load. 0 when WebView2 refused it. */
+	/** The whole surface: composite, both policies, first load. -1 when WebView2 refused it. */
 	surface(child: number, url: string): number;
 	/** Point one surface at another allowlisted URL, in place. */
 	navigate(handle: number, url: string): boolean;

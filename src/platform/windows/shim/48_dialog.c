@@ -119,7 +119,11 @@ void shim_dialog_reset(void) {
 	int i;
 	g_dlg_count = 0;
 	g_dlg_error = 0;
-	g_dlg_names[0] = 0;
+	// Zero the whole name buffer, not just its first unit. `shim_dialog_split` decides single vs
+	// multi-select by the double NUL after the returned path; comdlg32 writes the new path and its
+	// NUL but leaves the tail of a longer previous pick intact, which used to make a short second
+	// pick look like a multi-select built from new directory + old filenames.
+	for (i = 0; i < SHIM_DIALOG_NAME_MAX; i++) g_dlg_names[i] = 0;
 	g_dlg_filter[0] = 0;
 	g_dlg_title[0] = 0;
 	for (i = 0; i < SHIM_DIALOG_MAX; i++) g_dlg_paths[i][0] = 0;

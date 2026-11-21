@@ -8,6 +8,9 @@ export interface SnapshotSymbols {
 	shim_snapshot_ready?(): number;
 	/** 0 started, 1 no API, 2 no view, 3 view not realised. */
 	shim_snapshot_take?(web: bigint): number;
+	/** The generation the latest take owns, and the one that published the current result. */
+	shim_snapshot_generation?(): number;
+	shim_snapshot_result_generation?(): number;
 	/** 0 pending, 1 picture, 2 refusal. */
 	shim_snapshot_state?(): number;
 	shim_snapshot_failure?(): string | null;
