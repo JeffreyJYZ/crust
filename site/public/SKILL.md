@@ -114,6 +114,10 @@ security: {
 `fs.scope` (absolute prefixes), `shell.allow` (program allowlist), `shell.cwdRoot`, `updater.pubkey`
 (base64 of 32 raw bytes) and `updater.endpoint` narrow a plugin's reach. Narrow there, not here.
 
+Two keys matter when the app is driven rather than used: `dev.ignore` keeps a written artefact from
+restarting the backend and rotating the bridge token, and `singleInstance.id` names the lock so a probe
+runs beside the user's copy instead of raising it.
+
 **Reaching an external service needs a CSP entry.** A built app serves `connect-src 'self'`, so a page's
 `fetch`, `WebSocket` or `EventSource` to a provider is refused — while the same call works in `crust dev`,
 which sets no policy and only warns about the difference. `security.csp` replaces the whole policy
