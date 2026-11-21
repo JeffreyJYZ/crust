@@ -21,6 +21,7 @@ export const LAUNCHERS = [
 	"e2e-notes.ts",
 	"e2e-notify.ts",
 	"e2e-parity.ts",
+	"e2e-preview.ts",
 	"e2e-single.ts",
 	"e2e-window.ts",
 	"e2e.ts",

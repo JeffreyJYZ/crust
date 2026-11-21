@@ -25,6 +25,7 @@
 import { join } from "node:path";
 
 import { CrustError } from "../bridge/errors";
+import { rememberScopedFsScope } from "./fs-scope-in-force.ts";
 import { canonical, contains, outsideScope, readPath, samePath } from "./fs-scope-path.ts";
 import { readStore, SCOPE_FILE, writeStore } from "./fs-scope-store.ts";
 import { defaultStateRoot } from "./window-persist-store.ts";
@@ -112,7 +113,7 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 	let storePath: Promise<string> | undefined;
 	const store = (): Promise<string> => (storePath ??= canonical(file));
 
-	return {
+	const scope: FsScope = {
 		enabled,
 		grants,
 
@@ -156,6 +157,10 @@ export function createFsScope(options: FsScopeOptions = {}): FsScope {
 			return { ok: true as const, paths: await current() };
 		},
 	};
+	// Recorded here rather than in `createFsPlugin`, so every host that builds a scope is covered:
+	// the runtime's `fs.scope` instance is the one `preview` inherits. An unscoped app records nothing.
+	if (enabled) rememberScopedFsScope(scope);
+	return scope;
 }
 
 /** Why a page-reachable grant is refused, named so a page author reads the fix rather than a bare 403. */
