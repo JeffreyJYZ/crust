@@ -30,6 +30,10 @@ export class SurfaceStore {
 		return this.#surfaces.get(label);
 	}
 
+	all(): Surface[] {
+		return [...this.#surfaces.values()];
+	}
+
 	set(surface: Surface): void {
 		this.#surfaces.set(surface.label, surface);
 	}

@@ -7,7 +7,7 @@ import type { BrowserBounds, BrowserState } from "@/plugins/browser";
 import { browserOwner, browserWindowOpen, type BrowserOwner } from "./browser-platform";
 import { type BrowserNative, darwinBrowserNative } from "./browser-unit";
 import { shim } from "./index";
-import { navigationUnit, webviewText } from "./navigation-unit";
+import { navigationUnit, webviewText, type NavigationNative } from "./navigation-unit";
 import { cstr, ptrValue, S } from "./objc";
 import { darwinOpenerAdapter } from "./opener";
 import { takeSnapshot } from "./snapshot";
@@ -24,6 +24,8 @@ export interface BrowserPorts {
 	/** Drop the +1 retain the host view was built with; `removeWebview` handles the webview's. */
 	releaseView(view: number): void;
 	load(web: number, url: string): number;
+	/** The navigation unit's exports, so the adapter can install the commit-time policy sink. */
+	navNative(): NavigationNative;
 	navInstall(web: number): number;
 	navUninstall(web: number): void;
 	navState(web: number): BrowserState;
@@ -61,6 +63,7 @@ export function realPorts(): BrowserPorts {
 		},
 		releaseView: (view) => native.shim_browser_view_release(view),
 		load: (web, url) => Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0),
+		navNative: () => navigationUnit().symbols,
 		navInstall: (web) => Number(navigationUnit().symbols.crust_nav_install(web) ?? 1),
 		navUninstall: (web) => {
 			navigationUnit().symbols.crust_nav_uninstall(web);

@@ -156,5 +156,6 @@ int crust_nav_class_ready(void) {
 	if (nav_class_has(cls, "webView:didFinishNavigation:")) mask |= 4;
 	if (nav_class_has(cls, "webView:didFailNavigation:withError:")) mask |= 8;
 	if (nav_class_has(cls, "webView:didFailProvisionalNavigation:withError:")) mask |= 16;
+	if (nav_class_has(cls, "webView:decidePolicyForNavigationAction:decisionHandler:")) mask |= 32;
 	return mask;
 }

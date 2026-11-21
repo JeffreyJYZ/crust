@@ -8,6 +8,7 @@ import type { BrowserBounds, BrowserState } from "@/plugins/browser";
 import { darwinBrowserAdapter } from "./browser";
 import type { BrowserPorts } from "./browser-ports";
 import type { BrowserNative } from "./browser-unit";
+import { fakeNavigation } from "./webview-target-fixture.ts";
 
 /** Every native export, recording the calls the adapter makes. */
 class FakeNative implements BrowserNative {
@@ -56,7 +57,6 @@ class FakeNative implements BrowserNative {
 		return 2;
 	}
 }
-
 const state: BrowserState = { url: "http://127.0.0.1:4321/", title: "Remote Title", loading: false, canGoBack: false, canGoForward: false };
 
 function ports(native: FakeNative): BrowserPorts {
@@ -72,6 +72,7 @@ function ports(native: FakeNative): BrowserPorts {
 		removeWebview: (web) => native.calls.push(`unweb:${web.toString(16)}`),
 		releaseView: (view) => native.shim_browser_view_release(view),
 		load: (_web, url) => (url.includes("refuse") ? 0 : 1),
+		navNative: () => fakeNavigation().symbols,
 		navInstall: () => 0,
 		navUninstall: (web) => native.calls.push(`nav-uninstall:${web.toString(16)}`),
 		navState: () => state,
