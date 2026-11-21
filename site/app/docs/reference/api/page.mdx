@@ -4,7 +4,7 @@ Three entry points, all real `exports` in `package.json`, so they resolve in an 
 
 ## Command namespaces
 
-A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. The 36 built-in namespaces are documented by area, one page each; `updater` joins them when the config has an `updater` section, `pty` when it has a `pty` one ([Pty](/docs/guides/pty)), and `testing` only when the process starts with `CRUST_TEST=1`:
+A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. The 38 built-in namespaces are documented by area, one page each; `updater` joins them when the config has an `updater` section, `pty` when it has a `pty` one ([Pty](/docs/guides/pty)), and `testing` only when the process starts with `CRUST_TEST=1`:
 
 - [`window`](/docs/reference/api-window), `window-state`, `positioner` — a window's life, its remembered frame, and nine placements.
 - [`fs`](/docs/reference/api-fs), `store`, `database`, `keychain`, `shell`, `sidecar`, `stronghold`, `pty` — text files and their scope, a JSON key-value file, SQLite, OS-protected secrets, an allowlisted program, a bundled helper process, an encrypted store, and a real terminal ([Pty](/docs/guides/pty)).
@@ -12,6 +12,7 @@ A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or
 - [`theme`](/docs/reference/api-desktop), `dock`, `power`, `screen`, `accessibility`, `opener`, `os` — appearance, the dock tile, power state, the displays, the AX trust read, the OS hand-off, machine facts.
 - [`app`](/docs/reference/api-app), `autostart`, `logging`, `i18n`, `single-instance`, `deep-link` — backend commands, launch at login, the log sink, the language catalogue, the lock, the launch URL.
 - [`navigation`](/docs/reference/api-web), `findinpage`, `downloads`, `network`, `crash-reporter` — the webview's own loads, find, downloads, request rules and crash record.
+- [`browser`](/docs/guides/browser), [`preview`](/docs/guides/preview) — an embedded `http(s)` surface in a rectangle the app reserves, and an embedded file panel.
 - [`updater`](/docs/reference/api-updater) — manifest, verified download, bundle swap.
 - [`testing`](/docs/reference/api-testing) — drive and observe a running page: a DOM click, typed text, one key, queries, waits and the page's console. Registered only when `CRUST_TEST=1`; anywhere else the name answers `unknown-plugin`.
 
