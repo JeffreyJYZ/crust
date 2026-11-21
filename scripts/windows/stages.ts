@@ -18,20 +18,17 @@ import { join } from "node:path";
 import { cstring } from "../../src/platform/windows/cstring.ts";
 import { compile } from "../../src/platform/windows/ffi.ts";
 import { compositeSteps } from "./composite.ts";
+import { handlerReport, lateReport, objectReport, webReport } from "./report-objects.ts";
 import { frameSteps } from "./frame.ts";
 import {
 	addr,
 	affinityReport,
-	handlerReport,
 	hex,
-	lateReport,
-	objectReport,
 	skipped,
 	slotReport,
 	stage,
 	stageHr,
 	threadReport,
-	webReport,
 } from "./report.ts";
 
 const APP = "crust-stages";

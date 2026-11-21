@@ -1,3 +1,5 @@
+import type { WindowsBrowserShim } from "./backend-browser.ts";
+
 /**
  * The WebView2 half of the shim — the environment, the controller, the attach, and the probe
  * functions that read an object's vtable back — split out of `backend.ts` when that interface passed
@@ -8,7 +10,7 @@
  * every caller still takes one type.
  */
 
-export interface WindowsWebViewShim {
+export interface WindowsWebViewShim extends WindowsBrowserShim {
 	shim_webview_new(hwnd: number, url: Uint8Array, userData: Uint8Array): number;
 	shim_webview_put_bounds(hwnd: number, width: number, height: number): number;
 	shim_webview_close(hwnd: number): void;
@@ -134,8 +136,7 @@ export interface WindowsWebViewShim {
 	shim_thread_at(step: number): number;
 	shim_thread_id(): number;
 
-	/**
-	 * The handler object's ABI, read back the way Windows reads it: 1 when the object's first field
+	/** The handler object's ABI, read back the way Windows reads it: 1 when the object's first field
 	 * is the table, then the table's address, the object's address, that first field, and each entry.
 	 * A pointer where a vtable should be is the difference between a callback and a jump to -1.
 	 */

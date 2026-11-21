@@ -37,6 +37,11 @@ typedef struct {
 	void *web;  /* ICoreWebView2 */
 	int hr[SHIM_SURFACE_STEPS];
 	double bounds[4]; /* x, y, width, height — the rectangle last applied */
+	int loading; /* 1 between Navigate and the surface's own NavigationCompleted */
+	/* Why these are flags and not just "the handler arrays were initialised": the create path installs
+	   both policies before the first navigation, and a second call must not register them twice. */
+	int watched;
+	int popups;
 } shim_surface;
 
 static shim_surface g_surface[SHIM_MAX_SURFACES];
@@ -67,6 +72,9 @@ int shim_surface_reserve(void *hwnd) {
 		g_surface[i].web = 0;
 		for (step = 0; step < SHIM_SURFACE_STEPS; step++) g_surface[i].hr[step] = 0;
 		for (step = 0; step < 4; step++) g_surface[i].bounds[step] = 0;
+		g_surface[i].loading = 0;
+		g_surface[i].watched = 0;
+		g_surface[i].popups = 0;
 		return i;
 	}
 	return -1;
@@ -145,4 +153,35 @@ void shim_surface_release(int handle) {
 	g_surface[handle].hwnd = 0;
 	g_surface[handle].ctrl = 0;
 	g_surface[handle].web = 0;
+	g_surface[handle].loading = 0;
+	g_surface[handle].watched = 0;
+	g_surface[handle].popups = 0;
+}
+
+/**
+ * `loading` is the one state WebView2 has no synchronous getter for. It is written by the surface's
+ * own NavigationStarting/NavigationCompleted handlers (`45_browser_events.c`) and by `Navigate`
+ * itself, so a `state` read answers what the last event said rather than what a caller last asked.
+ */
+int shim_surface_set_loading(int handle, int loading) {
+	if (!shim_surface_has(handle)) return 0;
+	g_surface[handle].loading = loading ? 1 : 0;
+	return 1;
+}
+
+int shim_surface_loading(int handle) {
+	return shim_surface_has(handle) ? g_surface[handle].loading : 0;
+}
+
+/* `which` 0 is "the navigation handlers are installed", 1 is "new windows are refused". */
+int shim_surface_flag(int handle, int which) {
+	if (!shim_surface_has(handle)) return 0;
+	return which == 0 ? g_surface[handle].watched : g_surface[handle].popups;
+}
+
+int shim_surface_set_flag(int handle, int which, int value) {
+	if (!shim_surface_has(handle)) return 0;
+	if (which == 0) g_surface[handle].watched = value ? 1 : 0;
+	else g_surface[handle].popups = value ? 1 : 0;
+	return 1;
 }

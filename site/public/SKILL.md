@@ -18,13 +18,13 @@ index is <https://crust.jyz.land/docs>.
 ## Quickstart
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.2.9 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.2.9 init my-app --react   # also --next, --svelte, --vue, --solid
+bunx github:JeffreyJYZ/crust#v0.2.10 init my-app   # plain HTML, no bundler
+bunx github:JeffreyJYZ/crust#v0.2.10 init my-app --react   # also --next, --svelte, --vue, --solid
 cd my-app && bun install
 bun run dev        # crust dev
 ```
 
-`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS, and `bun add -g github:JeffreyJYZ/crust#v0.2.9` installs that tag globally as `~/.bun/bin/crust` on any platform (`bun add -g crust` is a different, unrelated npm package — always name the `github:` specifier). Release binaries for all six platform/arch pairs are on the releases page; a bun global sits earlier on `PATH` than Homebrew's prefix, so where both exist the bun copy answers `crust`.
+`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS, and `bun add -g github:JeffreyJYZ/crust#v0.2.10` installs that tag globally as `~/.bun/bin/crust` on any platform (`bun add -g crust` is a different, unrelated npm package — always name the `github:` specifier). Release binaries for all six platform/arch pairs are on the releases page; a bun global sits earlier on `PATH` than Homebrew's prefix, so where both exist the bun copy answers `crust`.
 
 ## What a scaffold is
 
@@ -356,7 +356,9 @@ back to a screenshot of the screen.
 **`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
 cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
 It answers `{ ok, width, height, scale, png }` at the surface's page pixels — an unknown label is
-`not-found` — and it is macOS-only like the surface, `not-implemented` naming `WKWebView` elsewhere.
+`not-found`. `capture` is macOS-only: WebView2 needs an `IStream` for `CapturePreview` and WebKitGTK's
+`get_snapshot` answers a cairo surface, so both name the call instead of screenshotting the screen. The
+surface itself works on all three.
 The embedded page carries no bridge token and no `window.crust`.
 
 **`testing`** drives that same page. Every command takes `label` too — omitted means the app's first

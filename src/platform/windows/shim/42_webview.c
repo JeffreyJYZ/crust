@@ -90,21 +90,31 @@ int shim_webview_attach(shim_h hwnd) {
 // A pump before the first navigation, because this thread has never run a message loop: WebView2's own
 // state is established by message traffic, and the canonical sample navigates from inside a running
 // `GetMessage` loop rather than immediately after creating the controller.
-int shim_webview_new(shim_h hwnd, const char *url, const char *userData) {
-	int handle;
-	if (!hwnd) return 0;
-	if (shim_surface_live() >= SHIM_MAX_SURFACES) return 0;
+//
+// Split from the navigation on purpose: a browser surface has to install its navigation and new-window
+// handlers **before** the first load, or a `NavigationCompleted` that fires first leaves `loading` true
+// forever. `shim_browser_surface_new` in `57_browser.c` is that caller.
+int shim_webview_create(shim_h hwnd, const char *userData) {
+	if (!hwnd) return -1;
+	if (shim_surface_live() >= SHIM_MAX_SURFACES) return -1;
 	if (!shim_environment_handle()) {
-		if (shim_env_begin(hwnd, userData) < 0) return 0;
-		if (!shim_env_wait()) return 0;
-		if (shim_env_callback() < 0 || !shim_environment_handle()) return 0;
+		if (shim_env_begin(hwnd, userData) < 0) return -1;
+		if (!shim_env_wait()) return -1;
+		if (shim_env_callback() < 0 || !shim_environment_handle()) return -1;
 	}
-	if (shim_controller_begin(hwnd) < 0) return 0;
-	if (!shim_controller_wait()) return 0;
-	if (shim_controller_callback() < 0 || !shim_controller_handle()) return 0;
-	if (!shim_webview_attach(hwnd)) return 0;
-	handle = shim_surface_index(hwnd);
+	if (shim_controller_begin(hwnd) < 0) return -1;
+	if (!shim_controller_wait()) return -1;
+	if (shim_controller_callback() < 0 || !shim_controller_handle()) return -1;
+	if (!shim_webview_attach(hwnd)) return -1;
 	shim_pump();
+	// The handle, not a success flag: 0 is the app window's own surface and a legal answer, which is
+	// why every refusal above is -1 and the caller's test is `< 0` rather than `!`.
+	return shim_surface_index(hwnd);
+}
+
+int shim_webview_new(shim_h hwnd, const char *url, const char *userData) {
+	int handle = shim_webview_create(hwnd, userData);
+	if (handle < 0) return 0;
 	return shim_webview_navigate(handle, url);
 }
 

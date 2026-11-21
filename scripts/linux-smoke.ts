@@ -14,13 +14,14 @@ import {
 	createGtkBackend,
 	createPlatform,
 	type NativeWindow,
-	preflightErrors,
 	PREFLIGHT,
+	preflightErrors,
 	shim,
 } from "../src/platform/linux/index.ts";
 import { Verdict } from "./e2e-harness.ts";
-import { DATA_PAGE_URL, type ProofPage, startProofPage } from "./linux/proof-page.ts";
+import { browserStep } from "./linux/proof-browser.ts";
 import { eventsStep } from "./linux/proof-events.ts";
+import { DATA_PAGE_URL, type ProofPage, startProofPage } from "./linux/proof-page.ts";
 import {
 	documentStep,
 	failureStep,
@@ -30,6 +31,7 @@ import {
 } from "./linux/proof-steps.ts";
 import { keyedStateStep, surfaceStep } from "./linux/proof-surface.ts";
 import { captureStep } from "./linux/proof-capture.ts";
+import { livenessStep, NOT_PROVEN, pumpStep } from "./linux/smoke-report.ts";
 
 /** The shared call shape wants a config; GTK reads nothing from it before a window exists. */
 const CONFIG = {
@@ -121,16 +123,8 @@ async function main(): Promise<number> {
 	);
 
 	// 5. Two slices of the real main context, which is the pump a running app depends on.
-	//    `ticks` advances only when `shim_pump` reports a native iteration, so a
-	//    JS timer keep-alive alone cannot make this line pass.
-	platform.pump(16);
-	await Bun.sleep(120);
-	const ticks = platform.ticks;
-	verdict.check(
-		"pump",
-		ticks >= 2,
-		`${ticks} g_main_context_iteration slices in 120 ms at a 16 ms interval`,
-	);
+	const ticks = await pumpStep(platform);
+	verdict.check("pump", ticks.ok, ticks.detail);
 
 	// 6. The loaded document, then its scripts, then one invoke. The pump stays armed from here on:
 	//    a load and every evaluation are work the main context has to dispatch, so without it
@@ -153,7 +147,12 @@ async function main(): Promise<number> {
 	const surface = await surfaceStep(symbols, created[0] as NativeWindow);
 	verdict.check("surface", surface.ok, surface.detail);
 
-	// 6c. The page as WebKitGTK rendered it: an async view snapshot, not a display grab.
+	// 6c. The browser adapter itself, driven through the plugin as a page drives it: a foreign origin
+	//     refused, an allowed one opened in the window's container, its document titled, moved, closed.
+	const browser = await browserStep(symbols, created[0] as NativeWindow);
+	verdict.check("browser", browser.ok, browser.detail);
+
+	// 6d. The page as WebKitGTK rendered it: an async view snapshot, not a display grab.
 	const capture = await captureStep(symbols, web);
 	verdict.check("capture", capture.ok, capture.detail);
 
@@ -173,21 +172,14 @@ async function main(): Promise<number> {
 	const keyed = keyedStateStep(symbols, web, brokenWeb);
 	verdict.check("state", keyed.ok, keyed.detail);
 
-	// 8. Liveness is read out of C, not from a freed widget: this is the call that would fault on a
-	//    stale pointer if the slot table were wrong.
-	verdict.check(
-		"still open",
-		platform.window("smoke") !== undefined,
-		"shim_window_alive still answers 1 after the pump and the page's own calls",
-	);
+	// 8. Liveness is read out of C, not from a freed widget: the call that would fault on a stale slot.
+	const alive = livenessStep(platform);
+	verdict.check("still open", alive.ok, alive.detail);
 
 	platform.stopPump();
 	if (page !== undefined) await page.stop();
 
-	console.log(
-		"not proven here: the app's built frontend, any plugin's effect on the machine, and a picture " +
-			"of the placed browser surface — window.capture photographs the app's own webview.",
-	);
+	console.log(NOT_PROVEN);
 	return verdict.report("linux:smoke");
 }
 

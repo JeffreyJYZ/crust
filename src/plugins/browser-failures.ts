@@ -1,6 +1,10 @@
-/** The two refusal shapes the darwin adapter answers. Kept apart so the adapter reads as its calls. */
+/**
+ * The two refusal shapes every platform's browser adapter answers. Kept in the plugin rather than in
+ * one platform's directory because all three implementations produce them, and a second copy is a
+ * second message a page has to read.
+ */
 import { CrustError } from "@/bridge/errors";
-import type { BrowserFailure } from "@/plugins/browser";
+import type { BrowserFailure } from "./browser-types";
 
 /** An adapter throw as a value; a resolver's `bad-request` stays the code the caller can fix. */
 export function asFailure(error: unknown): BrowserFailure {

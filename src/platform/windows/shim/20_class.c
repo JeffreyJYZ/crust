@@ -68,12 +68,42 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 	return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// --- the class name, kept for the child a browser surface needs -------------
+// A child window is created from the same registered class, and CreateWindowExW resolves a class
+// by name — the atom is never handed out. The name is copied here once, so a surface does not have to
+// be told the app's name a second time.
+static shim_wchar g_class_name[256];
+static int g_class_named;
+
+static void shim_class_remember(const shim_wchar *name) {
+	int i = 0;
+	while (name && name[i] && i < 255) {
+		g_class_name[i] = name[i];
+		i++;
+	}
+	g_class_name[i] = 0;
+	g_class_named = name && name[0] ? 1 : 0;
+}
+
+/** The registered class name, into a caller buffer; 0 when no class has been registered yet. */
+int shim_class_name(shim_wchar *dst, int cap) {
+	int i = 0;
+	if (!g_class_named || !dst || cap <= 0) return 0;
+	while (g_class_name[i] && i < cap - 1) {
+		dst[i] = g_class_name[i];
+		i++;
+	}
+	dst[i] = 0;
+	return i;
+}
+
 // Register the class once per process. The atom is what CreateWindowExW resolves, so a zero
 // here is the one failure that makes every later CreateWindowExW return null.
 shim_i64 shim_register_class(const char *name) {
 	shim_wchar buf[256];
 	shim_wndclassex wc;
 	if (shim_utf16(name, buf, 256) < 0) return 0;
+	shim_class_remember(buf);
 	wc.cbSize = sizeof(shim_wndclassex);
 	wc.style = 0x0001u | 0x0002u; /* CS_VREDRAW | CS_HREDRAW */
 	wc.wndproc = shim_wndproc;

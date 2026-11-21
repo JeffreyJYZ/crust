@@ -14,13 +14,6 @@
  * Nothing here throws: a bad argument or a refused send is a plain object the page can read.
  */
 import type { BrowserConfig } from "@/config";
-import {
-	definePlugin,
-	notImplemented,
-	type NotImplemented,
-	type PluginContext,
-	type PluginDefinition,
-} from "./define";
 import { readBounds, readText } from "./browser-args";
 import { originPolicy } from "./browser-origin";
 import { popupReporter } from "./browser-popup";
@@ -32,7 +25,15 @@ import type {
 	BrowserOpenInput,
 	BrowserState,
 } from "./browser-types";
+import {
+	definePlugin,
+	type NotImplemented,
+	notImplemented,
+	type PluginContext,
+	type PluginDefinition,
+} from "./define";
 
+export type { BrowserPopupEvent } from "./browser-popup";
 export type {
 	BrowserAdapter,
 	BrowserBounds,
@@ -42,7 +43,6 @@ export type {
 	BrowserOpenInput,
 	BrowserState,
 } from "./browser-types";
-export type { BrowserPopupEvent } from "./browser-popup";
 
 type Opened = { ok: true; label: string } | BrowserFailure;
 type Navigated = { ok: true; loaded: boolean } | BrowserFailure;
@@ -69,8 +69,9 @@ export function createBrowserPlugin(
 	const missing = (command: string): NotImplemented =>
 		notImplemented(
 			`browser.${command} needs an embedded webview surface, which this platform does not ` +
-				"provide; macOS is the only platform crust builds it on today",
-			"WKWebView",
+				"provide; crust builds it on macOS (WKWebView), Windows (WebView2) and Linux " +
+				"(WebKitGTK)",
+			"WKWebView, WebView2 or WebKitGTK",
 		);
 
 	/** Every adapter call funnels through this, so a throw is a value rather than a rejection. */

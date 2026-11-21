@@ -8,8 +8,20 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 ### Added
 
+- **The embedded browser surface works on Windows and Linux.** `browser.*` was macOS-only and answered `not-implemented` elsewhere. Windows now hosts a second WebView2 controller in a child window of the app's own, and Linux places a second `WebKitWebView` in the window's overlay container; both match the darwin contract — `http(s)` only, origins from `browser.origins`, no bridge token, `target=_blank` refused and handed to the opener, `capture` answered `not-implemented` naming the API rather than screenshotting the screen. `state` reads the surface's own title, address, load flag and history, so the app's page and the surface never answer for each other. Proven by `gate (windows)` and `gate (ubuntu)`: a foreign origin refused, an allowed one opened, titled, moved and closed against a real runtime.
 - **A probe can drive an app without taking the front.** `testing.activation` in `crust.config.ts` chooses `"auto"` (today's launch), `"none"` (never activates; `accessibility.elementCount` answers a typed `needs-activation` instead of the empty tree an inactive app gives) or `"on-demand"` (activates once for the first accessibility read that needs it). Page-level `testing.*` and `window.capture` work in all three modes.
 - **`window.create { activate: false }`** shows a window with `orderFrontRegardless` (macOS), `SW_SHOWNOACTIVATE` (Windows) or the plain show (Linux) and never makes it key or brings the app forward. Proven by a real probe on a Mac: capture and drive a page while the frontmost app stays the same.
+
+## [0.2.10] — 2026-11-21
+
+### Added
+
+- **The embedded browser surface on Windows and Linux.** `browser.open/navigate/state/setBounds/close` now work on all three platforms, from the same plugin and the same `browser.origins` allowlist. Windows hosts a WebView2 controller in a child window over the surface table merged earlier, so each surface keeps its own controller, bounds and navigation; Linux places a `WebKitWebView` in a `GtkFixed` host inside the window's overlay. Both install the same rules as darwin: no bridge token, `target=_blank` and `window.open` re-checked against the allowlist and handed to `opener`, and capture permission denied on the surface.
+- **`browser.capture` stays macOS-only, and says so.** WebView2's `CapturePreview` needs an `IStream` and WebKitGTK's `get_snapshot` answers a cairo surface, so both answer `not-implemented` naming the call instead of screenshotting the screen. The surface itself is cross-platform; the picture is not, and the docs state that rather than implying parity.
+
+### Fixed
+
+- **The Linux surface ignored `setBounds`.** A `GtkBox` allocates every child the full cross-axis, so no request, alignment or expansion flag could make the surface 180x90 — the diagnostic showed the surface's parent pointer was the box itself. It now lives in a `GtkFixed` host, and the ubuntu smoke pins the allocation: `220x120 then 180x90 for 180x90`, with `parent` differing from `box`.
 
 ## [0.2.9] — 2026-11-21
 
