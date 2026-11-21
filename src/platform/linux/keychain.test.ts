@@ -73,6 +73,18 @@ describe("linux keychain absence", () => {
 });
 
 describe("linux keychain status mapping", () => {
+	test("a NUL-bearing secret is refused before libsecret can store a truncated prefix", () => {
+		const native = presentNative();
+		let writes = 0;
+		native.shim_keyring_set = () => {
+			writes++;
+			return 1;
+		};
+		const adapter = linuxKeychainAdapter(native);
+		expect(() => adapter.set("app", "token", "a\0b")).toThrow("NUL");
+		expect(writes).toBe(0);
+	});
+
 	test("a stored secret comes back and set/delete report success", () => {
 		const native = presentNative();
 		const adapter = linuxKeychainAdapter(native);

@@ -9,9 +9,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+	failure,
 	reasonOf,
 	type StrongholdEntry,
 	type StrongholdFile,
+	type StrongholdFailure,
 	type Sealed,
 } from "./stronghold-types.ts";
 
@@ -145,6 +147,32 @@ export async function readStore(path: string): Promise<StoreRead> {
 		return { ok: false, code: "corrupt", message: `${path} is not a stronghold store` };
 	}
 	return { ok: true, file: parsed };
+}
+
+/**
+ * The header an open session derived its keys from. A write that finds a different header must refuse:
+ * entries sealed with the old keys would be unreadable, and its marker would no longer match.
+ */
+function headerOf(file: StrongholdFile): string {
+	return `${file.kdf.algorithm}:${file.kdf.iterations}:${file.kdf.salt}:${file.check.iv}:${file.check.data}`;
+}
+
+/**
+ * Re-read a vault a session already opened, to be called *inside* a cross-instance file lock. A
+ * second instance may have committed an entry since this session's snapshot was taken, so writes build
+ * on the file returned here rather than on the snapshot. A missing or replaced file is a refusal, not
+ * an empty store — overwriting it with old keys would corrupt it.
+ */
+export async function reloadFile(
+	path: string,
+	opened: StrongholdFile,
+): Promise<StrongholdFile | StrongholdFailure> {
+	const read = await readStore(path);
+	if (!read.ok) return failure(read.code, read.message);
+	if (read.file === undefined || headerOf(read.file) !== headerOf(opened)) {
+		return failure("corrupt", "stronghold: the vault changed on disk since open");
+	}
+	return read.file;
 }
 
 /**

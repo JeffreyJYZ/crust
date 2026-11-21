@@ -44,6 +44,8 @@ export interface OtherPlatformParts {
 	sidecar: PluginDefinition;
 	store: PluginDefinition;
 	database: PluginDefinition;
+	/** Per-app vault: the bare core plugin would share one machine-wide file. */
+	stronghold: PluginDefinition;
 	keychain: PluginDefinition;
 	updater: readonly PluginDefinition[];
 	/** `process.platform` in a real run; a parameter so the win32 arm is testable on macOS. */
@@ -101,6 +103,7 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 		...(await coreNamespacePlugins(os)),
 		parts.store,
 		parts.database,
+		parts.stronghold,
 		parts.keychain,
 		parts.shell,
 		parts.sidecar,

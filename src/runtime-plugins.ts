@@ -9,6 +9,7 @@ import { crashRecordPath } from "@/platform/darwin/crash-record";
 import { createFsPlugin, createWindowPlugin, type PluginDefinition } from "@/plugins";
 import { createSidecarPlugin } from "@/plugins/sidecar";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
+import { dataPlugins } from "@/runtime-data-plugins.ts";
 import { startCrashPart } from "@/runtime-crash-start";
 import { featurePlugins } from "@/runtime-feature-plugins.ts";
 import { platformKeychainPlugin } from "@/runtime-keychain";
@@ -50,11 +51,9 @@ export async function nativePlugins(
 			? (createFsPlugin({ allow: fs.scope }) as PluginDefinition)
 			: plugin;
 	const {
-		createDatabasePlugin,
 		createDialogPlugin,
 		createNotificationPlugin,
 		createShellPlugin,
-		createStorePlugin,
 		createTrayPlugin,
 		createUpdaterPlugin,
 		powerPlugin,
@@ -68,11 +67,9 @@ export async function nativePlugins(
 	// refuses every spawn, which is the same deny-by-default shape as shell with no allowlist.
 	const sidecarPlugin = createSidecarPlugin();
 	const updaterPlugins = updater === undefined ? [] : [createUpdaterPlugin(undefined, updater)];
-	// `store` has no native half, but its file is per-app: with no adapter it answered
-	// `~/Library/Application Support/crust/store.json` for every crust app.
-	const storePlugin = createStorePlugin({ root: appRoot });
-	// Same data root as `store`: the reason is in `database-name.ts`'s doc comment.
-	const databasePlugin = createDatabasePlugin({ root: appRoot });
+	// `store`, `database` and `stronghold` all own a file; dataPlugins gives them one per-app root
+	// rather than the machine-wide `crust/` path the bare registrations used.
+	const data = await dataPlugins(appRoot);
 	const keychainPlugin = await platformKeychainPlugin();
 	// `os` is a parameter so the win32 arm is provable on a machine that is not Windows: the
 	// registry picks the adapter by OS, and no adapter branches on `process.platform` itself.
@@ -85,8 +82,9 @@ export async function nativePlugins(
 			power: powerPlugin,
 			shell: shellPlugin,
 			sidecar: sidecarPlugin,
-			store: storePlugin,
-			database: databasePlugin,
+			store: data.store,
+			database: data.database,
+			stronghold: data.stronghold,
 			keychain: keychainPlugin,
 			updater: updaterPlugins,
 			os,
@@ -189,8 +187,9 @@ export async function nativePlugins(
 		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
 		keychainPlugin,
 		deepLinkPlugin,
-		storePlugin,
-		databasePlugin,
+		data.store,
+		data.database,
+		data.stronghold,
 		shellPlugin,
 		sidecarPlugin,
 		...updaterPlugins,

@@ -99,6 +99,25 @@ describe("names a caller may not pass", () => {
 		expect(native.calls()).toEqual([]);
 	});
 
+	/**
+	 * Linux hands the secret to libsecret as a C string, so an interior NUL would be stored as only
+	 * its prefix. Refuse on every platform instead of returning a different secret per OS.
+	 */
+	test("a NUL in a secret is refused everywhere before the adapter is reached", async () => {
+		for (const platform of ["darwin", "win32", "linux"]) {
+			const native = fakeKeychain();
+			const plugin = createKeychainPlugin(native, platform);
+			expect(
+				await plugin.commands.set({ service: "app", account: "a", secret: "a\0b" }),
+			).toEqual({
+				ok: false,
+				code: "bad-request",
+				message: 'keychain.set: "secret" may not contain a NUL',
+			});
+			expect(native.calls()).toEqual([]);
+		}
+	});
+
 	test("an empty name is refused by the command that took it, and nothing reaches the native half", async () => {
 		const native = fakeKeychain();
 		const plugin = createKeychainPlugin(native);

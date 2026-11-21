@@ -31,6 +31,9 @@ export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
 	APP_NAMESPACE,
 	windowPlugin.name,
 	...corePlugins.map((plugin) => plugin.name),
+	// Built by the runtime with this app's data root rather than kept in `corePlugins`, but still a
+	// built-in namespace: a project plugin with this name would collide at registry time.
+	"stronghold",
 ]);
 
 /**
