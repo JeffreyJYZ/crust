@@ -44,6 +44,15 @@ describe("PREFLIGHT", () => {
 			"gtk_widget_show_all",
 			"gtk_widget_destroy",
 			"g_signal_connect_data",
+			// The window's positioned container: required because the app's own webview lives in it.
+			"gtk_overlay_new",
+			"gtk_overlay_add_overlay",
+			"gtk_widget_show",
+			"gtk_widget_set_halign",
+			"gtk_widget_set_valign",
+			"gtk_widget_set_margin_start",
+			"gtk_widget_set_margin_top",
+			"gtk_widget_get_parent",
 		]) {
 			expect(symbols).toContain(required);
 		}

@@ -28,12 +28,28 @@ export interface LinuxShim extends LinuxDialogShim {
 		minWidth: number,
 		minHeight: number,
 	): number;
+	/** The window's positioned container, created on first call and returned again after. */
+	shim_window_container(win: bigint): number;
+	/** Attach the app's own webview into that container as its main child, which fills the window. */
 	shim_window_attach(win: bigint, child: bigint): number;
 	shim_window_show(win: bigint): void;
 	shim_window_destroy(win: bigint): void;
 	shim_window_alive(win: bigint): number;
 	shim_webview_new(): number;
 	shim_webview_load(web: bigint, url: Uint8Array): number;
+	/**
+	 * Place a webview at a rectangle in window points inside a window's container: the first call
+	 * adds it over the page, a later one moves it. 0 when the container or the GTK entry point is
+	 * absent, never a silent no-op that leaves the surface where it was.
+	 */
+	shim_webview_place(
+		box: bigint,
+		web: bigint,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): number;
 
 	/**
 	 * The `crust:window` half, every member optional because a fake shim need not carry it and an
@@ -116,16 +132,16 @@ export interface LinuxShim extends LinuxDialogShim {
 export interface LinuxProofShim {
 	/** The loaded document's title, read from the view; null before a document commits. */
 	shim_webview_title(web: bigint): string | null;
-	/** 0 started, 1 redirected, 2 committed, 3 finished, 4 failed. */
-	shim_webview_load_state(): number;
+	/** 0 started, 1 redirected, 2 committed, 3 finished, 4 failed — for this view. */
+	shim_webview_load_state(web: bigint): number;
 	/** The failing URI, then GLib's message, for a failed load; empty otherwise. */
-	shim_webview_load_text(): string | null;
+	shim_webview_load_text(web: bigint): string | null;
 	/** Start one script; 0 when the library carries no evaluate_javascript. */
 	shim_webview_eval(web: bigint, script: Uint8Array): number;
-	/** 0 pending, 1 answered, 2 threw. */
-	shim_webview_eval_state(): number;
+	/** 0 pending, 1 answered, 2 threw — for the view that asked. */
+	shim_webview_eval_state(web: bigint): number;
 	/** The answer, or the message a throw carried. */
-	shim_webview_eval_text(): string | null;
+	shim_webview_eval_text(web: bigint): string | null;
 }
 
 /** Compile the embedded shim and declare every entry point it exports. */

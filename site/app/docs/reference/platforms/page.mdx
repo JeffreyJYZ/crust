@@ -123,8 +123,9 @@ answer. Three different strengths of proof:
   answers `not-implemented` there. The window and greet lines are measured; the resize assertions
   landed after v0.1.30 and the job runs on `v*` tags or dispatch, so this half is **read from code**
   until a tag reports it.
-- **Linux, read from code.** The page fills the window through `gtk_container_add`, so a resize reaches
-  it the same way; no probe has asked a GTK page for its viewport, so nothing here is measured.
+- **Linux, read from code.** The page is the main child of the window's `GtkOverlay` container, so it
+  follows the allocation and a resize reaches it the same way; no probe has asked a GTK page for its
+  viewport, so nothing here is measured.
 
 ## All three are selected
 

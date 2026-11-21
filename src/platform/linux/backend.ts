@@ -12,8 +12,18 @@ export interface NativeWindow {
 	win: bigint;
 	/** The `WebKitWebView *` inside it. */
 	web: bigint;
+	/** The window's positioned container; the app's own webview is its main child. */
+	box: bigint;
 	/** The absolute URL this window was asked to load. */
 	url: string;
+}
+
+/** A rectangle in window points, which is the only geometry GTK is given here. */
+export interface WebviewBounds {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 /**
@@ -32,8 +42,14 @@ export interface LinuxBackend {
 	load(): void;
 	/** Run one native main-context iteration; true only when the shim actually called into GTK. */
 	iterate(): boolean;
-	/** Build the window and its webview, attach, show, then load `url`. */
+	/** Build the window and its container, attach the webview into it, show, then load `url`. */
 	createWindow(options: MinSizeOptions, url: string): NativeWindow;
+	/**
+	 * Place a webview at a rectangle in window points inside a window's container — the seam an
+	 * embedded surface uses, and the same one the app's own page occupies as the main child.
+	 * Answers false when GTK refused, never a silent success.
+	 */
+	placeWebview(box: bigint, web: bigint, bounds: WebviewBounds): boolean;
 	/** Whether GTK still holds this window open — read from C, never from a freed widget. */
 	isOpen(win: bigint): boolean;
 	/** Destroy a window that is still open. */
@@ -118,12 +134,33 @@ export function createGtkBackend(
 			if (win === 0n) throw new Error("shim_window_new returned null");
 			const web = BigInt(Number(symbols.shim_webview_new() ?? 0));
 			if (web === 0n) throw new Error("shim_webview_new returned null");
+			// The container exists before the attach, so the app's own page is its main child rather
+			// than the window's only child — that is what leaves room for a surface beside it.
+			const box = BigInt(Number(symbols.shim_window_container(win) ?? 0));
+			if (box === 0n) throw new Error("shim_window_container returned null");
 			if (Number(symbols.shim_window_attach(win, web) ?? 0) !== 1)
 				throw new Error("shim_window_attach failed");
 			if (Number(symbols.shim_webview_load(web, cstring(url)) ?? 0) !== 1)
 				throw new Error(`shim_webview_load failed for ${url}`);
 			symbols.shim_window_show(win);
-			return { win, web, url };
+			return { win, web, box, url };
+		},
+
+		placeWebview(box, web, bounds) {
+			if (!opened)
+				throw new Error("crust: placeWebview before load — start() must run first");
+			// GTK takes points as ints. A non-finite bound reached here is a caller bug, not a
+			// rectangle, and rounding it would hide the caller's own mistake.
+			const [x, y, width, height] = [
+				Math.round(bounds.x),
+				Math.round(bounds.y),
+				Math.round(bounds.width),
+				Math.round(bounds.height),
+			];
+			if (![x, y, width, height].every(Number.isFinite))
+				throw new Error("placeWebview: bounds must be finite numbers");
+			const placed = symbolsFor().shim_webview_place(box, web, x, y, width, height);
+			return Number(placed ?? 0) === 1;
 		},
 
 		isOpen(win) {
