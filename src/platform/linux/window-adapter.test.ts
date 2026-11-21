@@ -106,6 +106,24 @@ describe("focus, setTitle, isOpen", () => {
 	});
 });
 
+describe("capture", () => {
+	test("capture photographs the labelled webview and returns the page PNG", async () => {
+		const { native, shim, platform } = await adapter();
+		native.create({ label: "main", url: URL });
+		const web = platform.nativeWindow("main")?.web;
+		const shot = await native.capture?.("main");
+		expect(shot).toMatchObject({ width: 320, height: 200, scale: 1 });
+		expect(typeof shot?.png).toBe("string");
+		expect((shot?.png ?? "").length).toBeGreaterThan(0);
+		expect(shim.captures).toEqual([Number(web)]);
+	});
+
+	test("capture on a label nobody opened is unknown-window", async () => {
+		const { native } = await adapter();
+		await expect(native.capture?.("ghost")).rejects.toMatchObject({ code: "unknown-window" });
+	});
+});
+
 describe("an entry point that did not resolve", () => {
 	test("focus refuses by name, quoting the symbol GTK did not carry", async () => {
 		const { native } = await adapter({ missing: "gtk_window_present" });

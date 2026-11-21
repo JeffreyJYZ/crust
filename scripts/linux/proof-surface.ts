@@ -4,9 +4,9 @@
  * the app's view while the surface loads, then the surface after it. Moving a surface is a rectangle
  * change, not a reload.
  *
- * What it does not claim: a picture. `window.capture` is not implemented on Linux yet (no WebKitGTK
- * snapshot path in this layer), so the surface's own title and its load state are the evidence that
- * a live view exists, and the visual check stays open.
+ * What it does not claim: a picture of the surface itself. `window.capture` photographs the app's
+ * own webview (proof-capture.ts), never a native sibling view, so the surface's title and load state
+ * are the evidence here.
  */
 import type { LinuxShim } from "../../src/platform/linux/shim-ffi.ts";
 import type { NativeWindow } from "../../src/platform/linux/backend.ts";

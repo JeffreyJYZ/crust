@@ -17,6 +17,7 @@ import dialogCalls from "./shim/84_dialog_calls.c" with { type: "text" };
 import clipboard from "./shim/80_clipboard.c" with { type: "text" };
 import opener from "./shim/81_opener.c" with { type: "text" };
 import osInfo from "./shim/82_osinfo.c" with { type: "text" };
+import snapshot from "./shim/90_snapshot.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
@@ -42,6 +43,10 @@ export const SHIM_PARTS = [
 	osInfo,
 	dialog,
 	dialogCalls,
+	// WebKitGTK's async snapshot, last because it reads the webview part's GLib function pointers
+	// and the prelude's handles. Its entry points resolve lazily, so an older WebKit fails only
+	// `shim_snapshot_ready` rather than the launch.
+	snapshot,
 ] as const;
 
 /**
@@ -67,6 +72,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/linux/shim/82_osinfo.c",
 	"src/platform/linux/shim/83_dialog.c",
 	"src/platform/linux/shim/84_dialog_calls.c",
+	"src/platform/linux/shim/90_snapshot.c",
 ] as const;
 
 /** The same list as bare file names, for callers that already know the directory. */

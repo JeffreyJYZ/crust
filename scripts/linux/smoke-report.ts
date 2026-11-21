@@ -13,6 +13,7 @@ export const SMOKE_STEPS = [
 	"events",
 	"ready",
 	"surface",
+	"capture",
 	"failure",
 	"state",
 ] as const;

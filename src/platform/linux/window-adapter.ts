@@ -14,6 +14,7 @@
 import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import type { LinuxPlatform } from "./platform.ts";
 import { type LinuxShim, shim } from "./shim-ffi.ts";
+import { linuxSnapshotShim, takeLinuxSnapshot } from "./snapshot.ts";
 import { windowChromeAdapter } from "./window-chrome-adapter.ts";
 import { gtkWindowSends, refusalGate } from "./window-sends.ts";
 import { windowStateAdapter } from "./window-state-adapter.ts";
@@ -35,6 +36,18 @@ export function linuxWindowAdapter(
 			);
 		}
 		return win;
+	};
+
+	/** The `WebKitWebView *` a label names; the render target `window.capture` photographs. */
+	const requireWeb = (label: string): bigint => {
+		const web = platform.nativeWindow(label)?.web;
+		if (web === undefined) {
+			throw new WindowAdapterError(
+				"unknown-window",
+				`crust: no window labelled ${JSON.stringify(label)} to capture`,
+			);
+		}
+		return web;
 	};
 
 	/**
@@ -88,6 +101,9 @@ export function linuxWindowAdapter(
 			require(label);
 			platform.destroy(label);
 		},
+		/** The page as WebKitGTK rendered it — a view snapshot, never a display grab. */
+		capture: async (label: string) =>
+			takeLinuxSnapshot(requireWeb(label), linuxSnapshotShim(native)),
 		focus(label: string): void {
 			gate("focus", () => sends.present(require(label)));
 		},

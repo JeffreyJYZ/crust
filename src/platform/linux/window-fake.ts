@@ -1,15 +1,14 @@
 /**
- * The fake shim the Linux window adapter is proved against. There is no GTK on the machine this was
- * written on, so the FFI table is the only thing a test can measure: it answers from recorded state,
- * records every argument, and can be told to behave like a library whose entry point never resolved
- * (`missing`), a display that cannot place a window (`placeable: false`), a widget GDK has not
- * realised yet (`realised: false`), or a GTK that accepted a call and ignored it (`ignoring`).
- * Windows are numbers the fake hands out, the same trick `backend.test.ts` uses for pointers.
+ * The fake shim the Linux window adapter is proved against, on a machine with no GTK: it answers
+ * from recorded state and can act like a library whose entry point never resolved (`missing`), a
+ * display that cannot place a window (`placeable: false`), a view GTK has not realised (`realised:
+ * false`), or a GTK that accepted a call and ignored it (`ignoring`). Windows are numbers.
  */
 import { createGtkBackend } from "./backend.ts";
 import { uncstring } from "./cstring.ts";
 import { LinuxPlatform } from "./platform.ts";
 import type { LinuxShim } from "./shim-ffi.ts";
+import { snapshotFake } from "./window-fake-snapshot.ts";
 
 export interface FakeOptions {
 	/** false models Wayland: no client-side placement and no origin to read back. */
@@ -31,6 +30,8 @@ export interface FakeShim {
 	opacity: Map<number, number>;
 	/** Every URL the fake webview was asked to load, decoded. */
 	urls: string[];
+	/** Views the fake snapshot was asked to photograph. */
+	captures: number[];
 	/** Member names a "healthy" GTK accepts and silently drops, which the read-back must catch. */
 	ignoring: Set<string>;
 }
@@ -46,13 +47,11 @@ export function fakeWindowShim(options: FakeOptions = {}): FakeShim {
 	const decorated = new Map<number, boolean>();
 	const opacity = new Map<number, number>();
 	const urls: string[] = [];
+	const captures: number[] = [];
 	const ignoring = new Set<string>();
 	const ready = options.missing === undefined ? 1 : 0;
 	const placeable = options.placeable ?? true;
 	const realised = options.realised ?? true;
-	/** 1 unless this call is one the fake GTK is told to accept and drop. */
-	const took = (name: string): number => (ignoring.has(name) ? 0 : 1);
-
 	const symbols: LinuxShim = {
 		shim_lib_open: () => 1,
 		shim_lib_error_text: () => "",
@@ -167,6 +166,7 @@ export function fakeWindowShim(options: FakeOptions = {}): FakeShim {
 			if (!ready) return -1;
 			return opacity.get(Number(win)) ?? 1;
 		},
+		...snapshotFake(realised, captures),
 	};
 
 	return {
@@ -179,6 +179,7 @@ export function fakeWindowShim(options: FakeOptions = {}): FakeShim {
 		decorated,
 		opacity,
 		urls,
+		captures,
 		ignoring,
 	};
 }

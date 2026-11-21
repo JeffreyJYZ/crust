@@ -83,6 +83,21 @@ export interface LinuxShim extends LinuxDialogShim {
 	/** -1 when unavailable: 0 is a real opacity. */
 	shim_widget_opacity?(win: bigint): number;
 
+	/**
+	 * The WebKitGTK snapshot half, resolved lazily. `ready` answers 0 with `shim_lib_error_text`
+	 * naming the missing API; `take` answers 0 started, 1 no API, 2 no view, 3 not realised.
+	 * The callback fills the picture before `state` leaves 0, so a reader that sees 1 has all bytes.
+	 */
+	shim_snapshot_ready?(): number;
+	shim_snapshot_take?(web: bigint): number;
+	shim_snapshot_state?(): number;
+	shim_snapshot_failure?(): string | null;
+	shim_snapshot_width?(): number;
+	shim_snapshot_height?(): number;
+	shim_snapshot_scale?(): number;
+	shim_snapshot_length?(): number;
+	shim_snapshot_read?(dst: Uint8Array, cap: number): number;
+
 	/** 1 when GDK carries every entry point the display list needs; 0 names a GTK too old for it. */
 	shim_screen_ready?(): number;
 	/** How many displays GDK reports; 0 when it cannot be asked. */

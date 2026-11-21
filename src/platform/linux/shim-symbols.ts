@@ -12,6 +12,7 @@ import { FFIType } from "bun:ffi";
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
+const I64 = FFIType.i64;
 const V = FFIType.void;
 const CS = FFIType.cstring;
 
@@ -89,4 +90,16 @@ export const shimSymbols = {
 	shim_webview_eval: { args: [P, CS], returns: I32 },
 	shim_webview_eval_state: { args: [P], returns: I32 },
 	shim_webview_eval_text: { args: [P], returns: CS },
+
+	// The page's own render through WebKitGTK's async snapshot. Lengths and pixel counts are C
+	// `long` (i64); JS wraps them with Number() before using them.
+	shim_snapshot_ready: { args: [], returns: I32 },
+	shim_snapshot_take: { args: [P], returns: I32 },
+	shim_snapshot_state: { args: [], returns: I32 },
+	shim_snapshot_failure: { args: [], returns: CS },
+	shim_snapshot_width: { args: [], returns: I64 },
+	shim_snapshot_height: { args: [], returns: I64 },
+	shim_snapshot_scale: { args: [], returns: FFIType.f64 },
+	shim_snapshot_length: { args: [], returns: I64 },
+	shim_snapshot_read: { args: [P, I64], returns: I64 },
 };
