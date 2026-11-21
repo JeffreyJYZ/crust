@@ -2,8 +2,6 @@
 
 An embedded panel a page can show beside its own content — a rendered document, a form preview, a second surface that is part of the app rather than a window. The plugin is always registered; the section only sets the panel's default size.
 
-**Not implemented yet — ships in 0.2.10.** This page is the contract the release will keep: calling `preview.show` today answers `not-implemented` naming the release.
-
 ```ts
 // crust.config.ts
 preview: {
@@ -14,10 +12,34 @@ preview: {
 
 Both dimensions are in points and are the panel's size when the page does not pass its own. Either key may be left out.
 
+## Commands
+
+| command | arguments                     | answer                                                        |
+| ------- | ----------------------------- | ------------------------------------------------------------- |
+| `show`  | `{ path, width?, height? }`   | `{ ok: true, path, width, height, visible, window }`          |
+| `hide`  | none                          | `{ ok: true, visible }`                                       |
+
+`visible` and `window` are read from the panel itself after the call, not echoed from the argument, so they say what is on screen. `window` is the panel's own window number where the platform has one, else `0`.
+
+```js
+await crust.invoke("preview", "show", { path: "/Users/me/report.docx" });
+await crust.invoke("preview", "hide");
+```
+
+**`path` must be absolute** — a relative path would resolve against whatever directory the process happens to have, which is not a file the page chose. A preview is a file read, so the path goes through the same containment `fs` uses: the runtime's configured `fs.scope` instance, so a prefix added with `fs.scopeAllow` bounds a preview too. A `..` walk, a symlink out of a prefix or a path outside the configured scope refuses with the same `outside-scope` code `fs` answers, naming the path.
+
+**Size is both halves or neither.** One side alone sized the panel blank, so a one-sided request is `bad-request` rather than a panel drawn at half a size. Omit both and the config's `preview` defaults apply, then the panel's own.
+
+Failure codes: `bad-request` (a missing or relative `path`, a non-positive or non-integer size, one side without the other); `outside-scope` (the path is outside `fs.scope`); `not-implemented` with the API the platform would need.
+
 ## Absent is valid
 
 No `preview` section still registers the plugin, and `preview.show` then opens at the panel's own default size. That differs from [pty](/docs/guides/pty) on purpose: a terminal is command execution and must be declared, while a panel is layout and has nothing to execute.
 
+## Platforms
+
+macOS drives the system `QLPreviewPanel` over the app's own window, so the panel floats and nothing in your layout reserves a rectangle for it. Windows has the `IPreviewHandler` host but no window handle handed to this registration, and Linux has no embedded system preview API at all — each answers `not-implemented` naming what it waits on rather than opening the file in another app behind a command called `show`. On those two, `opener.openPath` opens the file in the app that owns its type.
+
 ## Capability
 
-The page calls `preview.show`, so a label needs the action `preview:show`. See [Permissions](/docs/guides/permissions) for grants, which are per window label.
+An action is `plugin:command`, so the two commands are `preview:show` and `preview:hide`, each granted per window label. See [Permissions](/docs/guides/permissions).

@@ -228,7 +228,7 @@ command, so it answers `unknown-command` — and a grant of `app:greet` would no
   rightCenter
 - `power` — state idleSeconds sleepPrevent sleepAllow onSleep onLock onWake onScreenSleep
   onScreenWake onUnlock
-- `preview` — show
+- `preview` — show hide
 - `screen` — list primary
 - `shell` — spawn output write close kill list
 - `shortcut` — register unregister unregisterAll isRegistered list
@@ -352,6 +352,12 @@ with no `data:` prefix, and `width`/`height` are page pixels — the point size 
 render, never the display: no Screen Recording grant is asked for and none is needed, and a platform
 whose webview cannot render a picture answers `not-implemented` naming the API rather than falling
 back to a screenshot of the screen.
+
+**`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
+cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
+It answers `{ ok, width, height, scale, png }` at the surface's page pixels — an unknown label is
+`not-found` — and it is macOS-only like the surface, `not-implemented` naming `WKWebView` elsewhere.
+The embedded page carries no bridge token and no `window.crust`.
 
 **`testing`** drives that same page. Every command takes `label` too — omitted means the app's first
 open window.
