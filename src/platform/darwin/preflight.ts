@@ -79,6 +79,10 @@ const instanceSelectors: ReadonlyArray<readonly [string, string]> = [
 	["NSApplication", "activateIgnoringOtherApps:"],
 	["NSApplication", "terminate:"],
 	["NSView", "addSubview:"],
+	// A browser surface is an overlay: it is framed from C and removed from the page-facing
+	// teardown, so both sends are verified before the app can offer one.
+	["NSView", "setFrame:"],
+	["NSView", "removeFromSuperview"],
 	["NSView", "setWantsLayer:"],
 	["NSView", "setTranslatesAutoresizingMaskIntoConstraints:"],
 	["NSLayoutConstraint", "setActive:"],

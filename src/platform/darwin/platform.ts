@@ -5,6 +5,7 @@
 import type { LifecycleSource, Platform, WindowHandle, WindowOptions } from "@/app.ts";
 import { type Activation, activateAppOnce } from "./activation.ts";
 import { startAppKit } from "./appkit.ts";
+import { bindBrowserWindows } from "./browser-platform.ts";
 import { darwinLifecycleSource } from "./lifecycle.ts";
 import { shim } from "./index.ts";
 import { applyDockIcon } from "./dock-icon.ts";
@@ -36,6 +37,9 @@ export class DarwinPlatform implements Platform {
 		this.#icon = options.icon;
 		this.#microphone = options.microphone === true;
 		this.#windows = windows ?? createWindowStore(() => this.#app);
+		// `featurePlugins` builds the browser plugin before the darwin arm of `runtime-plugins.ts`
+		// is reached, so the surface looks its host windows up through this one registration.
+		bindBrowserWindows(this);
 	}
 
 	/**

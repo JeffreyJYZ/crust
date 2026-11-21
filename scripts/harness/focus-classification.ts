@@ -9,6 +9,7 @@
 export const LAUNCHERS = [
 	"demo.ts",
 	"e2e-capability.ts",
+	"e2e-browser.ts",
 	"e2e-dev-binary.ts",
 	"e2e-dev-react.ts",
 	"e2e-dev-size.ts",
