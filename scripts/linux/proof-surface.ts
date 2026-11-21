@@ -12,11 +12,21 @@ import type { LinuxShim } from "../../src/platform/linux/shim-ffi.ts";
 import type { NativeWindow } from "../../src/platform/linux/backend.ts";
 import { cstring } from "../../src/platform/linux/cstring.ts";
 import type { LinuxProofShim } from "../../src/platform/linux/shim-ffi.ts";
-import { LOAD_FAILED, LOAD_FINISHED, waitFor } from "./proof-eval.ts";
+import { LOAD_FAILED, LOAD_FINISHED, evaluate, waitFor } from "./proof-eval.ts";
 import type { Step } from "./proof-steps.ts";
 
 /** A real page is slow the first time: WebKit starts its own processes. */
 const LOAD_MS = 20_000;
+
+/**
+ * How long the title is allowed to lag FINISHED. `load-changed` reports the navigation, and WebKit
+ * fills the document's title a main-context iteration or two later — measured: the first read after
+ * FINISHED answered `""` on the ubuntu gate while the document had already parsed.
+ */
+const TITLE_MS = 2_000;
+
+/** One script's round trip; the deadline is a hang guard, not the normal path. */
+const EVAL_MS = 5_000;
 
 /** The surface's document, title included, so it cannot be mistaken for the app's page. */
 export const SURFACE_TITLE = "crust smoke surface";
@@ -65,7 +75,19 @@ export async function surfaceStep(
 	const state = shim.shim_webview_load_state(surface);
 	if (!settled)
 		return { ok: false, detail: `the surface never finished loading (state ${state})` };
-	const title = shim.shim_webview_title(surface) ?? "";
+	// The title trails FINISHED, so it is polled rather than read once. If `get_title` still has
+	// nothing, the document is asked for its own title by script: a view that answers is live and
+	// parsed either way, and which one answered is part of the report.
+	let title = shim.shim_webview_title(surface) ?? "";
+	if (title !== SURFACE_TITLE)
+		await waitFor(() => (shim.shim_webview_title(surface) ?? "") === SURFACE_TITLE, TITLE_MS);
+	title = shim.shim_webview_title(surface) ?? "";
+	let scriptTitle = "";
+	if (title !== SURFACE_TITLE) {
+		const read = await evaluate(shim, surface, "document.title", EVAL_MS);
+		scriptTitle = read.text;
+	}
+	const named = title === SURFACE_TITLE ? title : scriptTitle;
 	// The app's page loaded first. One process-wide slot would have reported the surface's load here,
 	// which is exactly the defect the keyed record removes.
 	const appState = shim.shim_webview_load_state(app.web);
@@ -81,10 +103,10 @@ export async function surfaceStep(
 	)
 		return { ok: false, detail: "shim_webview_place refused the move" };
 	return {
-		ok: title === SURFACE_TITLE && appState === LOAD_FINISHED,
+		ok: named === SURFACE_TITLE && appState === LOAD_FINISHED,
 		detail:
 			`placed at ${FIRST_BOUNDS.x},${FIRST_BOUNDS.y} ${FIRST_BOUNDS.width}x${FIRST_BOUNDS.height} then moved; ` +
-			`title "${title}"; the app's view still ${appState}`,
+			`title "${title}"${scriptTitle ? ` (document.title "${scriptTitle}")` : ""}; the app's view still ${appState}`,
 	};
 }
 
