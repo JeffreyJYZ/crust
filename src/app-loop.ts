@@ -5,11 +5,13 @@
 import { CrustError } from "@/bridge/errors";
 import type { CrustConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
+import { attachDeepLinkDelivery, configureDeepLink, queueDeepLink } from "./app-deep-link.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
 	type AppListener,
 	type LifecycleSource,
+	PUMP_INTERVAL_MS,
 	type Platform,
 } from "./app-types.ts";
 import {
@@ -46,6 +48,7 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 	// Before the platform exists: a probe's activation policy is what the first window create
 	// reads, and `testing.activation` is honoured on every OS even though only macOS acts on it.
 	setTestingActivation(config.testing?.activation);
+	configureDeepLink(config);
 	switch (process.platform) {
 		case "darwin": {
 			const darwin = await import("@/platform/darwin");
@@ -93,6 +96,7 @@ export async function loadPlatform(config: CrustConfig): Promise<Platform> {
  */
 export async function loadDarwinPlatform(config: CrustConfig): Promise<DarwinPlatform> {
 	setTestingActivation(config.testing?.activation);
+	configureDeepLink(config);
 	const darwin = await import("@/platform/darwin");
 	setActivationRaise((await import("@/platform/darwin/activation")).raiseAppOnce);
 	return darwin.createPlatform({
@@ -121,10 +125,19 @@ export async function installLaunchDeepLink(): Promise<void> {
 	if (process.platform !== "darwin") return;
 	const link = await import("@/platform/darwin/deep-link");
 	link.installDeepLinkHandler();
+	attachDeepLinkDelivery();
 	const launched = link.takeLaunchUrl();
-	if (!launched) return;
-	const { deepLink } = await import("@/plugins");
-	deepLink.launch(launched);
+	if (launched) queueDeepLink(launched);
+	// A later URL is only stored by the native delegate. The C buffer is process-wide, so a fresh
+	// adapter drains the same one the delegate filled; hand each URL to the app-wide sink on the
+	// pump tick rather than letting it age there. The timer is unref'd: watching must not keep a
+	// windowless app alive.
+	const pending = link.darwinDeepLinkAdapter();
+	const drain = setInterval(() => {
+		const url = pending.takePendingUrl();
+		if (url) queueDeepLink(url);
+	}, PUMP_INTERVAL_MS);
+	drain.unref?.();
 }
 
 /**
