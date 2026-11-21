@@ -25,6 +25,7 @@ import { createWithAbortRetry } from "./windows/cold-abort.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 import { provePump } from "./windows/pump.ts";
 import { provePreview } from "./windows/preview.ts";
+import { provePty } from "./windows/pty.ts";
 import { runStages } from "./windows/stages.ts";
 import { freshUserData } from "./windows/user-data.ts";
 
@@ -182,13 +183,12 @@ async function main(): Promise<number> {
 		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
 	);
 
-	// 7. The preview host: the shell's IPreviewHandler in a child window of this one.
-	const preview = provePreview(hwnd);
-	for (const check of preview) verdict.check(check.name, check.ok, check.detail);
+	// 7. The preview host — the shell's IPreviewHandler in a child window — then ConPTY:
+	//    `crust:pty` opened, typed into, resized and closed through the win32 wiring.
+	for (const check of provePreview(hwnd)) verdict.check(check.name, check.ok, check.detail);
+	for (const check of await provePty()) verdict.check(check.name, check.ok, check.detail);
 
-	console.log(
-		"not proven here: a loaded document, page JS, invoke — the window loads about:blank.",
-	);
+	console.log("not proven here: a loaded document, page JS, invoke — it loads about:blank.");
 	return verdict.report("windows:smoke");
 }
 

@@ -36,10 +36,22 @@ function pending(name: keyof typeof RELEASE, command: string, feature: string): 
  * The plugin set these sections ask for. An absent `pty` answers no pty definition at all: a
  * page-reachable terminal is command execution, so it exists only because the app declared the
  * section, never because a plugin list mentioned its name.
+ *
+ * The Windows pty is reached by a dynamic import on this one string, so a macOS or Linux launch
+ * never loads the ConPTY unit's source. `os` is a parameter so the wiring is testable off Windows.
  */
-export async function featurePlugins(sections: FeatureSections): Promise<PluginDefinition[]> {
+export async function featurePlugins(
+	sections: FeatureSections,
+	os: string = process.platform,
+): Promise<PluginDefinition[]> {
 	const plugins: PluginDefinition[] = [];
-	if (sections.pty !== undefined) plugins.push(createPtyPlugin(sections.pty));
+	if (sections.pty !== undefined) {
+		const backend =
+			os === "win32"
+				? (await import("@/platform/windows/pty-conpty")).windowsPtyBackend()
+				: undefined;
+		plugins.push(createPtyPlugin(sections.pty, os, backend));
+	}
 	plugins.push(pending("preview", "show", "an embedded preview panel"));
 	// With no `browser` section this still registers and allows no origin; wave 2's plugin reads
 	// `origins` and refuses every load rather than loading by default.
