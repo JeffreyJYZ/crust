@@ -65,8 +65,10 @@ int shim_pty_resize(int index, int cols, int rows) {
 	shim_pty_coord size;
 	size.x = (short)cols;
 	size.y = (short)rows;
-	if (!ResizePseudoConsole(slot->console, &size)) {
-		shim_pty_fail("ResizePseudoConsole returned FALSE", GetLastError());
+	// `ResizePseudoConsole` is an HRESULT too: 0 is success, so only a negative value is a refusal.
+	int resized = ResizePseudoConsole(slot->console, &size);
+	if (resized < 0) {
+		shim_pty_fail_hresult("ResizePseudoConsole answered", resized);
 		return 0;
 	}
 	return 1;

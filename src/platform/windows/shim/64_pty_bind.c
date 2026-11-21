@@ -25,6 +25,19 @@ static char *shim_pty_number(char *at, unsigned long long value) {
 	return at;
 }
 
+// An HRESULT in hex, because 0x80070057 says more than -2147024809 and `S_OK` is 0.
+static char *shim_pty_hex(char *at, unsigned int value) {
+	const char *digits = "0123456789ABCDEF";
+	int shift = 28;
+	*at++ = '0';
+	*at++ = 'x';
+	while (shift >= 0) {
+		*at++ = digits[(value >> shift) & 0xFu];
+		shift -= 4;
+	}
+	return at;
+}
+
 // One line, so the adapter can say why without a second call.
 static void shim_pty_fail(const char *what, unsigned int code) {
 	char *at = shim_pty_text(g_pty_reason, what);
@@ -33,6 +46,16 @@ static void shim_pty_fail(const char *what, unsigned int code) {
 		at = shim_pty_number(at, code);
 		at = shim_pty_text(at, ")");
 	}
+	*at = 0;
+}
+
+// The same line for a call that answers an HRESULT: `S_OK` is 0, so a failure is `hr < 0` and the
+// number to print is the HRESULT itself — `GetLastError` is not set by a refused `S_FALSE` path.
+static void shim_pty_fail_hresult(const char *what, int hr) {
+	char *at = shim_pty_text(g_pty_reason, what);
+	at = shim_pty_text(at, " (HRESULT ");
+	at = shim_pty_hex(at, (unsigned int)hr);
+	at = shim_pty_text(at, ")");
 	*at = 0;
 }
 

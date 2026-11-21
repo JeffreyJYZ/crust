@@ -76,6 +76,17 @@ describe("the pseudo-console", () => {
 		}
 	});
 
+	test("both the console's calls are read as HRESULTs, where S_OK is zero", () => {
+		// Measured on windows-latest 2026-11-21: `!CreatePseudoConsole(...)` read a successful
+		// `S_OK` as a refusal and every `pty.open` answered spawn-failed with no GetLastError.
+		expect(CODE).toContain(
+			"int opened = CreatePseudoConsole(&size, in_read, out_write, 0, &console)",
+		);
+		expect(CODE).toContain("if (opened < 0)");
+		expect(CODE).toContain("int resized = ResizePseudoConsole(slot->console, &size)");
+		expect(CODE).toContain("if (resized < 0)");
+	});
+
 	test("the startup struct and both handle structs stay on the C stack", () => {
 		expect(OPEN).toContain("shim_pty_startup startup;");
 		expect(OPEN).toContain("shim_pty_info info;");

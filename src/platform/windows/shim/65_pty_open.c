@@ -55,12 +55,15 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	size.x = (short)cols;
 	size.y = (short)rows;
 	void *console = 0;
-	if (!CreatePseudoConsole(&size, in_read, out_write, 0, &console)) {
+	// `CreatePseudoConsole` answers an HRESULT, not a BOOL: `S_OK` is 0, so success is `hr >= 0`
+	// and testing `!hr` would read every opened console as a refusal.
+	int opened = CreatePseudoConsole(&size, in_read, out_write, 0, &console);
+	if (opened < 0) {
 		CloseHandle(in_read);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		CloseHandle(out_write);
-		shim_pty_fail("CreatePseudoConsole returned FALSE", GetLastError());
+		shim_pty_fail_hresult("CreatePseudoConsole answered", opened);
 		return -1;
 	}
 	CloseHandle(in_read);
