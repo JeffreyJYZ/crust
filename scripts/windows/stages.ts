@@ -94,27 +94,31 @@ async function steps(mode: 1 | 2): Promise<number> {
 
 	// The two calls that can still jump: get_CoreWebView2 (slot 25) and put_Bounds (slot 6, by reference).
 	expect(stage("webview_bind", () => shim.shim_webview_bind(hwnd)) === 1);
+	// The handle this window's surface sits at: 0 for the first window in a process, and the number
+	// every webview call below takes. `shim_webview_index` is how a caller learns it instead of assuming.
+	const handle = shim.shim_webview_index(hwnd);
+	console.log(`stage     surface handle ${handle}`);
 	console.log(
-		`stage     web ${addr(shim.shim_webview_handle())} get_CoreWebView2 ${hex(
-			shim.shim_attach_hresult(0),
-		)} put_IsVisible ${hex(shim.shim_attach_hresult(2))}`,
+		`stage     web ${addr(shim.shim_webview_handle(handle))} get_CoreWebView2 ${hex(
+			shim.shim_attach_hresult(handle, 0),
+		)} put_IsVisible ${hex(shim.shim_attach_hresult(handle, 2))}`,
 	);
 	expect(stage("webview_size", () => shim.shim_webview_size(hwnd)) === 1);
-	console.log(`stage     put_Bounds ${hex(shim.shim_attach_hresult(1))}`);
+	console.log(`stage     put_Bounds ${hex(shim.shim_attach_hresult(handle, 1))}`);
 
-	if (shim.shim_webview_handle() === 0) {
+	if (shim.shim_webview_handle(handle) === 0) {
 		skipped("no ICoreWebView2, so navigate, title, liveness and close cannot run");
 		return failures === 0 ? 0 : 1;
 	}
-	webReport(shim);
+	webReport(shim, handle);
 
 	// Two calls whose answers separate "the object is unusable" from "Navigate is the fault": a trivial
 	// getter on the webview, and the visibility call every sample makes and this layer never has.
-	expect(!stageHr("webview_source", () => shim.shim_webview_source()));
-	expect(!stageHr("controller_visible", () => shim.shim_controller_visible()));
+	expect(!stageHr("webview_source", () => shim.shim_webview_source(handle)));
+	expect(!stageHr("controller_visible", () => shim.shim_controller_visible(handle)));
 	// The same string path with the URL parse removed: S_OK here and a fault in Navigate is a precise
 	// report about Navigate; a fault here too means every string-input method on this webview faults.
-	expect(stage("webview_navigate_string", () => shim.shim_webview_navigate_string()) === 1);
+	expect(stage("webview_navigate_string", () => shim.shim_webview_navigate_string(handle)) === 1);
 
 	// The thread has never run a message loop, so pump before the first navigation. The helper prints the
 	// count it drained: `pump_before_navigate ok <n>` — once, from its return value.
@@ -127,14 +131,16 @@ async function steps(mode: 1 | 2): Promise<number> {
 	);
 	// Immediately before the call that faulted with a perfect-looking vtable, and its answer after it.
 	console.log(
-		`stage     navigate about:blank vtable ${addr(shim.shim_webview_vtbl())} slot5 ${addr(
-			shim.shim_webview_slot(5),
+		`stage     navigate about:blank vtable ${addr(shim.shim_webview_vtbl(handle))} slot5 ${addr(
+			shim.shim_webview_slot(handle, 5),
 		)}`,
 	);
 	expect(
-		stage("webview_navigate", () => shim.shim_webview_navigate(cstring("about:blank"))) === 1,
+		stage("webview_navigate", () =>
+			shim.shim_webview_navigate(handle, cstring("about:blank")),
+		) === 1,
 	);
-	console.log(`stage     navigate hresult ${hex(shim.shim_navigate_hresult())}`);
+	console.log(`stage     navigate hresult ${hex(shim.shim_navigate_hresult(handle))}`);
 
 	stage("pump", () => shim.shim_pump());
 	stage("set_title", () => shim.shim_window_set_title(hwnd, cstring("crust stages 2")));

@@ -12,6 +12,25 @@ export interface WindowsWebViewShim {
 	shim_webview_new(hwnd: number, url: Uint8Array, userData: Uint8Array): number;
 	shim_webview_put_bounds(hwnd: number, width: number, height: number): number;
 	shim_webview_close(hwnd: number): void;
+	/** How many surfaces exist. `WM_DESTROY` posts the quit when this reaches 0. */
+	shim_webview_live(): number;
+
+	/**
+	 * The handle a window's surface sits at — **0 for the app's own window** — or -1 once it closed.
+	 * Every call whose subject is one surface takes that handle, so a second webview is addressable
+	 * without a second window.
+	 */
+	shim_webview_index(hwnd: number): number;
+	/** `put_Bounds` on that surface's own controller, in window points: a child surface is positioned. */
+	shim_webview_set_bounds(
+		handle: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): number;
+	/** The rectangle this layer last applied at that handle: 0 x, 1 y, 2 width, 3 height. */
+	shim_webview_bound(handle: number, which: number): number;
 
 	/**
 	 * The WebView2 path, one step at a time — the same functions `shim_webview_new` composes. A crash
@@ -25,25 +44,25 @@ export interface WindowsWebViewShim {
 	shim_controller_wait(): number;
 	shim_controller_callback(): number;
 	shim_webview_attach(hwnd: number): number;
-	shim_webview_navigate(url: Uint8Array): number;
-	/** The HRESULT `Navigate` returned, for the print after the call. */
-	shim_navigate_hresult(): number;
+	shim_webview_navigate(handle: number, url: Uint8Array): number;
+	/** The HRESULT `Navigate` returned on that surface, for the print after the call. */
+	shim_navigate_hresult(handle: number): number;
 	/** `ICoreWebView2::get_Source` — S_OK proves the webview object is callable at all. */
-	shim_webview_source(): number;
+	shim_webview_source(handle: number): number;
 	/** `ICoreWebView2::NavigateToString` — the same string path with the URL parse removed. */
-	shim_webview_navigate_string(): number;
+	shim_webview_navigate_string(handle: number): number;
 	/** `ICoreWebView2Controller::put_IsVisible(TRUE)` — the call every sample makes and this layer never did. */
-	shim_controller_visible(): number;
+	shim_controller_visible(handle: number): number;
 
 	/**
 	 * The attach in its two halves — `get_CoreWebView2` (controller slot 25) and `put_Bounds` (slot 6, a
-	 * 16-byte struct by reference) — so a fault names which one. `shim_attach_hresult(0|1)` is the
-	 * HRESULT of each, and `shim_webview_handle` the ICoreWebView2 the first produced.
+	 * 16-byte struct by reference) — so a fault names which one. `shim_attach_hresult(handle, 0|1)` is
+	 * the HRESULT of each, and `shim_webview_handle` the ICoreWebView2 the first produced.
 	 */
 	shim_webview_bind(hwnd: number): number;
 	shim_webview_size(hwnd: number): number;
-	shim_webview_handle(): number;
-	shim_attach_hresult(which: number): number;
+	shim_webview_handle(handle: number): number;
+	shim_attach_hresult(handle: number, which: number): number;
 
 	/** 1 when the environment callback fired inside `create_env`, not in a later pump iteration. */
 	shim_env_inline(): number;
@@ -90,8 +109,8 @@ export interface WindowsWebViewShim {
 	shim_controller_slot(index: number): number;
 
 	/** The ICoreWebView2's vtable and one entry, so a bad webview is printed before `Navigate`. */
-	shim_webview_vtbl(): number;
-	shim_webview_slot(index: number): number;
+	shim_webview_vtbl(handle: number): number;
+	shim_webview_slot(handle: number, index: number): number;
 
 	/**
 	 * The last vtable slot a call refused — `0`, `(void *)-1` or memory that is not committed and

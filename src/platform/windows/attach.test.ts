@@ -70,11 +70,15 @@ describe("the product path makes the controller visible", () => {
 	});
 
 	test("its HRESULT is recorded beside the other two", () => {
-		expect(source).toContain("g_visible_hr = wv2_put_visible(ctrl, 1);");
-		const report = source.slice(source.indexOf("shim_i64 shim_attach_hresult(int which) {"));
-		expect(report.slice(0, report.indexOf("\n}"))).toContain("g_visible_hr");
-		// One mechanism, not a parallel one.
-		expect(stages).toContain("shim.shim_attach_hresult(2)");
+		expect(source).toContain(
+			"shim_surface_set_hr(handle, SHIM_SURFACE_VISIBLE, wv2_put_visible(ctrl, 1));",
+		);
+		const report = source.slice(
+			source.indexOf("shim_i64 shim_attach_hresult(int handle, int which) {"),
+		);
+		expect(report.slice(0, report.indexOf("\n}"))).toContain("shim_surface_hr(handle, which)");
+		// One mechanism, not a parallel one, and it is per surface: `0` is the app window's handle.
+		expect(stages).toContain("shim.shim_attach_hresult(handle, 2)");
 	});
 });
 
@@ -95,7 +99,7 @@ describe("the pump before the first navigation", () => {
 	test("the composite pumps before navigating too", () => {
 		const composite = source.slice(source.indexOf("int shim_webview_new("));
 		const pump = composite.indexOf("shim_pump();");
-		const navigate = composite.indexOf("shim_webview_navigate(url)");
+		const navigate = composite.indexOf("shim_webview_navigate(handle, url)");
 		expect(pump).toBeGreaterThan(-1);
 		expect(navigate).toBeGreaterThan(-1);
 		expect(pump).toBeLessThan(navigate);
@@ -156,20 +160,24 @@ describe("the URL buffer outlives the call, and NavigateToString is the control"
 	 * returned frame — which is what a fault two frames inside `EmbeddedBrowserWebView.dll` with a valid
 	 * object looks like. The buffer is static for the process lifetime and must stay that way.
 	 */
-	test("navigate uses a static wide buffer, never a stack array", () => {
-		expect(source).toContain("static shim_wchar g_url[2048];");
-		expect(source).toContain("shim_utf16(url, g_url, 2048)");
-		expect(source).toContain("wv2_navigate(g_web, g_url)");
+	test("navigate uses a per-surface static wide buffer, never a stack array", () => {
+		// Per surface, not one process-wide buffer: WebView2 reads the string lazily, so the second
+		// surface's navigation must not overwrite the bytes the first one is still about to read.
+		expect(source).toContain("static unsigned short g_surface_url[SHIM_MAX_SURFACES]");
+		expect(source).toContain("shim_utf16(url, target, SHIM_SURFACE_URL_MAX)");
+		expect(source).toContain("wv2_navigate(web, target)");
 		const navigate = source.slice(
-			source.indexOf("int shim_webview_navigate(const char *url) {"),
+			source.indexOf("int shim_webview_navigate(int handle, const char *url) {"),
 		);
 		expect(navigate.slice(0, navigate.indexOf("\n}"))).not.toContain("shim_wchar target[");
+		// The buffer is handed out by the handle, so a bad handle cannot write into entry 0.
+		expect(source).toContain("unsigned short *target = shim_surface_url(handle);");
 	});
 
 	/** The control: the same string path with the URL parse removed, from a static buffer too. */
 	test("NavigateToString is probed before Navigate", () => {
 		expect(source).toContain("#define SHIM_SLOT_WEBVIEW_NAVIGATE_TO_STRING 6");
-		expect(source).toContain("int shim_webview_navigate_string(void)");
+		expect(source).toContain("int shim_webview_navigate_string(int handle)");
 		expect(source).toContain("static shim_wchar g_html[512];");
 		expect(stages).toContain("shim_webview_navigate_string");
 		expect(stages.indexOf("webview_navigate_string")).toBeLessThan(

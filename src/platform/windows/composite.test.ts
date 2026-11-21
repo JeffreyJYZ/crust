@@ -33,7 +33,8 @@ describe("the composite mode proves the product path, not the probe's", () => {
 		expect(composite).not.toContain("shim.shim_controller_visible");
 		// Liveness and the handle, after a few slices, exactly as the smoke asserts them.
 		expect(composite).toContain("shim.shim_window_is_open(hwnd)");
-		expect(composite).toContain("shim.shim_webview_handle() !== 0");
+		expect(composite).toContain("shim.shim_webview_index(hwnd)");
+		expect(composite).toContain("shim.shim_webview_handle(handle) !== 0");
 		expect(stages).toContain('["1", "2", "3"]');
 	});
 });

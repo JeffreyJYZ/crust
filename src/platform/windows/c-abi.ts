@@ -89,8 +89,14 @@ export function cSources(dir: string): Map<string, string> {
 
 /** Every FFI symbol map in a binding module, with its argument and return tokens. */
 export function ffiSymbols(file: string, source: string): FfiSymbol[] {
-	const start = source.indexOf("symbols: {");
-	if (start < 0) return [];
+	// Two shapes are in use: an inline `symbols: { … }` map (the window and keychain tables) and an
+	// exported `…Symbols = { … }` table that the map spreads in (`ffi-core`, `ffi-dialog`,
+	// `ffi-webview`). Both are symbol maps and both must be audited against the C they name.
+	const inline = source.indexOf("symbols: {");
+	const exported = source.search(/[A-Za-z_]\w*Symbols\s*=\s*\{/);
+	const starts = [inline, exported].filter((at) => at >= 0);
+	if (starts.length === 0) return [];
+	const start = Math.min(...starts);
 	const entry = /([a-z_][\w_]*):\s*\{\s*args:\s*\[([^\]]*)\]\s*,\s*returns:\s*([A-Za-z_][\w.]*)/g;
 	const found: FfiSymbol[] = [];
 	for (const match of source.slice(start).matchAll(entry)) {
