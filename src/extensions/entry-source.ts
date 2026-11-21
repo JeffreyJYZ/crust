@@ -9,6 +9,8 @@
 
 import { isAbsolute, resolve } from "node:path";
 
+import { loadExtensions, type ExtensionError } from "./load.ts";
+
 export interface ExtensionEntryOptions {
 	/** Files to embed, absolute or relative to `projectDir`. Order is preserved. */
 	files: readonly string[];
@@ -51,4 +53,31 @@ export function renderExtensionImports(files: readonly string[]): string {
 	// A default import already binds the module's default export, so the awaited module's
 	// `.default` is the plugin; the function returns exactly those, in config order.
 	return "registry.register(...(await extensionPlugins()));";
+}
+
+export interface ExtensionValidation {
+	/** Only the files that produced a valid, uniquely-named extension, in the order given. */
+	files: string[];
+	/** One entry per refused file, each naming the file and the reason. */
+	errors: ExtensionError[];
+}
+
+/**
+ * Build-time gate for the files `crust build` would embed. The generated entry pushes every module's
+ * `.default` and the registry throws on `undefined` or a duplicate name, so a bad extension compiles
+ * into an artefact that dies before `startApp`. The loader `crust dev` already applies here is the same
+ * check: import each file, refuse a missing/invalid default and every claimant of a duplicate name.
+ * A caller wires this into `build` by failing on `errors` and embedding only `files`; the registry
+ * remains the second line at runtime.
+ */
+export async function validateExtensionEntries(
+	files: readonly string[],
+): Promise<ExtensionValidation> {
+	const { loaded, errors } = await loadExtensions({ names: files });
+	return { files: loaded, errors };
+}
+
+/** Lines a build can hand straight to `fail`, each naming the offending file and its reason. */
+export function extensionErrorLines(errors: readonly ExtensionError[]): string[] {
+	return errors.map((error) => `${error.file}: ${error.reason}`);
 }

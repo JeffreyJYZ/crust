@@ -79,6 +79,30 @@ describe("the generated module against a real dylib", () => {
 				await rm(dir, { recursive: true, force: true });
 			}
 		}, 120_000);
+
+		test("a failed reload leaves the working handle usable", async () => {
+			const dir = await mkdtemp(join(tmpdir(), "crust-abi-reload-"));
+			try {
+				expect(await buildDylib(dir, source(7, 2))).toBe(true);
+				const ok = await writeBindings({
+					outDir: dir,
+					name: "math",
+					symbols: [...ANSWER],
+					abiVersion: 2,
+				});
+				const module = await importFresh(ok.path);
+				expect((module.answer as () => number)()).toBe(7);
+
+				// Replace the dylib with one built for another ABI. `reload` loads that copy under a fresh
+				// path, the marker disagrees, and open() throws — before the old handle is closed.
+				expect(await buildDylib(dir, source(42, 9))).toBe(true);
+				expect(() => (module.reload as () => void)()).toThrow(/ABI/);
+				// The previous handle is still open: a failed reopen did not brick the extension.
+				expect((module.answer as () => number)()).toBe(7);
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		}, 120_000);
 	}
 
 	// The sibling above registers a visible skip when clang is absent. A bare `return` inside this

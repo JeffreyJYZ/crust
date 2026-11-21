@@ -57,8 +57,9 @@ describe("renderBindings", () => {
 		expect(text).not.toContain("ffi.symbols.add as");
 		expect(text).toContain("let ffi = open();");
 		expect(text).toContain("export function reload(): void {");
+		expect(text).toContain("\t\tnext = open(copy);");
 		expect(text).toContain("\tffi.close();");
-		expect(text).toContain("\tffi = open();");
+		expect(text).toContain("\tffi = next;");
 	});
 
 	test("with no abiVersion the marker is not declared, so a bare dylib still binds", () => {
@@ -126,8 +127,8 @@ describe("renderBindings", () => {
 		const text = renderBindings({ name: "math", symbols: [ADD], abiVersion: 3 });
 		expect(text).toContain("\tconst SPEC = {");
 		expect(text).toContain("\t} as const;");
-		expect(text).toContain("\tconst ffi = dlopen(DYLIB, SPEC);");
-		expect(text).toContain("function open() {");
+		expect(text).toContain("\tconst ffi = dlopen(path, SPEC);");
+		expect(text).toContain("function open(path = DYLIB) {");
 		expect(text).not.toContain("ReturnType<typeof dlopen>");
 		expect(text).not.toContain("ffi.symbols.add as ");
 	});
