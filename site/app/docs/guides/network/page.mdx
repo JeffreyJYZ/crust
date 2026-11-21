@@ -113,6 +113,64 @@ One event per intercepted task, emitted in the same call that answers WebKit. `c
 
 Only requests under the `crust-net` scheme reach `decide`. A page loading ordinary `https://` URLs is not observed by this plugin; a rule list is not a proxy, and `setRules` cannot block a request the handler never sees. `status` answers that other question — whether a path exists at all — and a rule list never changes its answer.
 
+## Reaching an external HTTPS/WSS service
+
+A built app's document comes from the loopback bridge, so the page's origin is `http://127.0.0.1:<port>`. `'self'` in the policy therefore means that origin and never a provider: `DEFAULT_CSP` carries `connect-src 'self'`, which by spec refuses a `fetch`, `WebSocket`, `EventSource` or `sendBeacon` to `https://api.…` or `wss://api.…`. That is the whole of the block; crust does not narrow it further and nothing widens it.
+
+`security.csp` is the key that opens it. It replaces the **whole** header — the default string and its per-response nonce are gone — so write out every directive the page needs, including `connect-src 'self'` for the bridge's own `invoke` and event stream:
+
+```ts
+import type { CrustConfig } from "crust";
+
+export default {
+	security: {
+		csp:
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+			"style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; " +
+			"connect-src 'self' https://api.example.com wss://api.example.com; " +
+			"base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+	},
+} satisfies CrustConfig;
+```
+
+Two constraints come with that power. The policy is served byte for byte, so a directive you omit falls back to `default-src` and a loosening you forget is a silent block — the console names the directive. And a custom policy cannot carry the per-response nonce, so `script-src` must keep `'unsafe-inline'` or the inline bootstrap never installs and every invoke fails silently; config validation refuses a `script-src` without it and says why.
+
+The policy is compiled into a built binary, so changing it in a shipped app is a rebuild. Opening `connect-src` is also a real cost: with `'unsafe-inline'` in `script-src`, any script that reaches the page can read the provider key, which is the honest argument for keeping the key in an extension and relaying over the bridge ([Extensions](/docs/guides/extensions)). Either way the provider's own CORS answer still governs whether the page may read the reply, exactly as in the `crust-net` case above.
+
+A page that records with `MediaRecorder` and plays the take back from `URL.createObjectURL` needs no entry of its own: `media-src 'self' blob:` is in `DEFAULT_CSP`, because `media-src` falls back to `default-src` and `'self'` does not match `blob:`. Add `media-src` back if you replace the policy.
+
+A single file has no `crust.config.ts`, so it declares the same section on one line of its own source, in the comment form that syntax has:
+
+```ts
+// crust-security: {"csp":"default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.example.com","microphone":"Example records voice memos."}
+```
+
+```html
+<!-- crust-security: {"microphone":"Example records voice memos."} -->
+```
+
+It must be a JSON literal rather than an export: a single-file config is embedded as a literal by the dev runner and the built wrapper alike, and detection runs before the page is bundled, so an import or a computed value would build in dev and vanish from a build. The object is validated by the same validator a project config uses — a purpose string that is not a sentence and a `script-src` with no `'unsafe-inline'` are refused with the same message.
+
+## Microphone
+
+`security.microphone` is the whole capture opt-in, and it is not a CSP directive — `getUserMedia` is a permission decision, and crust sends no `Permissions-Policy` header:
+
+```ts
+security: { microphone: "Example records voice memos." },
+```
+
+The sentence is copied verbatim into `Info.plist` as `NSMicrophoneUsageDescription`, which macOS shows in its prompt, so it is checked as a sentence; a hardened-runtime signature seals `com.apple.security.device.audio-input` with it. Only a microphone-only request is granted — camera and mixed requests are denied. macOS is the only platform that grants today; Windows and Linux deny. `crust dev` denies too, because an unbundled run has no `Info.plist` for macOS to read, so the prompt is something you meet in a built app.
+
+## What dev does differently
+
+With `dev.url` set, the page is served by that dev server — Vite, Next — and carries **no crust policy at all**: crust cannot set another server's headers, and serving a matching policy would mean proxying that server, which changes its HMR and origin. So an external call can work all through `crust dev` and be refused the moment the same page is served by the built app. To make that impossible to miss, `crust dev` prints it on every run with a dev server:
+
+```
+security  no CSP in dev — http://localhost:5173 serves this page, so the built app enforces the default policy (connect-src 'self'); an external provider that works here can fail there
+```
+
+Without `dev.url` the bridge serves the document in dev too, and the policy applies exactly as it will after a build. Either way, a provider call is proven against `crust build` output, not against the dev run.
+
 ## Failure shape
 
 `status` and `onChange` without an adapter answer `not-implemented` naming their platform call; the interceptor's four answer `not-implemented` with `requires: "WKURLSchemeHandler"`. A malformed rule list is a rejected invoke carrying `bad-request`, naming the rule index and field.

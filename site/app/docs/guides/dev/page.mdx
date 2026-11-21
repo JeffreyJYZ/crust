@@ -60,6 +60,7 @@ A positional ending in `.tsx`, `.jsx`, `.ts`, `.js` or `.html` runs that one fil
 | `export default` in the source | treated as a React component, mounted into `#root` with `react-dom/client` from the file's own directory                                     |
 | no default export              | loaded for its side effects; the file renders the document itself                                                                            |
 | commands                       | `info` and `echo` only — there is no backend module to register more                                                                         |
+| `security`                     | one `crust-security:` line declares it, JSON on one line: `// crust-security: {"csp":"…","microphone":"…"}` in a module, `<!-- crust-security: {…} -->` in `.html`; a literal because the config is embedded as one, and validated like a project config ([Network](/docs/guides/network#reaching-an-external-httpswss-service)) |
 | edit                           | rebuilds `page.js`, writes a reload marker, the page reloads; the runtime is never restarted                                                 |
 
 ### An `.html` entry
