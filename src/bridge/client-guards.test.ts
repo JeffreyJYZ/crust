@@ -58,14 +58,17 @@ describe("the served bootstrap cannot break out of its script", () => {
 	});
 });
 
-describe("ready settles on an error reply", () => {
-	test("a wrong token still resolves ready, and the invoke rejects", async () => {
+describe("ready settles from the first exchange", () => {
+	test("a wrong token rejects ready with the refusal, and the invoke rejects", async () => {
 		const bridge = clientBridge();
 		const { api } = installPage(bridge, { config: { token: "not-the-token" } });
 		await expect(api.invoke("test", "echo", {})).rejects.toMatchObject({
 			code: "unauthorized",
 		});
-		await api.ready;
+		await expect(api.ready).rejects.toMatchObject({
+			code: "bridge-refused",
+			status: 401,
+		});
 	});
 
 	test("a handler throw still resolves ready", async () => {

@@ -26,7 +26,7 @@ export function installInvoke(
 	base: string,
 	token: string | undefined,
 	label: string | undefined,
-	onAnswer: () => void,
+	onAnswer: (status: number, reason?: string) => void,
 	onEvent: (event: string, payload: unknown) => void,
 ): InvokeHalf {
 	class InvokeFailure extends Error implements T.CrustInvokeError {
@@ -109,7 +109,7 @@ export function installInvoke(
 					return;
 				}
 				if (typeof frame?.event !== "string") return;
-				if (frame.event === "crust:ready") onAnswer();
+				if (frame.event === "crust:ready") onAnswer(200);
 				onEvent(frame.event, frame.data);
 			});
 		}
@@ -119,7 +119,9 @@ export function installInvoke(
 	const half = (async (plugin: string, command: string, args?: unknown) => {
 		if (hasRealm) {
 			const reply = await realmCall(plugin, command, args === undefined ? null : args);
-			onAnswer();
+			const status =
+				reply && reply.ok === true ? 200 : (reply?.error?.status as number) || 500;
+			onAnswer(status, reply?.error?.message);
 			if (reply && reply.ok === true) return revive(reply.result, 0);
 			throw fail(reply?.error, 0);
 		}
@@ -137,23 +139,24 @@ export function installInvoke(
 				window: label ?? null,
 			}),
 		});
-		// A completed HTTP response is a handshake even when it is an error: the page has learned
-		// the bridge is reachable, and a `ready` that never settles on a stale token or an unmounted
-		// plugin is a hang the page cannot recover from. A transport throw stays pending — the
-		// stream can still open and answer.
-		onAnswer();
+		const status = response.status;
 		const text = await response.text();
 		let body: any;
 		try {
 			body = JSON.parse(text);
 		} catch {
+			body = undefined;
+		}
+		// 2xx and handler throws prove reachability; a 4xx rejects `ready` with its status/reason.
+		onAnswer(status, body?.error?.message ?? body?.error?.code);
+		if (body === undefined) {
 			throw new InvokeFailure(
 				"bad-response",
-				`bridge returned non-json (${response.status}): ${String(text).slice(0, 200)}`,
-				response.status,
+				`bridge returned non-json (${status}): ${String(text).slice(0, 200)}`,
+				status,
 			);
 		}
-		if (!body || body.ok !== true) throw fail(body?.error, response.status);
+		if (!body || body.ok !== true) throw fail(body?.error, status);
 		return revive(body.result, 0);
 	}) as InvokeHalf;
 

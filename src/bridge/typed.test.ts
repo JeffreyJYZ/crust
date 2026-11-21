@@ -23,6 +23,9 @@ type NotesMap = {
 	"notes.count": { input: void; output: number };
 };
 
+/** A one-entry map whose input is a string — the shape the old two-argument form misread. */
+type GreetMap = { greet: { input: string; output: string } };
+
 describe("typedHost", () => {
 	test("registers through App.command, so its guards still apply", () => {
 		const application = new App();
@@ -57,7 +60,7 @@ describe("typedHost", () => {
 });
 
 describe("typedClient", () => {
-	test("forwards name and input to the client's own app form and returns its answer", async () => {
+	function recording() {
 		const seen: unknown[] = [];
 		const bridge: TypedClientSource = {
 			async invoke(...args: any[]) {
@@ -65,7 +68,11 @@ describe("typedClient", () => {
 				return 7;
 			},
 		};
-		const client = typedClient<NotesMap>(bridge);
+		return { seen, client: typedClient<NotesMap>(bridge) };
+	}
+
+	test("routes an app command through app.invoke, so the input cannot be read as a plugin", async () => {
+		const { seen, client } = recording();
 		const count: number = await client.invoke("notes.count", undefined as void);
 		// A name the map does not carry never compiles.
 		// @ts-expect-error "notes.delete" is not a key of NotesMap
@@ -74,7 +81,31 @@ describe("typedClient", () => {
 		// @ts-expect-error `notes.create` needs `{ title: string }`
 		void client.invoke("notes.create", { name: "a" });
 		expect(count).toBe(7);
-		expect(seen[0]).toEqual(["notes.count", undefined]);
+		expect(seen[0]).toEqual(["app", "invoke", { name: "notes.count", args: undefined }]);
+	});
+
+	test("a string input stays the app command's argument, not a second invoke argument", async () => {
+		const seen: unknown[] = [];
+		const bridge: TypedClientSource = {
+			async invoke(...args: any[]) {
+				seen.push(args);
+				return "hi";
+			},
+		};
+		await typedClient<GreetMap>(bridge).invoke("greet", "Ada");
+		expect(seen[0]).toEqual(["app", "invoke", { name: "greet", args: "Ada" }]);
+	});
+
+	test("invokePlugin splits a dotted map key into the client's plugin form", async () => {
+		const { seen, client } = recording();
+		const answer = await client.invokePlugin("notes.create", { title: "a" });
+		expect(answer as unknown).toBe(7);
+		expect(seen[0]).toEqual(["notes", "create", { title: "a" }]);
+	});
+
+	test("invokePlugin refuses a name with no dot instead of guessing a namespace", async () => {
+		const greeter = typedClient<GreetMap>({ invoke: async () => "hi" });
+		await expect(greeter.invokePlugin("greet", "Ada")).rejects.toThrow("plugin.command");
 	});
 
 	test("the output type flows back to the caller", async () => {

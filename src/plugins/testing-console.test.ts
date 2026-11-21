@@ -30,6 +30,29 @@ describe("the page-world tap", () => {
 		const entries = (fake.window as { __crustConsole: unknown[] }).__crustConsole;
 		expect(entries.length).toBe(1);
 	});
+
+	test("a value whose toString throws cannot break console.log or lose the record", () => {
+		const fake = fakeAdapter(new FakeDocument());
+		installConsoleHook(fake);
+		const hostile = {
+			toJSON() {
+				throw new Error("nope");
+			},
+			toString() {
+				throw new Error("nope");
+			},
+		};
+		expect(() => fake.console.log("before", hostile, "after")).not.toThrow();
+		// The page's own call still reaches its real console, with the original arguments.
+		expect(fake.console.calls).toEqual([{ level: "log", args: ["before", hostile, "after"] }]);
+		const entries = (fake.window as { __crustConsole?: { level: string; args: string[] }[] })
+			.__crustConsole;
+		expect(entries?.map((entry) => [entry.level, entry.args])).toEqual([
+			["log", ["before", "[unprintable object]", "after"]],
+		]);
+		fake.console.log("still works");
+		expect(entries?.length).toBe(2);
+	});
 });
 
 describe("testing.console", () => {
