@@ -5,7 +5,11 @@
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 import { pageClientSource } from "./bridge/client.ts";
-import { devHandshakePath, DEV_HANDSHAKE_DENY } from "./dev-handshake-path.ts";
+import {
+	devHandshakePath,
+	DEV_HANDSHAKE_DENY,
+	DEV_HANDSHAKE_FILE_VAR,
+} from "./dev-handshake-path.ts";
 
 /** The variable `crust dev` sets to the bridge's absolute URL. */
 export const BRIDGE_URL_VAR = "CRUST_BRIDGE_URL";
@@ -17,6 +21,14 @@ export interface CrustOptions {
 	urlVar?: string;
 	/** Environment variable holding the per-launch token. */
 	tokenVar?: string;
+}
+
+/**
+ * The handshake file to read. The dev server is a separate process, so the env var
+ * `crust dev` passes wins; only a manually started Vite falls back to its own cwd.
+ */
+export function handshakeFile(cwd = process.cwd()): string {
+	return process.env[DEV_HANDSHAKE_FILE_VAR]?.trim() || devHandshakePath(cwd);
 }
 
 /**
@@ -34,7 +46,7 @@ export function crust(options: CrustOptions = {}): Plugin {
 	// Read per document, not once at config time: the dev server is started
 	// before the runtime writes its handshake, so the honest moment to look is
 	// when a page is actually served.
-	const read = () => {
+	const read = (file: string) => {
 		const env = {
 			url: (process.env[urlVar] ?? "").trim(),
 			token: (process.env[tokenVar] ?? "").trim(),
@@ -43,7 +55,6 @@ export function crust(options: CrustOptions = {}): Plugin {
 		// The handshake carries one token per window label. Prefer it when present:
 		// an env override is a single main token and cannot express the labels.
 		try {
-			const file = process.env.CRUST_DEV_FILE ?? devHandshakePath(process.cwd());
 			const parsed = JSON.parse(readFileSync(file, "utf8")) as {
 				url?: string;
 				token?: string;
@@ -82,7 +93,8 @@ export function crust(options: CrustOptions = {}): Plugin {
 		transformIndexHtml: {
 			order: "pre",
 			async handler(html, ctx) {
-				const { url, token, tokens } = read();
+				const file = handshakeFile();
+				const { url, token, tokens } = read(file);
 				const label = labelOf(ctx);
 				const pageToken =
 					label !== undefined && tokens?.[label] !== undefined ? tokens[label] : token;
@@ -90,8 +102,9 @@ export function crust(options: CrustOptions = {}): Plugin {
 					if (!warned) {
 						warned = true;
 						console.warn(
-							`[crust] ${urlVar}/${tokenVar} are unset and no dev handshake was found. ` +
-								"This page gets no window.crust. Start the dev server through `crust dev`.",
+							`[crust] ${urlVar}/${tokenVar} are unset and no dev handshake was found at ` +
+								`${file}. This page gets no window.crust. Start the dev server through ` +
+								"`crust dev`, or point CRUST_DEV_FILE at the runtime's handshake.",
 						);
 					}
 					return html;

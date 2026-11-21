@@ -3,18 +3,28 @@
  * and the readiness wait that stops the window racing Vite's first listen.
  */
 
+import { devHandshakePath, DEV_HANDSHAKE_FILE_VAR } from "@/dev-handshake-path.ts";
+
 /**
- * The pair `crust/vite` reads, taken from this process's environment. The token here is the
- * document token the runtime mints where the bridge binds, never the seed. Both are empty for a
- * `dev.url` app whose runtime has not published a bridge yet; the caller turns that into one line
- * rather than a page that fails its first invoke with no explanation.
+ * The pair `crust/vite` reads, plus the handshake path the dev server must use. The
+ * frontend is spawned before the runtime publishes the bridge, so passing the path
+ * here is the only way a child with a different cwd can find the temp file. The
+ * token pair is empty until the runtime publishes; the caller turns that into one
+ * line rather than a page that fails its first invoke with no explanation.
  */
-export function bridgeEnv(devUrl: string | undefined): Record<string, string> {
+export function bridgeEnv(
+	devUrl: string | undefined,
+	projectDir: string = process.cwd(),
+): Record<string, string> {
 	if (devUrl === undefined) return {};
 	const url = process.env.CRUST_BRIDGE_URL?.trim() ?? "";
 	const token = process.env.CRUST_BRIDGE_TOKEN?.trim() ?? "";
-	if (url.length === 0 || token.length === 0) return {};
-	return { CRUST_BRIDGE_URL: url, CRUST_BRIDGE_TOKEN: token };
+	return {
+		...(url.length > 0 && token.length > 0
+			? { CRUST_BRIDGE_URL: url, CRUST_BRIDGE_TOKEN: token }
+			: {}),
+		[DEV_HANDSHAKE_FILE_VAR]: devHandshakePath(projectDir),
+	};
 }
 
 /**

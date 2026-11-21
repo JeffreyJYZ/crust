@@ -96,7 +96,9 @@ export async function dev(options: CliOptions): Promise<number> {
 	// (never the seed) where the bridge binds and writes it to `devHandshakePath()` in the OS
 	// temp dir, which the plugin reads per document. These two forward an existing shell value, so an operator can
 	// point the page at a bridge by hand.
-	const env = bridgeEnv(devUrl);
+	// The dev server is a separate child with its own cwd, so it needs the temp
+	// handshake path explicitly; deriving it from cwd in the child is not enough.
+	const env = bridgeEnv(devUrl, resolve(options.dir));
 
 	const projectDir = resolve(options.dir);
 	const configPath = resolve(projectDir, loaded.path);
