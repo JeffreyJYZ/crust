@@ -69,6 +69,7 @@ export const NAV: readonly NavGroup[] = [
 		label: "Reference",
 		items: [
 			{ label: "Config", href: "/docs/reference/config" },
+			{ label: "Config rules", href: "/docs/reference/config-rules" },
 			{ label: "CLI", href: "/docs/reference/cli" },
 			{ label: "Imports", href: "/docs/reference/api" },
 			{ label: "Platforms", href: "/docs/reference/platforms" },

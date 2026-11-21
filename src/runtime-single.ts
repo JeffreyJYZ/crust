@@ -1,6 +1,8 @@
 /**
  * The launch-time half of `crust:single-instance`: `startApp` claims the app id's lock before the platform exists, so a second launch raises the copy already running and never builds AppKit, imports the entry, or opens a window. The lock, the stale takeover and the raise all live in `plugins/single-instance.ts`; this module is only the launch order plus the two decisions the runtime owns — when the check is off, and what a refused launch does.
- * Opt-out is `CRUST_SINGLE_INSTANCE=0`. There is no natural config flag: the config has no `singleInstance` key, and `plugins` names what the page may call, not what the process may lock, so no key was added.
+ * Opt-out is `CRUST_SINGLE_INSTANCE=0`. `singleInstance.id` names the lock, which is what lets a probe run beside the
+ * user's copy; without it the id is the app id, folded with a hash of the project directory so a `crust dev` run
+ * beside a built app gets its own lock. `plugins` names what the page may call, not what the process may lock.
  */
 
 import type { CrustConfig } from "@/config";
