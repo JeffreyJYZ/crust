@@ -144,6 +144,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		projectDir,
 		configPath,
 		devUrl,
+		ignore: config.dev?.ignore,
 		env,
 		extensionFiles: extensions.loaded,
 		nativeDir: (await exists(nativeDir, "dir")) ? nativeDir : undefined,

@@ -7,8 +7,10 @@
 export type WindowMaterial = "vibrancy" | "mica" | "acrylic" | "tabbed" | "none";
 
 import type { TestingConfig } from "./types-testing.ts";
+import type { BrowserConfig, SingleInstanceConfig } from "./types-extra.ts";
 
 export * from "./types-testing.ts";
+export type { BrowserConfig, SingleInstanceConfig } from "./types-extra.ts";
 
 /** One window the app opens at startup. `label` is the key `app.window(label)` uses. */
 export interface WindowConfig {
@@ -49,6 +51,8 @@ export interface DevConfig {
 	/** Vite (or any dev server) origin the window loads in `crust dev`. */
 	url?: string;
 	beforeDevCommand?: string;
+	/** Path segments whose writes never restart the backend, for output the extension list cannot know. */
+	ignore?: string[];
 }
 
 export interface BuildConfig {
@@ -165,15 +169,6 @@ export interface PreviewConfig {
 	height?: number;
 }
 
-/**
- * `crust:browser` — the `http(s)` origins an embedded surface may load. Absent still registers the
- * plugin, with nothing allowed, so no URL loads until one is named here.
- */
-export interface BrowserConfig {
-	/** An origin is scheme and host only: `https://example.com`, never a path. */
-	origins?: string[];
-}
-
 export interface CrustConfig {
 	app: AppConfig;
 	windows: WindowConfig[];
@@ -183,6 +178,7 @@ export interface CrustConfig {
 	 */
 	testing?: TestingConfig;
 	dev?: DevConfig;
+	singleInstance?: SingleInstanceConfig;
 	build?: BuildConfig;
 	plugins?: string[];
 	/** Extension files, relative to the project; absent means `extensions/*.ts`. */

@@ -28,6 +28,8 @@ export interface ClaimOptions {
 	adapter?: SingleInstanceAdapter;
 	/** Where the lock files live; defaults to the app-support directory. */
 	dir?: string;
+	/** The project directory, which distinguishes a dev probe from a built app of the same id. */
+	projectDir?: string;
 	env?: Record<string, string | undefined>;
 	platform?: string;
 }
@@ -40,6 +42,8 @@ export interface SingleInstanceClaim {
 	pid: number;
 	/** The registered plugin, so the page reaches the same lock and adapter. */
 	plugin: SingleInstancePlugin;
+	/** The lock file this launch used, so a caller can prove two instances are isolated. */
+	path: string;
 	/** Remove this process's lock. A no-op when skipped. */
 	release(): void;
 	/** Raise the holder that refused this launch. */
@@ -71,6 +75,25 @@ function onExit(path: string, release: () => void): void {
 export function lockName(id: unknown): string {
 	const token = String(id ?? "").replace(/[^A-Za-z0-9._-]/g, "_");
 	return token === "" || token === "." || token === ".." ? "crust-app" : token;
+}
+
+/**
+ * The lock id for this launch. An explicit `single-instance.id` wins; otherwise a
+ * project directory is folded into the app id so a `crust dev` probe beside the
+ * built app gets its own lock. Only a stable hash of the path is used: a lock file
+ * is one name token, and an absolute path could neither be one nor stay readable.
+ */
+export function lockIdFor(config: CrustConfig, projectDir?: string): string {
+	const named = config.singleInstance?.id;
+	if (named !== undefined) return lockName(named);
+	const app = lockName(config.app.id);
+	if (projectDir === undefined) return app;
+	let hash = 2166136261;
+	for (let index = 0; index < projectDir.length; index++) {
+		hash ^= projectDir.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return `${app}-${(hash >>> 0).toString(36)}`;
 }
 
 function skipReason(
@@ -107,6 +130,7 @@ export async function claimSingleInstance(options: ClaimOptions): Promise<Single
 			acquired: true,
 			skipped,
 			pid: process.pid,
+			path: "",
 			plugin,
 			release: () => {},
 			// Nothing was refused, so nothing is raised.
@@ -117,7 +141,7 @@ export async function claimSingleInstance(options: ClaimOptions): Promise<Single
 				),
 		};
 	}
-	const id = lockName(options.config.app.id);
+	const id = lockIdFor(options.config, options.projectDir);
 	const held = plugin.commands.acquire({ id });
 	const release = (): void => {
 		pending.delete(held.path);
@@ -127,10 +151,28 @@ export async function claimSingleInstance(options: ClaimOptions): Promise<Single
 	return {
 		acquired: held.acquired,
 		pid: held.pid,
+		path: held.path,
 		plugin,
 		release,
 		activate: () => plugin.commands.activate({ pid: held.pid }),
 	};
+}
+
+/**
+ * The launch-time policy: only a dev child folds the project directory into the
+ * lock, so a probe beside a built app gets its own lock while a built app's id
+ * stays stable across working directories.
+ */
+export async function claimForLaunch(
+	config: CrustConfig,
+	attachPlatform: boolean,
+	projectDir: string,
+): Promise<SingleInstanceClaim> {
+	return claimSingleInstance({
+		config,
+		attachPlatform,
+		projectDir: process.env.CRUST_DEV === "1" ? projectDir : undefined,
+	});
 }
 
 export interface QuitOptions {

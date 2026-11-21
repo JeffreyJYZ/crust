@@ -15,6 +15,8 @@ export interface RuntimeOptions {
 	projectDir: string;
 	configPath: string;
 	devUrl?: string;
+	/** Extra path segments from `dev.ignore` that never restart the backend. */
+	ignore?: readonly string[];
 	/** The bridge pair to publish, when a `dev.url` page needs it. */
 	env?: Record<string, string>;
 	/** Extension files that loaded from disk; empty spawns the plain runtime. */

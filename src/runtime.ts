@@ -18,11 +18,12 @@ import {
 	readIndex,
 	resolveEntry,
 	originOf,
+	withHandshakeCleanup,
 } from "./runtime-host.ts";
 import { runCrashGuardIfMarked } from "./runtime-crash-guard.ts";
 import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
 import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
-import { claimSingleInstance, quitSecondInstance } from "./runtime-single.ts";
+import { claimForLaunch, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { setBridgeToken, tokenClearedOnStop } from "@/bridge/window-identity.ts";
 import type { StartAppOptions } from "./runtime-options.ts";
@@ -58,10 +59,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		dev: process.env.CRUST_DEV === "1",
 	});
 	const attachPlatform = options.attachPlatform !== false;
-	// One running copy per app id: the lock is claimed before the platform
-	// exists, so a second launch raises the copy already running and never
-	// builds AppKit, imports the entry, or opens a window.
-	const single = await claimSingleInstance({ config, attachPlatform });
+	// The lock is claimed before the platform exists, so a second launch raises
+	// the running copy and never builds AppKit, imports the entry or opens a window.
+	const single = await claimForLaunch(config, attachPlatform, projectDir);
 	if (!single.acquired) {
 		await quitSecondInstance(single.pid, { activate: single.activate });
 		process.exit(0);
@@ -134,7 +134,13 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		// The handshake only exists for a dev server. Mint here, while the bridge handle is
 		// in scope, and publish the document token — not the seed — for the dev page to inject.
 		// A built app has no dev.url, so it never writes into its `/` cwd and never sees this.
-		if (runConfig.dev?.url) publishDevHandshake(projectDir, bridge);
+		if (runConfig.dev?.url) {
+			publishDevHandshake(
+				projectDir,
+				bridge,
+				runConfig.windows.map((window) => window.label),
+			);
+		}
 		console.log(
 			`  bridge    ${bridge.url}${runConfig.dev?.url ? `  (page from ${runConfig.dev.url})` : ""}`,
 		);
@@ -145,7 +151,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		// there: publishing the token into a Vite-served URL would only put it in the dev server log.
 		setBridgeToken(runConfig.dev?.url ? undefined : bridge.token, bridge.url);
 		// The handle clears what it recorded when it stops: no stale credential for the next window.
-		return (bridge = tokenClearedOnStop(bridge));
+		const stopped = tokenClearedOnStop(bridge);
+		return (bridge =
+			runConfig.dev?.url === undefined ? stopped : withHandshakeCleanup(stopped, projectDir));
 	};
 
 	app.deferBridge((runConfig) => {

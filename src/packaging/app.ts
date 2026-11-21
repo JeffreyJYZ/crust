@@ -3,7 +3,7 @@
  * The `.app` is the shipping unit, not the binary: a bare Mach-O is not double-clickable and, when quarantined, is killed with SIGKILL 137 and no message at all (`research/packaging.md` §6). Plist body and key lists in `plist.ts`.
  */
 
-import { chmod, copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { allocatedKiB } from "./exec";
 import { pngToIcns } from "./icon";
@@ -61,7 +61,13 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 	const outDir = resolve(options.outDir ?? "dist");
 	const bundleName = options.name.endsWith(".app") ? options.name : `${options.name}.app`;
 	const appPath = join(outDir, bundleName);
-	const contents = join(appPath, "Contents");
+	// Build in a sibling staging dir. A failed icon conversion must not leave a partial
+	// .app that a later `package` or `doctor` would certify, and must not destroy the
+	// previous valid bundle either.
+	await mkdir(outDir, { recursive: true });
+	const staging = await mkdtemp(join(outDir, `.${bundleName}-`));
+	const staged = join(staging, bundleName);
+	const contents = join(staged, "Contents");
 	const macos = join(contents, "MacOS");
 	const resources = join(contents, "Resources");
 
@@ -77,58 +83,68 @@ export async function assembleApp(options: AssembleAppOptions): Promise<Assemble
 		throw new Error(`binary ${options.binary} does not exist; run the compile step first`);
 	}
 
-	// `rm -rf` the previous bundle rather than writing over it: a stale
-	// Resources/icon.icns or a renamed executable would otherwise survive into
-	// the new build and ship inside a bundle that looks correct.
-	await mkdir(outDir, { recursive: true });
-	await rm(appPath, { recursive: true, force: true });
+	try {
+		await mkdir(macos, { recursive: true });
+		await mkdir(resources, { recursive: true });
 
-	await mkdir(macos, { recursive: true });
-	await mkdir(resources, { recursive: true });
+		const executablePath = join(macos, executableName);
+		await copyFile(options.binary, executablePath);
+		// `bun build --compile` already emits 0755; a copy preserves the mode, but
+		// the bundle is useless if anything ever carries it through a tool that
+		// does not, and one chmod is cheaper than diagnosing "does not launch".
+		await chmod(executablePath, 0o755);
 
-	const executablePath = join(macos, executableName);
-	await copyFile(options.binary, executablePath);
-	// `bun build --compile` already emits 0755; a copy preserves the mode, but
-	// the bundle is useless if anything ever carries it through a tool that
-	// does not, and one chmod is cheaper than diagnosing "does not launch".
-	await chmod(executablePath, 0o755);
+		await writeFile(join(contents, "PkgInfo"), PKG_INFO, "utf8");
 
-	await writeFile(join(contents, "PkgInfo"), PKG_INFO, "utf8");
-
-	let hasIcon = false;
-	if (options.iconPath) {
-		const iconStat = await stat(options.iconPath).catch(() => undefined);
-		if (!iconStat?.isFile()) {
-			throw new Error(
-				`icon ${options.iconPath} does not exist — create the PNG or fix app.icon in crust.config.ts`,
-			);
+		let hasIcon = false;
+		if (options.iconPath) {
+			const iconStat = await stat(options.iconPath).catch(() => undefined);
+			if (!iconStat?.isFile()) {
+				throw new Error(
+					`icon ${options.iconPath} does not exist — create the PNG or fix app.icon in crust.config.ts`,
+				);
+			}
+			const icnsPath = join(resources, "icon.icns");
+			if (options.iconPath.toLowerCase().endsWith(".icns")) {
+				await copyFile(options.iconPath, icnsPath);
+			} else {
+				await pngToIcns({ source: options.iconPath, out: icnsPath });
+			}
+			hasIcon = true;
 		}
-		const icnsPath = join(resources, "icon.icns");
-		if (options.iconPath.toLowerCase().endsWith(".icns")) {
-			await copyFile(options.iconPath, icnsPath);
-		} else {
-			await pngToIcns({ source: options.iconPath, out: icnsPath });
-		}
-		hasIcon = true;
-	}
 
-	await writeFile(
-		join(contents, "Info.plist"),
-		infoPlist({
+		await writeFile(
+			join(contents, "Info.plist"),
+			infoPlist({
+				executableName,
+				name: options.name.replace(/\.app$/, ""),
+				id: options.id,
+				version: options.version,
+				minimumSystemVersion: options.minimumSystemVersion,
+				hasIcon,
+				urlScheme: options.urlScheme,
+				microphone: options.microphone,
+			}),
+			"utf8",
+		);
+
+		const binaryBytes = (await stat(executablePath)).size;
+		// Only a complete bundle replaces the previous one. A failure anywhere above
+		// leaves the old .app untouched and no partial artefact for package/doctor to find.
+		await rm(appPath, { recursive: true, force: true });
+		await rename(staged, appPath);
+		const assembledBytes = (await allocatedKiB(appPath)) * 1024;
+		return {
+			appPath,
 			executableName,
-			name: options.name.replace(/\.app$/, ""),
-			id: options.id,
-			version: options.version,
-			minimumSystemVersion: options.minimumSystemVersion,
-			hasIcon,
-			urlScheme: options.urlScheme,
-			microphone: options.microphone,
-		}),
-		"utf8",
-	);
-
-	const binaryBytes = (await stat(executablePath)).size;
-	const assembledBytes = (await allocatedKiB(appPath)) * 1024;
-
-	return { appPath, executableName, executablePath, binaryBytes, assembledBytes };
+			executablePath: join(appPath, "Contents", "MacOS", executableName),
+			binaryBytes,
+			assembledBytes,
+		};
+	} catch (error) {
+		await rm(staging, { recursive: true, force: true });
+		throw error;
+	} finally {
+		await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+	}
 }

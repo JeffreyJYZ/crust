@@ -38,17 +38,37 @@ export function crust(options: CrustOptions = {}): Plugin {
 		const env = {
 			url: (process.env[urlVar] ?? "").trim(),
 			token: (process.env[tokenVar] ?? "").trim(),
+			tokens: undefined as Record<string, string> | undefined,
 		};
-		if (env.url.length > 0 && env.token.length > 0) return env;
+		// The handshake carries one token per window label. Prefer it when present:
+		// an env override is a single main token and cannot express the labels.
 		try {
 			const file = process.env.CRUST_DEV_FILE ?? join(process.cwd(), ".crust", "dev.json");
 			const parsed = JSON.parse(readFileSync(file, "utf8")) as {
 				url?: string;
 				token?: string;
+				tokens?: Record<string, string>;
 			};
-			return { url: (parsed.url ?? "").trim(), token: (parsed.token ?? "").trim() };
+			return {
+				url: (parsed.url ?? "").trim(),
+				token: (parsed.token ?? "").trim(),
+				tokens: parsed.tokens,
+			};
 		} catch {
 			return env;
+		}
+	};
+
+	/** The label the page's own URL states, used to select its label-bound token. */
+	const labelOf = (ctx: unknown): string | undefined => {
+		const raw =
+			(ctx as { originalUrl?: unknown; url?: unknown } | undefined)?.originalUrl ??
+			(ctx as { url?: unknown } | undefined)?.url;
+		if (typeof raw !== "string") return undefined;
+		try {
+			return new URL(raw, "http://localhost").searchParams.get("window") ?? undefined;
+		} catch {
+			return undefined;
 		}
 	};
 
@@ -57,9 +77,12 @@ export function crust(options: CrustOptions = {}): Plugin {
 		apply: "serve",
 		transformIndexHtml: {
 			order: "pre",
-			async handler(html) {
-				const { url, token } = read();
-				if (url.length === 0 || token.length === 0) {
+			async handler(html, ctx) {
+				const { url, token, tokens } = read();
+				const label = labelOf(ctx);
+				const pageToken =
+					label !== undefined && tokens?.[label] !== undefined ? tokens[label] : token;
+				if (url.length === 0 || pageToken.length === 0) {
 					if (!warned) {
 						warned = true;
 						console.warn(
@@ -74,7 +97,7 @@ export function crust(options: CrustOptions = {}): Plugin {
 					tags: [
 						{
 							tag: "script",
-							children: `window.__CRUST__ = ${JSON.stringify({ url, token })};`,
+							children: `window.__CRUST__ = ${JSON.stringify({ url, token: pageToken })};`,
 							injectTo: "head-prepend" as const,
 						},
 						{

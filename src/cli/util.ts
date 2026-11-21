@@ -136,11 +136,28 @@ export async function findAppBundle(
 	if (options.appName) {
 		const name = options.appName.endsWith(".app") ? options.appName : `${options.appName}.app`;
 		const candidate = join(outDir, name);
-		return (await exists(candidate, "dir")) ? candidate : undefined;
+		return (await isCompleteBundle(candidate)) ? candidate : undefined;
 	}
 	const entries = await readdir(outDir, { withFileTypes: true });
-	const bundle = entries.find((entry) => entry.isDirectory() && entry.name.endsWith(".app"));
-	return bundle ? join(outDir, bundle.name) : undefined;
+	for (const entry of entries) {
+		if (!entry.isDirectory() || !entry.name.endsWith(".app")) continue;
+		const candidate = join(outDir, entry.name);
+		if (await isCompleteBundle(candidate)) return candidate;
+	}
+	return undefined;
+}
+
+/**
+ * A directory named `.app` is not a build artefact: a failed assembly can leave a
+ * binary and PkgInfo with no Info.plist, and a bundle without its executable cannot
+ * launch. Both package and doctor use this so neither certifies a partial build.
+ */
+export async function isCompleteBundle(bundle: string): Promise<boolean> {
+	if (!(await exists(bundle, "dir"))) return false;
+	if (!(await exists(join(bundle, "Contents", "Info.plist")))) return false;
+	const macos = join(bundle, "Contents", "MacOS");
+	if (!(await exists(macos, "dir"))) return false;
+	return (await readdir(macos)).length > 0;
 }
 
 export interface ArtifactLookup extends BundleLookup {

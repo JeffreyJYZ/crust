@@ -27,6 +27,32 @@ const KNOWN = new Set<string>([
 ]);
 const POSITIONAL_COMMANDS = new Set<string>(["init", "dev", "build"]);
 
+/**
+ * cac/mri accumulates a repeated boolean flag into an array of `true`s. Reading
+ * `raw[name] === true` alone silently drops `--sign --sign` and `--react --react`,
+ * so the command reports success for work it never did. Normalise once here and
+ * have both translation and validation read the same value.
+ */
+export function flagValue(raw: RawOptions, name: string): boolean {
+	const value = raw[name];
+	if (value === true) return true;
+	return Array.isArray(value) && value.length > 0 && value.every((item) => item === true);
+}
+
+/** Help and version from cac's parsed keys, so a combined `-hv` is not ignored. */
+export function globalFlags(
+	argv: readonly string[],
+	raw: RawOptions,
+): { help: boolean; version: boolean } {
+	const literal = (flag: string, short: string): boolean =>
+		argv.includes(flag) ||
+		argv.some((arg) => arg.startsWith("-") && !arg.startsWith("--") && arg.includes(short));
+	return {
+		help: literal("--help", "h") || flagValue(raw, "help") || flagValue(raw, "h"),
+		version: literal("--version", "v") || flagValue(raw, "version") || flagValue(raw, "v"),
+	};
+}
+
 /** cac's parsed options into the CliOptions every handler already receives. */
 export function translate(
 	name: CommandName,
@@ -40,8 +66,8 @@ export function translate(
 		if (name === "dev" || name === "build") options.single = positional;
 		else if (name === "init") options.dir = positional;
 	}
-	for (const flag of SCAFFOLDS) if (raw[flag] === true) options[flag] = true;
-	for (const flag of STAGE_FLAGS) if (raw[flag] === true) options[flag] = true;
+	for (const flag of SCAFFOLDS) if (flagValue(raw, flag)) options[flag] = true;
+	for (const flag of STAGE_FLAGS) if (flagValue(raw, flag)) options[flag] = true;
 	if (raw.format !== undefined) {
 		const values = Array.isArray(raw.format) ? raw.format.map(String) : [String(raw.format)];
 		const parsed = parseFormats(values);
@@ -83,10 +109,10 @@ export function validate(
 		return "init takes one directory — pass <dir> or --dir, not both";
 	}
 	for (const flag of SCAFFOLDS) {
-		if (raw[flag] === true && command !== "init") return `--${flag} only applies to init`;
+		if (flagValue(raw, flag) && command !== "init") return `--${flag} only applies to init`;
 	}
 	for (const flag of STAGE_FLAGS) {
-		if (raw[flag] === true && command !== "build") return `--${flag} only applies to build`;
+		if (flagValue(raw, flag) && command !== "build") return `--${flag} only applies to build`;
 	}
 	if (raw.format !== undefined && command !== "package") {
 		return "--format only applies to package";

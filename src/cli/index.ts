@@ -19,7 +19,7 @@
  *   missing-value signal, and a following flag is never eaten as a value.
  */
 import { cac } from "cac";
-import { translate, validate, VALUE_FLAGS, type RawOptions } from "./argv.ts";
+import { globalFlags, translate, validate, VALUE_FLAGS, type RawOptions } from "./argv.ts";
 import { COMMANDS, isCommand, type CommandName } from "./commands.ts";
 import {
 	BASIC_EXAMPLES,
@@ -83,10 +83,9 @@ function unknownCommand(name: string): number {
 async function main(argv: string[]): Promise<number> {
 	// Decided from raw argv: a global flag answers even when a value flag would
 	// otherwise complain, and a following flag is never eaten as a value.
-	const help = argv.some((arg) => arg === "--help" || arg === "-h");
-	const version = argv.some((arg) => arg === "--version" || arg === "-v");
 	const parsed = cli.parse(["bun", "crust", ...argv], { run: false });
 	const raw = parsed.options as RawOptions;
+	const { help, version } = globalFlags(argv, raw);
 	const command = cli.matchedCommandName ?? parsed.args[0];
 
 	if (version) {

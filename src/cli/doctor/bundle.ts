@@ -3,9 +3,10 @@
  * of this build would meet.
  */
 
+import { join } from "node:path";
 import { loadConfig } from "@/config";
 import { describeSignature } from "@/packaging/sign";
-import { findBuildArtifact } from "../util.ts";
+import { exists, findBuildArtifact } from "../util.ts";
 import type { Check } from "./check.ts";
 
 export async function checkBundle(dir: string): Promise<Check[]> {
@@ -15,7 +16,17 @@ export async function checkBundle(dir: string): Promise<Check[]> {
 		.then((loaded) => loaded.config.app.name)
 		.catch(() => undefined);
 	const artifact = await findBuildArtifact(dir, { appName });
-	if (!artifact)
+	if (!artifact) {
+		const partial = join(dir, "dist", `${appName ?? "app"}.app`);
+		if (await exists(partial, "dir")) {
+			return [
+				{
+					name: "bundle",
+					status: "fail",
+					detail: `${partial} is incomplete (build did not finish — no Info.plist or executable); rebuild before packaging`,
+				},
+			];
+		}
 		return [
 			{
 				name: "bundle",
@@ -23,6 +34,7 @@ export async function checkBundle(dir: string): Promise<Check[]> {
 				detail: "no build artefact in dist — run crust build first",
 			},
 		];
+	}
 
 	const checks: Check[] = [{ name: "bundle", status: "note", detail: artifact }];
 	const signature = await describeSignature(artifact).catch(() => undefined);
