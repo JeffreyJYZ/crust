@@ -51,6 +51,7 @@ static ShimSignalFn shim_view_connect;
 // three handlers this part connects at creation. Forward-declared because a
 // handler has to be attached before the first load starts.
 void shim_state_register(void *view);
+void shim_host_forget(void *view);
 void shim_state_reset_eval(void *view);
 static void shim_state_load_changed(void *view, int event, void *data);
 static int shim_state_load_failed(void *view, int event, const char *uri, void *error, void *data);
@@ -147,6 +148,7 @@ int shim_webview_can_forward(void *web) {
 // its parent, so the overlay keeps no child that is about to be freed.
 int shim_webview_close(void *web) {
 	if (!web || !shim_widget_destroy) return 0;
+	shim_host_forget(web);
 	shim_widget_destroy(web);
 	return 1;
 }

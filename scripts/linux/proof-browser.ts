@@ -143,6 +143,7 @@ export async function browserStep(
 		const boxRect = readAllocation(shim, app.box);
 		const appRect = readAllocation(shim, app.web);
 		const parent = BigInt(Number(shim.shim_webview_parent?.(web) ?? 0));
+		const host = BigInt(Number(shim.shim_webview_host?.(web) ?? 0));
 		const grew = await until(() => {
 			const rect = readAllocation(shim, web);
 			return rect.width === FIRST.width && rect.height === FIRST.height;
@@ -170,14 +171,15 @@ export async function browserStep(
 		const placeLog = placements.map((p) => `${p.x},${p.y} ${p.width}x${p.height}`).join(" > ");
 		const detail =
 			`box ${hex(app.box)} ${rect(boxRect)}, app ${hex(app.web)} ${rect(appRect)}, ` +
-			`surface ${hex(web)} parent ${hex(parent)} allocated ${rect(before)} then ${rect(after)} ` +
+			`surface ${hex(web)} parent ${hex(parent)} host ${hex(host)} allocated ${rect(before)} then ${rect(after)} ` +
 			`for ${MOVED.width}x${MOVED.height} (request ${rect(requested)} then ${rect(requestAfter)}; ` +
 			`expand ${layout[0]}/${layout[1]} align ${layout[2]}/${layout[3]} margin ${layout[4]}); ` +
 			`placements ${placeLog}; refused a foreign origin; "${state.title}" from ${state.url}; ` +
 			`closed ${JSON.stringify(closed)} and state ${JSON.stringify(gone)}`;
 		return {
 			ok:
-				parent === app.box &&
+				parent === host &&
+				parent !== app.box &&
 				(placements.length as number) === 2 &&
 				grew &&
 				resized &&

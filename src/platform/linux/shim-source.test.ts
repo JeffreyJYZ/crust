@@ -5,7 +5,7 @@ import { SHIM_PART_NAMES, SHIM_PART_PATHS, SHIM_PARTS, shimSource } from "./inde
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(16);
+		expect(SHIM_PARTS).toHaveLength(17);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -44,6 +44,7 @@ describe("shim assembly", () => {
 			"32_view_state.c",
 			"40_window.c",
 			"41_container.c",
+		"42_host.c",
 			"45_window_api.c",
 			"46_window_state_api.c",
 			"50_pump.c",
@@ -69,7 +70,8 @@ describe("shim assembly", () => {
  * original shim and is the guard that stops the defect from being reintroduced.
  */
 describe("native contracts", () => {
-	const [prelude, webview, browser, viewState, windowPart, container, , , pump] = SHIM_PARTS;
+	const [prelude, webview, browser, viewState, windowPart, container, host, , , pump] = SHIM_PARTS;
+	void host;
 	void browser;
 
 	test("a destroyed window releases its slot so a later window can reuse it", () => {
@@ -142,13 +144,13 @@ describe("native contracts", () => {
 		// The overlay, not a fixed container: its main child follows the allocation, so the app's
 		// page resizes with the window without a handler in C.
 		expect(container).toContain("shim_container_add(win, box);");
-		// A surface is an overlay child placed by points: START alignment plus margins, and a size
-		// request only when one was given.
-		expect(container).toContain(
-			"if (shim_widget_parent(web) != box) shim_overlay_add(box, web);",
-		);
-		expect(container).toContain("shim_set_margin_start(web, x > 0 ? x : 0)");
-		expect(container).toContain("if (w > 0 && h > 0 && shim_set_size_request)");
+		// A surface gets its own GtkFixed inside the overlay: the wrapper carries the rectangle, and
+		// the webview inside it is allocated at the requested size rather than the overlay's leftovers.
+		expect(container).toContain('shim_sym(h, "gtk_fixed_new"');
+		expect(host).toContain("if (shim_widget_parent(host) != box) shim_overlay_add(box, host);");
+		expect(host).toContain("if (shim_widget_parent(web) != host) shim_container_add(host, web);");
+		expect(host).toContain("shim_set_margin_start(host, x > 0 ? x : 0)");
+		expect(host).toContain("shim_set_size_request(web, w, h)");
 		// Six arguments, in the order the shim's prototype takes them.
 		const ffi = readFileSync(join(import.meta.dir, "shim-symbols.ts"), "utf8");
 		expect(ffi).toContain(
@@ -158,7 +160,7 @@ describe("native contracts", () => {
 	});
 
 	test("the keychain binds the synchronous API and never hands GLib memory to Bun", () => {
-		const keyring = SHIM_PARTS[10];
+		const keyring = SHIM_PARTS[11];
 		expect(keyring).toContain('shim_open("libsecret-1.so.0")');
 		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_storev_sync"');
 		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_lookupv_sync"');

@@ -59,6 +59,8 @@ export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
 	shim_webview_layout?(web: bigint, which: number): number;
 	/** The parent GTK holds for a widget, so a proof can attribute the allocation it read. */
 	shim_webview_parent?(web: bigint): number;
+	/** The GtkFixed wrapper a placed surface lives in, distinct from the window's overlay box. */
+	shim_webview_host?(web: bigint): number;
 
 	/**
 	 * The `crust:window` half, every member optional because a fake shim need not carry it and an

@@ -8,6 +8,7 @@ import browser from "./shim/31_browser.c" with { type: "text" };
 import viewState from "./shim/32_view_state.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import container from "./shim/41_container.c" with { type: "text" };
+import host from "./shim/42_host.c" with { type: "text" };
 import windowApi from "./shim/45_window_api.c" with { type: "text" };
 import windowStateApi from "./shim/46_window_state_api.c" with { type: "text" };
 import pump from "./shim/50_pump.c" with { type: "text" };
@@ -34,6 +35,8 @@ export const SHIM_PARTS = [
 	// The positioned container, after the window part because it uses that part's `gtk_container_add`
 	// and size-request pointers, and before the window API because nothing there needs it.
 	container,
+	// The surface's GtkFixed wrapper, after the container part that binds the GTK pointers it uses.
+	host,
 	windowApi,
 	windowStateApi,
 	pump,
@@ -62,6 +65,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/linux/shim/32_view_state.c",
 	"src/platform/linux/shim/40_window.c",
 	"src/platform/linux/shim/41_container.c",
+	"src/platform/linux/shim/42_host.c",
 	"src/platform/linux/shim/45_window_api.c",
 	"src/platform/linux/shim/46_window_state_api.c",
 	"src/platform/linux/shim/50_pump.c",
