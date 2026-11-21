@@ -126,6 +126,20 @@ int shim_browser_ui_installed(void *web) {
 	return objc_getAssociatedObject(web, &br_key) ? 1 : 0;
 }
 
+// The association's RETAIN and the +1 from `new` are two separate owns. Clearing the association
+// drops one; the explicit release drops the other. Unsetting the (unretained) delegate first keeps
+// WebKit from messaging an object while it is being torn down.
+void shim_browser_ui_uninstall(void *web) {
+	if (!web) return;
+	void *delegate = objc_getAssociatedObject(web, &br_key);
+	if (!delegate) return;
+	if (br_has(web, "setUIDelegate:"))
+		((void (*)(void *, void *, void *))objc_msgSend)(web, sel_registerName("setUIDelegate:"),
+		                                               0);
+	objc_setAssociatedObject(web, &br_key, 0, BR_RETAIN);
+	((void (*)(void *, void *))objc_msgSend)(delegate, sel_registerName("release"));
+}
+
 void shim_browser_set_sink(void *sink) { br_sink = (int (*)(int, void *))sink; }
 
 int shim_browser_popups(void) { return br_popups; }

@@ -16,10 +16,11 @@ import { join } from "node:path";
 // A compiled binary has no readable `import.meta.dir`, so the C units travel inside the
 // binary as text and are materialised before `cc()` sees them.
 import delegatePart from "./shim/107_navigation.c" with { type: "text" };
+import policyPart from "./shim/110_navigation_policy.c" with { type: "text" };
 import statePart from "./shim/109_navigation_state.c" with { type: "text" };
 
-/** The two halves as one translation unit. */
-export const navigationSource = [delegatePart, statePart].join("\n");
+/** The three halves as one translation unit; the policy IMP needs the delegate's helpers. */
+export const navigationSource = [delegatePart, policyPart, statePart].join("\n");
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -55,6 +56,8 @@ export function navigationInstallReason(status: number): string {
 export interface NavigationUnit {
 	symbols: {
 		crust_nav_set_sink: (sink: number) => void;
+		crust_nav_set_decision_sink: (sink: number) => void;
+		crust_nav_decision_url: (dst: number, cap: number) => number;
 		crust_nav_install: (web: number) => number;
 		crust_nav_uninstall: (web: number) => number;
 		crust_nav_url: (web: number, dst: number, cap: number) => number;
@@ -68,7 +71,7 @@ export interface NavigationUnit {
 		crust_nav_go_back: (web: number) => number;
 		crust_nav_go_forward: (web: number) => number;
 		crust_nav_webview: (window: number) => number;
-		/** Bitmask of the five delegate callbacks, 31 for all of them. */
+		/** Bitmask of the six delegate callbacks, 63 for all of them. */
 		crust_nav_class_ready: () => number;
 	};
 }
@@ -85,6 +88,8 @@ function compile(): NavigationUnit {
 		flags: ["-framework", "AppKit", "-framework", "Foundation", "-framework", "WebKit"],
 		symbols: {
 			crust_nav_set_sink: { args: [P], returns: V },
+			crust_nav_set_decision_sink: { args: [P], returns: V },
+			crust_nav_decision_url: { args: [P, I64], returns: I64 },
 			crust_nav_install: { args: [P], returns: I32 },
 			crust_nav_uninstall: { args: [P], returns: I32 },
 			crust_nav_url: { args: [P, P, I64], returns: I64 },

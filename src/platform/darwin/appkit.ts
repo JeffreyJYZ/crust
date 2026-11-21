@@ -2,6 +2,7 @@
  * Bringing NSApplication up, in the measured order: compile the shim, preflight every selector, then `NSApplicationLoad` → `sharedApplication` → policy. The caller owns the pump and the run-loop mode, so this returns the app object alone.
  */
 import { shim } from "./index.ts";
+import { menuUnit } from "./menu-ffi.ts";
 import { cls, cstr, S } from "./objc.ts";
 import { PREFLIGHT, preflightError } from "./preflight.ts";
 
@@ -34,5 +35,8 @@ export function startAppKit(appName: string): number {
 	// and never thrown; `shim_menu_ready` is the readback a test asserts.
 	const installed = Number(shim().symbols.shim_menu_install(cstr(appName)) ?? 0);
 	if (!installed) console.warn(`${appName}: no main menu — ⌘Q, ⌘C and ⌘V will not work`);
+	// Record the bar's identity while it is the default one. `menu.isDefault` compares against
+	// this pointer, so a caller-built bar shaped like the default can no longer claim the name.
+	else menuUnit().symbols.menu_api_mark_default();
 	return app;
 }

@@ -28,6 +28,8 @@ export function fakeNavigation() {
 	const seen: number[] = [];
 	const symbols: NavigationNative = {
 		crust_nav_set_sink: () => {},
+		crust_nav_set_decision_sink: () => {},
+		crust_nav_decision_url: () => -1,
 		crust_nav_install: (web) => {
 			seen.push(web);
 			return NAVIGATION_STATUS.installed;

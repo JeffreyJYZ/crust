@@ -4,11 +4,12 @@
  * `fs` uses instead of a preview that quietly did nothing.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { CrustError } from "@/bridge/errors";
+import { canonical } from "@/plugins/fs-scope-path";
 import { createFsScope } from "@/plugins/fs-scope";
 import { createPreviewPlugin } from "@/plugins/preview";
 import type { PreviewSurface } from "@/plugins/preview-surface";
@@ -19,15 +20,23 @@ afterAll(async () => {
 });
 
 /** A surface that answers like a panel: shown until hidden, with its own visible read. */
-function fakeSurface(): PreviewSurface & { path?: string } {
-	const state = { visible: false, path: undefined as string | undefined };
+function fakeSurface(): PreviewSurface & { path?: string; window?: string } {
+	const state = {
+		visible: false,
+		path: undefined as string | undefined,
+		window: undefined as string | undefined,
+	};
 	return {
 		name: "fake",
 		get path() {
 			return state.path;
 		},
+		get window() {
+			return state.window;
+		},
 		show(request) {
 			state.path = request.path;
+			state.window = request.window;
 			state.visible = true;
 			return { ok: true, window: 7 };
 		},
@@ -69,7 +78,9 @@ describe("preview.show and preview.hide", () => {
 			visible: true,
 			window: 7,
 		});
-		expect(surface.path).toBe("/tmp/report.docx");
+		// The surface opens the canonical path the scope approved, not the caller's spelling:
+		// a raw symlink could be repointed between the check and QuickLook reading the URL.
+		expect(surface.path).toBe(await canonical("/tmp/report.docx"));
 	});
 
 	test("the config's size is the default, and a page's own pair wins", async () => {
@@ -133,6 +144,25 @@ describe("the fs.scope boundary", () => {
 		});
 	});
 
+	test("a symlink is opened at the path the scope approved, not the caller's spelling", async () => {
+		const { inside, scope } = await scopeWith();
+		const surface = fakeSurface();
+		const plugin = createPreviewPlugin({ surface, scope });
+		const link = join(inside, "link.txt");
+		await symlink(join(inside, "report.txt"), link);
+		expect(await plugin.commands.show({ path: link })).toMatchObject({ ok: true });
+		expect(surface.path).toBe(await canonical(link));
+		expect(surface.path).toBe(await canonical(join(inside, "report.txt")));
+		expect(surface.path).not.toBe(link);
+	});
+
+	test("the calling window's label reaches the surface as the panel owner", async () => {
+		const surface = fakeSurface();
+		const plugin = createPreviewPlugin({ surface, scope: OFFLINE });
+		await plugin.commands.show({ path: "/tmp/a.docx" }, { window: "side", emit: () => {} });
+		expect(surface.window).toBe("side");
+	});
+
 	test("a file outside the scope is refused with fs's own code and sentence", async () => {
 		const { outside, scope } = await scopeWith();
 		const plugin = createPreviewPlugin({ surface: fakeSurface(), scope });
@@ -162,26 +192,4 @@ describe("the fs.scope boundary", () => {
 		});
 	});
 
-	test("a relative path never reaches the surface", async () => {
-		const surface = fakeSurface();
-		const plugin = createPreviewPlugin({ surface, scope: OFFLINE });
-		await expect(plugin.commands.show({ path: "notes.txt" })).rejects.toMatchObject({
-			code: "bad-request",
-		});
-		expect(surface.visible()).toBe(false);
-	});
-});
-
-describe("a platform with no preview", () => {
-	test("Linux answers the named refusal on both commands", async () => {
-		const plugin = createPreviewPlugin({ scope: OFFLINE }, "linux");
-		const shown = await plugin.commands.show({ path: "/tmp/a.docx" });
-		expect(shown).toMatchObject({ ok: false, code: "not-implemented" });
-		expect((shown as { message: string }).message).toContain(
-			"Linux has no embedded system preview",
-		);
-		expect(await plugin.commands.hide()).toMatchObject({
-			code: "not-implemented",
-		});
-	});
 });

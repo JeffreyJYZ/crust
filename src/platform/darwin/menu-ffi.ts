@@ -21,6 +21,7 @@ const I32 = FFIType.i32;
 const I64 = FFIType.i64;
 const F64 = FFIType.f64;
 const CS = FFIType.cstring;
+const V = FFIType.void;
 
 /** The unit's exports, as `bun:ffi` hands them back. */
 export interface MenuUnit {
@@ -55,6 +56,7 @@ export interface MenuUnit {
 		menu_api_read_title: (index: number) => string;
 		menu_api_read_key: (index: number) => string;
 		menu_api_is_default: (appName: number, len: number) => number;
+		menu_api_mark_default: () => void;
 	};
 }
 
@@ -85,6 +87,7 @@ function compile(): MenuUnit {
 			menu_api_read_title: { args: [I32], returns: CS },
 			menu_api_read_key: { args: [I32], returns: CS },
 			menu_api_is_default: { args: [P, I64], returns: I32 },
+			menu_api_mark_default: { args: [], returns: V },
 		},
 	}) as unknown as MenuUnit;
 }

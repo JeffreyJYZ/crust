@@ -1,15 +1,9 @@
 // --- navigation: a WKNavigationDelegate built at runtime, part one ----------
-// No Objective-C class can be written as a header-free C unit, so the delegate is
-// allocated at runtime: objc_allocateClassPair over NSObject, class_addMethod with IMPs
-// written here, then objc_setAssociatedObject onto the webview. -navigationDelegate is
-// unretained, so the association is the only reference that keeps the object alive and
-// lets a second install find it instead of building a second class.
-// The sink is a function pointer registered with JSCallback from bun:ffi: a block may not
-// cross that boundary, and what it carries is a scalar pair (kind, webview), so the URL and
-// title are read back through their own exports in `109_navigation_state.c`.
-// Both parts are compiled as ONE translation unit by platform/darwin/navigation-unit.ts,
-// the deep-link unit's arrangement, so this half carries the externs and the shared helpers
-// and the state half uses them.
+// No header-free C unit can declare an ObjC class, so the delegate is allocated at runtime with
+// objc_allocateClassPair + class_addMethod and associated onto the webview — -navigationDelegate
+// is unretained, so that association is both its lifetime and the second install's lookup. The
+// event sink carries only scalars; URLs and titles are read back through 109_navigation_state.c.
+// All three parts compile as ONE unit by navigation-unit.ts, so this half owns the shared helpers.
 
 typedef void *nav_t;
 
@@ -77,6 +71,9 @@ static void nav_error_store(void *error) {
 	nav_error_set(((void *(*)(void *, void *))objc_msgSend)(
 	    error, sel_registerName("localizedDescription")));
 }
+
+/** The commit-time policy IMP lives in 110_navigation_policy.c, concatenated into this unit. */
+static void nav_decide_policy(void *self, void *cmd, void *web, void *action, void *handler);
 
 static void nav_report(int kind, void *web) {
 	if (!nav_sink) return;
@@ -150,6 +147,10 @@ static void *nav_class(void) {
 	if (!class_addMethod(cls, sel_registerName("webView:didFailProvisionalNavigation:withError:"),
 	                     (void *)nav_did_fail, "v@:@@@"))
 		return 0;
+	// Every navigation and redirect hop passes through this one decision point.
+	if (!class_addMethod(cls, sel_registerName("webView:decidePolicyForNavigationAction:decisionHandler:"),
+	                     (void *)nav_decide_policy, "v@:@@@"))
+		return 0;
 	objc_registerClassPair(cls);
 	return cls;
 }
@@ -189,5 +190,9 @@ int crust_nav_uninstall(void *web) {
 		                                                 sel_registerName("setNavigationDelegate:"),
 		                                                 0);
 	objc_setAssociatedObject(web, &nav_key, 0, NAV_RETAIN);
+	// The association's RETAIN is one owner; `[cls new]` at install was a second, +1 owner that
+	// clearing the association does not touch. Without this release every surface cycle leaks a
+	// CrustNavigationDelegate.
+	((void (*)(void *, void *))objc_msgSend)(delegate, sel_registerName("release"));
 	return 1;
 }

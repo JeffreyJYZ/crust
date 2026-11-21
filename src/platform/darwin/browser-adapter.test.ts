@@ -8,6 +8,7 @@ import type { BrowserBounds, BrowserState } from "@/plugins/browser";
 import { darwinBrowserAdapter } from "./browser";
 import type { BrowserPorts } from "./browser-ports";
 import type { BrowserNative } from "./browser-unit";
+import { fakeNavigation } from "./webview-target-fixture.ts";
 
 /** Every native export, recording the calls the adapter makes. */
 class FakeNative implements BrowserNative {
@@ -30,6 +31,12 @@ class FakeNative implements BrowserNative {
 	shim_browser_detach(view: number): void {
 		this.calls.push(`detach:${view.toString(16)}`);
 	}
+	shim_browser_view_release(view: number): void {
+		this.calls.push(`view-release:${view.toString(16)}`);
+	}
+	shim_browser_ui_uninstall(web: number): void {
+		this.calls.push(`ui-uninstall:${web.toString(16)}`);
+	}
 	shim_browser_ui_install(web: number): number {
 		this.calls.push(`ui:${web.toString(16)}`);
 		return this.uiStatus;
@@ -50,14 +57,7 @@ class FakeNative implements BrowserNative {
 		return 2;
 	}
 }
-
-const state: BrowserState = {
-	url: "http://127.0.0.1:4321/",
-	title: "Remote Title",
-	loading: false,
-	canGoBack: false,
-	canGoForward: false,
-};
+const state: BrowserState = { url: "http://127.0.0.1:4321/", title: "Remote Title", loading: false, canGoBack: false, canGoForward: false };
 
 function ports(native: FakeNative): BrowserPorts {
 	return {
@@ -70,7 +70,9 @@ function ports(native: FakeNative): BrowserPorts {
 		addWebview: (host, web) =>
 			native.calls.push(`web:${host.toString(16)}:${web.toString(16)}`),
 		removeWebview: (web) => native.calls.push(`unweb:${web.toString(16)}`),
+		releaseView: (view) => native.shim_browser_view_release(view),
 		load: (_web, url) => (url.includes("refuse") ? 0 : 1),
+		navNative: () => fakeNavigation().symbols,
 		navInstall: () => 0,
 		navUninstall: (web) => native.calls.push(`nav-uninstall:${web.toString(16)}`),
 		navState: () => state,
@@ -141,14 +143,27 @@ describe("darwinBrowserAdapter", () => {
 		expect(adapter.state("docs")).toMatchObject({ ok: true, title: "Remote Title" });
 	});
 
-	test("close detaches, and every later command is not-found", () => {
+	test("close releases every owned object, not just the superview retainer", () => {
 		const native = new FakeNative();
 		const adapter = darwinBrowserAdapter(ports(native));
 		adapter.open({ label: "docs", url: "http://127.0.0.1:4321/", bounds });
 		expect(adapter.close("docs")).toEqual({ ok: true, closed: true });
+		expect(native.calls).toContain("ui-uninstall:400");
+		expect(native.calls).toContain("nav-uninstall:400");
+		expect(native.calls).toContain("unweb:400");
 		expect(native.calls).toContain("detach:100");
+		expect(native.calls).toContain("view-release:100");
 		expect(adapter.state("docs")).toMatchObject({ ok: false, code: "not-found" });
 		expect(adapter.close("docs")).toMatchObject({ ok: false, code: "not-found" });
+	});
+
+	test("a refused delegate tears down the same owns a close does", () => {
+		const native = new FakeNative();
+		native.uiStatus = 5;
+		const adapter = darwinBrowserAdapter(ports(native));
+		adapter.open({ label: "docs", url: "http://127.0.0.1:4321/", bounds });
+		expect(native.calls).toContain("view-release:100");
+		expect(native.calls).toContain("unweb:400");
 	});
 
 	test("a window that closed prunes its surface rather than answering a stale title", () => {

@@ -14,10 +14,15 @@ import { createNetworkPlugin } from "@/plugins/network";
 import type { NetworkCommands } from "@/plugins/network-types";
 import { darwinNetworkAdapter, type DarwinNetworkOptions } from "@/platform/darwin/network";
 import { darwinNetworkStatusAdapter } from "@/platform/darwin/network-status";
+import { webviewConfiguration } from "@/platform/darwin/webview-configuration";
 
 /** The plugin the macOS runtime registers, with both adapters wired. */
 export function darwinNetworkPlugin(
 	options: DarwinNetworkOptions = {},
 ): PluginDefinition<"network", NetworkCommands> {
-	return createNetworkPlugin(darwinNetworkAdapter(options), {}, darwinNetworkStatusAdapter());
+	return createNetworkPlugin(
+		darwinNetworkAdapter({ configuration: webviewConfiguration, ...options }),
+		{},
+		darwinNetworkStatusAdapter(),
+	);
 }

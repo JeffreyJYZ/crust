@@ -43,6 +43,8 @@ export interface PreviewShowOptions {
 
 /** What the plugin lane calls; `show` and `hide` are the whole surface. */
 export interface DarwinPreviewAdapter {
+	/** The live `NSWindow *` the panel would float over, chosen by the caller's label. */
+	owner(label?: string): number;
 	available(): { available: boolean; reason: string };
 	show(options: PreviewShowOptions): PreviewOutcome;
 	hide(): PreviewOutcome;
@@ -53,6 +55,17 @@ export interface DarwinPreviewAdapter {
 
 /** Whether any panel has been shown in this process — the pump's poll must cost nothing otherwise. */
 let previewShown = false;
+
+/**
+ * The window a panel floats over. The platform registers this resolver at construction: only it
+ * owns the window registry, and the label reaches the plugin as a bridge hint. 0 means no owner —
+ * in a real app `show` then refuses rather than leaving an ownerless system panel on screen.
+ */
+let ownerResolver: (label?: string) => number = () => 0;
+
+export function setPreviewOwnerResolver(resolver: (label?: string) => number): void {
+	ownerResolver = resolver;
+}
 
 /** The adapter refusal for a path that is not an absolute path to a file that exists. */
 export function absoluteRefusal(path: string): PreviewOutcome | undefined {
@@ -97,6 +110,7 @@ export function darwinPreviewAdapter(
 	};
 
 	return {
+		owner: (label) => ownerResolver(label),
 		available() {
 			try {
 				if (native.available() === 1)

@@ -11,7 +11,7 @@ import { FIND_STATUS, findUnit } from "./find-unit.ts";
 import { navigationUnit, NAVIGATION_STATUS } from "./navigation-unit.ts";
 
 /** Every callback `class_addMethod` had to add, 31 for all five. */
-const ALL_CALLBACKS = 31;
+const ALL_CALLBACKS = 63;
 
 describe("navigation and find C units", () => {
 	test("the navigation unit compiles and links WebKit", () => {

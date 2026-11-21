@@ -19,10 +19,12 @@ import {
 	isNotImplemented,
 	type NotImplemented,
 	notImplemented,
+	type PluginContext,
 	type PluginDefinition,
 } from "./define";
 import { createFsScope, type FsScopeOptions } from "./fs-scope.ts";
 import { type ScopeCheck, scopedFsScope } from "./fs-scope-in-force.ts";
+import { canonical } from "./fs-scope-path.ts";
 import { readShow, type ShowArgs, type ShowDefaults } from "./preview-args.ts";
 import { type PreviewSurface, resolvePreviewSurface } from "./preview-surface.ts";
 
@@ -59,7 +61,7 @@ export interface PreviewShown {
 export type PreviewHideResult = { ok: true; visible: boolean } | NotImplemented;
 
 export type PreviewCommands = {
-	show: (args: ShowArgs) => Promise<PreviewShown | NotImplemented>;
+	show: (args: ShowArgs, ctx?: PluginContext) => Promise<PreviewShown | NotImplemented>;
 	hide: () => Promise<PreviewHideResult>;
 };
 
@@ -88,14 +90,18 @@ export function createPreviewPlugin(
 	return definePlugin({
 		name: "preview",
 		commands: {
-			show: async (args: ShowArgs): Promise<PreviewShown | NotImplemented> => {
+			show: async (args: ShowArgs, ctx?: PluginContext): Promise<PreviewShown | NotImplemented> => {
 				const request = readShow(args, defaults);
+				// Check the same bytes the platform will open. The canonical path is what the scope
+				// resolved and authorised; handing the caller's raw string to QuickLook left a window
+				// in which a symlink swap could redirect the panel outside the boundary (TOCTOU).
+				const approved = await canonical(request.path);
 				// `outside-scope` here is the same CrustError `fs` throws, so the wire carries the code
 				// and a sentence naming the path rather than a preview that quietly did nothing.
-				await scope().check(request.path);
+				await scope().check(approved);
 				const target = await surface();
 				if (isNotImplemented(target)) return target;
-				const answer = target.show(request);
+				const answer = target.show({ ...request, path: approved, window: ctx?.window });
 				if (!answer.ok) return notImplemented(answer.message, answer.requires);
 				return {
 					ok: true,

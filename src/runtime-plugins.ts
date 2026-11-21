@@ -182,7 +182,7 @@ export async function nativePlugins(
 		createDownloadsPlugin(downloads.darwinDownloadsAdapter({ webview: webviewFor }), {
 			app: appId,
 		}),
-		darwinNetworkPlugin(),
+		darwinNetworkPlugin({ configuration: darwin.webviewConfiguration }),
 		createCrashReporterPlugin({ root: appRoot, guard, native: crashNative }),
 		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
 		keychainPlugin,

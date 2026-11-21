@@ -2,6 +2,16 @@
 // Part 2 of `98_menu_api.c`, concatenated into that unit so it shares the build
 // stack, the runtime target and the guards: it compiles nowhere alone.
 
+// The one bar crust installed as the default (55_menu.c at startup, `reset()` after a caller
+// rebuilt the menu). Identity, not shape: a caller can build two roots titled after the app and
+// claim the default name, but its NSMenu pointer is never the one this records.
+void menu_api_mark_default(void) {
+	obj_t app = menu_app();
+	if (!app || !menu_responds(app, "mainMenu")) return;
+	menu_default_bar = ((obj_t (*)(void *, void *))objc_msgSend)(app,
+	                                                             sel_registerName("mainMenu"));
+}
+
 // A context menu on the key window's content view. A page's y grows downward and an
 // unflipped NSView's grows up, so y is flipped about the content view's frame height;
 // x needs no scaling, because one CSS pixel is one point at scale 1.

@@ -26,6 +26,8 @@ import { absent, asFailure } from "@/plugins/browser-failures";
 import { type BrowserPorts, realPorts, setFrames } from "./browser-ports";
 import { type Surface, SurfaceStore, teardown } from "./browser-surface";
 import { BROWSER_UI_STATUS, type BrowserNative } from "./browser-unit";
+import { askDecision, decideFor, installDecisionSink } from "./browser-navigation-policy.ts";
+import { readCommands } from "./browser-read-commands.ts";
 import { readText } from "./navigation-unit";
 
 export { bindBrowserWindows } from "./browser-platform";
@@ -61,7 +63,8 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 						Number(native.shim_browser_popup_url(ptr(into), into.length) ?? 0),
 					);
 					try {
-						surface.onPopup?.(url);
+						// A refused handoff is never passed to the system opener.
+						if (askDecision(Number(web), url)) surface.onPopup?.(url);
 					} catch {
 						// A page listener that throws must not unwind into AppKit's delegate call.
 					}
@@ -86,20 +89,33 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 		setFrames(native, view, web, input.bounds);
 		p.addWebview(view, web);
 
+		// A half-built surface owns a +1 view, webview and configuration just like a live one.
+		// Use the same teardown path as `close`, or a refused delegate or load leaks all three.
+		const discard = () => {
+			decideFor(web, undefined);
+			teardown(
+				{ label: input.label, web, view, owner: owner.label },
+				p,
+			);
+		};
 		const ui = Number(native.shim_browser_ui_install(web) ?? BROWSER_UI_STATUS.missing);
 		if (ui !== BROWSER_UI_STATUS.installed && ui !== BROWSER_UI_STATUS.already) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(`browser.open: the surface's UI delegate was refused (status ${ui})`);
 		}
+		// The entry check cannot see a redirect or a scripted load. Every commit of this surface
+		// now asks the plugin's decision through the navigation delegate's policy method.
+		installDecisionSink(p.navNative());
+		decideFor(web, input.onNavigate);
 		const navigation = p.navInstall(web);
 		if (navigation !== 0) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(
 				`browser.open: the navigation delegate was refused (status ${navigation})`,
 			);
 		}
 		if (!p.load(web, input.url)) {
-			native.shim_browser_detach(view);
+			discard();
 			return asFailure(`browser.open: the surface could not load ${input.url}`);
 		}
 		channel(native);
@@ -133,6 +149,10 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 		navigate(label: string, url: string): { ok: true; loaded: boolean } | BrowserFailure {
 			const surface = surfaces.mine(label, port());
 			if ("ok" in surface) return surface;
+			if (!askDecision(surface.web, url)) {
+				// No load, no navigation error event: the previous page stays exactly as it was.
+				return asFailure("browser.navigate: the surface's navigation policy refused this URL");
+			}
 			try {
 				return {
 					ok: true,
@@ -164,28 +184,11 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 		close(label: string): { ok: true; closed: true } | BrowserFailure {
 			const surface = surfaces.get(label);
 			if (surface === undefined) return absent(label);
+			decideFor(surface.web, undefined);
 			teardown(surface, port());
 			surfaces.delete(label);
 			return { ok: true, closed: true };
 		},
-		async capture(label: string): Promise<(BrowserCapture & { ok: true }) | BrowserFailure> {
-			const surface = surfaces.mine(label, port());
-			if ("ok" in surface) return surface;
-			try {
-				return { ok: true, ...(await port().snapshot(surface.web)) };
-			} catch (error) {
-				return asFailure(error);
-			}
-		},
-		external(url: string): { opened: boolean; reason?: string } {
-			try {
-				const outcome = port().opener(url);
-				return outcome.status === 0
-					? { opened: true }
-					: { opened: false, reason: outcome.reason };
-			} catch (error) {
-				return { opened: false, reason: asFailure(error).message };
-			}
-		},
+		...readCommands(surfaces, port),
 	};
 }

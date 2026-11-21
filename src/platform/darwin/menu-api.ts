@@ -1,6 +1,5 @@
 /**
- * The macOS half of `crust:menu`: NSMenu over bun:ffi, in its own unit (`shim/98_menu_api.c` with the readback `98_menu_read.c` and the context `99_menu_context.c`) because the window shim's parts are one unit assembled in `shim-source.ts` and this one must compile alone, the way `90_clipboard.c` does. The compiler and its symbol list live in `menu-ffi.ts`.
- * **Selection.** The seam is the status item's, reused verbatim: one runtime class whose `crustMenuSelected:` IMP is the JSCallback passed to `menu_api_target`, one static target instance (because `-setTarget:` is unretained), and the row's `tag` read back in C as the index into the live id list.
+ * The macOS half of `crust:menu`: NSMenu over bun:ffi, in its own unit (`shim/98_menu_api.c` with the readback `98_menu_read.c` and the context `99_menu_context.c`) because the window shim's parts are one unit assembled in `shim-source.ts` and this one must compile alone, the way `90_clipboard.c` does. **Selection.** The seam is the status item's, reused verbatim: one runtime class whose `crustMenuSelected:` IMP is the JSCallback passed to `menu_api_target`, one static target instance (because `-setTarget:` is unretained), and the row's `tag` read back in C as the index into the id table the row was built for. A context menu builds a *different* table at a disjoint tag range, so popping one can never reindex the bar that is still installed.
  */
 
 import { FFIType, JSCallback } from "bun:ffi";
@@ -23,20 +22,26 @@ const MASK: Record<MenuModifier, number> = {
 	control: 1 << 18,
 };
 
-function maskOf(modifiers: readonly MenuModifier[]): number {
-	let mask = 0;
-	for (const modifier of modifiers) mask |= MASK[modifier];
-	return mask;
-}
+/**
+ * Tags are indices into a table, and an installed bar keeps its tags until it is replaced. The app
+ * bar and a transient context menu therefore use disjoint ranges: a popup rewrites only its own
+ * table, and the older bar's tags still resolve to the ids it was built with.
+ */
+export const APP_TAG_BASE = 0;
+export const CONTEXT_TAG_BASE = 1 << 20;
 
-// Rows built last, indexed by the tag C reports: a click carries an index, and this
-// is what turns it into the id a page hears.
-let ids: string[] = [];
+let appIds: string[] = [];
+let contextIds: string[] = [];
 let route: ((id: string) => void) | undefined;
 
-// Rows are added in the order C's stack expects: a container adds its entry, then
-// descends, so `menu_api_close` pops the menu its children were added to.
-function addRows(unit: MenuUnit, items: readonly MenuItemPlan[], into: string[]): void {
+export function resolveMenuTag(tag: number): string | undefined {
+	return tag >= CONTEXT_TAG_BASE
+		? contextIds[tag - CONTEXT_TAG_BASE]
+		: appIds[tag - APP_TAG_BASE];
+}
+
+/** Rows are added in the order C's stack expects: a container adds its entry, then descends. */
+function addRows(unit: MenuUnit, items: readonly MenuItemPlan[], into: string[], base: number): void {
 	for (const item of items) {
 		if (item.separator) {
 			checked(unit.symbols.menu_api_separator(), "separator");
@@ -50,21 +55,26 @@ function addRows(unit: MenuUnit, items: readonly MenuItemPlan[], into: string[])
 				unit.symbols.menu_api_submenu(label.p, label.len, key.p, key.len, mask),
 				`submenu ${item.label}`,
 			);
-			addRows(unit, item.submenu, into);
+			addRows(unit, item.submenu, into, base);
 			checked(unit.symbols.menu_api_close(), "close");
 			continue;
 		}
-		const tag = into.length;
 		into.push(item.id);
 		checked(
-			unit.symbols.menu_api_item(label.p, label.len, key.p, key.len, mask, tag),
+			unit.symbols.menu_api_item(label.p, label.len, key.p, key.len, mask, base + into.length - 1),
 			`item ${item.label}`,
 		);
 	}
 }
 
-// One trampoline per process: the runtime class registers one IMP, so a second
-// JSCallback would never be reached. The live id list is swapped per build instead.
+function maskOf(modifiers: readonly MenuModifier[]): number {
+	let mask = 0;
+	for (const modifier of modifiers) mask |= MASK[modifier];
+	return mask;
+}
+
+// One trampoline per process: the runtime class registers one IMP, so a second JSCallback would
+// never be reached. The tag tells it which menu's table to read.
 let callback: JSCallback | undefined;
 
 function channel(unit: MenuUnit): number {
@@ -73,7 +83,7 @@ function channel(unit: MenuUnit): number {
 			(_self: number, _cmd: number, sender: number) => {
 				// The sender's tag is read in C, so no Objective-C object is held here.
 				const tag = Number(unit.symbols.menu_api_tag(Number(sender)) ?? -1);
-				const id = tag >= 0 ? ids[tag] : undefined;
+				const id = tag >= 0 ? resolveMenuTag(tag) : undefined;
 				if (id === undefined) return;
 				try {
 					route?.(id);
@@ -93,31 +103,39 @@ function channel(unit: MenuUnit): number {
 /**
  * Build the menu adapter. The unit compiles on the first command, not at import, and `appName` names the bar `reset()` restores — the same name `startAppKit` installed, so pass the configured one when it is not `crust`. `read` and `isDefault` answer from the live bar, which is the only proof a rebuild landed.
  */
-export function darwinMenuAdapter(options: { appName?: string } = {}): MenuAdapter {
+export function darwinMenuAdapter(
+	options: { appName?: string; unit?: MenuUnit } = {},
+): MenuAdapter {
 	const appName = options.appName ?? "crust";
-	const unit = menuUnit();
+	const unit = options.unit ?? menuUnit();
 
-	/** Every build starts from an empty id list; a half-built stack is dropped by begin. */
-	const build = (items: readonly MenuItemPlan[]): void => {
-		ids = [];
+	/** Build rows into a local table; a throw mid-build leaves the installed bar's table untouched. */
+	const build = (items: readonly MenuItemPlan[], base: number): string[] => {
 		checked(unit.symbols.menu_api_target(channel(unit)), "menu click target");
 		checked(unit.symbols.menu_api_begin(), "begin");
-		addRows(unit, items, ids);
+		const table: string[] = [];
+		addRows(unit, items, table, base);
+		return table;
 	};
 
 	return {
 		setAppMenu(items: readonly MenuItemPlan[]): void {
-			build(items);
+			const table = build(items, APP_TAG_BASE);
 			checked(unit.symbols.menu_api_install(), "setMainMenu:");
+			appIds = table;
 		},
 		showContext(items: readonly MenuItemPlan[], at: { x: number; y: number }): void {
-			build(items);
+			const table = build(items, CONTEXT_TAG_BASE);
+			// The popup blocks inside AppKit's tracking loop and a click can fire during it, so the
+			// table the new rows carry must be live before the menu is shown.
+			contextIds = table;
 			popContextMenu(unit, at.x, at.y);
 		},
 		reset(): void {
-			ids = [];
+			appIds = [];
 			// The default bar is 55_menu.c's, so it is reused rather than rebuilt here.
 			checked(shim().symbols.shim_menu_install(cstr(appName)), "restore the default menu");
+			unit.symbols.menu_api_mark_default();
 		},
 		read: () => readMenu(unit),
 		isDefault: () => isDefaultMenu(unit, appName),

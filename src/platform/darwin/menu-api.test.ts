@@ -11,6 +11,7 @@ const SYMBOLS = [
 	"menu_api_install",
 	"menu_api_is_default",
 	"menu_api_item",
+	"menu_api_mark_default",
 	"menu_api_popup",
 	"menu_api_read",
 	"menu_api_read_enabled",

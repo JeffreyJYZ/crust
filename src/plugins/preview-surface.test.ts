@@ -29,6 +29,7 @@ function fakeNative(state: { available?: boolean; reason?: string; shown?: boole
 			state.shown = false;
 			return { ok: true, reason: "hidden" };
 		},
+		owner: (_label?: string) => 4242,
 		visible: () => state.shown === true,
 		windowNumber: () => 4242,
 	};
@@ -49,6 +50,29 @@ describe("the macOS surface", () => {
 		expect(surface.visible()).toBe(true);
 		expect(surface.hide()).toEqual({ ok: true });
 		expect(surface.visible()).toBe(false);
+	});
+
+	test("an ownerless panel is refused instead of outliving every window", () => {
+		const { native } = fakeNative();
+		native.owner = () => 0;
+		expect(darwinSurface(native).show({ path: "/tmp/a.docx", width: 0, height: 0 })).toEqual({
+			ok: false,
+			message: "preview.show needs an open owner window to float over",
+			requires: "QLPreviewPanel",
+		});
+	});
+
+	test("the caller's label chooses the native owner", () => {
+		const { native } = fakeNative();
+		const labels: (string | undefined)[] = [];
+		native.owner = (label) => {
+			labels.push(label);
+			return label === "side" ? 99 : 0;
+		};
+		expect(
+			darwinSurface(native).show({ path: "/tmp/a.docx", width: 0, height: 0, window: "side" }),
+		).toEqual({ ok: true, window: 4242 });
+		expect(labels).toEqual(["side"]);
 	});
 
 	test("a missing QLPreviewPanel is refused in the framework's own sentence", () => {

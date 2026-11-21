@@ -75,3 +75,10 @@ void shim_browser_detach(br_t view) {
 	if (!view) return;
 	((void (*)(void *, void *))objc_msgSend)(view, sel_registerName("removeFromSuperview"));
 }
+
+// `-initWithFrame:` returned +1; detaching only drops the superview's retain, so the caller must
+// send this once per surface after the detach sends or every open/close cycle leaks one NSView.
+void shim_browser_view_release(br_t view) {
+	if (!view) return;
+	((void (*)(void *, void *))objc_msgSend)(view, sel_registerName("release"));
+}
