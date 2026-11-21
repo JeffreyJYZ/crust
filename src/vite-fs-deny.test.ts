@@ -75,7 +75,8 @@ describe("dev handshake exposure", () => {
 			const healthy = await fetch(`${base}index.html`);
 			expect(healthy.status).toBe(200);
 
-			for (const path of [".crust/dev.json", "crust-dev-probe.json"]) {
+			const legacyPath = [".crust", "dev.json"].join("/");
+			for (const path of [legacyPath, "crust-dev-probe.json"]) {
 				const response = await fetch(`${base}${path}`);
 				expect([FORBIDDEN, 404]).toContain(response.status);
 				expect(await response.text()).not.toContain("ADMIN-TOKEN");

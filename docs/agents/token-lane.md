@@ -56,7 +56,7 @@ Owned files touched: `src/app-loop.ts`, `src/app.ts`, `src/app-types.ts`, `src/b
 ## Not fixed, and why
 
 - **`20-security.md` finding 4** (the docstring claiming an absent `Origin` is refused) is already
-  correct in `src/bridge/server.ts:3`, and finding 3 (`0600` on `.crust/dev.json`) is already in
+  correct in `src/bridge/server.ts:3`, and finding 3 (`0600` on the dev handshake) is already in
   `src/runtime.ts` from the bridge lane. No change needed.
 - **`window.create`'s token plumbing goes through `window-identity.ts`** rather than a parameter: the
   plugin's construction sites (`runtime-plugins.ts`, `plugins/index.ts`, examples) are not in this

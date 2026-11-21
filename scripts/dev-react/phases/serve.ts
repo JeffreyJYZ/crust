@@ -1,7 +1,7 @@
 /**
  * Phase 4: `crust dev` starts the frontend, the dev server answers, the bridge publishes its pair, and the window's page is the Vite one. Each block stands alone except "edit reload", which needs a live page — so a dead window costs one failure rather than a skipped run.
  */
-import { join } from "node:path";
+import { devHandshakePath } from "../../../src/dev-handshake-path.ts";
 import { runCommand, type Verdict } from "../../e2e-harness.ts";
 import type { LiveRun, Proc } from "../../lib/live-run.ts";
 import { lastLine, skip } from "../../lib/text.ts";
@@ -58,15 +58,16 @@ export async function servePhase(verdict: Verdict, dev: LiveRun, scratch: string
 
 	// The pair the runtime published for the dev server to read per request.
 	// Polled: the frontend is spawned first and the bridge after it.
-	const pair = await pollHandshake(join(scratch, ".crust", "dev.json"), PAIR_TIMEOUT_MS);
+	const handshake = devHandshakePath(scratch);
+	const pair = await pollHandshake(handshake, PAIR_TIMEOUT_MS);
 	if (pair === null) {
 		skip(
 			verdict,
 			["crust client", "bridge document", "cross-origin invoke"],
-			"not checked — the runtime never published a bridge pair in .crust/dev.json",
+			`not checked — the runtime never published a bridge pair at ${handshake}`,
 		);
 	} else {
-		// Fetched now that the pair exists: `crust/vite` reads dev.json per
+		// Fetched now that the pair exists: `crust/vite` reads the handshake per
 		// document, so this is the page the window is given.
 		const carriesPair = (body: string): boolean =>
 			body.includes("window.__CRUST__") &&

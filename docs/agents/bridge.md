@@ -50,7 +50,7 @@ it had made no edits. At this lane's start the tree contained **unfixed** source
    (`src/bridge/client/bootstrap.ts:53-77`, `src/bridge/server/assets.ts`), and `window.create`
    appends the same token through `setBridgeToken` (`src/plugins/window-create.ts`).
 2. Windows backslash traversal — same defect as `01-bridge.md:1`, **fixed** there.
-3. World-readable `.crust/dev.json` — **fixed** `src/runtime.ts:123-140`: `writeFileSync` passes
+3. World-readable dev handshake — **fixed**: the runtime writes `devHandshakePath()` in the OS temp dir with
    `{ mode: 0o600 }` and a following `chmodSync(file, 0o600)` tightens a file an earlier run created
    under a looser umask (`mode` applies only at creation).
 4. Docstring claims an absent `Origin` is refused — **fixed** `src/bridge/server.ts:3`: it now says a
@@ -67,7 +67,7 @@ it had made no edits. At this lane's start the tree contained **unfixed** source
   a served document; `ready` resolves after a wrong token, after a handler throw and after a non-JSON
   reply; `__crustBytes` survives as a string; `__proto__` survives as an own field with an untouched
   prototype; a literal wrapper's other fields survive; `no-fetch` rejects.
-- `src/bridge/dev-handshake.test.ts` (1 test): `.crust/dev.json` is mode `0600` and holds the
+- `src/bridge/dev-handshake.test.ts` (1 test): the temp handshake is mode `0600` and holds the
   bridge's own url and token, written into a temp project dir.
 - `src/bridge/server-events.test.ts` (+2): three connect/disconnect cycles leave zero retained
   cleanups; `sseFrame` forces a multi-line event name onto one line.

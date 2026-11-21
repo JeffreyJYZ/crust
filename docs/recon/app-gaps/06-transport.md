@@ -25,7 +25,7 @@ would hand out the one token that can mint documents for any window.
 on the 21st attempt (`src/runtime.ts:106-123`). The token is `crypto.randomUUID()` made freshly in
 `startBridge`, before `serve` (`src/bridge/server.ts:40`). Nothing persists it: no config key carries
 a token (there is no server/host/token section in `src/config/types.ts`, and no `validate-*.ts` for
-one), and the only file that ever holds one is the dev handshake `.crust/dev.json` (0600), written
+one), and the only file that ever holds one is the temp dev handshake at `devHandshakePath()` (0600), written
 only when `dev.url` is set (`src/runtime-host.ts:61-84`, called at `src/runtime.ts:134`).
 
 **Tokens are per document and label-scoped, not one process secret.** A navigation presenting the

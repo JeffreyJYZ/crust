@@ -69,7 +69,7 @@ Every key is validated at startup and extra keys are rejected, so a typo is a st
 
 | path              | what it is                                                         |
 | ----------------- | ------------------------------------------------------------------ |
-| `.crust/dev.json` | the dev handshake — bridge URL and token, written per run          |
+| temp handshake   | the dev handshake — bridge URL and token, named by `CRUST_DEV_FILE` / `devHandshakePath()` |
 | `.crust/single/`  | the bundle for `crust dev app.tsx`                                 |
 | `dist/`           | build output: `<name>.app`, and `dist/single/` for one-file builds |
 

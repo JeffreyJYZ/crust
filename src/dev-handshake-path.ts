@@ -6,6 +6,9 @@
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+/** The variable that points a consumer at the handshake when the cwd differs. */
+export const DEV_HANDSHAKE_FILE_VAR = "CRUST_DEV_FILE";
+
 /** File-name patterns the Vite plugin refuses through `server.fs.deny`. */
 export const DEV_HANDSHAKE_DENY = [
 	".crust/**",

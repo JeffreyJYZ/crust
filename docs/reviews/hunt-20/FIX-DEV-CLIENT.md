@@ -28,7 +28,7 @@ loses the page gets nothing — silently, because the only signal is a `console.
 
 ## What to do
 
-1. **Mint once, where the bridge is definitely bound.** The runtime writes `.crust/dev.json` (and
+1. **Mint once, where the bridge is definitely bound.** The runtime writes the dev handshake at `devHandshakePath()` (and
    exports `CRUST_BRIDGE_URL`/`CRUST_BRIDGE_TOKEN`) on first `run()`. Mint the document token there, at
    the point the bridge handle exists, and write **that** token where the dev server reads it. Then
    `crust/vite` goes back to a pure injection: no `fetch`, no round trip, no race.

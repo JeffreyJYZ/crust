@@ -56,7 +56,7 @@ The WebView is the system `WKWebView`, so rendering is whatever that Mac's macOS
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | the bridge trusts the local user                | it binds loopback and every route that carries or accepts a credential requires the bearer token; the boundary is the OS account |
 | the document needs its own token               | the navigation URL carries `?token=`, and a request without it answers `401`, so fetching `/` yields no credential          |
-| so another local process can drive the app     | only by reading the token from the app's own launch URL or its `0600` `.crust/dev.json` — anything running as your user can  |
+| so another local process can drive the app     | only by reading the token from the app's own launch URL or its `0600` temp handshake — anything running as your user can     |
 | `Origin` is not the credential                 | an absent `Origin` is allowed on purpose, and a present foreign one is `403`; the token is what decides                     |
 | inline scripts need the response's nonce       | `script-src` names a per-response nonce, so a `<script>` injected after parse is refused by the engine                      |
 

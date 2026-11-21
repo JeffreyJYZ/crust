@@ -1,5 +1,5 @@
 /**
- * E2E for `crust dev` with `dev.url` set: a React+Vite page served from another origin, its live token read from `.crust/dev.json`, and `invoke` answered across origins.
+ * E2E for `crust dev` with `dev.url` set: a React+Vite page served from another origin, its live token read from the temp handshake named by `devHandshakePath()`, and `invoke` answered across origins.
  * Cold start is the proof — Vite measured 0.66-1.08 s to listen and lost the race in 0 of 4 scratch runs before `dev.ts` waited for the URL; scaffold built by `crust init --react`, never copied, so it cannot drift. Phases in `dev-react/phases/`.
  */
 

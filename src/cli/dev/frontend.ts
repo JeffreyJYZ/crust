@@ -27,7 +27,7 @@ export async function waitForDevServer(url: string, timeoutMs: number): Promise<
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		// A TCP connect, never an HTTP request: fetching the page would run the dev
-		// server's own transforms before `.crust/dev.json` exists, and the Vite client
+		// server's own transforms before the temp handshake exists, and the Vite client
 		// then prints "no window.crust" for a page that is about to be injected properly.
 		const up = await Bun.connect({
 			hostname,
