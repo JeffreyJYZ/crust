@@ -57,10 +57,13 @@ describe("the pseudo-console", () => {
 		expect(OPEN).not.toContain("CreateProcessW(0, command, 0, 0, 1,");
 	});
 
-	test("both pipe pairs are closed on the console's side as soon as it has them", () => {
+	test("both pipe pairs are created inheritable, so the console host can hold them", () => {
+		// Measured on windows-latest 2026-11-21: with default non-inheritable pipes the console and
+		// its shell ran, and not one byte reached the read end.
+		expect(OPEN).toContain("attrs.bInheritHandle = 1;");
+		expect(OPEN).toContain("CreatePipe(&in_read, &in_write, &attrs, 0)");
+		expect(OPEN).toContain("CreatePipe(&out_read, &out_write, &attrs, 0)");
 		expect(OPEN).toContain("CreatePseudoConsole(size, in_read, out_write, 0, &console)");
-		expect(OPEN).toContain("CloseHandle(in_read);");
-		expect(OPEN).toContain("CloseHandle(out_write);");
 	});
 
 	test("every refused open returns before anything else runs on a half-open console", () => {
@@ -148,6 +151,13 @@ describe("the reader", () => {
 		expect(close.indexOf("ClosePseudoConsole")).toBeLessThan(
 			close.indexOf("CloseHandle(slot->input)"),
 		);
+	});
+
+	test("the console's own pipe ends are held from open to close, never dropped early", () => {
+		expect(OPEN).toContain("slot->console_input = in_read;");
+		expect(OPEN).toContain("slot->console_output = out_write;");
+		expect(CODE).toContain("if (slot->console_input) CloseHandle(slot->console_input);");
+		expect(CODE).toContain("if (slot->console_output) CloseHandle(slot->console_output);");
 	});
 });
 

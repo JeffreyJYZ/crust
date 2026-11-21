@@ -137,10 +137,15 @@ int shim_pty_close(int index) {
 	}
 	if (slot->input) CloseHandle(slot->input);
 	if (slot->output) CloseHandle(slot->output);
+	// The console's own ends, held since open so its host always has a live handle to write through.
+	if (slot->console_input) CloseHandle(slot->console_input);
+	if (slot->console_output) CloseHandle(slot->console_output);
 	if (slot->process) CloseHandle(slot->process);
 	if (slot->thread) CloseHandle(slot->thread);
 	slot->input = 0;
 	slot->output = 0;
+	slot->console_input = 0;
+	slot->console_output = 0;
 	slot->process = 0;
 	slot->thread = 0;
 	slot->closed = 1;

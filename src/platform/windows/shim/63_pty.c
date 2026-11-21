@@ -16,6 +16,16 @@ typedef unsigned short shim_wchar;
 typedef unsigned long long shim_u64;
 typedef long long shim_i64;
 
+// `SECURITY_ATTRIBUTES`, 24 bytes on x64. The pipe pairs carry `bInheritHandle = 1` because
+// `CreatePseudoConsole` hands them to the console host process, which inherits them: with the
+// default non-inheritable handles the console is created and the shell runs, yet its output never
+// reaches the pipe this side reads (measured on windows-latest 2026-11-21 — pid alive, zero bytes).
+typedef struct {
+	unsigned int nLength;
+	void *lpSecurityDescriptor;
+	int bInheritHandle;
+} shim_pty_security;
+
 // The only two imports in the unit, and both are kernel32 — the two that do the resolving.
 extern shim_h LoadLibraryA(const char *name);
 extern void *GetProcAddress(shim_h module, const char *name);
@@ -117,6 +127,8 @@ typedef struct {
 	shim_h thread;
 	shim_h input;  // the write end the console reads
 	shim_h output; // the read end this side reads
+	shim_h console_input;  // the console's own end, kept until close
+	shim_h console_output; // the same, on the output side
 	shim_h reader;
 	unsigned int pid;
 	int used;

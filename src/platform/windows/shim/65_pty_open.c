@@ -37,15 +37,20 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	}
 	shim_pty_slot *slot = &g_pty[index];
 	shim_pty_zero(slot, sizeof(*slot));
+	// Inheritable, so the console host can hold the ends it is given; see `shim_pty_security`.
+	shim_pty_security attrs;
+	shim_pty_zero(&attrs, sizeof(attrs));
+	attrs.nLength = (unsigned int)sizeof(attrs);
+	attrs.bInheritHandle = 1;
 	shim_h in_read = 0;
 	shim_h in_write = 0;
 	shim_h out_read = 0;
 	shim_h out_write = 0;
-	if (!CreatePipe(&in_read, &in_write, 0, 0)) {
+	if (!CreatePipe(&in_read, &in_write, &attrs, 0)) {
 		shim_pty_fail("CreatePipe for the console's input returned FALSE", GetLastError());
 		return -1;
 	}
-	if (!CreatePipe(&out_read, &out_write, 0, 0)) {
+	if (!CreatePipe(&out_read, &out_write, &attrs, 0)) {
 		CloseHandle(in_read);
 		CloseHandle(in_write);
 		shim_pty_fail("CreatePipe for the console's output returned FALSE", GetLastError());
@@ -66,14 +71,17 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 		shim_pty_fail_hresult("CreatePseudoConsole answered", opened);
 		return -1;
 	}
-	CloseHandle(in_read);
-	CloseHandle(out_write);
+	// Both console-side handles stay ours until close. The API contract says the console duplicates
+	// them, but a console whose copies are not yet valid still accepts CreateProcessW and then never
+	// writes, so holding them costs two handles and removes the question.
 	shim_h heap = GetProcessHeap();
 	shim_u64 bytes = 0;
 	InitializeProcThreadAttributeList(0, 1, 0, &bytes);
 	void *list = HeapAlloc(heap, 0, bytes);
 	if (!list || !InitializeProcThreadAttributeList(list, 1, 0, &bytes)) {
 		ClosePseudoConsole(console);
+		CloseHandle(in_read);
+		CloseHandle(out_write);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		shim_pty_fail("InitializeProcThreadAttributeList returned FALSE", GetLastError());
@@ -83,6 +91,8 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 		DeleteProcThreadAttributeList(list);
 		HeapFree(heap, 0, list);
 		ClosePseudoConsole(console);
+		CloseHandle(in_read);
+		CloseHandle(out_write);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		shim_pty_fail("UpdateProcThreadAttribute(PSEUDOCONSOLE) returned FALSE", GetLastError());
@@ -103,6 +113,8 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 		DeleteProcThreadAttributeList(list);
 		HeapFree(heap, 0, list);
 		ClosePseudoConsole(console);
+		CloseHandle(in_read);
+		CloseHandle(out_write);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		shim_pty_fail("the configured shell did not convert to UTF-16", 0);
@@ -120,6 +132,8 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	HeapFree(heap, 0, list);
 	if (!spawned) {
 		ClosePseudoConsole(console);
+		CloseHandle(in_read);
+		CloseHandle(out_write);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		shim_pty_fail("CreateProcessW returned FALSE", GetLastError());
@@ -130,6 +144,8 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	slot->thread = info.thread;
 	slot->input = in_write;
 	slot->output = out_read;
+	slot->console_input = in_read;
+	slot->console_output = out_write;
 	slot->pid = info.pid;
 	slot->used = 1;
 	InitializeCriticalSection(&slot->lock);
@@ -139,6 +155,8 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 		TerminateProcess(slot->process, 1);
 		WaitForSingleObject(slot->process, 2000);
 		ClosePseudoConsole(console);
+		CloseHandle(in_read);
+		CloseHandle(out_write);
 		CloseHandle(in_write);
 		CloseHandle(out_read);
 		CloseHandle(info.process);

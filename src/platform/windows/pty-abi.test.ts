@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { readPtyPart } from "./pty-source.ts";
 
 const PART = readPtyPart("63_pty.c");
-const OPEN = "// `COORD`: two shorts";
+const OPEN = "// `SECURITY_ATTRIBUTES`, 24 bytes";
 const CLOSE = "} shim_pty_lock;";
 const DECLS = PART.slice(PART.indexOf(OPEN), PART.indexOf(CLOSE) + CLOSE.length);
 
@@ -44,6 +44,7 @@ const SOURCE = [
 	"  case 7: return sizeof(shim_pty_info);",
 	"  case 8: return sizeof(shim_pty_coord);",
 	"  case 9: return sizeof(shim_pty_lock);",
+	"  case 10: return sizeof(shim_pty_security);",
 	"  default: return 0;",
 	"  }",
 	"}",
@@ -86,5 +87,9 @@ describe("PROCESS_INFORMATION and the console's own size", () => {
 
 	test("CRITICAL_SECTION's 40 bytes are covered by the padding the C declares", () => {
 		expect(at(9)).toBe(40);
+	});
+
+	test("SECURITY_ATTRIBUTES is 24 bytes, the size the pipes are created with", () => {
+		expect(at(10)).toBe(24);
 	});
 });
