@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LinuxBrowserShim } from "./shim-browser.ts";
 import type { LinuxDialogShim } from "./dialog-ffi.ts";
 import { linkError } from "./preflight.ts";
 import { shimSource } from "./shim-source.ts";
@@ -16,7 +17,7 @@ import { shimSymbols } from "./shim-symbols.ts";
  * The entry points this shim exports, as JS sees them. Declared by hand because the argument types are the contract a fake has to satisfy: every `cstring` argument is a NUL-terminated byte buffer, never a JavaScript string — bun:ffi throws `a JavaScript string is not valid here` on one, measured against real GTK.
  * The file panels' optional members come from `dialog-ffi.ts`, split out at the line cap and because they are the one namespace that can be absent on an older GTK.
  */
-export interface LinuxShim extends LinuxDialogShim {
+export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
 	shim_lib_open(): number;
 	shim_lib_error_text(): string | null;
 	shim_gtk_init(): number;
@@ -50,6 +51,8 @@ export interface LinuxShim extends LinuxDialogShim {
 		width: number,
 		height: number,
 	): number;
+	/** The allocation one placed widget received: 0 width, 1 height; 0 for a refused read. */
+	shim_webview_allocated?(web: bigint, which: number): number;
 
 	/**
 	 * The `crust:window` half, every member optional because a fake shim need not carry it and an
@@ -154,7 +157,9 @@ function compile(): { symbols: LinuxShim & LinuxProofShim } {
 	const options = { source: path, symbols: shimSymbols };
 
 	try {
-		return cc(options) as unknown as { symbols: LinuxShim & LinuxProofShim };
+		return cc(options) as unknown as {
+			symbols: LinuxShim & LinuxProofShim;
+		};
 	} catch (error) {
 		// TinyCC's own message names a library nobody installed and not the package that ships it,
 		// so a missing linker script becomes the install line here, where the compile failed.

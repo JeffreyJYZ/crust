@@ -33,6 +33,21 @@ export const shimSymbols = {
 	shim_webview_load: { args: [P, CS], returns: I32 },
 	// A surface is placed into a window's container at a rectangle in points: box, view, x, y, w, h.
 	shim_webview_place: { args: [P, P, I32, I32, I32, I32], returns: I32 },
+	// The allocation a placed widget received, so a proof can say the rectangle took: 0 width,
+	// 1 height.
+	shim_webview_allocated: { args: [P, I32], returns: I32 },
+	// The browser surface's reads and policy. `shim_webview_uri` answers a string WebKit owns, so
+	// the buffer's lifetime is the view's, not the caller's.
+	shim_webview_uri: { args: [P], returns: CS },
+	shim_webview_is_loading: { args: [P], returns: I32 },
+	shim_webview_can_back: { args: [P], returns: I32 },
+	shim_webview_can_forward: { args: [P], returns: I32 },
+	shim_webview_close: { args: [P], returns: I32 },
+	shim_browser_watch_popups: { args: [P], returns: I32 },
+	shim_browser_deny_capture: { args: [P], returns: I32 },
+	shim_browser_set_sink: { args: [P], returns: V },
+	shim_browser_popups: { args: [], returns: I32 },
+	shim_browser_popup_url: { args: [P, I32], returns: I32 },
 
 	shim_window_api_ready: { args: [], returns: I32 },
 	shim_window_api_missing: { args: [], returns: CS },

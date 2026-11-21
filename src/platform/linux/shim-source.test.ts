@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SHIM_PARTS, SHIM_PART_NAMES, SHIM_PART_PATHS, shimSource } from "./index.ts";
+import { SHIM_PART_NAMES, SHIM_PART_PATHS, SHIM_PARTS, shimSource } from "./index.ts";
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(15);
+		expect(SHIM_PARTS).toHaveLength(16);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -40,6 +40,7 @@ describe("shim assembly", () => {
 		expect(SHIM_PART_NAMES).toEqual([
 			"10_prelude.c",
 			"30_webview.c",
+			"31_browser.c",
 			"32_view_state.c",
 			"40_window.c",
 			"41_container.c",
@@ -68,7 +69,8 @@ describe("shim assembly", () => {
  * original shim and is the guard that stops the defect from being reintroduced.
  */
 describe("native contracts", () => {
-	const [prelude, webview, viewState, windowPart, container, , , pump] = SHIM_PARTS;
+	const [prelude, webview, browser, viewState, windowPart, container, , , pump] = SHIM_PARTS;
+	void browser;
 
 	test("a destroyed window releases its slot so a later window can reuse it", () => {
 		expect(windowPart).toContain("shim_slots[i].win = 0");
@@ -156,7 +158,7 @@ describe("native contracts", () => {
 	});
 
 	test("the keychain binds the synchronous API and never hands GLib memory to Bun", () => {
-		const keyring = SHIM_PARTS[9];
+		const keyring = SHIM_PARTS[10];
 		expect(keyring).toContain('shim_open("libsecret-1.so.0")');
 		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_storev_sync"');
 		expect(keyring).toContain('shim_sym(shim_secret, "secret_password_lookupv_sync"');

@@ -22,14 +22,14 @@ import type {
 	BrowserOpenInput,
 	BrowserState,
 } from "@/plugins/browser";
-import { absent, asFailure } from "./browser-errors";
+import { absent, asFailure } from "@/plugins/browser-failures";
 import { type BrowserPorts, realPorts, setFrames } from "./browser-ports";
-import { SurfaceStore, teardown, type Surface } from "./browser-surface";
+import { type Surface, SurfaceStore, teardown } from "./browser-surface";
 import { BROWSER_UI_STATUS, type BrowserNative } from "./browser-unit";
 import { readText } from "./navigation-unit";
 
-export type { BrowserNative } from "./browser-unit";
 export { bindBrowserWindows } from "./browser-platform";
+export type { BrowserNative } from "./browser-unit";
 
 const I32 = FFIType.i32;
 const P = FFIType.ptr;
@@ -103,7 +103,13 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 			return asFailure(`browser.open: the surface could not load ${input.url}`);
 		}
 		channel(native);
-		return { label: input.label, web, view, owner: owner.label, onPopup: input.onPopup };
+		return {
+			label: input.label,
+			web,
+			view,
+			owner: owner.label,
+			onPopup: input.onPopup,
+		};
 	};
 
 	return {
@@ -128,7 +134,10 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 			const surface = surfaces.mine(label, port());
 			if ("ok" in surface) return surface;
 			try {
-				return { ok: true, loaded: port().load(surface.web, url) === 1 };
+				return {
+					ok: true,
+					loaded: port().load(surface.web, url) === 1,
+				};
 			} catch (error) {
 				return asFailure(error);
 			}

@@ -25,6 +25,8 @@ static void (*shim_set_valign)(void *, int);
 static void (*shim_set_margin_start)(void *, int);
 static void (*shim_set_margin_top)(void *, int);
 static void *(*shim_widget_parent)(void *);
+static int (*shim_widget_allocated_width)(void *);
+static int (*shim_widget_allocated_height)(void *);
 
 // Resolved by `shim_lib_open` with the rest of GTK: a window whose box cannot be
 // built is a window with nowhere to put its own page, so the absence belongs in
@@ -39,6 +41,27 @@ int shim_container_resolve(void) {
 	       shim_sym(h, "gtk_widget_set_margin_start", (void **)&shim_set_margin_start) &&
 	       shim_sym(h, "gtk_widget_set_margin_top", (void **)&shim_set_margin_top) &&
 	       shim_sym(h, "gtk_widget_get_parent", (void **)&shim_widget_parent);
+}
+
+// The allocation reads are optional: they exist for the proof, which asks whether a placed surface
+// really took the rectangle it was given, and an older GTK that lacks them answers 0 rather than
+// refusing the launch.
+static void shim_container_resolve_reads(void) {
+	void *h = shim_gtk_handle();
+	if (!shim_widget_allocated_width)
+		shim_widget_allocated_width =
+		    (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_allocated_width");
+	if (!shim_widget_allocated_height)
+		shim_widget_allocated_height =
+		    (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_allocated_height");
+}
+
+/** The allocation a placed widget actually received: 0 width, 1 height; 0 for a refused read. */
+int shim_webview_allocated(void *web, int which) {
+	shim_container_resolve_reads();
+	if (!web) return 0;
+	if (which == 0) return shim_widget_allocated_width ? shim_widget_allocated_width(web) : 0;
+	return shim_widget_allocated_height ? shim_widget_allocated_height(web) : 0;
 }
 
 typedef struct {

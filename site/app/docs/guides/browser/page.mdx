@@ -25,11 +25,13 @@ await crust.invoke("browser", "open", {
 
 `browser.open` creates one surface; `navigate` points it at another allowlisted origin; `state` answers `{ url, title, loading, canGoBack, canGoForward }`; `setBounds` moves and resizes it; `close` ends it; `capture` renders the surface's own page as a base64 PNG. The app owns the chrome and re-applies bounds when the window resizes.
 
-The surface runs from its own `WKWebViewConfiguration`: it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
+The surface runs from its own webview — a `WKWebView` configuration on macOS, a WebView2 controller in a child window on Windows, a `WebKitWebView` in the window's overlay on Linux — so it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
 
 `target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`.
 
-macOS is the only platform with the surface today; other platforms answer `not-implemented` naming `WKWebView`.
+`target=_blank` is what each platform refuses: a `WKUIDelegate` on macOS, the `NewWindowRequested` event with `Handled` set on Windows, and the `create` signal on Linux.
+
+`capture` is macOS-only: WebKit renders the surface's own picture there, while WebView2 needs an `IStream` and WebKitGTK answers a cairo surface, so both answer `not-implemented` naming the call — never a screenshot of the screen, which would show something else.
 
 ## Absent means nothing loads
 

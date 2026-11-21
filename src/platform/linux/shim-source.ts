@@ -4,6 +4,7 @@
  */
 import prelude from "./shim/10_prelude.c" with { type: "text" };
 import webview from "./shim/30_webview.c" with { type: "text" };
+import browser from "./shim/31_browser.c" with { type: "text" };
 import viewState from "./shim/32_view_state.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
 import container from "./shim/41_container.c" with { type: "text" };
@@ -12,16 +13,19 @@ import windowStateApi from "./shim/46_window_state_api.c" with { type: "text" };
 import pump from "./shim/50_pump.c" with { type: "text" };
 import screen from "./shim/60_screen.c" with { type: "text" };
 import keyring from "./shim/70_keyring.c" with { type: "text" };
-import dialog from "./shim/83_dialog.c" with { type: "text" };
-import dialogCalls from "./shim/84_dialog_calls.c" with { type: "text" };
 import clipboard from "./shim/80_clipboard.c" with { type: "text" };
 import opener from "./shim/81_opener.c" with { type: "text" };
 import osInfo from "./shim/82_osinfo.c" with { type: "text" };
+import dialog from "./shim/83_dialog.c" with { type: "text" };
+import dialogCalls from "./shim/84_dialog_calls.c" with { type: "text" };
 
 /** The parts, in the only order that compiles. */
 export const SHIM_PARTS = [
 	prelude,
 	webview,
+	// The browser surface's two policies, right after the part that defines the signal connector and
+	// the bounded copy they use — both are statics in `30_webview.c`, and a later part sees them.
+	browser,
 	// The per-view load and eval records, keyed by the handle the commands carry. They follow the
 	// webview part because its signal handlers are connected at creation and its eval finish lives
 	// there; the parts are one translation unit, so a later part sees those statics.
@@ -54,6 +58,7 @@ export const shimSource = SHIM_PARTS.join("\n");
 export const SHIM_PART_PATHS = [
 	"src/platform/linux/shim/10_prelude.c",
 	"src/platform/linux/shim/30_webview.c",
+	"src/platform/linux/shim/31_browser.c",
 	"src/platform/linux/shim/32_view_state.c",
 	"src/platform/linux/shim/40_window.c",
 	"src/platform/linux/shim/41_container.c",
