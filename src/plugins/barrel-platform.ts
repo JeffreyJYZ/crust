@@ -37,6 +37,15 @@ export {
 	type WriteOutcome as PtyWriteOutcome,
 } from "./pty";
 export { createOpenerPlugin, openerPlugin, type OpenerAdapter } from "./opener";
+export {
+	createPreviewPlugin,
+	type PreviewCommands,
+	type PreviewHideResult,
+	type PreviewPluginOptions,
+	type PreviewShown,
+	type PreviewSurface,
+	type ShowArgs as PreviewShowArgs,
+} from "./preview";
 export { createOsPlugin, osPlugin, type OsAdapter } from "./os";
 export { createShortcutsPlugin, shortcutsPlugin, type ShortcutAdapter } from "./shortcuts";
 export { createWindowStatePlugin, windowStatePlugin } from "./window-persist";
