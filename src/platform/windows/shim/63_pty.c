@@ -119,6 +119,11 @@ typedef struct {
 #define SHIM_PTY_ATTRIBUTE 0x00020016ULL
 // `EXTENDED_STARTUPINFO_PRESENT`, which is what makes `lpAttributeList` read at all.
 #define SHIM_PTY_EXTENDED 0x00080000u
+// `STARTF_USESTDHANDLES` with all three handles `INVALID_HANDLE_VALUE` is the documented ConPTY
+// way to give the child the console's std handles. Without it the child inherits Bun's stdout and
+// writes to the runner's log instead of the pseudo-console (measured 2026-11-21).
+#define SHIM_PTY_USESTD 0x00000100u
+#define SHIM_PTY_NO_HANDLE ((void *)-1)
 #define SHIM_PTY_WAIT_OBJECT 0u
 
 typedef struct {

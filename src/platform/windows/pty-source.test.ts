@@ -57,6 +57,17 @@ describe("the pseudo-console", () => {
 		expect(OPEN).not.toContain("CreateProcessW(0, command, 0, 0, 1,");
 	});
 
+	test("the child's std handles point at the console, not at Bun's stdout", () => {
+		// Measured on windows-latest: `cmd /c echo conpty-raw` landed in the runner's log while the
+		// pipe carried only the console's own VT setup, because the child inherited Bun's stdout.
+		expect(CODE).toContain("#define SHIM_PTY_USESTD 0x00000100u");
+		expect(CODE).toContain("#define SHIM_PTY_NO_HANDLE ((void *)-1)");
+		expect(OPEN).toContain("startup.dwFlags = SHIM_PTY_USESTD;");
+		for (const name of ["hStdInput", "hStdOutput", "hStdError"]) {
+			expect(OPEN).toContain(`startup.${name} = SHIM_PTY_NO_HANDLE;`);
+		}
+	});
+
 	test("both pipe pairs are created inheritable, so the console host can hold them", () => {
 		// Measured on windows-latest 2026-11-21: with default non-inheritable pipes the console and
 		// its shell ran, and not one byte reached the read end.

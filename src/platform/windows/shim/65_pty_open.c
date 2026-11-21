@@ -104,6 +104,10 @@ int shim_pty_open(const char *shell, const char *args, const char *cwd, int cols
 	shim_pty_zero(&startup, sizeof(startup));
 	startup.cb = (unsigned int)sizeof(startup);
 	startup.lpAttributeList = list;
+	startup.dwFlags = SHIM_PTY_USESTD;
+	startup.hStdInput = SHIM_PTY_NO_HANDLE;
+	startup.hStdOutput = SHIM_PTY_NO_HANDLE;
+	startup.hStdError = SHIM_PTY_NO_HANDLE;
 	shim_pty_info info;
 	shim_pty_zero(&info, sizeof(info));
 	// 512 UTF-16 code units each, never 1024: two 2048-byte arrays in one frame reach TinyCC's
