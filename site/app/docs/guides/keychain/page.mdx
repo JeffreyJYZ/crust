@@ -22,6 +22,8 @@ unlocked by the login session, has no app-held password to lose, and appears in 
 Credential Manager, where a user can revoke it. Reach for `keychain` when the OS owns the machine, and
 `stronghold` when the secret must travel with a data file.
 
+**Upgrading `stronghold`:** its vault moved from the machine-wide `~/Library/Application Support/crust/stronghold.json` to one file per app under that app's data directory. The legacy shared file is not migrated because its entries carry no app identity, so they cannot be attributed to one app without preserving the leak. Any secret stored before this version must be set again. When the first launch creates a fresh per-app vault while the legacy file still exists, crust writes one `warn` line naming both paths.
+
 ## Commands
 
 | command  | arguments                 | answer                                    |

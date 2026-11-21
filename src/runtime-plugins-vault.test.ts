@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test";
 import type { DarwinPlatform } from "@/platform/darwin";
 import { corePlugins } from "@/plugins/core";
 import type { PluginDefinition } from "@/plugins/define";
+import { STORE_FILE } from "@/plugins/stronghold";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
 import { nativePlugins } from "@/runtime-plugins.ts";
 
@@ -76,4 +77,40 @@ describe("the stronghold vault is per app", () => {
 			}
 		});
 	}
+});
+
+describe("the vault file name", () => {
+	test("carries the app id, so two app ids can never resolve to one file", async () => {
+		const saved = process.env.CRUST_DATA_DIR;
+		delete process.env.CRUST_DATA_DIR;
+		const seed = Date.now();
+		const idA = `land.jyz.vault-path-a-${seed}`;
+		const idB = `land.jyz.vault-path-b-${seed}`;
+		try {
+			const rootA = defaultStateRoot(idA);
+			const rootB = defaultStateRoot(idB);
+			expect(rootA).toContain(idA);
+			expect(rootB).toContain(idB);
+			expect(rootA).not.toBe(rootB);
+			const fileA = join(rootA, STORE_FILE);
+			const fileB = join(rootB, STORE_FILE);
+			expect(fileA).not.toBe(fileB);
+
+			for (const [id, file] of [
+				[idA, fileA],
+				[idB, fileB],
+			] as const) {
+				const vault = await vaultFor(id, "linux");
+				await open(vault, "pw");
+				expect(await call(vault, "set", { key: "k", value: "v" })).toMatchObject({
+					ok: true,
+				});
+				expect(await Bun.file(file).exists()).toBe(true);
+			}
+		} finally {
+			await rm(defaultStateRoot(idA), { recursive: true, force: true });
+			await rm(defaultStateRoot(idB), { recursive: true, force: true });
+			if (saved !== undefined) process.env.CRUST_DATA_DIR = saved;
+		}
+	});
 });

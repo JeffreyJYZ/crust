@@ -6,6 +6,10 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Changed
+
+- **The `stronghold` vault is now per app.** It used to live at `~/Library/Application Support/crust/stronghold.json` for every crust app on the machine (or `$CRUST_DATA_DIR/stronghold.json` when that override is set). The legacy file is **not migrated**: its entries are keyed by service and account with no app identity, so attributing one to any app would preserve the cross-app leak this change closes. A secret stored before this version must be set again in the app that owned it. On the first launch that creates a per-app vault while the legacy file still exists, crust writes one `warn` line naming both paths.
+
 ### Added
 
 - **The embedded browser surface works on Windows and Linux.** `browser.*` was macOS-only and answered `not-implemented` elsewhere. Windows now hosts a second WebView2 controller in a child window of the app's own, and Linux places a second `WebKitWebView` in the window's overlay container; both match the darwin contract — `http(s)` only, origins from `browser.origins`, no bridge token, `target=_blank` refused and handed to the opener, `capture` answered `not-implemented` naming the API rather than screenshotting the screen. `state` reads the surface's own title, address, load flag and history, so the app's page and the surface never answer for each other. Proven by `gate (windows)` and `gate (ubuntu)`: a foreign origin refused, an allowed one opened, titled, moved and closed against a real runtime.

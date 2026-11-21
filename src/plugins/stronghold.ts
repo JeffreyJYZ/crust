@@ -8,6 +8,7 @@
 import { join } from "node:path";
 
 import { definePlugin } from "./define";
+import { noteLegacyVault } from "./stronghold-legacy.ts";
 import { withFileLock } from "./store-file.ts";
 import { createStore, entryId, openStore, seal, unseal } from "./stronghold-crypto.ts";
 import {
@@ -80,6 +81,7 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 							const created = await createStore(password, iterations);
 							await writeStore(path, created.file);
 							session = created;
+							await noteLegacyVault(path);
 							return { ok: true, opened: true };
 						}
 						const opened = await openStore(read.file, password);
