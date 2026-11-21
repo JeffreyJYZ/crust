@@ -51,7 +51,9 @@ static ShimSignalFn shim_view_connect;
 // three handlers this part connects at creation. Forward-declared because a
 // handler has to be attached before the first load starts.
 void shim_state_register(void *view);
+void *shim_webview_host(void *view);
 void shim_host_forget(void *view);
+void shim_state_forget(void *view);
 void shim_state_reset_eval(void *view);
 static void shim_state_load_changed(void *view, int event, void *data);
 static int shim_state_load_failed(void *view, int event, const char *uri, void *error, void *data);
@@ -144,12 +146,17 @@ int shim_webview_can_forward(void *web) {
 	return shim_view_can_forward((WebKitWebView *)web) ? 1 : 0;
 }
 
-// Take one surface out of its container and destroy it. `gtk_widget_destroy` removes the widget from
-// its parent, so the overlay keeps no child that is about to be freed.
+// Take one surface out of its container and destroy it. `gtk_widget_destroy` removes the webview
+// from its parent, but the GtkFixed wrapper is the overlay's child and was not destroyed — each
+// close left an empty positioned rectangle behind. Destroy the wrapper too, then forget both slots.
 int shim_webview_close(void *web) {
+	void *host;
 	if (!web || !shim_widget_destroy) return 0;
-	shim_host_forget(web);
+	host = shim_webview_host(web);
 	shim_widget_destroy(web);
+	if (host) shim_widget_destroy(host);
+	shim_host_forget(web);
+	shim_state_forget(web);
 	return 1;
 }
 

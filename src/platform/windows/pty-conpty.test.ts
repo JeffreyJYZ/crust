@@ -16,6 +16,7 @@ interface Fake extends WindowsPtyShim {
 	chunks: Uint8Array[];
 	states: number[];
 	written: Uint8Array[];
+	envBlocks: string[];
 }
 
 function fake(overrides: Partial<WindowsPtyShim> = {}): Fake {
@@ -23,21 +24,24 @@ function fake(overrides: Partial<WindowsPtyShim> = {}): Fake {
 	const chunks: Uint8Array[] = [];
 	const states: number[] = [];
 	const written: Uint8Array[] = [];
+	const envBlocks: string[] = [];
 	const shim: Fake = {
 		calls,
 		chunks,
 		states,
 		written,
+		envBlocks,
 		shim_pty_load: () => 1,
 		shim_pty_ready: () => 1,
 		shim_pty_missing: () => "",
 		shim_pty_reason: () => "the stub's reason",
 		shim_pty_last_error: () => 0,
-		shim_pty_open: (shell, args, cwd) => {
+		shim_pty_open: (shell, args, cwd, env) => {
 			calls.push(
 				`open ${Buffer.from(shell).toString("utf8")} ${Buffer.from(args).toString("utf8")} ` +
 					Buffer.from(cwd).toString("utf8"),
 			);
+			envBlocks.push(Buffer.from(env).toString("utf16le"));
 			return 0;
 		},
 		shim_pty_pid: () => 4242,
@@ -110,6 +114,21 @@ describe("opening", () => {
 		expect(shim.calls[0]).toBe(`open ${request.shell}\0 \0 ${request.cwd}\0`);
 		terminal.close();
 	});
+
+	/**
+	 * The plugin builds the whole environment with TERM. Passing 0 to CreateProcessW used to discard
+	 * it, so a shell inside crust had no terminal type even though the page asked for one.
+	 */
+	test("the plugin's environment reaches the shim as a sorted double-NUL UTF-16 block", () => {
+		const shim = fake();
+		const terminal = windowsPtyBackend(() => shim).open({
+			...request,
+			env: { TERM: "xterm-256color", PATH: "C:\\bin" },
+		});
+		expect(shim.envBlocks[0]).toBe("PATH=C:\\bin\0TERM=xterm-256color\0\0");
+		terminal.close();
+	});
+
 });
 
 describe("the stream", () => {

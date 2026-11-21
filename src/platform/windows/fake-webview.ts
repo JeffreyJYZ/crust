@@ -47,6 +47,7 @@ export type FakeWebViewShim = Pick<
 	| "shim_browser_set_sink"
 	| "shim_browser_popups"
 	| "shim_browser_popup_url"
+	| "shim_browser_nav_url"
 > &
 	FakeWebViewProbeShim;
 
@@ -169,6 +170,7 @@ export function fakeWebView(calls: string[], options: FakeOptions = {}): FakeWeb
 		},
 		shim_browser_popups: () => 0,
 		shim_browser_popup_url: (dst) => writeText(dst, ""),
+		shim_browser_nav_url: (dst) => writeText(dst, ""),
 
 		// The numbers: environment, thread, apartment, object and handler readbacks.
 		...fakeWebViewProbe(calls, options),

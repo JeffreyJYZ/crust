@@ -63,6 +63,24 @@ static shim_view_state *shim_view_state_for(void *view, int create) {
 
 void shim_state_register(void *view) { shim_view_state_for(view, 1); }
 
+/** Drop a destroyed view's record and compact the table, so its slot is reusable. */
+void shim_state_forget(void *view) {
+	if (!view) return;
+	for (int i = 0; i < shim_view_state_count; i++) {
+		if (shim_view_states[i].view == view) {
+			int last = shim_view_state_count - 1;
+			if (i != last) shim_view_states[i] = shim_view_states[last];
+			shim_view_states[last].view = 0;
+			shim_view_states[last].load = 0;
+			shim_view_states[last].eval = 0;
+			shim_view_states[last].load_text[0] = 0;
+			shim_view_states[last].eval_text[0] = 0;
+			shim_view_state_count--;
+			return;
+		}
+	}
+}
+
 static void shim_state_load_changed(void *view, int event, void *data) {
 	(void)data;
 	shim_view_state *state = shim_view_state_for(view, 1);

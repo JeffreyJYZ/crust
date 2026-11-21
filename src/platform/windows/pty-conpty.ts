@@ -28,6 +28,27 @@ function refuseOpen(shim: WindowsPtyShim): string {
 	return code === 0 ? reason : `${reason} [${code}]`;
 }
 
+/**
+ * `CreateProcessW` with CREATE_UNICODE_ENVIRONMENT takes a UTF-16 block of `KEY=VALUE` entries,
+ * separated by one NUL and ended by two. The order must be case-insensitive Unicode (code-unit)
+ * order; `localeCompare` is locale-aware and fails that rule. Windows also rejects a name containing
+ * `=` (the hidden `=C:` drive variables Bun exposes in `process.env`), so those are dropped.
+ */
+export function environmentBlock(env: Record<string, string>): Uint8Array {
+	const names = Object.keys(env)
+		.filter((key) => key.length > 0 && !key.includes("=") && !key.includes("\0"))
+		.sort((a, b) => {
+			const left = a.toUpperCase();
+			const right = b.toUpperCase();
+			if (left !== right) return left < right ? -1 : 1;
+			// Case-insensitive ties still need a stable ordinal order; Windows uses Unicode order.
+			return a < b ? -1 : a > b ? 1 : 0;
+		});
+	const entries = names.map((key) => `${key}=${String(env[key] ?? "").replace(/\0/g, "")}`);
+	// One NUL between entries, two at the end — including when there are no entries.
+	return new Uint8Array(Buffer.from(`${entries.join("\0")}\0\0`, "utf16le"));
+}
+
 function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTerminal {
 	if (Number(shim.shim_pty_load()) !== 1) throw new Error(refuseOpen(shim));
 	const index = Number(
@@ -35,6 +56,7 @@ function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTermina
 			cstring(request.shell),
 			cstring(request.args ?? ""),
 			cstring(request.cwd),
+			environmentBlock(request.env),
 			request.cols,
 			request.rows,
 		),

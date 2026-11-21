@@ -60,8 +60,11 @@ shim_i64 shim_wndproc(shim_h hwnd, unsigned int msg, shim_u64 wp, shim_i64 lp) {
 	if (msg == SHIM_WM_DESTROY) {
 		// The title-bar X never reached shim_webview_close: eight closes exhausted the eight-slot
 		// table and every later createWindow refused. Release the slot here, then quit only when no
-		// tracked window remains so one of several closes leaves the app running.
+		// tracked window remains so one of several closes leaves the app running. The minimum-size
+		// table is a second eight-slot limit: the JS destroy path frees its entry, but a title-bar
+		// close goes straight through this arm, so free it here too or eight X clicks exhaust it.
 		shim_webview_close(hwnd);
+		shim_window_set_min(hwnd, 0, 0);
 		if (shim_webview_live() == 0) PostQuitMessage(0);
 		return 0;
 	}

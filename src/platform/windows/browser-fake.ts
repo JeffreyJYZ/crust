@@ -19,6 +19,8 @@ export class FakePorts implements WindowsBrowserPorts {
 	handle = 1;
 	watchRefused = false;
 	popupRefused = false;
+	/** What the shim returns from a create. 0 is the bug: the app's own webview, not a surface. */
+	surfaceHandle: number | undefined;
 
 	shim(): never {
 		throw new Error("a fake never hands out a real symbol table");
@@ -43,7 +45,8 @@ export class FakePorts implements WindowsBrowserPorts {
 	}
 	surface(child: number, url: string) {
 		this.calls.push(`surface:${child.toString(16)}:${url}`);
-		return url.includes("refuse") ? -1 : this.handle;
+		if (url.includes("refuse")) return -1;
+		return this.surfaceHandle ?? this.handle;
 	}
 	navigate(handle: number, url: string) {
 		this.calls.push(`navigate:${handle}:${url}`);
@@ -74,6 +77,11 @@ export class FakePorts implements WindowsBrowserPorts {
 	}
 	popupUrl() {
 		return "http://127.0.0.1:4321/popup";
+	}
+	/** The NavigationStarting URL the sink is deciding; set by a test to drive the native event. */
+	navUrlValue = "";
+	navUrl() {
+		return this.navUrlValue;
 	}
 	release(child: number) {
 		this.calls.push(`release:${child.toString(16)}`);

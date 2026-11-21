@@ -50,7 +50,9 @@ export const shimSymbols = {
 	shim_webview_close: { args: [P], returns: I32 },
 	shim_browser_watch_popups: { args: [P], returns: I32 },
 	shim_browser_deny_capture: { args: [P], returns: I32 },
+	shim_browser_watch_nav: { args: [P], returns: I32 },
 	shim_browser_set_sink: { args: [P], returns: V },
+	shim_browser_set_decision_sink: { args: [P], returns: V },
 	shim_browser_popups: { args: [], returns: I32 },
 	shim_browser_popup_url: { args: [P, I32], returns: I32 },
 
@@ -114,6 +116,10 @@ export const shimSymbols = {
 	// `long` (i64); JS wraps them with Number() before using them.
 	shim_snapshot_ready: { args: [], returns: I32 },
 	shim_snapshot_take: { args: [P], returns: I32 },
+	// The take's generation and the generation that published the current result. JS compares
+	// them so a callback from a timed-out take cannot answer a later capture.
+	shim_snapshot_generation: { args: [], returns: I64 },
+	shim_snapshot_result_generation: { args: [], returns: I64 },
 	shim_snapshot_state: { args: [], returns: I32 },
 	shim_snapshot_failure: { args: [], returns: CS },
 	shim_snapshot_width: { args: [], returns: I64 },

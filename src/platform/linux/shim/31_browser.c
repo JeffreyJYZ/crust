@@ -13,12 +13,16 @@
 
 // The one sink a refused new window is reported through; a GObject signal handler may not cross
 // bun:ffi, so the URL is read back through `shim_browser_popup_url`.
-static int (*shim_browser_sink)(int count, void *web);
+static int (*shim_browser_sink)(int kind, int count, void *web);
 static char shim_browser_popup[SHIM_BROWSER_POPUP_CAP];
 static int shim_browser_count;
+// Kind 0 is a refused new window, kind 1 a `decide-policy` navigation asking to be allowed.
+static int (*shim_browser_decision_sink)(int kind, int count, void *web);
 
 static void *(*shim_action_request)(void *action);
 static const char *(*shim_request_uri)(void *request);
+static void *(*shim_policy_action)(void *decision);
+static void (*shim_policy_ignore)(void *decision);
 
 // Resolved from the WebKit handle the prelude opened, on first use: an older WebKitGTK that lacks
 // `webkit_navigation_action_get_request` refuses the URL report and still refuses the new window.
@@ -31,6 +35,9 @@ static void shim_browser_resolve(void) {
 	shim_action_request =
 	    (void *(*)(void *))shim_sym_or_null(h, "webkit_navigation_action_get_request");
 	shim_request_uri = (const char *(*)(void *))shim_sym_or_null(h, "webkit_uri_request_get_uri");
+	shim_policy_action =
+	    (void *(*)(void *))shim_sym_or_null(h, "webkit_policy_decision_get_navigate_action");
+	shim_policy_ignore = (void (*)(void *))shim_sym_or_null(h, "webkit_policy_decision_ignore");
 }
 
 // The action's target URI into `shim_browser_popup`; an action with no request leaves it empty.
@@ -50,8 +57,32 @@ static void *shim_browser_created(void *web, void *action, void *data) {
 	(void)data;
 	shim_browser_record(action);
 	shim_browser_count++;
-	if (shim_browser_sink) shim_browser_sink(shim_browser_count, web);
+	if (shim_browser_sink) shim_browser_sink(0, shim_browser_count, web);
 	return 0;
+}
+
+/**
+ * `decide-policy` runs for every commit: the first load, clicks, scripted `location` and each hop of
+ * a redirect. Only WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION (0) carries a URI to gate. A refused
+ * navigation is ignored and the signal handled, so WebKit's default `use()` cannot commit it and the
+ * surface keeps its previous page. An allowed one returns FALSE to let the default accept it.
+ */
+static int shim_browser_decide(void *web, void *decision, int type, void *data) {
+	(void)data;
+	if (type != 0) return 0;
+	shim_browser_resolve();
+	void *action = shim_policy_action ? shim_policy_action(decision) : 0;
+	shim_browser_record(action);
+	// No URI means there is nothing to gate: an older WebKit without the request getters, or a
+	// decision without an action, must not turn into a cancelled first load.
+	if (!shim_browser_popup[0]) return 0;
+	shim_browser_count++;
+	int allowed = shim_browser_decision_sink
+	                  ? shim_browser_decision_sink(1, shim_browser_count, web)
+	                  : 1;
+	if (allowed != 0) return 0;
+	if (shim_policy_ignore) shim_policy_ignore(decision);
+	return 1;
 }
 
 // FALSE denies. WebKit's own `permission-request` contract is deny-on-unhandled, and this layer makes
@@ -76,7 +107,18 @@ int shim_browser_deny_capture(void *web) {
 	return shim_view_connect(web, "permission-request", (void *)shim_browser_denied, 0, 0, 0) ? 1 : 0;
 }
 
-void shim_browser_set_sink(void *sink) { shim_browser_sink = (int (*)(int, void *))sink; }
+/** Gate every navigation of one surface, including redirects and the first load. */
+int shim_browser_watch_nav(void *web) {
+	if (!web || !shim_view_connect) return 0;
+	shim_browser_resolve();
+	return shim_view_connect(web, "decide-policy", (void *)shim_browser_decide, 0, 0, 0) ? 1 : 0;
+}
+
+void shim_browser_set_sink(void *sink) { shim_browser_sink = (int (*)(int, int, void *))sink; }
+
+void shim_browser_set_decision_sink(void *sink) {
+	shim_browser_decision_sink = (int (*)(int, int, void *))sink;
+}
 
 int shim_browser_popups(void) { return shim_browser_count; }
 

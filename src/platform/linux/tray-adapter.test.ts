@@ -82,6 +82,20 @@ describe("tray.setMenu on Linux", () => {
 		expect(calls).toEqual([]);
 	});
 
+	/**
+	 * The C transport splits on `\n`. A newline inside a label used to become two rows, so clicking
+	 * the second half fired the next item's handler and the last row was dropped.
+	 */
+	test("a label with a newline is refused before a row can split", () => {
+		const { plugin, calls } = built();
+		const answer = plugin.commands.setMenu({
+			items: [{ label: "a\nb" }, { label: "c" }],
+		});
+		expect(answer).toMatchObject({ ok: false, code: "invalid-menu" });
+		expect(JSON.stringify(answer)).toContain("newline");
+		expect(calls).toEqual([]);
+	});
+
 	/** GTK older than 3.22 has no `gtk_menu_popup_at_pointer`, and that is the named refusal. */
 	test("a menu GTK could not build names the entry point that did not resolve", () => {
 		const { plugin } = built({ menuResult: 0, missing: "gtk_menu_popup_at_pointer" });

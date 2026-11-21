@@ -22,7 +22,8 @@ int shim_pty_pid(int index) {
 // Open one pseudo-console and its shell. Answers the slot index, or -1 with `shim_pty_reason`.
 // The two pipe pairs are the console's wire: the console reads `in_read` and writes `out_write`,
 // this side keeps `in_write` and `out_read` and closes the console's ends as soon as it has them.
-int shim_pty_open(const char *shell, const char *args, const char *cwd, int cols, int rows) {
+int shim_pty_open(const char *shell, const char *args, const char *cwd, const shim_wchar *env,
+                  int cols, int rows) {
 	if (!shim_pty_load()) return -1;
 	int index = -1;
 	for (int i = 0; i < SHIM_PTY_MAX; i++) {
@@ -130,15 +131,28 @@ int shim_pty_open(const char *shell, const char *args, const char *cwd, int cols
 	command[length + 1] = '"';
 	command[length + 2] = 0;
 	// The probe's arguments, so a proof can run `cmd /c echo` instead of an interactive banner.
+	// A conversion that does not fit is a spawn failure, not a shell with the whole argument string
+	// silently dropped: the caller asked for those arguments and cannot tell they were lost.
 	int at = length + 2;
 	if (args && args[0] && at < 510) {
 		command[at++] = ' ';
 		int extra = shim_pty_wide(args, command + at, 512 - at);
-		if (extra > 0) at += extra;
+		if (extra < 0) {
+			DeleteProcThreadAttributeList(list);
+			HeapFree(heap, 0, list);
+			ClosePseudoConsole(console);
+			CloseHandle(in_write);
+			CloseHandle(out_read);
+			shim_pty_fail("the arguments did not fit beside the configured shell", 0);
+			return -1;
+		}
 	}
 	const shim_wchar *working = shim_pty_wide(cwd, directory, 512) >= 0 ? directory : 0;
-	int spawned = CreateProcessW(0, command, 0, 0, 0, SHIM_PTY_EXTENDED, 0, working, &startup,
-	                             &info);
+	// `env` is a complete, double-NUL UTF-16 environment block built by the adapter (including
+	// TERM). Passing 0 here inherited the host's environment and dropped every plugin override.
+	int spawned = CreateProcessW(0, command, 0, 0, 0,
+	                             SHIM_PTY_EXTENDED | SHIM_PTY_UNICODE_ENV, (void *)env, working,
+	                             &startup, &info);
 	DeleteProcThreadAttributeList(list);
 	HeapFree(heap, 0, list);
 	if (!spawned) {

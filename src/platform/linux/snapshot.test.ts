@@ -17,6 +17,8 @@ function shim(over: Partial<LinuxSnapshotShim> = {}): LinuxSnapshotShim {
 	return {
 		ready: () => true,
 		take: () => SNAPSHOT_STATUS.started,
+		generation: () => 0,
+		resultGeneration: () => 0,
 		state: () => 1,
 		failure: () => "",
 		read: () => ({ width: 320, height: 200, scale: 1, png: PNG }),
@@ -85,6 +87,36 @@ describe("the Linux snapshot promise", () => {
 		await expect(second).rejects.toThrow("superseded");
 		answered = true;
 		await first;
+	});
+
+	/**
+	 * `inFlight` only guards the promise. Once a timeout clears it, a late WebKit callback from the
+	 * first capture could publish into the shared result and answer the second with the first view.
+	 */
+	test("a late result from a timed-out take cannot answer the next capture", async () => {
+		let generation = 0;
+		let resultGen = -1;
+		let published = false;
+		const late = shim({
+			take: () => {
+				generation++;
+				resultGen = -1;
+				published = false;
+				return SNAPSHOT_STATUS.started;
+			},
+			generation: () => generation,
+			resultGeneration: () => resultGen,
+			state: () => (published ? 1 : 0),
+		});
+		const first = takeLinuxSnapshot(1n, late, 5);
+		await expect(first).rejects.toThrow("did not answer");
+
+		const second = takeLinuxSnapshot(2n, late, 40);
+		await Bun.sleep(5);
+		// The first take's WebKit callback finally lands, carrying generation 1.
+		resultGen = 1;
+		published = true;
+		await expect(second).rejects.toThrow("earlier capture");
 	});
 });
 

@@ -119,6 +119,9 @@ typedef struct {
 #define SHIM_PTY_ATTRIBUTE 0x00020016ULL
 // `EXTENDED_STARTUPINFO_PRESENT`, which is what makes `lpAttributeList` read at all.
 #define SHIM_PTY_EXTENDED 0x00080000u
+// `CREATE_UNICODE_ENVIRONMENT`: without it CreateProcessW reads the UTF-16 block as ANSI and fails
+// with ERROR_INVALID_PARAMETER (87) — measured on windows-latest 2026-11-21.
+#define SHIM_PTY_UNICODE_ENV 0x00000400u
 // `STARTF_USESTDHANDLES` with all three handles `INVALID_HANDLE_VALUE` is the documented ConPTY
 // way to give the child the console's std handles. Without it the child inherits Bun's stdout and
 // writes to the runner's log instead of the pseudo-console (measured 2026-11-21).

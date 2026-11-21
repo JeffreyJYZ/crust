@@ -109,7 +109,10 @@ int shim_tray_menu(const char *joined, int count) {
 	if (!joined || count <= 0) return 1;
 	int index = 0;
 	int i = 0;
-	while (joined[i] && index < SHIM_TRAY_MAX) {
+	// `count` is the number of menu items the adapter holds. Stopping at it keeps the C row table
+	// from disagreeing with the JS array `pollClick` indexes, even if a caller sends more labels
+	// than items. The adapter refuses newlines inside a label, so one item is always one row.
+	while (joined[i] && index < SHIM_TRAY_MAX && index < count) {
 		int n = 0;
 		while (joined[i] && joined[i] != '\n' && n < SHIM_LABEL_MAX - 1) {
 			g_labels[index][n++] = joined[i++];

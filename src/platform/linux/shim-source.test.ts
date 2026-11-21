@@ -181,7 +181,9 @@ describe("native contracts", () => {
 		expect(snapshot).toContain(
 			'shim_sym_or_null(shim_cairo, "cairo_surface_write_to_png_stream")',
 		);
-		expect(snapshot).toContain("shim_snapshot_start(web, 0, 0, 0, shim_snapshot_done, 0)");
+		expect(snapshot).toContain(
+			"shim_snapshot_start(web, 0, 0, 0, shim_snapshot_done, (void *)shot_current)",
+		);
 		// A view GTK has not realised is refused by name, never answered with an empty PNG.
 		expect(snapshot).toContain("return SHOT_NOT_REALISED");
 		expect(snapshot).toContain("shim_widget_realized(web)");

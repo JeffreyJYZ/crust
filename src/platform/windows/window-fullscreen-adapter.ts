@@ -17,8 +17,9 @@ const FRAME_BITS = 0x00cf0000;
 /** `WS_POPUP`, the bit a borderless fullscreen window carries. */
 const POPUP = 0x80000000;
 
-/** The saved frame a fullscreen window returns to. */
+/** The saved frame a fullscreen window returns to, with the window that owned it. */
 interface Saved {
+	hwnd: number;
 	style: number;
 	frame: [number, number, number, number];
 }
@@ -32,11 +33,23 @@ export function windowsFullscreenAdapter(
 	require: (label: string) => WindowsNativeWindow,
 ): WindowsFullscreenNative {
 	/**
-	 * Keyed by hwnd. `isFullscreen` requires both the record and the popup bit, so a record left
-	 * behind by a closed window cannot answer for a new one: a reused handle in the normal style has
-	 * no popup bit.
+	 * Keyed by label — the app's stable name for a window. HWNDs are recycled by Win32, so a record
+	 * keyed by hwnd alone survived a close and could restore a dead window's style and frame onto a
+	 * new window that reused the handle. A record is also checked against the current hwnd and the
+	 * `WS_POPUP` bit before it is trusted; a new window in the normal style drops it instead.
 	 */
-	const fullscreen = new Map<number, Saved>();
+	const fullscreen = new Map<string, Saved>();
+
+	/** The live record for a label, or undefined — dropping any stale one on the way. */
+	const live = (native: WindowsNativeWindow, label: string): Saved | undefined => {
+		const saved = fullscreen.get(label);
+		if (saved === undefined) return undefined;
+		if (saved.hwnd !== native.hwnd || (styleOf(native, label) & POPUP) === 0) {
+			fullscreen.delete(label);
+			return undefined;
+		}
+		return saved;
+	};
 
 	/** The monitor the window is on, as the rect fullscreen should cover. */
 	const monitorOf = (native: WindowsNativeWindow, label: string): number[] => {
@@ -63,26 +76,27 @@ export function windowsFullscreenAdapter(
 		 */
 		setFullscreen(label, value): void {
 			const native = require(label);
-			const hwnd = native.hwnd;
-			const saved = fullscreen.get(hwnd);
 			if (value) {
-				if (saved !== undefined && (styleOf(native, label) & POPUP) !== 0) return;
+				if (live(native, label) !== undefined) return;
 				const style = styleOf(native, label);
-				fullscreen.set(hwnd, { style, frame: frameOf(native, label) });
+				fullscreen.set(label, {
+					hwnd: native.hwnd,
+					style,
+					frame: frameOf(native, label),
+				});
 				const monitor = monitorOf(native, label);
 				writeStyle(native, label, (style & ~FRAME_BITS) | POPUP);
 				setFrame(native, label, monitor);
 				return;
 			}
+			const saved = live(native, label);
 			if (saved === undefined) return;
 			writeStyle(native, label, saved.style);
 			setFrame(native, label, saved.frame);
-			fullscreen.delete(hwnd);
+			fullscreen.delete(label);
 		},
 		isFullscreen(label): boolean {
-			const native = require(label);
-			if (fullscreen.get(native.hwnd) === undefined) return false;
-			return (styleOf(native, label) & POPUP) !== 0;
+			return live(require(label), label) !== undefined;
 		},
 	};
 }

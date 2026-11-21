@@ -14,7 +14,7 @@
  * There is no picture: WebKitGTK's `get_snapshot` answers a cairo surface this layer cannot encode,
  * so `capture` names the call it is missing rather than screenshotting the screen.
  */
-import { FFIType, JSCallback } from "bun:ffi";
+import type { JSCallback } from "bun:ffi";
 import type {
 	BrowserAdapter,
 	BrowserBounds,
@@ -26,51 +26,50 @@ import type {
 import { asFailure } from "@/plugins/browser-failures";
 import { type Surface, SurfaceStore } from "@/plugins/browser-surfaces";
 import { type NotImplemented, notImplemented } from "@/plugins/define";
+import {
+	firstLoadAware,
+	NavigationDecisions,
+	navigationAllowed,
+	navigationChannel,
+} from "./browser-navigation.ts";
 import { type LinuxBrowserPorts, realPorts } from "./browser-ports";
 
 export type { LinuxBrowserPorts } from "./browser-ports";
 
-const I32 = FFIType.i32;
-const P = FFIType.ptr;
-const V = FFIType.void;
-
-/** One callback for the process: C keeps a single function pointer. */
-let sink: JSCallback | undefined;
-
-function callbackPointer(callback: JSCallback): number {
-	const raw: unknown = callback.ptr;
-	const value = typeof raw === "number" ? raw : typeof raw === "bigint" ? Number(raw) : 0;
-	if (value === 0) throw new Error("crust: JSCallback exposed no usable pointer");
-	return value;
-}
+/**
+ * The embedded-surfaces lane adds `onNavigate` to `BrowserOpenInput`. Declared as an intersection so
+ * this adapter compiles whether that lane has merged or not; it touches no plugin file.
+ */
+type NavigateInput = BrowserOpenInput & { onNavigate?: (url: string) => boolean };
 
 export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
+	/** One callback for this adapter: C keeps a single function pointer. */
+	let sink: JSCallback | undefined;
 	const store = new SurfaceStore<bigint>();
+	const decisions = new NavigationDecisions();
 	let live: LinuxBrowserPorts | undefined = ports;
 	const port = (): LinuxBrowserPorts => (live ??= realPorts());
 
-	/** Report a refused new window to the surface that asked, and to nobody else. */
+	/** Install the one sink for refused windows (kind 0) and decide-policy (kind 1). */
 	const channel = (): void => {
 		if (sink !== undefined) return;
-		sink = new JSCallback(
-			(_count: number, web: number) => {
-				const surface = store.values().find((entry) => Number(entry.web) === Number(web));
-				if (surface === undefined) return 0;
-				try {
-					surface.onPopup?.(port().popupUrl());
-				} catch {
-					// A page listener that throws must not unwind into GTK's signal emission.
-				}
-				return 0;
+		sink = navigationChannel({
+			find: (web) => store.values().find((entry) => entry.web === web),
+			labelOf: (surface) => surface.label,
+			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().popupUrl()),
+			decide: (label) => decisions.get(label),
+			onPopup: (surface, url) => surface.onPopup?.(url),
+			setSink: (pointer) => {
+				port().sink(pointer);
+				port().decisionSink(pointer);
 			},
-			{ args: [I32, P], returns: V },
-		);
-		port().sink(callbackPointer(sink));
+		});
 	};
 
 	const release = {
 		windowOpen: (label: string) => port().windowOpen(label),
 		release: (surface: Surface<bigint>) => {
+			decisions.delete(surface.label);
 			port().close(surface.web);
 		},
 	};
@@ -104,15 +103,18 @@ export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
 						new Error(`browser.open: the surface could not load ${input.url}`),
 					);
 				}
-				// Both policies are required: without them a `target=_blank` becomes a window GTK owns,
-				// and a remote page could ask the process for the camera.
-				if (!p.watch(web) || !p.denyCapture(web)) {
+				// Three policies: popups are refused, capture is denied, and `decide-policy` sends every
+				// committed navigation through the origin gate.
+				if (!p.watch(web) || !p.denyCapture(web) || !p.watchNav(web)) {
 					p.close(web);
 					return asFailure(
 						new Error("browser.open: GTK refused the surface's signal handlers"),
 					);
 				}
 				channel();
+				const decide = (input as NavigateInput).onNavigate;
+				if (decide !== undefined)
+					decisions.set(input.label, firstLoadAware(input.url, decide));
 				store.set({
 					label: input.label,
 					web,
@@ -128,6 +130,10 @@ export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
 			const surface = store.mine(label, release);
 			if ("ok" in surface) return surface;
 			try {
+				// The same decision the `decide-policy` signal uses. A refused target never reaches
+				// WebKit: the surface stays on its previous URL, silently.
+				if (!navigationAllowed(decisions.get(label), url))
+					return { ok: true, loaded: false };
 				return { ok: true, loaded: port().navigate(surface.web, url) };
 			} catch (error) {
 				return asFailure(error);

@@ -11,8 +11,10 @@ import { WindowAdapterError, type WindowNative } from "@/plugins/window";
 import { createWindowPlugin } from "@/plugins/window.ts";
 import { setActiveWindowsPlatform } from "./active-platform.ts";
 import { type FakeBackend, fakeBackend } from "./fake-backend.ts";
+import { fakeShim } from "./fake-shim.ts";
 import { createPlatform } from "./platform.ts";
 import { windowsWindowAdapter } from "./window-adapter.ts";
+import { windowsFullscreenAdapter } from "./window-fullscreen-adapter.ts";
 
 type Commands = Record<string, (args: unknown) => unknown>;
 
@@ -93,5 +95,29 @@ describe("fullscreen", () => {
 		const { backend, adapter } = await started({ failFrameRead: true });
 		expect(codeOf(() => adapter.setFullscreen?.("main", true))).toBe("handler-error");
 		expect(backend.calls.filter((call) => call.startsWith("style:"))).toEqual([]);
+	});
+});
+
+/**
+ * Win32 recycles HWNDs. A record keyed only by handle survived a title-bar close and restored the dead
+ * window's style and frame onto a new window that inherited the handle.
+ */
+describe("a fullscreen record whose window was reused", () => {
+	test("is dropped instead of restoring a dead window's frame", () => {
+		const calls: string[] = [];
+		const shim = fakeShim({}, calls);
+		let hwnd = 100;
+		const adapter = windowsFullscreenAdapter(() => ({ hwnd, shim }));
+
+		adapter.setFullscreen("main", true);
+		expect(calls.filter((call) => call.startsWith("style:"))).toHaveLength(1);
+
+		// The old window closed and Win32 handed its handle to a new, ordinary window.
+		hwnd = 200;
+		calls.length = 0;
+		adapter.setFullscreen("main", false);
+		expect(calls.filter((call) => call.startsWith("style:"))).toEqual([]);
+		expect(calls.filter((call) => call.startsWith("set_frame:"))).toEqual([]);
+		expect(adapter.isFullscreen("main")).toBe(false);
 	});
 });

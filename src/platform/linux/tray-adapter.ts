@@ -89,6 +89,16 @@ export function linuxTrayAdapter(options: LinuxTrayOptions = {}): LinuxTrayAdapt
 					`crust: tray.setMenu accepts at most ${TRAY_MAX_ITEMS} rows on Linux, got ${next.length}`,
 				);
 			}
+			// Rows travel to C separated by `\n`. A label containing one would split into two
+			// native rows, so a click would index the wrong item or no item at all.
+			const bad = next.findIndex((item) => item.label.includes("\n"));
+			if (bad >= 0) {
+				throw new TrayAdapterError(
+					"invalid-menu",
+					`crust: tray.setMenu item ${bad} contains a newline; the Linux menu transport ` +
+						"uses \\n to separate rows and cannot carry one inside a label",
+				);
+			}
 			const joined = next.map((item) => item.label).join("\n");
 			applied(
 				shim,

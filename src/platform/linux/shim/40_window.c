@@ -42,6 +42,9 @@ typedef struct {
 
 static shim_slot shim_slots[32];
 static int shim_slot_count;
+// The app's own webview attached to each window, so its load/eval record can be freed when GTK
+// destroys the window. Without this, closing windows for hours filled the 32-slot state table.
+static void *shim_window_web[32];
 
 static void shim_slot_release(void *win) {
 	if (!win) return;
@@ -56,6 +59,12 @@ static void shim_slot_release(void *win) {
 
 static void shim_on_destroy(void *widget, void *data) {
 	(void)data;
+	for (int i = 0; i < shim_slot_count; i++) {
+		if (shim_slots[i].win == widget) {
+			shim_state_forget(shim_window_web[i]);
+			shim_window_web[i] = 0;
+		}
+	}
 	shim_slot_release(widget);
 	shim_container_forget(widget);
 }
@@ -106,6 +115,9 @@ int shim_window_attach(void *win, void *child) {
 	// surface opened later has somewhere to be placed over the page.
 	void *box = shim_window_container(win);
 	if (!box) return 0;
+	for (int i = 0; i < shim_slot_count; i++) {
+		if (shim_slots[i].win == win) shim_window_web[i] = child;
+	}
 	// `gtk_container_add` on the container is its main child, which fills the window.
 	shim_container_add(box, child);
 	return 1;

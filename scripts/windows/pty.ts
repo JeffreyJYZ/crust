@@ -12,6 +12,7 @@
  */
 import { ptr } from "bun:ffi";
 import { cstring } from "../../src/platform/windows/cstring.ts";
+import { environmentBlock } from "../../src/platform/windows/pty-conpty.ts";
 import { conptyShim } from "../../src/platform/windows/pty-ffi.ts";
 import { featurePlugins } from "../../src/runtime-feature-plugins.ts";
 import type { PluginContext } from "../../src/plugins/define.ts";
@@ -84,6 +85,7 @@ async function rawProbe(): Promise<PtyCheck> {
 			cstring(hostShell()),
 			cstring('/d /c "echo conpty-raw"'),
 			cstring(process.env.USERPROFILE ?? process.cwd()),
+			environmentBlock(process.env as Record<string, string>),
 			100,
 			30,
 		),

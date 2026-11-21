@@ -29,7 +29,7 @@ export interface WindowsBrowserPorts {
 	/** The child window one surface lives in. */
 	child(parent: number, bounds: BrowserBounds): number;
 	move(child: number, bounds: BrowserBounds): number;
-	/** The whole surface: composite, both policies, first load. 0 when WebView2 refused it. */
+	/** The whole surface: composite, both policies, first load. -1 when WebView2 refused it. */
 	surface(child: number, url: string): number;
 	/** Point one surface at another allowlisted URL, in place. */
 	navigate(handle: number, url: string): boolean;
@@ -41,6 +41,8 @@ export interface WindowsBrowserPorts {
 	opener(url: string): { status: number; reason: string };
 	sink(pointer: number): void;
 	popupUrl(): string;
+	/** The URI of the NavigationStarting event the sink is deciding, read back during the event. */
+	navUrl(): string;
 	/** Tear one surface down: the child window goes, and WM_DESTROY releases the handle. */
 	release(child: number): void;
 }
@@ -143,6 +145,7 @@ export function realPorts(): WindowsBrowserPorts {
 			shim().shim_browser_set_sink(pointer);
 		},
 		popupUrl: () => text((dst) => shim().shim_browser_popup_url(dst, dst.length)),
+		navUrl: () => text((dst) => shim().shim_browser_nav_url(dst, dst.length)),
 		release: (child) => {
 			shim().shim_window_destroy(child);
 		},

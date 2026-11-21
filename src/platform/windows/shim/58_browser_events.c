@@ -32,6 +32,9 @@ static int g_browser_vtbl_bound;
 static void *g_popup_sink;
 static char g_popup[SHIM_POPUP_CAP];
 static int g_popups;
+// Kind 0 of the sink is a refused window, kind 1 a commit asking to be allowed.
+static char g_nav_url[SHIM_POPUP_CAP];
+static int g_navs;
 
 static shim_browser_handler g_nav_start[SHIM_MAX_SURFACES];
 static shim_browser_handler g_nav_done[SHIM_MAX_SURFACES];
@@ -68,7 +71,25 @@ static void shim_record_popup(void *args, void *web) {
 	if (vt && shim_slot_ok(vt, SHIM_SLOT_NEWWINDOW_PUT_HANDLED))
 		((int (*)(void *, int))vt[SHIM_SLOT_NEWWINDOW_PUT_HANDLED])(args, 1);
 	g_popups++;
-	if (g_popup_sink) ((int (*)(int, void *))g_popup_sink)(g_popups, web);
+	if (g_popup_sink) ((int (*)(int, int, void *))g_popup_sink)(0, g_popups, web);
+}
+
+// Record a NavigationStarting target and ask the page; a throwing listener refuses the commit.
+static int shim_nav_commit(void *args, void *sender) {
+	void **vt = shim_object_vtbl(args);
+	shim_wchar *text = 0;
+	g_nav_url[0] = 0;
+	if (vt && shim_slot_ok(vt, SHIM_SLOT_NAV_ARGS_GET_URI) &&
+	    ((int (*)(void *, shim_wchar **))vt[SHIM_SLOT_NAV_ARGS_GET_URI])(args, &text) >= 0 &&
+	    text) {
+		int length = 0;
+		while (text[length]) length++;
+		shim_utf8(text, length, g_nav_url, SHIM_POPUP_CAP);
+		shim_browser_free(text);
+	}
+	g_navs++;
+	if (!g_popup_sink) return 1;
+	return ((int (*)(int, int, void *))g_popup_sink)(1, g_navs, sender) == 0 ? 0 : 1;
 }
 
 // Every handler shares one Invoke: an event handler is called (self, sender, args), so `sender` is the
@@ -77,6 +98,13 @@ static shim_i64 browser_invoke(void *self, void *sender, void *args) {
 	shim_browser_handler *handler = (shim_browser_handler *)self;
 	if (handler->popup) {
 		shim_record_popup(args, sender);
+		return 0;
+	}
+	if (handler->loading == 1 && !shim_nav_commit(args, sender)) {
+		void **vt = shim_object_vtbl(args);
+		// Cancel leaves the previous URL and never sets loading.
+		if (vt && shim_slot_ok(vt, SHIM_SLOT_NAV_ARGS_PUT_CANCEL))
+			((int (*)(void *, int))vt[SHIM_SLOT_NAV_ARGS_PUT_CANCEL])(args, 1);
 		return 0;
 	}
 	shim_surface_set_loading(handler->handle, handler->loading);
@@ -150,14 +178,17 @@ void shim_browser_set_sink(void *sink) { g_popup_sink = sink; }
 
 int shim_browser_popups(void) { return g_popups; }
 
-// The URL of the last refused new window, as UTF-8 into a caller buffer; the full length.
-int shim_browser_popup_url(char *dst, int cap) {
+// Both URL readbacks copy a static buffer into the caller, answering the full length.
+static int shim_url_copy(char *dst, int cap, const char *src) {
 	int length = 0;
 	int take;
 	if (!dst || cap <= 0) return 0;
-	while (g_popup[length]) length++;
+	while (src[length]) length++;
 	take = length < cap - 1 ? length : cap - 1;
-	for (int i = 0; i < take; i++) dst[i] = g_popup[i];
+	for (int i = 0; i < take; i++) dst[i] = src[i];
 	dst[take] = 0;
 	return length;
 }
+
+int shim_browser_popup_url(char *dst, int cap) { return shim_url_copy(dst, cap, g_popup); }
+int shim_browser_nav_url(char *dst, int cap) { return shim_url_copy(dst, cap, g_nav_url); }

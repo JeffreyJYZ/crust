@@ -57,7 +57,8 @@ describe("the vtable guard", () => {
 		// DoPreview 5 and Unload 6 on a handler, and the browser surface's five: get_Source and
 		// get_DocumentTitle, the can-go-back/forward read, and the new-window argument's get_Uri and
 		// put_Handled.
-		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(24);
+		// NavigationStarting adds get_Uri and put_Cancel, each guarded the same way.
+		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(26);
 		for (const slot of [
 			"SHIM_SLOT_ENV_CREATE_CONTROLLER",
 			"SHIM_SLOT_CONTROLLER_WEBVIEW",
@@ -137,7 +138,8 @@ describe("an unreadable object is a verdict, not a fault", () => {
 		// sites over seven interfaces (`54_preview.c`/`55_preview_init.c`), each taken through the
 		// guard because a handler is the same untrusted object a WebView2 controller is. The browser
 		// surface adds four: the string read, the flag read, the new-window argument and the event add.
-		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(26);
+		// NavigationStarting adds the argument's vtable read and the cancel call's.
+		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(28);
 	});
 });
 

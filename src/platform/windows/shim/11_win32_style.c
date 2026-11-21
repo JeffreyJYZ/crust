@@ -50,10 +50,21 @@ typedef struct {
 #define SHIM_WS_EX_TOPMOST 0x00000008u
 #define SHIM_WS_EX_LAYERED 0x00080000u
 #define SHIM_LWA_ALPHA 0x00000002u
-// SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE: a z-order change that moves and focuses nothing.
-#define SHIM_SWP_TOPMOST 0x0013u
-// The same plus SWP_FRAMECHANGED (0x0020): a style write that also repaints the non-client area.
-#define SHIM_SWP_FRAME_ONLY 0x0034u
+// The SWP_* bits the style calls use, spelled out from winuser.h. A style write passes zeroes for
+// x/y/w/h and HWND_TOP for hWndInsertAfter, so every "leave it alone" bit must be set explicitly —
+// without NOSIZE/NOMOVE the zeroes are taken as a new 0,0 position and a 0x0 size.
+#define SHIM_SWP_NOSIZE 0x0001u
+#define SHIM_SWP_NOMOVE 0x0002u
+#define SHIM_SWP_NOZORDER 0x0004u
+#define SHIM_SWP_NOACTIVATE 0x0010u
+#define SHIM_SWP_FRAMECHANGED 0x0020u
+// NOSIZE | NOMOVE | NOACTIVATE: a z-order change that moves and focuses nothing (0x13). The z-order
+// is the one thing a topmost write must change, so NOZORDER is deliberately absent here.
+#define SHIM_SWP_TOPMOST (SHIM_SWP_NOSIZE | SHIM_SWP_NOMOVE | SHIM_SWP_NOACTIVATE)
+// A style write repaints the frame and changes nothing else: no move, no resize, no z-order, no
+// focus. FRAMECHANGED alone is not enough — the three "no change" bits are what keep the window at
+// its current position, size and depth while the non-client area is redrawn.
+#define SHIM_SWP_FRAME_ONLY (SHIM_SWP_NOSIZE | SHIM_SWP_NOMOVE | SHIM_SWP_NOZORDER | SHIM_SWP_NOACTIVATE | SHIM_SWP_FRAMECHANGED)
 #define SHIM_HWND_TOPMOST ((shim_h)-1)
 #define SHIM_HWND_NOTOPMOST ((shim_h)-2)
 #define SHIM_MONITOR_DEFAULTTONEAREST 2u

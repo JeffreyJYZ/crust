@@ -22,7 +22,10 @@ export interface LinuxBrowserShim {
 	shim_browser_watch_popups?(web: bigint): number;
 	/** Deny every permission request the view's page makes: capture, geolocation, clipboard. */
 	shim_browser_deny_capture?(web: bigint): number;
+	/** Gate every committed navigation of one view, including redirects and the first load. */
+	shim_browser_watch_nav?(web: bigint): number;
 	shim_browser_set_sink?(sink: number): void;
+	shim_browser_set_decision_sink?(sink: number): void;
 	shim_browser_popups?(): number;
 	shim_browser_popup_url?(dst: Uint8Array, cap: number): number;
 }

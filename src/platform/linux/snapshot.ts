@@ -42,6 +42,9 @@ export interface SnapshotBytes {
 export interface LinuxSnapshotShim {
 	ready(): boolean;
 	take(view: bigint): number;
+	/** The generation the latest take owns, and the generation that published the result. */
+	generation(): number;
+	resultGeneration(): number;
 	state(): number;
 	failure(): string;
 	read(): SnapshotBytes;
@@ -52,6 +55,8 @@ export function linuxSnapshotShim(native: LinuxShim = shim().symbols): LinuxSnap
 	return {
 		ready: () => Number(native.shim_snapshot_ready?.() ?? 0) === 1,
 		take: (view) => Number(native.shim_snapshot_take?.(view) ?? SNAPSHOT_STATUS.unavailable),
+		generation: () => Number(native.shim_snapshot_generation?.() ?? 0),
+		resultGeneration: () => Number(native.shim_snapshot_result_generation?.() ?? 0),
 		state: () => Number(native.shim_snapshot_state?.() ?? 0),
 		failure: () => String(native.shim_snapshot_failure?.() ?? ""),
 		read: () => {
@@ -124,9 +129,18 @@ export async function takeLinuxSnapshot(
 				"handler-error",
 				`crust: window.capture did not start: ${snapshotStartReason(status)}`,
 			);
+		// The callback that answers must belong to this take. `inFlight` only stops a second JS
+		// call while this promise is pending; once a timeout clears it, a late callback from this
+		// take could otherwise be read by the next one.
+		const generation = native.generation();
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
 			const state = native.state();
+			if (state !== 0 && native.resultGeneration() !== generation)
+				throw new WindowAdapterError(
+					"handler-error",
+					"crust: window.capture was answered by a snapshot from an earlier capture",
+				);
 			if (state === 1) return snapshotFrom(native.read());
 			if (state === 2)
 				throw new WindowAdapterError(
