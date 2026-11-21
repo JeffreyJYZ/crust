@@ -162,8 +162,8 @@ one program it may run (absent is the login shell, and `open`'s `program` is acc
 resolves to that same one), and a window label needs the `pty:open` action — a `shell` grant never
 implies it. Commands are `open/write/resize/close/list`; output arrives as `pty-data` events whose
 `chunk` is **base64** (decode to bytes, never to text), and `pty-exit` carries the child's own code
-and signal. macOS and Linux run it over `Bun.Terminal`; on Windows `pty.open` answers
-`not-implemented` naming `CreatePseudoConsole` until the ConPTY half lands.
+and signal. macOS and Linux run it over `Bun.Terminal`; Windows runs it over a ConPTY
+pseudo-console, with `pty.shell` (`cmd.exe` by default) as the program.
 
 A namespace still needs its own capability and grant before a page may call it — see `security`
 above. For `store.get`:
