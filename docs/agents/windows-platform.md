@@ -139,7 +139,8 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 - **All three initialisers are tried because the choice belongs to the handler** — `IInitializeWithStream` first, then `IInitializeWithFile`, then `IInitializeWithItem`; a refused `QueryInterface` means "not this one", so only three refusals are `preview-failed`, and the Office handlers are the ones that need the item.
 - **The four IIDs are decoded back to their printed GUIDs by `preview-ids.test.ts`** — a byte in the wrong order still compiles and still runs, then answers `E_NOINTERFACE` and looks exactly like a handler without that initialiser; there is no other way to check them off Windows.
 - **`shlwapi` is bound on first use, not at launch** — `shim_preview_ready` loads it, `PREFLIGHT` names the five entry points, and `preview.ts` refuses a path that is not a file before any COM call, so `not-a-file` never reaches Windows at all.
-- **On the runner the text handler is the verdict and the image handler is printed** — `.txt` previews through a handler Windows ships, while a server image may register none for `.png`, and a red job over an optional handler would blame this layer for the image's composition.
+- **On the runner the text handler is the verdict and the image handler is printed** — measured on `windows-latest` 2026-11-21 (`44858804343`): `.txt` gave `host HWND 393620 inside 720920 … DoPreview answered`, moved on a resize and was gone after `hide`, while `.png` answered `no-handler` — a server image registers no image preview handler, so a red job over it would blame this layer for the image's composition.
+- **A file type with no handler is the ordinary case, not an edge** — `.crustnopreview` answered `no-handler` on the same run, which is why the status is its own value rather than a generic failure: the page has to be able to say "this file has no preview" without implying crust broke.
 
 ## What the next lane must do first
 
