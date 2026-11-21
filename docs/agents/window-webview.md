@@ -25,5 +25,5 @@
 
 ## What the runtime still owes
 
-- **`src/runtime-plugins.ts:184` still calls `network.darwinNetworkAdapter()` with no configuration**, so `install` keeps refusing and `registered` stays false. The one-line fix is `network.darwinNetworkAdapter({ configuration: darwin.webviewConfiguration })`.
+- **RESOLVED — the network adapter is wired with the configuration.** No `darwinNetworkAdapter()` call remains in `src/runtime-plugins.ts`; wiring lives in `src/runtime-network.ts:22`, which passes the shared `webviewConfiguration()`. `install` no longer refuses for lack of a configuration. The second half of this old note (lazy `ready()` in `createNetworkPlugin`) is a separate item, not part of this file's wiring claim.
 - **Even with that line, the window open when the page calls `network.setRules` is not covered**, because `createNetworkPlugin` registers lazily on the first `rules`/`setRules` call — which is after the first webview exists. Covering it needs `ready()` called eagerly in `createNetworkPlugin` (`src/plugins/network.ts`), which is outside this lane.

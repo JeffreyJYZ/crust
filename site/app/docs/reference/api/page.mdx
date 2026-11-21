@@ -4,7 +4,7 @@ Three entry points, all real `exports` in `package.json`, so they resolve in an 
 
 ## Command namespaces
 
-A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. The 38 built-in namespaces are documented by area, one page each; `updater` joins them when the config has an `updater` section, `pty` when it has a `pty` one ([Pty](/docs/guides/pty)), and `testing` only when the process starts with `CRUST_TEST=1`:
+A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. There are 34 namespaces registered on every start plus five conditional ones — `app`, `single-instance`, `pty`, `updater` and `testing` — for 39 in all; `updater` joins when the config has an `updater` section, `pty` when it has a `pty` one ([Pty](/docs/guides/pty)), and `testing` only when the process starts with `CRUST_TEST=1`. They are documented by area, one page each:
 
 - [`window`](/docs/reference/api-window), `window-state`, `positioner` — a window's life, its remembered frame, and nine placements.
 - [`fs`](/docs/reference/api-fs), `store`, `database`, `keychain`, `shell`, `sidecar`, `stronghold`, `pty` — text files and their scope, a JSON key-value file, SQLite, OS-protected secrets, an allowlisted program, a bundled helper process, an encrypted store, and a real terminal ([Pty](/docs/guides/pty)).

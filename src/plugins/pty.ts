@@ -28,6 +28,7 @@ import {
 	type PtyOptions,
 	ptyFailure,
 } from "./pty-types";
+import { homeDir, shut, unknown } from "./pty-helpers.ts";
 import { signalName } from "./shell-stream";
 
 /** What `signalName` reads: Bun's own `Signals` union, which a backend may answer as a plain string. */
@@ -193,25 +194,4 @@ export function createPtyPlugin(
 			}),
 		},
 	});
-}
-
-/** Where a terminal starts: the user's home on either platform, else the process's own directory. */
-function homeDir(): string {
-	return process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
-}
-
-function unknown(command: string, id: string): PtyFailure {
-	return ptyFailure(
-		"unknown-terminal",
-		`pty.${command}: ${JSON.stringify(id)} is not a handle this run opened`,
-	);
-}
-
-function shut(command: string, id: string, error?: unknown): PtyFailure {
-	const detail =
-		error === undefined ? "" : `: ${error instanceof Error ? error.message : String(error)}`;
-	return ptyFailure(
-		"terminal-closed",
-		`pty.${command}: terminal ${JSON.stringify(id)} is closed${detail}`,
-	);
 }

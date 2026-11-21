@@ -38,7 +38,7 @@ typedef struct {
 
 static te_block_descriptor te_desc;
 static te_block_t te_blocks[TE_SLOTS];
-static int te_blocks_ready;
+static int te_block_ready;
 
 // The JSCallback bun:ffi hands out: kind, bytes, length, request id.
 static void (*te_sink)(int kind, const char *bytes, long long length, long long id) = 0;

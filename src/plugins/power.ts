@@ -169,7 +169,6 @@ export function createPowerPlugin(
 			/** Release the assertion; `released: false` means none was held, not that the OS refused. */
 			sleepAllow: async (): Promise<SleepAllowResult | PowerFailure | NotImplemented> => {
 				if (!adapter) return missing("sleepAllow");
-				if (held === undefined) return { ok: true, released: false };
 				const answer = await adapter.allowSleep();
 				if (!answer.ok) return { ok: false, code: "handler-error", message: answer.reason };
 				held = undefined;
