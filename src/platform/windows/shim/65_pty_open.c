@@ -87,7 +87,11 @@ int shim_pty_open(const char *shell, const char *args, const char *cwd, int cols
 		shim_pty_fail("InitializeProcThreadAttributeList returned FALSE", GetLastError());
 		return -1;
 	}
-	if (!UpdateProcThreadAttribute(list, 0, SHIM_PTY_ATTRIBUTE, &console, sizeof(console), 0, 0)) {
+	// The value is the HPCON itself, not its address. Microsoft's own pseudoconsole sample passes
+	// `hPC, sizeof(HPCON)`; with `&console` CreateProcessW still answers TRUE, the child runs, the
+	// console host holds both pipes and no client ever attaches — measured as a silent pty on
+	// windows-latest 2026-11-21.
+	if (!UpdateProcThreadAttribute(list, 0, SHIM_PTY_ATTRIBUTE, console, sizeof(console), 0, 0)) {
 		DeleteProcThreadAttributeList(list);
 		HeapFree(heap, 0, list);
 		ClosePseudoConsole(console);
