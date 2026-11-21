@@ -68,6 +68,8 @@ refuses a file url: only https is fetched unless updater.allowFileUrl is true
 
 The second carries `requires: "updater.allowFileUrl"`. `file:` exists for a test that serves a local artifact; a shipped app leaves it off, so a page cannot point the updater at a path on disk.
 
+Both `check` and `download` follow up to five `https` redirects, because `https://github.com/<owner>/<repo>/releases/latest/download/<asset>` answers 302 to its object store. Every hop is checked and a hop to `http:` is refused with `only https is followed`, so the scheme rule covers the bytes actually fetched, not just the URL handed in. The security boundary is the pinned `updater.pubkey` over the artifact bytes rather than the host: a redirect changes where bytes come from, and the signature still decides whether they are the update.
+
 ### A signature needs a pinned key
 
 ```js

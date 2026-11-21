@@ -58,16 +58,16 @@ Write the three outputs into the JSON the update endpoint serves:
 }
 ```
 
-Pin that same `pubkey` in `crust.config.ts`:
+Pin that same `pubkey` in `crust.config.ts`, and point `endpoint` at **one manifest URL that never changes**:
 
 ```ts
 updater: {
-  endpoint: "https://updates.example.com/0.2.0.json",
+  endpoint: "https://updates.example.com/latest.json",
   pubkey: "the base64 string printed above",
 },
 ```
 
-A manifest carrying a different `pubkey` is refused as `bad-manifest`, so a hostile endpoint cannot swap in its own key. Host one immutable JSON per version at a stable URL; a URL that serves a new manifest under an old version breaks clients that already pinned the old key.
+A manifest carrying a different `pubkey` is refused as `bad-manifest`, so a hostile endpoint cannot swap in its own key. Overwrite that one JSON each release: the version moves, the URL and the key do not. The pubkey is the thing that never changes; a versioned file name such as `0.2.0.json` is the trap, because an installed app would have to ship a new build just to learn that a new build exists. `check` also follows up to five `https` redirects, so the feed may be a GitHub Release asset — `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` answers 302 and is followed, while a hop to `http:` is refused.
 
 Two constraints from the updater contract matter here. `install` accepts only a receipt from a `download` this same run verified, so the bytes at `url` must be the exact bytes the signature covers — extract inside the download, never before it. And a signature is over an artifact's bytes, so sign the archive, not the `.app` tree; a tree has no single byte sequence to sign. The full contract is in [Updater](/docs/guides/updater).
 

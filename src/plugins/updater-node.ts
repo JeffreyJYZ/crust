@@ -21,7 +21,7 @@ import { dirname, join } from "node:path";
 
 import { isZip, readArchive, type Archive } from "./updater-archive";
 import { fileNameFor, UpdaterAdapterError } from "./updater-args";
-import { readBounded, redirectFailure } from "./updater-fetch";
+import { fetchFollowing, readBounded } from "./updater-fetch";
 import type { UpdaterAdapter } from "./updater-types";
 
 /**
@@ -48,28 +48,23 @@ async function digestTree(hash: Hash, path: string, name: string): Promise<void>
 }
 
 /**
- * How many bytes one artifact may be, and the redirect refusal: both live in `updater-fetch` so the
+ * How many bytes one artifact may be, and the redirect policy: both live in `updater-fetch` so the
  * adapter stays a thin seam.
  */
 
 export function nodeUpdaterAdapter(): UpdaterAdapter {
 	return {
 		async fetchJson(url) {
-			const response = await fetch(url, {
-				headers: { accept: "application/json" },
-				redirect: "manual",
-			});
-			const redirect = redirectFailure(url, response);
-			if (redirect !== undefined) throw redirect;
+			// A feed on GitHub Releases answers 302 to the object store, so the manifest follows the
+			// same bounded https-only hops `download` does instead of failing on the normal host.
+			const response = await fetchFollowing(url, { headers: { accept: "application/json" } });
 			if (!response.ok) {
 				throw new UpdaterAdapterError("check-failed", `updater: ${url} ${response.status}`);
 			}
 			return await response.json();
 		},
 		async download(url, directory) {
-			const response = await fetch(url, { redirect: "manual" });
-			const redirect = redirectFailure(url, response);
-			if (redirect !== undefined) throw redirect;
+			const response = await fetchFollowing(url);
 			if (!response.ok) {
 				throw new UpdaterAdapterError(
 					"download-failed",
