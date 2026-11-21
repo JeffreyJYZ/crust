@@ -2,7 +2,7 @@
  * `crust:window`'s argument reading and typed failures. A page payload is whatever the bridge parsed, never a checked value, so every reader answers `undefined` rather than throwing and every failure is a shape a page can branch on. Nothing here touches an adapter.
  */
 
-import { notImplemented, type NotImplemented } from "./define";
+import { type NotImplemented, notImplemented } from "./define";
 import {
 	WindowAdapterError,
 	type WindowCreateOptions,
@@ -97,7 +97,13 @@ export function parseCreate(
 ): { ok: true; options: WindowCreateOptions } | { ok: false; failure: WindowFailure } {
 	const label = readLabel(args);
 	if (label === undefined) return { ok: false, failure: invalidLabel(args) };
-	const source = args as { title?: unknown; width?: unknown; height?: unknown; url?: unknown };
+	const source = args as {
+		title?: unknown;
+		width?: unknown;
+		height?: unknown;
+		url?: unknown;
+		activate?: unknown;
+	};
 	const options: WindowCreateOptions = { label };
 
 	// An absent title is the platform's default; a present non-string is refused
@@ -137,6 +143,26 @@ export function parseCreate(
 			return { ok: false, failure: invalidUrl(args, source.url) };
 		}
 		options.url = source.url;
+	}
+
+	// `activate: false` is the passive create. A non-boolean is refused rather than coerced: a
+	// truthy `"false"` from a page would otherwise order the window forward and steal the front,
+	// which is the exact behaviour the flag exists to avoid.
+	if (source.activate !== undefined) {
+		if (typeof source.activate !== "boolean") {
+			return {
+				ok: false,
+				failure: {
+					ok: false,
+					code: "invalid-value",
+					message:
+						"crust: window.create activate must be a boolean when given, got " +
+						`${JSON.stringify(source.activate)}`,
+					label,
+				},
+			};
+		}
+		options.activate = source.activate;
 	}
 
 	return { ok: true, options };

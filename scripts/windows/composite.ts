@@ -32,7 +32,7 @@ export async function compositeSteps(): Promise<number> {
 	expect(!stageHr("com_init", () => shim.shim_com_init()));
 	expect(stage("register_class", () => shim.shim_register_class(cstring(APP))) !== 0);
 	const hwnd = stage("window_new", () =>
-		shim.shim_window_new(cstring("crust composite"), 480, 320, cstring(APP)),
+		shim.shim_window_new(cstring("crust composite"), 480, 320, cstring(APP), 1),
 	);
 	if (hwnd === 0) {
 		skipped("no window, so the composite cannot run");

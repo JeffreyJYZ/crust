@@ -6,14 +6,14 @@
  */
 import { release } from "node:os";
 import type { WindowOptions } from "@/app.ts";
-import type { WindowMaterial } from "@/config";
 import { CrustError } from "@/bridge/errors";
+import type { WindowMaterial } from "@/config";
 import type { WindowsShim } from "./backend.ts";
 import { cstring } from "./cstring.ts";
 import {
+	absoluteUrl,
 	DEFAULT_HEIGHT,
 	DEFAULT_WIDTH,
-	absoluteUrl,
 	hresult,
 	objectStateName,
 } from "./platform-config.ts";
@@ -34,7 +34,10 @@ export interface OpenedWindow {
 }
 
 /** `minHeight` and `material` are validated on the config window but `WindowOptions` has not caught up. */
-export type MinSizeOptions = WindowOptions & { minHeight?: number; material?: WindowMaterial };
+export type MinSizeOptions = WindowOptions & {
+	minHeight?: number;
+	material?: WindowMaterial;
+};
 
 /**
  * A named material on a build too old to apply it is a typed failure, never a silent grey window.
@@ -74,7 +77,15 @@ export function openWindow(
 	const width = Math.max(options.width ?? DEFAULT_WIDTH, minWidth);
 	const height = Math.max(options.height ?? DEFAULT_HEIGHT, minHeight);
 	const hwnd = Number(
-		shim.shim_window_new(cstring(options.title ?? label), width, height, cstring(appName)),
+		shim.shim_window_new(
+			cstring(options.title ?? label),
+			width,
+			height,
+			cstring(appName),
+			// `activate: false` is the passive create: SW_SHOWNOACTIVATE shows the window without
+			// making it the active window, so a probe never takes the foreground.
+			options.activate === false ? 0 : 1,
+		),
 	);
 	if (!hwnd) {
 		throw new Error(

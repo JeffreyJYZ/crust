@@ -6,8 +6,14 @@
  * either file passing the line cap. Every refusal is a typed value, never a throw.
  */
 
+import {
+	type AccessibilityAdapter,
+	AX_STATUS,
+	type AxElementReport,
+	type NeedsActivationFailure,
+} from "./accessibility-types";
+import { activationRefused, demandActivation } from "./activation-policy";
 import { type NotImplemented, notImplemented } from "./define";
-import { type AccessibilityAdapter, AX_STATUS, type AxElementReport } from "./accessibility-types";
 
 export interface TrustedResult {
 	ok: true;
@@ -37,7 +43,7 @@ export interface ElementCountResult {
 export interface TrustCommandResults {
 	trusted: () => Promise<TrustedResult | NotImplemented>;
 	prompt: () => Promise<PromptResult | PromptFailure | NotImplemented>;
-	elementCount: () => Promise<ElementCountResult | NotImplemented>;
+	elementCount: () => Promise<ElementCountResult | NeedsActivationFailure | NotImplemented>;
 }
 
 export function trustCommands(
@@ -71,9 +77,27 @@ export function trustCommands(
 		 * its own pid is answered by AppKit locally rather than by the system AX server, so an empty
 		 * window list can come back while the window is on screen — the refusal says that instead of
 		 * claiming no window exists.
+		 *
+		 * `testing.activation` reaches this read first: `none` refuses by name rather than handing back
+		 * the empty tree activation would explain, and `on-demand` raises the app once, because an
+		 * inactive app has no window on the active Space to count.
 		 */
-		elementCount: async (): Promise<ElementCountResult | NotImplemented> => {
+		elementCount: async (): Promise<
+			ElementCountResult | NeedsActivationFailure | NotImplemented
+		> => {
 			if (!adapter) return missing("elementCount");
+			if (activationRefused()) {
+				return {
+					ok: false,
+					code: "needs-activation",
+					message:
+						"accessibility.elementCount needs the app active: AppKit lists only windows on " +
+						'the active Space, and testing.activation is "none", so this launch never ' +
+						'activated. Use "on-demand" (activates once here) or "auto", or read the page ' +
+						"with testing.query, which needs no activation.",
+				};
+			}
+			demandActivation();
 			const report: AxElementReport = await adapter.elementCount();
 			if (report.status === AX_STATUS.counted) return { ok: true, count: report.count };
 			if (report.status === AX_STATUS.noWindowsListed) {

@@ -17,7 +17,11 @@ export function priorityOf(value: unknown): AnnouncePriority {
  * was empty — a process reading its own tree can get that while a window is on screen — and
  * `refused` means the AX API itself said no.
  */
-export const AX_STATUS = { counted: 0, noWindowsListed: 1, refused: 2 } as const;
+export const AX_STATUS = {
+	counted: 0,
+	noWindowsListed: 1,
+	refused: 2,
+} as const;
 
 export interface AxElementReport {
 	/** Children of the app's first window; 0 when there is nothing to count. */
@@ -48,7 +52,18 @@ export interface FocusReport {
 /** The refusal shape the page-facing commands answer instead of throwing. */
 export interface AccessibilityFailure {
 	ok: false;
-	code: "bad-request" | "handler-error";
+	code: "bad-request" | "handler-error" | "needs-activation";
+	message: string;
+}
+
+/**
+ * What a tree read answers when `testing.activation` is `"none"`: not an empty tree, and not a
+ * `not-implemented` about the platform, but the one thing the caller can act on — the app was never
+ * activated, so AppKit lists no window on the active Space.
+ */
+export interface NeedsActivationFailure {
+	ok: false;
+	code: "needs-activation";
 	message: string;
 }
 

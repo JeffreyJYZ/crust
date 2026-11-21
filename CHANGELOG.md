@@ -4,6 +4,13 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [Unreleased]
+
+### Added
+
+- **A probe can drive an app without taking the front.** `testing.activation` in `crust.config.ts` chooses `"auto"` (today's launch), `"none"` (never activates; `accessibility.elementCount` answers a typed `needs-activation` instead of the empty tree an inactive app gives) or `"on-demand"` (activates once for the first accessibility read that needs it). Page-level `testing.*` and `window.capture` work in all three modes.
+- **`window.create { activate: false }`** shows a window with `orderFrontRegardless` (macOS), `SW_SHOWNOACTIVATE` (Windows) or the plain show (Linux) and never makes it key or brings the app forward. Proven by a real probe on a Mac: capture and drive a page while the frontmost app stays the same.
+
 ## [0.2.8] — 2026-11-21
 
 ### Fixed

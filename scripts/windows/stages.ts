@@ -17,12 +17,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cstring } from "../../src/platform/windows/cstring.ts";
 import { compile } from "../../src/platform/windows/ffi.ts";
+import { compositeSteps } from "./composite.ts";
+import { frameSteps } from "./frame.ts";
 import {
 	addr,
 	affinityReport,
 	handlerReport,
-	lateReport,
 	hex,
+	lateReport,
 	objectReport,
 	skipped,
 	slotReport,
@@ -31,8 +33,6 @@ import {
 	threadReport,
 	webReport,
 } from "./report.ts";
-import { compositeSteps } from "./composite.ts";
-import { frameSteps } from "./frame.ts";
 
 const APP = "crust-stages";
 const USER_DATA = join(tmpdir(), "crust-stages-webview2");
@@ -57,7 +57,7 @@ async function steps(mode: 1 | 2): Promise<number> {
 	expect(stage("register_class", () => shim.shim_register_class(cstring(APP))) !== 0);
 
 	const hwnd = stage("window_new", () =>
-		shim.shim_window_new(cstring("crust stages"), 480, 320, cstring(APP)),
+		shim.shim_window_new(cstring("crust stages"), 480, 320, cstring(APP), 1),
 	);
 	expect(hwnd !== 0);
 	if (hwnd === 0) {
@@ -160,11 +160,15 @@ async function steps(mode: 1 | 2): Promise<number> {
 export async function runStages(): Promise<{ code: number; frame: number }> {
 	let code = 0;
 	for (const mode of ["1", "2", "3"]) {
-		const child = Bun.spawn([process.execPath, import.meta.path, mode], { stdout: "inherit" });
+		const child = Bun.spawn([process.execPath, import.meta.path, mode], {
+			stdout: "inherit",
+		});
 		const ended = await child.exited;
 		if (ended !== 0) code = ended;
 	}
-	const frameChild = Bun.spawn([process.execPath, import.meta.path, "4"], { stdout: "inherit" });
+	const frameChild = Bun.spawn([process.execPath, import.meta.path, "4"], {
+		stdout: "inherit",
+	});
 	const frame = await frameChild.exited;
 	console.log(`frame     child ended with exit ${frame}`);
 	return { code, frame };

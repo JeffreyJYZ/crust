@@ -13,6 +13,7 @@ import { validateFs } from "./validate-fs.ts";
 import { validateLogging } from "./validate-logging.ts";
 import { validateSecurity } from "./validate-security.ts";
 import { validateShell } from "./validate-shell.ts";
+import { validateTesting } from "./validate-testing.ts";
 import { validateUpdater } from "./validate-updater.ts";
 import { validateWindows } from "./validate-windows.ts";
 import { Validator } from "./validator.ts";
@@ -23,6 +24,7 @@ export * from "./types.ts";
 const ROOT_KEYS = [
 	"app",
 	"windows",
+	"testing",
 	"dev",
 	"build",
 	"plugins",
@@ -49,6 +51,7 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		v.only(root, "", ROOT_KEYS);
 		validateApp(v, root.app);
 		validateWindows(v, root.windows);
+		validateTesting(v, root.testing);
 		validateDev(v, root.dev);
 		validateBuild(v, root.build);
 

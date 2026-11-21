@@ -2,9 +2,9 @@
  * The app surface's types, kept apart from the class so `app.ts` reads as the lifecycle it is. `Platform` is the whole native surface crust depends on, one implementation per OS; `app.ts` re-exports every name here.
  */
 
-import type { CrustConfig } from "@/config";
-import type { BridgeTarget } from "@/bridge/server.ts";
 import { CrustError } from "@/bridge/errors";
+import type { BridgeTarget } from "@/bridge/server.ts";
+import type { CrustConfig } from "@/config";
 
 /** Where a window points and how it is sized. Mirrors a config window entry. */
 export interface WindowOptions {
@@ -14,6 +14,13 @@ export interface WindowOptions {
 	height?: number;
 	minWidth?: number;
 	title?: string;
+	/**
+	 * `false` shows the window without making it key, frontmost or active — the passive create a
+	 * probe uses so it never steals the front. Absent (or `true`) is the platform's ordinary create.
+	 * macOS: `orderFrontRegardless` and no activation selector; Windows: `SW_SHOWNOACTIVATE`;
+	 * Linux: the plain show, which never presents.
+	 */
+	activate?: boolean;
 }
 
 /** A created window. The label is what `Platform.window(label)` looks it up by. */
