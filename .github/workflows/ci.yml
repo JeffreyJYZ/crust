@@ -219,6 +219,26 @@ jobs:
             - name: e2e single from binary
               if: steps.window.outputs.available == 'true'
               run: bun run e2e:dev:binary
+
+            # The preview panel: a real `.docx` opens in the system QuickLook panel, `hide()` closes
+            # it, and a path outside the app's `fs.scope` prefix is refused by name. The plugin is
+            # constructed inside a running app, because a panel is a window of an `NSApplication` —
+            # a bare Bun process is not a test of it. It builds one scratch app, so it costs about
+            # a bundle build plus a launch, the same order as `e2e`.
+            - name: e2e preview
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:preview
+
+            # The embedded browser surface: a real second WKWebView loading a local page, a capture
+            # that moves with `setBounds`, a foreign origin refused, `window.open` handing its URL
+            # to the opener, and a capture denial stopping `getUserMedia` before TCC. The capture is
+            # the webview's own snapshot, so no screen-recording grant is involved. It launches the
+            # runtime from source in a scratch project and builds nothing, which makes it the
+            # cheapest windowed step here; it also caught a real defect before it ever ran on CI.
+            - name: e2e browser
+              if: steps.window.outputs.available == 'true'
+              run: bun run e2e:browser
+
             # This note exists so the ordering — after the install, after `bun check`, behind
             # the window probe — does not have to be rediscovered.
 
