@@ -52,13 +52,13 @@ describe("the macOS surface", () => {
 		expect(surface.visible()).toBe(false);
 	});
 
-	test("an ownerless panel is refused instead of outliving every window", () => {
+	test("an ownerless panel answers preview-failed instead of outliving every window", () => {
 		const { native } = fakeNative();
 		native.owner = () => 0;
 		expect(darwinSurface(native).show({ path: "/tmp/a.docx", width: 0, height: 0 })).toEqual({
 			ok: false,
+			code: "preview-failed",
 			message: "preview.show needs an open owner window to float over",
-			requires: "QLPreviewPanel",
 		});
 	});
 
@@ -70,7 +70,12 @@ describe("the macOS surface", () => {
 			return label === "side" ? 99 : 0;
 		};
 		expect(
-			darwinSurface(native).show({ path: "/tmp/a.docx", width: 0, height: 0, window: "side" }),
+			darwinSurface(native).show({
+				path: "/tmp/a.docx",
+				width: 0,
+				height: 0,
+				window: "side",
+			}),
 		).toEqual({ ok: true, window: 4242 });
 		expect(labels).toEqual(["side"]);
 	});
@@ -88,7 +93,7 @@ describe("the macOS surface", () => {
 		});
 	});
 
-	test("a refused show carries the reason rather than reporting success", () => {
+	test("a refused show is a typed preview-failed carrying the native reason", () => {
 		const { native } = fakeNative();
 		native.show = () => ({
 			ok: false,
@@ -99,8 +104,21 @@ describe("the macOS surface", () => {
 			width: 0,
 			height: 0,
 		});
-		expect(answer).toMatchObject({ ok: false, requires: "QLPreviewPanel" });
-		expect((answer as { message: string }).message).toContain("missing orderOut:");
+		expect(answer).toEqual({
+			ok: false,
+			code: "preview-failed",
+			message: "QLPreviewPanel is missing orderOut:",
+		});
+	});
+
+	test("a refused hide is a typed preview-failed, not a missing panel", () => {
+		const { native } = fakeNative();
+		native.hide = () => ({ ok: false, reason: "orderOut: was refused" });
+		expect(darwinSurface(native).hide()).toEqual({
+			ok: false,
+			code: "preview-failed",
+			message: "orderOut: was refused",
+		});
 	});
 });
 

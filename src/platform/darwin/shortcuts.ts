@@ -115,8 +115,12 @@ export interface DispatchableShortcuts extends ShortcutAdapter {
 	dispatch(accelerator: string): boolean;
 }
 
-/** The native half of `crust:shortcut`, as an injected adapter. */
-export function darwinShortcutsAdapter(): DispatchableShortcuts {
+/**
+ * The native half of `crust:shortcut`, as an injected adapter. An optional unit lets a test drive
+ * the failure-then-retry path without Carbon; production binds the compiled unit lazily as before.
+ */
+export function darwinShortcutsAdapter(injected?: ShortcutUnit): DispatchableShortcuts {
+	const native = (): ShortcutUnit => injected ?? shortcutUnit();
 	return {
 		register(parsed: ParsedAccelerator): ShortcutResult {
 			const keycode = KEYCODES.get(parsed.key);
@@ -124,17 +128,17 @@ export function darwinShortcutsAdapter(): DispatchableShortcuts {
 				return failure(`shortcut: no virtual keycode for "${parsed.key}"`, parsed.key);
 			}
 			const modifiers = parsed.modifiers.reduce((mask, one) => mask | MODIFIER_BITS[one], 0);
-			let native: ShortcutUnit;
+			let unit: ShortcutUnit;
 			try {
-				native = shortcutUnit();
-				channel(native);
+				unit = native();
+				channel(unit);
 			} catch (error) {
 				return failure(
 					error instanceof Error ? error.message : String(error),
 					parsed.accelerator,
 				);
 			}
-			const id = Number(native.symbols.shortcut_register(keycode, modifiers) ?? 0);
+			const id = Number(unit.symbols.shortcut_register(keycode, modifiers) ?? 0);
 			if (id <= 0) {
 				return failure(
 					`RegisterEventHotKey refused ${parsed.accelerator}`,
@@ -149,23 +153,30 @@ export function darwinShortcutsAdapter(): DispatchableShortcuts {
 		unregister(parsed: ParsedAccelerator): boolean {
 			const id = ids.get(parsed.accelerator);
 			if (id === undefined) return false;
-			ids.delete(parsed.accelerator);
-			byId.delete(id);
+			// Drop bookkeeping only after the OS agrees: a refused key still fires and needs its ref.
 			try {
-				return Number(shortcutUnit().symbols.shortcut_unregister(id) ?? 0) === 1;
+				if (Number(native().symbols.shortcut_unregister(id) ?? 0) !== 1) return false;
 			} catch {
 				return false;
 			}
+			ids.delete(parsed.accelerator);
+			byId.delete(id);
+			return true;
 		},
 
 		unregisterAll(): number {
-			ids.clear();
-			byId.clear();
+			let removed: number;
 			try {
-				return Number(shortcutUnit().symbols.shortcut_unregister_all() ?? 0);
+				removed = Number(native().symbols.shortcut_unregister_all() ?? 0);
 			} catch {
 				return 0;
 			}
+			// A total refusal removes nothing: keep both maps so a retry reaches the OS again. The
+			// plugin already turns { removed: 0 } into native-failed instead of clearing its registry.
+			if (removed === 0) return 0;
+			ids.clear();
+			byId.clear();
+			return removed;
 		},
 
 		dispatch(accelerator: string): boolean {
@@ -173,7 +184,7 @@ export function darwinShortcutsAdapter(): DispatchableShortcuts {
 			const id = ids.get(accelerator);
 			if (id === undefined) return false;
 			try {
-				return Number(shortcutUnit().symbols.shortcut_dispatch(id) ?? 0) === 1;
+				return Number(native().symbols.shortcut_dispatch(id) ?? 0) === 1;
 			} catch {
 				return false;
 			}

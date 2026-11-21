@@ -85,19 +85,21 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 		const native = p.native;
 		const view = Number(native.shim_browser_view_new() ?? 0);
 		if (!view) return asFailure("browser.open: NSView allocation failed");
-		native.shim_browser_attach(p.contentView(owner.win), view);
-		setFrames(native, view, web, input.bounds);
-		p.addWebview(view, web);
 
 		// A half-built surface owns a +1 view, webview and configuration just like a live one.
 		// Use the same teardown path as `close`, or a refused delegate or load leaks all three.
 		const discard = () => {
 			decideFor(web, undefined);
-			teardown(
-				{ label: input.label, web, view, owner: owner.label },
-				p,
-			);
+			teardown({ label: input.label, web, view, owner: owner.label }, p);
 		};
+		// A nil content view makes -addSubview: a no-op in C, which answers 0. An invisible surface
+		// answered ok is worse than a refusal: tear the half-built surface down and say why.
+		if (Number(native.shim_browser_attach(p.contentView(owner.win), view) ?? 0) !== 1) {
+			discard();
+			return asFailure("browser.open: the host window refused to attach the surface");
+		}
+		setFrames(native, view, web, input.bounds);
+		p.addWebview(view, web);
 		const ui = Number(native.shim_browser_ui_install(web) ?? BROWSER_UI_STATUS.missing);
 		if (ui !== BROWSER_UI_STATUS.installed && ui !== BROWSER_UI_STATUS.already) {
 			discard();
@@ -151,7 +153,9 @@ export function darwinBrowserAdapter(ports?: BrowserPorts): BrowserAdapter {
 			if ("ok" in surface) return surface;
 			if (!askDecision(surface.web, url)) {
 				// No load, no navigation error event: the previous page stays exactly as it was.
-				return asFailure("browser.navigate: the surface's navigation policy refused this URL");
+				return asFailure(
+					"browser.navigate: the surface's navigation policy refused this URL",
+				);
 			}
 			try {
 				return {
