@@ -133,7 +133,13 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 			};
 
 		// The view's own allocation, not the request: a placement that never reached GTK shows here.
-		const grew = await until(() => readAllocation(shim, web).width === FIRST.width, ALLOC_MS);
+		const grew = await until(
+			() => {
+				const rect = readAllocation(shim, web);
+				return rect.width === FIRST.width && rect.height === FIRST.height;
+			},
+			ALLOC_MS,
+		);
 		const before = readAllocation(shim, web);
 		const requested = readRequest(shim, web);
 		const moved = plugin.commands.setBounds({ label: "docs", bounds: MOVED }, ctx);

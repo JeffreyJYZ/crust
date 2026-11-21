@@ -22,6 +22,8 @@ static void (*shim_overlay_add)(void *, void *);
 static void (*shim_widget_show)(void *);
 static void (*shim_set_halign)(void *, int);
 static void (*shim_set_valign)(void *, int);
+static void (*shim_set_hexpand)(void *, int);
+static void (*shim_set_vexpand)(void *, int);
 static void (*shim_set_margin_start)(void *, int);
 static void (*shim_set_margin_top)(void *, int);
 static void *(*shim_widget_parent)(void *);
@@ -40,6 +42,11 @@ int shim_container_resolve(void) {
 	       shim_sym(h, "gtk_widget_show", (void **)&shim_widget_show) &&
 	       shim_sym(h, "gtk_widget_set_halign", (void **)&shim_set_halign) &&
 	       shim_sym(h, "gtk_widget_set_valign", (void **)&shim_set_valign) &&
+	       // GtkOverlay sets both expand flags on an overlay child, so a size request alone can never
+	       // constrain it: the child takes the box minus its margins. Turning them off is what makes
+	       // the requested rectangle the allocation.
+	       shim_sym(h, "gtk_widget_set_hexpand", (void **)&shim_set_hexpand) &&
+	       shim_sym(h, "gtk_widget_set_vexpand", (void **)&shim_set_vexpand) &&
 	       shim_sym(h, "gtk_widget_set_margin_start", (void **)&shim_set_margin_start) &&
 	       shim_sym(h, "gtk_widget_set_margin_top", (void **)&shim_set_margin_top) &&
 	       shim_sym(h, "gtk_widget_get_parent", (void **)&shim_widget_parent);
@@ -142,6 +149,8 @@ int shim_webview_place(void *box, void *web, int x, int y, int w, int h) {
 	// A surface is created after the window was shown, so nothing but this brings the new child
 	// into the allocation: a hidden overlay child is allocated 0x0 and its document never renders.
 	if (shim_widget_show) shim_widget_show(web);
+	if (shim_set_hexpand) shim_set_hexpand(web, 0);
+	if (shim_set_vexpand) shim_set_vexpand(web, 0);
 	if (shim_set_halign) shim_set_halign(web, SHIM_ALIGN_START);
 	if (shim_set_valign) shim_set_valign(web, SHIM_ALIGN_START);
 	// A negative origin is not a position: 0 is the container's own corner.
