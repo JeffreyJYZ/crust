@@ -105,6 +105,13 @@ security: {
 `fs.scope` (absolute prefixes), `shell.allow` (program allowlist), `shell.cwdRoot`, `updater.pubkey`
 (base64 of 32 raw bytes) and `updater.endpoint` narrow a plugin's reach. Narrow there, not here.
 
+**Reaching an external service needs a CSP entry.** A built app serves `connect-src 'self'`, so a page's
+`fetch`, `WebSocket` or `EventSource` to a provider is refused — while the same call works in `crust dev`,
+which sets no policy and only warns about the difference. `security.csp` replaces the whole policy
+(`connect-src 'self' https://api.example.com wss://api.example.com`); a single-file app declares it as one
+`crust-security:` JSON line, `//` in a module or `<!-- -->` in `.html`. Microphone capture needs nothing
+beyond `security.microphone`.
+
 ## `main.ts`
 
 ```ts
