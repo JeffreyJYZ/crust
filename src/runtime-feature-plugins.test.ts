@@ -56,6 +56,12 @@ describe("feature plugin registration", () => {
 		expect(handlers.has("browser.open")).toBe(true);
 	});
 
+	test("preview is the real panel, not the release stub", async () => {
+		const plugins = await featurePlugins({});
+		const preview = plugins.find((plugin) => plugin.name === "preview");
+		expect(Object.keys(preview?.commands ?? {})).toEqual(["show", "hide"]);
+	});
+
 	test("every returned definition has a command, so no name resolves to an empty surface", async () => {
 		const plugins = await featurePlugins({ pty: {} });
 		expect(plugins.map((plugin) => plugin.name)).toEqual(["pty", "preview", "browser"]);
