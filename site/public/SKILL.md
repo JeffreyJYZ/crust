@@ -356,7 +356,9 @@ back to a screenshot of the screen.
 **`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
 cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
 It answers `{ ok, width, height, scale, png }` at the surface's page pixels — an unknown label is
-`not-found` — and it is macOS-only like the surface, `not-implemented` naming `WKWebView` elsewhere.
+`not-found`. `capture` is macOS-only: WebView2 needs an `IStream` for `CapturePreview` and WebKitGTK's
+`get_snapshot` answers a cairo surface, so both name the call instead of screenshotting the screen. The
+surface itself works on all three.
 The embedded page carries no bridge token and no `window.crust`.
 
 **`testing`** drives that same page. Every command takes `label` too — omitted means the app's first
