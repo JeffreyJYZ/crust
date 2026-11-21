@@ -10,20 +10,18 @@ import type {
 	NavigationLoadUrlArgs,
 } from "./navigation-types";
 
-/** What the command needs from the plugin: the adapter, its no-adapter answer and the event sink. */
+/** What the command needs from the plugin: the adapter and its no-adapter answer. */
 export interface LoadUrlDeps {
 	adapter: NavigationAdapter | undefined;
 	missing: (command: string) => NotImplemented;
-	setSink: (emit: PluginContext["emit"]) => void;
 }
 
 /** Point one window's webview at `url`; `loaded: false` means no webview was there. */
 export function loadUrlCommand(
 	deps: LoadUrlDeps,
 	args: NavigationLoadUrlArgs,
-	ctx: PluginContext,
+	_ctx: PluginContext,
 ): { ok: true; loaded: boolean } | NavigationFailure | NotImplemented {
-	deps.setSink(ctx.emit);
 	const native = deps.adapter;
 	if (!native) return deps.missing("loadUrl");
 	const chosen = loadArgs(args);

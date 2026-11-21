@@ -48,7 +48,7 @@ describe("navigation plugin events", () => {
 		]);
 	});
 
-	test("a later command moves the channel, because emit lives only as long as one", () => {
+	test("a later command does not move another page's listener", () => {
 		const { adapter, fire } = fakeNavigation();
 		const plugin = createNavigationPlugin(adapter);
 		const first = collector();
@@ -56,8 +56,44 @@ describe("navigation plugin events", () => {
 		plugin.commands.start(undefined, first.ctx);
 		plugin.commands.state(undefined, second.ctx);
 		fire("did-finish");
+		expect(first.events.map((entry) => entry.event)).toEqual(["navigation:did-finish"]);
+		expect(second.events).toEqual([]);
+	});
+
+	test("two starts on one window keep both listeners and reinstall nothing", () => {
+		const { adapter, calls, fire } = fakeNavigation();
+		const plugin = createNavigationPlugin(adapter);
+		const first = collector();
+		const second = collector();
+		expect(plugin.commands.start(undefined, first.ctx)).toMatchObject({ ok: true });
+		expect(plugin.commands.start(undefined, second.ctx)).toMatchObject({ ok: true });
+		// The native delegate is installed once; a second start must not ask again, or the
+		// adapter's already-installed branch would delete the first page's listener.
+		expect(calls.filter((call) => call === "start")).toHaveLength(1);
+		fire("did-commit");
+		expect(first.events.map((entry) => entry.event)).toEqual(["navigation:did-commit"]);
+		expect(second.events.map((entry) => entry.event)).toEqual(["navigation:did-commit"]);
+	});
+
+	test("one page stopping leaves the other page listening until both have stopped", () => {
+		const { adapter, calls, fire } = fakeNavigation();
+		const plugin = createNavigationPlugin(adapter);
+		const first = collector();
+		const second = collector();
+		plugin.commands.start(undefined, first.ctx);
+		plugin.commands.start(undefined, second.ctx);
+		expect(plugin.commands.stop(undefined, first.ctx)).toMatchObject({
+			ok: true,
+			stopped: false,
+		});
+		fire("did-finish");
 		expect(first.events).toEqual([]);
 		expect(second.events.map((entry) => entry.event)).toEqual(["navigation:did-finish"]);
+		expect(plugin.commands.stop(undefined, second.ctx)).toMatchObject({
+			ok: true,
+			stopped: true,
+		});
+		expect(calls.filter((call) => call === "stop")).toHaveLength(1);
 	});
 
 	test("a callback before start emits nothing and does not throw", () => {

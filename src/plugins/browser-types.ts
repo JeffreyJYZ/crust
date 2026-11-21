@@ -52,6 +52,14 @@ export interface BrowserOpenInput {
 	/** The window label the calling page named; an absent one is the app's first open window. */
 	owner?: string;
 	onPopup?: (url: string) => void;
+	/**
+	 * The surface's navigation decision. The platform must consult it before committing EVERY
+	 * navigation — the first load, clicks, scripted `location =`, and each hop of a redirect chain —
+	 * and refuse (cancel) the navigation when it answers false. Entry checks in the plugin cannot
+	 * see a redirect the page starts by itself, so this callback is the only place the origin
+	 * allowlist can hold after `open`. The platform owns the cancel; the plugin only decides.
+	 */
+	onNavigate?: (url: string) => boolean;
 }
 
 /** What handing a refused popup to the OS opener answered. */

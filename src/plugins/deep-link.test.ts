@@ -128,3 +128,46 @@ describe("deep-link plugin", () => {
 		expect(deepLink.url()).toBeNull();
 	});
 });
+
+describe("deep-link runtime wiring", () => {
+	test("a singleton with no scheme says what the runtime must do", () => {
+		const link = createDeepLink();
+		const answer = link.plugin.commands.scheme();
+		expect(isNotImplemented(answer)).toBe(true);
+		if (isNotImplemented(answer)) {
+			expect(answer.requires).toBe("CFBundleURLTypes");
+			expect(answer.message).toContain("deepLink.configure");
+		}
+	});
+
+	test("configure supplies the scheme the singleton then reports and guards with", () => {
+		const link = createDeepLink();
+		link.configure("crust");
+		expect(link.scheme).toBe("crust");
+		expect(link.plugin.commands.scheme()).toBe("crust");
+		expect(() => link.open("other://open/1")).toThrow(/not the registered scheme/);
+		link.configure(undefined);
+		expect(link.scheme).toBeUndefined();
+	});
+
+	test("an attached sink hears later links with no per-call context", () => {
+		const link = createDeepLink({ scheme: "crust" });
+		const { ctx, events } = recorder();
+		const detach = link.attach(ctx.emit);
+		link.open("crust://open/later");
+		expect(events).toEqual([["deep-link", { url: "crust://open/later" }]]);
+		detach();
+		link.open("crust://open/after-detach");
+		expect(events).toHaveLength(1);
+	});
+
+	test("an attached sink and a per-call context each hear the link once", () => {
+		const link = createDeepLink({ scheme: "crust" });
+		const a = recorder();
+		const b = recorder();
+		link.attach(a.ctx.emit);
+		link.open("crust://open/both", b.ctx);
+		expect(a.events).toEqual([["deep-link", { url: "crust://open/both" }]]);
+		expect(b.events).toEqual([["deep-link", { url: "crust://open/both" }]]);
+	});
+});

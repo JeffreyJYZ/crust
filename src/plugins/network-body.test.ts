@@ -83,13 +83,21 @@ describe("network served bytes", () => {
 		]);
 	});
 
-	test("a body over the native buffer, or on a block rule, is refused by name", async () => {
+	test("a body at or over the native buffer, or on a block rule, is refused by name", async () => {
 		const { adapter } = fakeNetwork();
 		const { ctx } = recorder();
 		const plugin = createNetworkPlugin(adapter);
-		const tooBig = "x".repeat(NETWORK_BODY_LIMIT + 1);
+		// The C side delivers NETWORK_BODY_LIMIT - 1 bytes (one is the terminator), so a body
+		// of exactly NETWORK_BODY_LIMIT loses its last byte. Refuse it, not only a bigger one.
+		for (const tooBig of ["x".repeat(NETWORK_BODY_LIMIT), "x".repeat(NETWORK_BODY_LIMIT + 1)]) {
+			await expect(
+				plugin.commands.setRules(
+					{ rules: [{ pattern: "*", action: "allow", body: tooBig }] },
+					ctx,
+				),
+			).rejects.toMatchObject({ code: "bad-request" });
+		}
 		for (const rules of [
-			[{ pattern: "*", action: "allow", body: tooBig }],
 			[{ pattern: "*", action: "allow", type: "x".repeat(200) }],
 			[{ pattern: "*", action: "block", body: "x" }],
 			[{ pattern: "*", action: "allow", body: 42 }],
@@ -98,6 +106,21 @@ describe("network served bytes", () => {
 				code: "bad-request",
 			});
 		}
+	});
+
+	test("the largest body the native buffer can deliver is accepted whole", async () => {
+		const { adapter, decide } = fakeNetwork();
+		const { ctx } = recorder();
+		const plugin = createNetworkPlugin(adapter);
+		const largest = "x".repeat(NETWORK_BODY_LIMIT - 1);
+		ok(
+			await plugin.commands.setRules(
+				{ rules: [{ pattern: "*", action: "allow", body: largest }] },
+				ctx,
+			),
+		);
+		expect(decide("crust-net://app/a")?.body).toBe(largest);
+		expect(ok(await plugin.commands.log({}, ctx)).entries[0]?.bytes).toBe(largest.length);
 	});
 
 	test("a URL at the native buffer bound is blocked, never matched as a prefix", async () => {

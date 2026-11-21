@@ -12,7 +12,6 @@
  * lives inside this function. Types are erased before the page sees the source; no runtime value
  * may come from module scope.
  */
-
 import type {
 	A11yNode,
 	PageA11y,
@@ -27,21 +26,16 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 		"This is the page's own view of its DOM, not the operating system's accessibility tree; " +
 		"it does not prove a screen reader can reach the page.";
 	const doc = (): any => scope.document;
-
 	const attr = (el: any, name: string): string => {
 		const get = el?.getAttribute;
 		const value = typeof get === "function" ? get.call(el, name) : null;
 		return typeof value === "string" ? value : "";
 	};
-
 	const text = (el: any): string => {
 		const value = el?.textContent;
 		return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 	};
-
-	const tagOf = (el: any): string =>
-		String(el?.tagName ?? el?.nodeName ?? "").toLowerCase();
-
+	const tagOf = (el: any): string => String(el?.tagName ?? el?.nodeName ?? "").toLowerCase();
 	const roleOf = (el: any): string => {
 		const explicit = attr(el, "role");
 		if (explicit) return explicit;
@@ -68,7 +62,6 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 		if (tag === "div" || tag === "span") return "generic";
 		return tag || "generic";
 	};
-
 	const labelOf = (el: any): string => {
 		const aria = attr(el, "aria-label");
 		if (aria) return aria;
@@ -77,7 +70,8 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 			const parts: string[] = [];
 			for (const id of by.split(/\s+/)) {
 				const d = doc();
-				const ref = id && typeof d?.getElementById === "function" ? d.getElementById(id) : null;
+				const ref =
+					id && typeof d?.getElementById === "function" ? d.getElementById(id) : null;
 				if (ref) parts.push(text(ref));
 			}
 			const joined = parts.filter(Boolean).join(" ");
@@ -89,7 +83,6 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 		if (title) return title;
 		return text(el).slice(0, 120);
 	};
-
 	const focusableOf = (el: any): boolean => {
 		const ti = attr(el, "tabindex");
 		if (ti !== "") {
@@ -106,14 +99,12 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 			attr(el, "contenteditable") === "true"
 		);
 	};
-
 	const describe = (el: any, order: number): A11yNode => ({
 		role: roleOf(el),
 		label: labelOf(el),
 		focusable: focusableOf(el),
 		readingOrder: order,
 	});
-
 	const noDocument = (command: string): PageA11yRefusal => ({
 		ok: false,
 		code: "no-document",
@@ -124,8 +115,12 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 		pageTree(selector?: string): PageTreeAnswer {
 			const d = doc();
 			if (!d || typeof d.querySelector !== "function") return noDocument("pageTree");
-			const rootSelector = typeof selector === "string" && selector.trim() ? selector.trim() : "body";
-			const root = rootSelector === "body" ? d.body ?? d.querySelector("body") : d.querySelector(rootSelector);
+			const rootSelector =
+				typeof selector === "string" && selector.trim() ? selector.trim() : "body";
+			const root =
+				rootSelector === "body"
+					? (d.body ?? d.querySelector("body"))
+					: d.querySelector(rootSelector);
 			if (!root) {
 				return {
 					ok: false,
@@ -136,26 +131,35 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 			const nodes: A11yNode[] = [];
 			let order = 0;
 			const walk = (el: any): void => {
-				nodes.push(describe(el, order++));
-				const kids = el?.children;
-				if (kids && typeof kids.length === "number") {
-					for (let i = 0; i < kids.length; i++) walk(kids[i]);
+				// A shadow root is a fragment with no role: walk its children so web components appear,
+				// but invent no row for the boundary itself.
+				if (tagOf(el)) nodes.push(describe(el, order++));
+				for (const source of [el, el?.shadowRoot]) {
+					const kids = source?.children ?? source?.childNodes;
+					for (let i = 0; kids && i < kids.length; i++) walk(kids[i]);
 				}
 			};
 			walk(root);
 			return { ok: true, source: "dom", note: domNote, root: rootSelector, nodes };
 		},
-
 		focusElement(selector: string): PageFocusAnswer {
 			const d = doc();
 			if (!d || typeof d.querySelector !== "function") return noDocument("focusElement");
 			const sel = typeof selector === "string" ? selector.trim() : "";
 			if (!sel) {
-				return { ok: false, code: "bad-request", message: "a11y.focusElement needs a non-empty selector" };
+				return {
+					ok: false,
+					code: "bad-request",
+					message: "a11y.focusElement needs a non-empty selector",
+				};
 			}
 			const el = d.querySelector(sel);
 			if (!el) {
-				return { ok: false, code: "not-found", message: `a11y.focusElement: no element matches ${sel}` };
+				return {
+					ok: false,
+					code: "not-found",
+					message: `a11y.focusElement: no element matches ${sel}`,
+				};
 			}
 			let called = true;
 			try {
@@ -168,7 +172,12 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 					message: `a11y.focusElement: focus() threw — ${error instanceof Error ? error.message : String(error)}`,
 				};
 			}
-			const active = d.activeElement;
+			// `document.activeElement` returns the shadow HOST for a node inside a shadow tree; follow
+			// each host's shadowRoot.activeElement to the node that actually took focus before
+			// deciding the element was not focusable.
+			let active = d.activeElement;
+			for (let depth = 0; active?.shadowRoot?.activeElement && depth < 32; depth++)
+				active = active.shadowRoot.activeElement;
 			if (active !== el) {
 				return {
 					ok: false,

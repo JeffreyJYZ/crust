@@ -28,9 +28,10 @@ export const NETWORK_PATTERN_LIMIT = 2048;
 export const NETWORK_WILDCARD_LIMIT = 32;
 
 /**
- * The most bytes an `allow` rule may serve. The native side holds one `net_body[NET_BODY]` buffer
- * (`shim/113_network_serve.c`), and a body over it is refused rather than truncated, so a page
- * never reads a silently cut response.
+ * The size of the native `net_body[NET_BODY]` buffer (`shim/113_network_serve.c`), NUL included.
+ * The largest body a rule may serve is one less: the C side keeps a byte for the terminator, so
+ * `NETWORK_BODY_LIMIT` bytes would be delivered as `NETWORK_BODY_LIMIT - 1` and the last byte lost.
+ * `readBody` refuses at the limit, never silently truncates.
  */
 export const NETWORK_BODY_LIMIT = 262144;
 

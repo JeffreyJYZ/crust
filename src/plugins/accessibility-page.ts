@@ -145,6 +145,17 @@ export function pageCommands(
 			if (!focus) return guards.unsupported("focus");
 			try {
 				const report = await focus(args?.label);
+				if (!report.focused) {
+					// The native adapter reports "no AX window matched" when the caller named no
+					// window that exists. That is the caller's mistake and the documented bad-request
+					// branch; a different reason is a native fault, not a bad label.
+					const unknown = /no (?:AX )?window matched/i.test(report.reason);
+					return {
+						ok: false,
+						code: unknown ? "bad-request" : "handler-error",
+						message: `accessibility.focus: ${report.reason}`,
+					};
+				}
 				return { ok: true, focused: report.focused, reason: report.reason };
 			} catch (error) {
 				// An unknown label is the caller's own mistake, so it stays `bad-request`.
