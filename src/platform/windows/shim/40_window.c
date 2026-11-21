@@ -1,5 +1,10 @@
 // --- windows ---------------------------------------------------------------
 
+// How many windows this unit tracks a minimum size for (and how many surfaces `41_surfaces.c` can
+// hold). Two tables, two constants: a window's drag floor and a webview surface are not the same
+// thing, and a surface is what a second webview adds without adding a window.
+#define SHIM_MAX_WINDOWS 8
+
 // CreateWindowExW needs the class atom's *name*, which is why the caller passes it: crust
 // registers one class per app name and every window is an instance of it.
 shim_h shim_window_new(const char *title, int w, int h, const char *cls) {

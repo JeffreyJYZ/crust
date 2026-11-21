@@ -20,7 +20,11 @@ for (const [file, source] of sources) {
 }
 
 const bindings = readdirSync(DIR)
-	.filter((name) => (name === "ffi.ts" || name.endsWith("-ffi.ts")) && !name.endsWith(".test.ts"))
+	.filter(
+		(name) =>
+			(name === "ffi.ts" || name.startsWith("ffi-") || name.endsWith("-ffi.ts")) &&
+			!name.endsWith(".test.ts"),
+	)
 	.sort();
 const declared = bindings.flatMap((name) =>
 	ffiSymbols(name, readFileSync(join(DIR, name), "utf8")),

@@ -16,14 +16,14 @@ function body(signature: string): string {
 }
 
 describe("a failed create cannot burn a window slot", () => {
-	test("webview_close compacts the table and lowers the high-water mark", () => {
+	test("webview_close releases the handle's slot, so the next create reuses it", () => {
 		const close = body("void shim_webview_close(shim_h hwnd) {");
-		expect(close).toContain("wv2_controller_close(g_ctrl[i])");
-		// Without these, eight failed navigations leave g_windows at 8 and every later bind
+		expect(close).toContain("wv2_controller_close(ctrl)");
+		// Without this, eight failed navigations leave eight live surfaces and every later bind
 		// returns 0, so createWindow throws "WebView2 controller failed" forever.
-		expect(close).toContain("g_windows--");
-		expect(close).toContain("g_ctrl[i] = g_ctrl[i + 1]");
-		expect(close).toContain("g_hwnd[g_windows] = 0");
+		expect(close).toContain("shim_surface_release(handle)");
+		// Handles are indexes and must not move: compacting the array would rename a live surface.
+		expect(close).not.toContain("g_ctrl[i] = g_ctrl[i + 1]");
 	});
 });
 

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { WindowsShim } from "./backend.ts";
 import { coreSymbols } from "./ffi-core.ts";
 import { dialogSymbols } from "./ffi-dialog.ts";
+import { webviewSymbols } from "./ffi-webview.ts";
 import { shimSource } from "./shim-source.ts";
 
 const P = FFIType.ptr;
@@ -127,61 +128,9 @@ export function compile(): WindowsShim {
 				// The file panels: their own table, on the same rule.
 				...dialogSymbols,
 
-				shim_webview_new: { args: [P, CS, CS], returns: I32 },
-				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
-				shim_webview_close: { args: [P], returns: V },
-
-				// The WebView2 path, one step at a time, so a probe can print between them.
-				shim_env_begin: { args: [P, CS], returns: I64 },
-				shim_env_wait: { args: [], returns: I32 },
-				shim_env_callback: { args: [], returns: I64 },
-				shim_controller_begin: { args: [P], returns: I64 },
-				shim_controller_wait: { args: [], returns: I32 },
-				shim_controller_callback: { args: [], returns: I64 },
-				shim_webview_attach: { args: [P], returns: I32 },
-				shim_webview_navigate: { args: [CS], returns: I32 },
-				shim_navigate_hresult: { args: [], returns: I32 },
-				shim_webview_source: { args: [], returns: I32 },
-				shim_webview_navigate_string: { args: [], returns: I32 },
-				shim_controller_visible: { args: [], returns: I32 },
-				shim_webview_bind: { args: [P], returns: I32 },
-				shim_webview_size: { args: [P], returns: I32 },
-				shim_webview_handle: { args: [], returns: P },
-				shim_attach_hresult: { args: [I32], returns: I64 },
-				shim_env_inline: { args: [], returns: I32 },
-				shim_ctrl_from: { args: [], returns: I32 },
-				shim_ctrl_inline: { args: [], returns: I32 },
-				shim_ctrl_mode: { args: [I32], returns: I32 },
-				shim_window_thread: { args: [P], returns: I32 },
-				shim_apartment_type: { args: [], returns: I32 },
-				shim_apartment_bound: { args: [], returns: I32 },
-				shim_apartment_hresult: { args: [], returns: I64 },
-				shim_apartment_qualifier: { args: [], returns: I32 },
-				shim_object_state: { args: [P], returns: I32 },
-				shim_bad_object: { args: [], returns: I32 },
-				shim_object_bytes: { args: [P, P, I32], returns: I32 },
-				shim_handler_created: { args: [I32], returns: P },
-				shim_handler_addref: { args: [I32], returns: I32 },
-				shim_controller_addr: { args: [], returns: P },
-				shim_environment_addr: { args: [], returns: P },
-				shim_controller_vtbl: { args: [], returns: P },
-				shim_controller_slot: { args: [I32], returns: P },
-				shim_webview_vtbl: { args: [], returns: P },
-				shim_webview_slot: { args: [I32], returns: P },
-				shim_bad_slot: { args: [], returns: I32 },
-
-				// The reason behind a 0/1, and the threads each step ran on.
-				shim_env_hresult: { args: [], returns: I64 },
-				shim_controller_hresult: { args: [], returns: I64 },
-				shim_thread_at: { args: [I32], returns: FFIType.u32 },
-				shim_thread_id: { args: [], returns: FFIType.u32 },
-
-				// The handler object's ABI, as the numbers Windows would read.
-				shim_handler_prepare: { args: [], returns: I32 },
-				shim_handler_vtbl_addr: { args: [], returns: P },
-				shim_handler_object_addr: { args: [], returns: P },
-				shim_handler_first_field: { args: [], returns: P },
-				shim_handler_entry: { args: [I32], returns: P },
+				// The surface table, the WebView2 steps and the probe readbacks: their own table, on the
+				// same rule, because the handle refactor pushed this map past the line cap.
+				...webviewSymbols,
 			},
 		}) as unknown as ShimLibrary;
 		return shimSymbols(library);

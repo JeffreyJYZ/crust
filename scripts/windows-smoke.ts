@@ -22,9 +22,11 @@ import { createPlatform, defaultBackend, preflightError } from "../src/platform/
 import { Verdict } from "./e2e-harness.ts";
 import { formatBisect, runBisect } from "./windows/bisect.ts";
 import { createWithAbortRetry } from "./windows/cold-abort.ts";
+import { FRAME_ADVICE } from "./windows/frame.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 import { provePump } from "./windows/pump.ts";
 import { runStages } from "./windows/stages.ts";
+import { runSurfaces } from "./windows/surfaces.ts";
 import { freshUserData } from "./windows/user-data.ts";
 
 /** WebView2's user-data folder; explicit so a runner never writes into a profile it cannot own. */
@@ -99,16 +101,7 @@ async function main(): Promise<number> {
 	if (stages.code !== 0) {
 		// A red job has to explain itself: the last `stage` line names the call that died, and this names
 		// what is known about it so nobody re-runs the investigation from scratch.
-		console.log(
-			"stages    a child died — the last `stage` line above names the call. Check a frame before " +
-				"anything else: TinyCC emits `call __chkstk` for any frame of 4096 bytes or more, and " +
-				"nothing in this unit's link set defines it, so the call lands in a relocation filled " +
-				"with -1 — which is what the 4096-byte probe measured on 2026-11-16. The module Bun " +
-				"names in the crash report can be wrong: the PE `.pdata` descriptor is one shared " +
-				"record (prolog size 4, UWOP_ALLOC_LARGE commented out), so every frame below the " +
-				"first is untrustworthy. src/platform/windows/frame.test.ts guards the frame size; see " +
-				'docs/agents/windows-platform.md, "May a frame reach 4096 bytes?".',
-		);
+		console.log(FRAME_ADVICE);
 	}
 
 	// 4. COM, the window class, then a real window and controller. A machine that refuses any of
@@ -179,6 +172,17 @@ async function main(): Promise<number> {
 		"still open",
 		stillOpen && platform.nativeWindow("smoke") === hwnd,
 		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
+	);
+
+	// 7. Two surfaces on one environment. The handle table is the only thing that keeps a second
+	//    webview from overwriting the first's object, and nothing but this runtime can prove it.
+	const surfaces = await runSurfaces();
+	verdict.check(
+		"surfaces",
+		surfaces === 0,
+		surfaces === 0
+			? "two handles kept separate webview, bounds and Navigate state on one environment"
+			: "the two-surface child failed — the last `surface` line above names the call",
 	);
 
 	console.log(

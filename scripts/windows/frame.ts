@@ -28,6 +28,20 @@ interface FrameLibrary {
 	};
 }
 
+/**
+ * What a red `stages` child means, in the smoke's own words. Lives here rather than inline because the
+ * rule it explains is this module's subject, and the smoke is at the line cap.
+ */
+export const FRAME_ADVICE =
+	"stages    a child died — the last `stage` line above names the call. Check a frame before " +
+	"anything else: TinyCC emits `call __chkstk` for any frame of 4096 bytes or more, and nothing " +
+	"in this unit's link set defines it, so the call lands in a relocation filled with -1 — which is " +
+	"what the 4096-byte probe measured on 2026-11-16. The module Bun names in the crash report can " +
+	"be wrong: the PE `.pdata` descriptor is one shared record (prolog size 4, UWOP_ALLOC_LARGE " +
+	"commented out), so every frame below the first is untrustworthy. " +
+	"src/platform/windows/frame.test.ts guards the frame size; see docs/agents/windows-platform.md, " +
+	'"May a frame reach 4096 bytes?".';
+
 function firstLine(error: unknown): string {
 	const text = error instanceof Error ? error.message : String(error);
 	return text.split("\n")[0] ?? text;

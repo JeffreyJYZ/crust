@@ -18,20 +18,29 @@ typedef struct {
 // the pointer as rcMonitor's left/top and ignore right/bottom. TCC's arm64 backend implements C.10,
 // so declaring the struct by value there matches the method WebView2 actually compiled.
 // Returns the method's own HRESULT, so a refusal and a crash are distinguishable.
-int wv2_put_bounds(void *ctrl, double w, double h) {
+//
+// `x`/`y` exist for a surface that is not the whole client area: the app's own webview is put at 0,0
+// and a child surface carries the rectangle the caller asked for, so this is the one call that turns
+// "a second webview" into "a second webview *somewhere*".
+int wv2_put_bounds_at(void *ctrl, double x, double y, double w, double h) {
 	shim_rect r;
 	void **vt = shim_object_vtbl(ctrl);
 	if (!vt) return -2147467259; /* E_FAIL: the object itself is unreadable */
-	r.left = 0;
-	r.top = 0;
-	r.right = (long)w;
-	r.bottom = (long)h;
+	r.left = (long)x;
+	r.top = (long)y;
+	r.right = (long)(x + w);
+	r.bottom = (long)(y + h);
 	if (!shim_slot_ok(vt, SHIM_SLOT_CONTROLLER_PUT_BOUNDS)) return -2147467262;
 #if defined(__aarch64__)
 	return ((int (*)(void *, shim_rect))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, r);
 #else
 	return ((int (*)(void *, shim_rect *))vt[SHIM_SLOT_CONTROLLER_PUT_BOUNDS])(ctrl, &r);
 #endif
+}
+
+// The whole-client-area form, which is what the window procedure resizes.
+int wv2_put_bounds(void *ctrl, double w, double h) {
+	return wv2_put_bounds_at(ctrl, 0, 0, w, h);
 }
 
 // ICoreWebView2Controller slot 24.

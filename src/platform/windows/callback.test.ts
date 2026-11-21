@@ -57,7 +57,8 @@ describe("the attach is two steps, so a fault names one", () => {
 	test("get_CoreWebView2 and put_Bounds are separately callable and separately recorded", () => {
 		expect(source).toContain("int shim_webview_bind(shim_h hwnd)");
 		expect(source).toContain("int shim_webview_size(shim_h hwnd)");
-		expect(source).toContain("shim_i64 shim_attach_hresult(int which)");
+		// The report takes the surface handle as well: two surfaces answer two different HRESULTs.
+		expect(source).toContain("shim_i64 shim_attach_hresult(int handle, int which)");
 		expect(source).toContain(
 			"int shim_webview_attach(shim_h hwnd) {\n\tif (!shim_webview_bind(hwnd))",
 		);

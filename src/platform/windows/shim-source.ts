@@ -1,6 +1,6 @@
 /**
  * The Win32 + WebView2 shim, as one compilation unit assembled from parts. It must stay one unit:
- * `20_class.c`'s window procedure resizes the controller that `42_webview.c`'s table holds, and the
+ * `20_class.c`'s window procedure resizes the controller that `41_surfaces.c`'s table holds, and the
  * prelude forward-declares both sides, so the order below is load-bearing rather than layout.
  * No `#include` anywhere — every Win32 and COM entry point is a hand-written prototype, and every
  * one of them is resolved at runtime by `12_win32.c`, which is what lets TinyCC compile and link
@@ -19,7 +19,9 @@ import environment from "./shim/32_env.c" with { type: "text" };
 import slots from "./shim/34_slots.c" with { type: "text" };
 import probe from "./shim/36_probe.c" with { type: "text" };
 import window from "./shim/40_window.c" with { type: "text" };
+import surfaces from "./shim/41_surfaces.c" with { type: "text" };
 import webview from "./shim/42_webview.c" with { type: "text" };
+import webviewCalls from "./shim/43_webview_calls.c" with { type: "text" };
 import minsize from "./shim/44_minsize.c" with { type: "text" };
 import styleMembers from "./shim/45_style.c" with { type: "text" };
 import cursorMembers from "./shim/49_cursor.c" with { type: "text" };
@@ -69,7 +71,12 @@ export const SHIM_PARTS = [
 	lf(slots),
 	lf(probe),
 	lf(window),
+	// The handle table the webview stops being a singleton on, then the two halves of that surface —
+	// window-keyed lifecycle before handle-keyed calls, because `42_webview.c` navigates the surface it
+	// has just bound.
+	lf(surfaces),
 	lf(webview),
+	lf(webviewCalls),
 	lf(minsize),
 	lf(styleMembers),
 	lf(material),
@@ -106,7 +113,9 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/34_slots.c",
 	"src/platform/windows/shim/36_probe.c",
 	"src/platform/windows/shim/40_window.c",
+	"src/platform/windows/shim/41_surfaces.c",
 	"src/platform/windows/shim/42_webview.c",
+	"src/platform/windows/shim/43_webview_calls.c",
 	"src/platform/windows/shim/44_minsize.c",
 	"src/platform/windows/shim/45_style.c",
 	"src/platform/windows/shim/46_material.c",
