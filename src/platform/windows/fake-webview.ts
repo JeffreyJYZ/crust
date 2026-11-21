@@ -34,8 +34,33 @@ export type FakeWebViewShim = Pick<
 	| "shim_webview_bind"
 	| "shim_webview_size"
 	| "shim_webview_attach"
+	| "shim_child_new"
+	| "shim_child_move"
+	| "shim_webview_url_text"
+	| "shim_webview_title_text"
+	| "shim_webview_can_go_back"
+	| "shim_webview_can_go_forward"
+	| "shim_webview_loading"
+	| "shim_browser_surface_new"
+	| "shim_webview_watch"
+	| "shim_webview_refuse_popups"
+	| "shim_browser_set_sink"
+	| "shim_browser_popups"
+	| "shim_browser_popup_url"
 > &
 	FakeWebViewProbeShim;
+
+/** The two strings a surface's state read answers in the fake, per handle. */
+const stateUrl: Record<number, string> = { 0: "http://127.0.0.1:4321/" };
+const stateTitle: Record<number, string> = { 0: "Remote Title" };
+
+/** UTF-8 into a caller buffer, answering the byte length — the shape `57_browser.c` exports. */
+function writeText(dst: Uint8Array, value: string): number {
+	const bytes = new TextEncoder().encode(value);
+	dst.fill(0);
+	dst.set(bytes.subarray(0, Math.max(0, dst.length - 1)));
+	return Math.min(bytes.length, Math.max(0, dst.length - 1));
+}
 
 export function fakeWebView(calls: string[], options: FakeOptions = {}): FakeWebViewShim {
 	// The table `41_surfaces.c` holds, in the same shape: `hwnd` per handle (0 = free), and one
@@ -111,6 +136,39 @@ export function fakeWebView(calls: string[], options: FakeOptions = {}): FakeWeb
 			calls.push("webview_attach");
 			return options.failWebView ? 0 : 1;
 		},
+
+		// The browser surface: a child window, the text reads and the two handlers. A fake keeps them
+		// as recordings, because what a test asserts is the sequence the adapter asks for.
+		shim_child_new: (_parent, x, y, width, height) => {
+			calls.push(`child:${x},${y},${width}x${height}`);
+			return options.failChild ? 0 : 0x8000;
+		},
+		shim_child_move: (_child, x, y, width, height) => {
+			calls.push(`child_move:${x},${y},${width}x${height}`);
+			return options.failChildMove ? 0 : 1;
+		},
+		shim_webview_url_text: (handle, dst) => writeText(dst, stateUrl[Number(handle)] ?? ""),
+		shim_webview_title_text: (handle, dst) => writeText(dst, stateTitle[Number(handle)] ?? ""),
+		shim_webview_can_go_back: () => 0,
+		shim_webview_can_go_forward: () => 0,
+		shim_webview_loading: (handle) => (live(Number(handle)) ? 0 : 0),
+		shim_browser_surface_new: (_child, url) => {
+			calls.push(`surface:${text(url)}`);
+			return options.failWebView ? 0 : 1;
+		},
+		shim_webview_watch: (handle) => {
+			calls.push(`watch:${Number(handle)}`);
+			return options.failWatch ? 0 : 1;
+		},
+		shim_webview_refuse_popups: (handle) => {
+			calls.push(`refuse_popups:${Number(handle)}`);
+			return options.failPopups ? 0 : 1;
+		},
+		shim_browser_set_sink: () => {
+			calls.push("sink");
+		},
+		shim_browser_popups: () => 0,
+		shim_browser_popup_url: (dst) => writeText(dst, ""),
 
 		// The numbers: environment, thread, apartment, object and handler readbacks.
 		...fakeWebViewProbe(calls, options),

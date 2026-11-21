@@ -7,6 +7,7 @@
  * and reserves the space itself. It loads remote content under its own webview configuration, so it
  * carries no bridge token and `window.crust` does not exist inside it.
  */
+import type { NotImplemented } from "./define";
 
 /** The rectangle the app reserves, in window points. AppKit's origin is bottom-left. */
 export interface BrowserBounds {
@@ -62,6 +63,10 @@ export interface BrowserExternalOutcome {
 /**
  * The native half. Every method answers a plain object; an adapter that throws becomes
  * `handler-error` in the plugin, never a rejected invoke.
+ *
+ * `capture` may answer `NotImplemented`: a platform whose webview renders no picture says which API
+ * it is missing rather than sending a screenshot of the screen, which would be a picture of
+ * something else entirely.
  */
 export interface BrowserAdapter {
 	open(input: BrowserOpenInput): { ok: true; label: string } | BrowserFailure;
@@ -71,7 +76,9 @@ export interface BrowserAdapter {
 	setBounds(label: string, bounds: BrowserBounds): { ok: true } | BrowserFailure;
 	close(label: string): { ok: true; closed: true } | BrowserFailure;
 	/** The surface's own webview render, so a caller can see what it embedded. */
-	capture(label: string): Promise<(BrowserCapture & { ok: true }) | BrowserFailure>;
+	capture(
+		label: string,
+	): Promise<(BrowserCapture & { ok: true }) | BrowserFailure | NotImplemented>;
 	/** Hand one refused `target=_blank` URL to the system opener. */
 	external(url: string): BrowserExternalOutcome;
 }

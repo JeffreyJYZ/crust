@@ -66,13 +66,17 @@ describe("browser.open", () => {
 		});
 		expect(
 			plugin.commands.open(
-				{ label: "docs", url: `${ALLOWED}/`, bounds: { width: 0, height: 10 } },
+				{
+					label: "docs",
+					url: `${ALLOWED}/`,
+					bounds: { width: 0, height: 10 },
+				},
 				collector().ctx,
 			),
 		).toMatchObject({ ok: false, code: "bad-request" });
 	});
 
-	test("without an adapter every command answers not-implemented naming WKWebView", async () => {
+	test("without an adapter every command answers not-implemented naming the three webviews", async () => {
 		const plugin = createBrowserPlugin({ origins: [ALLOWED] });
 		const answers = [
 			plugin.commands.navigate({ label: "docs", url: ALLOWED }, collector().ctx),
@@ -85,7 +89,7 @@ describe("browser.open", () => {
 			expect(answer).toMatchObject({
 				ok: false,
 				code: "not-implemented",
-				requires: "WKWebView",
+				requires: "WKWebView, WebView2 or WebKitGTK",
 			});
 		}
 	});

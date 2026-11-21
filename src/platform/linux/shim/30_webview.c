@@ -16,6 +16,14 @@
 static WebKitWebView *(*shim_view_new)(void);
 static void (*shim_view_load)(WebKitWebView *, const char *);
 
+// The browser surface's reads. Each is resolved optionally, so a WebKitGTK too old for one answers a
+// named gap in the proof rather than refusing to launch every app.
+static const char *(*shim_view_uri)(WebKitWebView *);
+static int (*shim_view_loading)(WebKitWebView *);
+static int (*shim_view_can_back)(WebKitWebView *);
+static int (*shim_view_can_forward)(WebKitWebView *);
+static void (*shim_widget_destroy)(void *);
+
 typedef const char *(*ShimTitleFn)(WebKitWebView *);
 typedef void (*ShimEvalFn)(WebKitWebView *, const char *, long, const char *, const char *, void *,
                            void *, void *);
@@ -43,6 +51,7 @@ static ShimSignalFn shim_view_connect;
 // three handlers this part connects at creation. Forward-declared because a
 // handler has to be attached before the first load starts.
 void shim_state_register(void *view);
+void shim_host_forget(void *view);
 void shim_state_reset_eval(void *view);
 static void shim_state_load_changed(void *view, int event, void *data);
 static int shim_state_load_failed(void *view, int event, const char *uri, void *error, void *data);
@@ -63,6 +72,13 @@ int shim_webkit_resolve(void) {
 	int core = shim_sym(h, "webkit_web_view_new", (void **)&shim_view_new) &&
 	           shim_sym(h, "webkit_web_view_load_uri", (void **)&shim_view_load);
 	shim_view_title = (ShimTitleFn)shim_sym_or_null(h, "webkit_web_view_get_title");
+	shim_view_uri = (const char *(*)(WebKitWebView *))shim_sym_or_null(h, "webkit_web_view_get_uri");
+	shim_view_loading = (int (*)(WebKitWebView *))shim_sym_or_null(h, "webkit_web_view_is_loading");
+	shim_view_can_back =
+	    (int (*)(WebKitWebView *))shim_sym_or_null(h, "webkit_web_view_can_go_back");
+	shim_view_can_forward =
+	    (int (*)(WebKitWebView *))shim_sym_or_null(h, "webkit_web_view_can_go_forward");
+	shim_widget_destroy = (void (*)(void *))shim_sym_or_null(shim_gtk_handle(), "gtk_widget_destroy");
 	shim_view_eval = (ShimEvalFn)shim_sym_or_null(h, "webkit_web_view_evaluate_javascript");
 	shim_view_eval_finish =
 	    (ShimEvalFinishFn)shim_sym_or_null(h, "webkit_web_view_evaluate_javascript_finish");
@@ -102,6 +118,39 @@ int shim_webview_load(void *web, const char *url) {
 const char *shim_webview_title(void *web) {
 	if (!web || !shim_view_title) return 0;
 	return shim_view_title((WebKitWebView *)web);
+}
+
+// The address WebKit holds for this view: empty before the first commit, and empty when the
+// library carries no `get_uri` — the same "not there yet" a caller already reads.
+const char *shim_webview_uri(void *web) {
+	if (!web || !shim_view_uri) return 0;
+	return shim_view_uri((WebKitWebView *)web);
+}
+
+// 1 while a main-frame load is in flight. Read from WebKit, never tracked here: a redirect chain and
+// a failed load both start and finish without a rule this layer could keep.
+int shim_webview_is_loading(void *web) {
+	if (!web || !shim_view_loading) return 0;
+	return shim_view_loading((WebKitWebView *)web) ? 1 : 0;
+}
+
+int shim_webview_can_back(void *web) {
+	if (!web || !shim_view_can_back) return 0;
+	return shim_view_can_back((WebKitWebView *)web) ? 1 : 0;
+}
+
+int shim_webview_can_forward(void *web) {
+	if (!web || !shim_view_can_forward) return 0;
+	return shim_view_can_forward((WebKitWebView *)web) ? 1 : 0;
+}
+
+// Take one surface out of its container and destroy it. `gtk_widget_destroy` removes the widget from
+// its parent, so the overlay keeps no child that is about to be freed.
+int shim_webview_close(void *web) {
+	if (!web || !shim_widget_destroy) return 0;
+	shim_host_forget(web);
+	shim_widget_destroy(web);
+	return 1;
 }
 
 int shim_webview_eval(void *web, const char *script) {

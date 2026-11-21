@@ -80,4 +80,20 @@ export const webviewSymbols = {
 	shim_handler_object_addr: { args: [], returns: P },
 	shim_handler_first_field: { args: [], returns: P },
 	shim_handler_entry: { args: [I32], returns: P },
+
+	// The browser surface's own table. `57_browser.c` adds the child window and the reads;
+	// `58_browser_events.c` adds the navigation and new-window handlers.
+	shim_child_new: { args: [P, I32, I32, I32, I32], returns: P },
+	shim_child_move: { args: [P, I32, I32, I32, I32], returns: I32 },
+	shim_webview_url_text: { args: [I32, P, I32], returns: I32 },
+	shim_webview_title_text: { args: [I32, P, I32], returns: I32 },
+	shim_webview_can_go_back: { args: [I32], returns: I32 },
+	shim_webview_can_go_forward: { args: [I32], returns: I32 },
+	shim_webview_loading: { args: [I32], returns: I32 },
+	shim_browser_surface_new: { args: [P, CS, CS], returns: I32 },
+	shim_webview_watch: { args: [I32], returns: I32 },
+	shim_webview_refuse_popups: { args: [I32], returns: I32 },
+	shim_browser_set_sink: { args: [P], returns: V },
+	shim_browser_popups: { args: [], returns: I32 },
+	shim_browser_popup_url: { args: [P, I32], returns: I32 },
 } as const;

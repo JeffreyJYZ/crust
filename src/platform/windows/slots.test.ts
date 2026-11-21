@@ -61,6 +61,59 @@ const WEBVIEW = [
 	"Navigate",
 	"NavigateToString",
 	"add_NavigationStarting",
+	"remove_NavigationStarting",
+	"add_ContentLoading",
+	"remove_ContentLoading",
+	"add_SourceChanged",
+	"remove_SourceChanged",
+	"add_HistoryChanged",
+	"remove_HistoryChanged",
+	"add_NavigationCompleted",
+	"remove_NavigationCompleted",
+	"add_FrameNavigationStarting",
+	"remove_FrameNavigationStarting",
+	"add_FrameNavigationCompleted",
+	"remove_FrameNavigationCompleted",
+	"add_ScriptDialogOpening",
+	"remove_ScriptDialogOpening",
+	"add_PermissionRequested",
+	"remove_PermissionRequested",
+	"add_ProcessFailed",
+	"remove_ProcessFailed",
+	"AddScriptToExecuteOnDocumentCreated",
+	"RemoveScriptToExecuteOnDocumentCreated",
+	"ExecuteScript",
+	"CapturePreview",
+	"Reload",
+	"PostWebMessageAsJson",
+	"PostWebMessageAsString",
+	"add_WebMessageReceived",
+	"remove_WebMessageReceived",
+	"CallDevToolsProtocolMethod",
+	"get_BrowserProcessId",
+	"get_CanGoBack",
+	"get_CanGoForward",
+	"GoBack",
+	"GoForward",
+	"GetDevToolsProtocolEventReceiver",
+	"Stop",
+	"add_NewWindowRequested",
+	"remove_NewWindowRequested",
+	"add_DocumentTitleChanged",
+	"remove_DocumentTitleChanged",
+	"get_DocumentTitle",
+];
+
+/** The new-window argument object, from the same published table (docs.rs/webview2-sys). */
+const NEW_WINDOW = [
+	"get_Uri",
+	"put_NewWindow",
+	"get_NewWindow",
+	"put_Handled",
+	"get_Handled",
+	"get_IsUserInitiated",
+	"GetDeferral",
+	"get_WindowFeatures",
 ];
 
 /** The slot a published method list puts a method at, counting from 3 (past IUnknown). */
@@ -74,7 +127,7 @@ describe("the vtable slots", () => {
 	const defined = slots();
 
 	test("the parser saw the block it is meant to check", () => {
-		expect(defined.size).toBe(9);
+		expect(defined.size).toBe(17);
 	});
 
 	test("get_Source is slot 4 and Navigate is slot 5, not the thirty-seventh slot", () => {
@@ -82,6 +135,31 @@ describe("the vtable slots", () => {
 		expect(defined.get("WEBVIEW_NAVIGATE_TO_STRING")).toBe(slotOf(WEBVIEW, "NavigateToString"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(slotOf(WEBVIEW, "Navigate"));
 		expect(defined.get("WEBVIEW_NAVIGATE")).toBe(5);
+	});
+
+	/** The surface's own members, each against the position the header puts it at. */
+	test("the browser surface's slots are the navigation events, the flags and the title", () => {
+		expect(defined.get("WEBVIEW_ADD_NAV_STARTING")).toBe(
+			slotOf(WEBVIEW, "add_NavigationStarting"),
+		);
+		expect(defined.get("WEBVIEW_ADD_NAV_COMPLETED")).toBe(
+			slotOf(WEBVIEW, "add_NavigationCompleted"),
+		);
+		expect(defined.get("WEBVIEW_CAN_GO_BACK")).toBe(slotOf(WEBVIEW, "get_CanGoBack"));
+		expect(defined.get("WEBVIEW_CAN_GO_FORWARD")).toBe(slotOf(WEBVIEW, "get_CanGoForward"));
+		expect(defined.get("WEBVIEW_ADD_NEW_WINDOW")).toBe(
+			slotOf(WEBVIEW, "add_NewWindowRequested"),
+		);
+		expect(defined.get("WEBVIEW_GET_TITLE")).toBe(slotOf(WEBVIEW, "get_DocumentTitle"));
+		// The neighbours a mistyped index would land on: after get_DocumentTitle comes
+		// AddHostObjectToScript, and get_CanGoBack follows get_BrowserProcessId (37).
+		expect(slotOf(WEBVIEW, "get_BrowserProcessId")).toBe(37);
+		expect(defined.get("WEBVIEW_CAN_GO_BACK")).toBe(38);
+	});
+
+	test("the new-window argument slots are get_Uri and put_Handled", () => {
+		expect(defined.get("NEWWINDOW_GET_URI")).toBe(slotOf(NEW_WINDOW, "get_Uri"));
+		expect(defined.get("NEWWINDOW_PUT_HANDLED")).toBe(slotOf(NEW_WINDOW, "put_Handled"));
 	});
 
 	test("the controller slots are put_Bounds, put_IsVisible, Close and get_CoreWebView2", () => {

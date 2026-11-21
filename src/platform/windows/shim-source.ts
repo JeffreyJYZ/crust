@@ -9,9 +9,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import prelude from "./shim/10_prelude.c" with { type: "text" };
+import browserSlots from "./shim/11_browser_slots.c" with { type: "text" };
 import pointerCore from "./shim/11_pointer_core.c" with { type: "text" };
-import styleDecls from "./shim/11_win32_style.c" with { type: "text" };
 import previewDecls from "./shim/11_preview_decls.c" with { type: "text" };
+import styleDecls from "./shim/11_win32_style.c" with { type: "text" };
 import previewIds from "./shim/12_preview_ids.c" with { type: "text" };
 import win32 from "./shim/12_win32.c" with { type: "text" };
 import guard from "./shim/14_guard.c" with { type: "text" };
@@ -26,18 +27,20 @@ import webview from "./shim/42_webview.c" with { type: "text" };
 import webviewCalls from "./shim/43_webview_calls.c" with { type: "text" };
 import minsize from "./shim/44_minsize.c" with { type: "text" };
 import styleMembers from "./shim/45_style.c" with { type: "text" };
-import cursorMembers from "./shim/49_cursor.c" with { type: "text" };
 import material from "./shim/46_material.c" with { type: "text" };
 import screen from "./shim/47_screen.c" with { type: "text" };
+import dialog from "./shim/48_dialog.c" with { type: "text" };
+import dialogPaths from "./shim/48_dialog_paths.c" with { type: "text" };
+import cursorMembers from "./shim/49_cursor.c" with { type: "text" };
+import dialogCalls from "./shim/49_dialog.c" with { type: "text" };
 import clipboard from "./shim/50_clipboard.c" with { type: "text" };
 import opener from "./shim/51_opener.c" with { type: "text" };
 import osInfo from "./shim/52_osinfo.c" with { type: "text" };
-import dialog from "./shim/48_dialog.c" with { type: "text" };
-import dialogPaths from "./shim/48_dialog_paths.c" with { type: "text" };
-import dialogCalls from "./shim/49_dialog.c" with { type: "text" };
 import previewHost from "./shim/53_preview_host.c" with { type: "text" };
 import preview from "./shim/54_preview.c" with { type: "text" };
 import previewInit from "./shim/55_preview_init.c" with { type: "text" };
+import browser from "./shim/57_browser.c" with { type: "text" };
+import browserEvents from "./shim/58_browser_events.c" with { type: "text" };
 
 /**
  * LF, always. A Windows checkout can hand back CRLF, and the source-scanning assertions in this
@@ -68,6 +71,9 @@ export const SHIM_PARTS = [
 	lf(pointerCore),
 	// The style/opacity/placement/pointer table, on the same rule: before `12_win32.c` binds it.
 	lf(styleDecls),
+	// The browser surface's COM slots, right after the other declaration tables and before the part
+	// that binds Win32: a slot is a `#define`, so its position only has to be ahead of its users.
+	lf(browserSlots),
 	// The preview host's own table and the ids it hands COM. Bound by `54_preview.c` on first use,
 	// never by `12_win32.c`: a machine missing shlwapi refuses `preview` and still opens a window.
 	lf(previewDecls),
@@ -104,6 +110,11 @@ export const SHIM_PARTS = [
 	lf(previewHost),
 	lf(preview),
 	lf(previewInit),
+	// The browser surface: the child window and its reads, then the navigation and popup handlers.
+	// After `50_clipboard.c`, whose `shim_utf8` converts the strings the WebView2 getters answer;
+	// nothing here is called by a launch that never opens a surface.
+	lf(browser),
+	lf(browserEvents),
 	// The pointer: no hwnd, so no place in `40_window.c`'s table — but `20_class.c`'s WM_SETCURSOR
 	// re-applies it, and the prelude's forward declaration is what keeps its position free.
 	lf(cursorMembers),
@@ -120,6 +131,7 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/10_prelude.c",
 	"src/platform/windows/shim/11_pointer_core.c",
 	"src/platform/windows/shim/11_win32_style.c",
+	"src/platform/windows/shim/11_browser_slots.c",
 	"src/platform/windows/shim/11_preview_decls.c",
 	"src/platform/windows/shim/12_preview_ids.c",
 	"src/platform/windows/shim/12_win32.c",
@@ -146,6 +158,8 @@ export const SHIM_PART_PATHS = [
 	"src/platform/windows/shim/53_preview_host.c",
 	"src/platform/windows/shim/54_preview.c",
 	"src/platform/windows/shim/55_preview_init.c",
+	"src/platform/windows/shim/57_browser.c",
+	"src/platform/windows/shim/58_browser_events.c",
 	"src/platform/windows/shim/49_cursor.c",
 ] as const;
 

@@ -7,7 +7,7 @@
  * that map is one window per label, and an overlay inside a window is not a window.
  */
 import type { BrowserFailure } from "@/plugins/browser";
-import { absent } from "./browser-errors";
+import { absent } from "@/plugins/browser-failures";
 import type { BrowserPorts } from "./browser-ports";
 
 export interface Surface {

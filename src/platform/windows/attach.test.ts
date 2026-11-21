@@ -64,9 +64,13 @@ describe("the product path makes the controller visible", () => {
 		expect(attach.indexOf("shim_webview_bind(hwnd)")).toBeLessThan(
 			attach.indexOf("shim_webview_size(hwnd)"),
 		);
-		// The composite the platform calls goes through attach, so it cannot miss the call.
-		const composite = source.slice(source.indexOf("int shim_webview_new("));
-		expect(composite).toContain("shim_webview_attach(hwnd)");
+		// The composite the platform calls goes through attach, so it cannot miss the call. The create
+		// and the navigation are split so a browser surface can install its handlers between them.
+		const composite = source.slice(source.indexOf("int shim_webview_create("));
+		expect(composite.slice(0, composite.indexOf("\n}"))).toContain("shim_webview_attach(hwnd)");
+		expect(source.slice(source.indexOf("int shim_webview_new("))).toContain(
+			"shim_webview_create(hwnd, userData)",
+		);
 	});
 
 	test("its HRESULT is recorded beside the other two", () => {
@@ -79,43 +83,6 @@ describe("the product path makes the controller visible", () => {
 		expect(report.slice(0, report.indexOf("\n}"))).toContain("shim_surface_hr(handle, which)");
 		// One mechanism, not a parallel one, and it is per surface: `0` is the app window's handle.
 		expect(stages).toContain("shim.shim_attach_hresult(handle, 2)");
-	});
-});
-
-describe("the pump before the first navigation", () => {
-	/**
-	 * This thread has never run a message loop — it drains only inside `handler_wait`. The canonical sample
-	 * navigates from inside a running `GetMessage` loop, so WebView2's browser-process state is established
-	 * by message traffic before `Navigate`. The probe prints how many messages the pump drained, and the
-	 * product path makes the same call.
-	 */
-	test("the probe pumps and prints the count", () => {
-		expect(stages).toContain('stage("pump_before_navigate", () => shim.shim_pump())');
-		expect(stages.indexOf("pump_before_navigate")).toBeLessThan(
-			stages.indexOf('stage("webview_navigate"'),
-		);
-	});
-
-	test("the composite pumps before navigating too", () => {
-		const composite = source.slice(source.indexOf("int shim_webview_new("));
-		const pump = composite.indexOf("shim_pump();");
-		const navigate = composite.indexOf("shim_webview_navigate(handle, url)");
-		expect(pump).toBeGreaterThan(-1);
-		expect(navigate).toBeGreaterThan(-1);
-		expect(pump).toBeLessThan(navigate);
-	});
-
-	/** An inline controller completion means the webview never saw a pump — the other candidate. */
-	test("ctrl_inline is recorded at both create sites and printed", () => {
-		const report = lf(
-			readFileSync(
-				join(import.meta.dir, "..", "..", "..", "scripts", "windows", "report.ts"),
-				"utf8",
-			),
-		);
-		expect(source).toContain("int shim_ctrl_inline(void)");
-		expect(source.match(/g_ctrl_inline = g_ctrl_handler\.done;/g)?.length).toBe(2);
-		expect(report).toContain("shim.shim_ctrl_inline()");
 	});
 });
 

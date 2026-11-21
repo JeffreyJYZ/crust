@@ -29,11 +29,11 @@ await crust.invoke("browser", "open", {
 
 `browser.capture { label }` answers `{ ok, width, height, scale, png }` — a base64 PNG with no `data:` prefix, at the surface's own page pixels. It exists because a browser surface is a **native sibling view**: `window.capture` photographs the app's own `WKWebView` and a native view beside it is never part of that render, so the overlay is missing from the picture. `browser.capture` is the picture of what was embedded, and its `width`/`height` are what `setBounds` last set. An unknown label is `not-found`.
 
-The surface runs from its own `WKWebViewConfiguration`: it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
+The surface runs from its own webview — a `WKWebView` configuration on macOS, a WebView2 controller in a child window on Windows, a `WebKitWebView` in the window's overlay on Linux — so it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
 
-`target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`.
+`target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`. Each platform refuses it in its own place: a `WKUIDelegate` on macOS, the `NewWindowRequested` event with `Handled` set on Windows, and the `create` signal on Linux.
 
-macOS is the only platform with the surface today; other platforms answer `not-implemented` naming `WKWebView`, capture included. Windows and Linux are built by their own lanes and land as separate work, so neither answers a surface it cannot drive.
+`capture` is macOS-only: WebKit renders the surface's own picture there, while WebView2's `CapturePreview` needs an `IStream` and WebKitGTK's `get_snapshot` answers a cairo surface, so both answer `not-implemented` naming the call — never a screenshot of the screen, which would show something else.
 
 ## Absent means nothing loads
 

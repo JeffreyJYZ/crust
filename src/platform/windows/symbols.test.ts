@@ -21,22 +21,29 @@ const DIR = import.meta.dir;
  * `window-open.ts`, `teardown.ts` and `windows-registry.ts` all take a `WindowsShim`, so a symbol
  * outside it cannot be called and a member without a declaration cannot be reached.
  *
- * `WindowsShim` now extends its two halves (`backend-webview.ts`, `backend-namespaces.ts`) rather
- * than carrying every member inline, so the members are collected along that chain: reading only
- * `backend.ts` would find nothing and pass for the wrong reason.
+ * `WindowsShim` now extends its halves (`backend-webview.ts`, `backend-namespaces.ts`) rather than
+ * carrying every member inline, and `WindowsWebViewShim` in turn extends the browser surface's own
+ * (`backend-browser.ts`), so the members are collected along that chain: reading only `backend.ts`
+ * would find nothing and pass for the wrong reason.
  */
 function interfaceMembers(): string[] {
-	const root = lf(readFileSync(join(DIR, "backend.ts"), "utf8"));
-	const head = /export interface WindowsShim([^{]*)\{/.exec(root)?.[1] ?? "";
-	const inherited = [...head.matchAll(/(Windows\w+Shim)/g)].flatMap((match) =>
-		membersOf(match[1] ?? ""),
-	);
-	return [...membersOf("WindowsShim"), ...inherited];
+	return membersOf("WindowsShim");
 }
 
-/** The body of one interface, from whichever of the three files declares it. */
-function membersOf(name: string): string[] {
-	for (const file of ["backend.ts", "backend-webview.ts", "backend-namespaces.ts"]) {
+/**
+ * One interface's members plus every interface it extends, recursively. `WindowsShim` extends the
+ * WebView2 half, which extends the browser surface's own, so a single level would miss `browser.*`'s
+ * symbols and report them unreachable.
+ */
+function membersOf(name: string, seen = new Set<string>()): string[] {
+	if (seen.has(name)) return [];
+	seen.add(name);
+	for (const file of [
+		"backend.ts",
+		"backend-webview.ts",
+		"backend-browser.ts",
+		"backend-namespaces.ts",
+	]) {
 		const source = lf(readFileSync(join(DIR, file), "utf8"));
 		const at = source.indexOf(`export interface ${name}`);
 		if (at < 0) continue;
@@ -44,8 +51,13 @@ function membersOf(name: string): string[] {
 		const start = source.indexOf("{", at);
 		const end = source.indexOf("\n}", start);
 		expect(end).toBeGreaterThan(start);
+		const head = source.slice(at, start);
+		const inherited = [...head.matchAll(/(Windows\w+Shim)/g)]
+			.filter((match) => match[1] !== name)
+			.flatMap((match) => membersOf(match[1] ?? "", seen));
 		const block = source.slice(start, end);
-		return [...block.matchAll(/^\t([a-z_][\w]*)\(/gm)].map((match) => match[1] ?? "");
+		const own = [...block.matchAll(/^\t([a-z_][\w]*)\(/gm)].map((match) => match[1] ?? "");
+		return [...own, ...inherited];
 	}
 	return [];
 }

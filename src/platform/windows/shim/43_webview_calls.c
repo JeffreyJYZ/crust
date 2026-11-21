@@ -28,6 +28,7 @@ int shim_webview_navigate(int handle, const char *url) {
 	if (shim_utf16(url, target, SHIM_SURFACE_URL_MAX) < 0) return 0;
 	hr = wv2_navigate(web, target);
 	shim_surface_set_hr(handle, SHIM_SURFACE_NAVIGATE, hr);
+	if (hr >= 0) shim_surface_set_loading(handle, 1);
 	return hr >= 0;
 }
 

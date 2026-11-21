@@ -52,11 +52,18 @@ export async function featurePlugins(
 		}),
 	);
 	// With no `browser` section this still registers and allows no origin: the plugin reads
-	// `origins` and refuses every load rather than loading by default. macOS gets the native
-	// surface; every other platform keeps the typed `not-implemented` inside the same plugin.
+	// `origins` and refuses every load rather than loading by default. Each platform gets its own
+	// native surface — WKWebView, WebView2, WebKitGTK — and a platform with none keeps the typed
+	// `not-implemented` inside the same plugin.
 	if (process.platform === "darwin") {
 		const { darwinBrowserAdapter } = await import("@/platform/darwin/browser");
 		plugins.push(createBrowserPlugin(sections.browser, darwinBrowserAdapter()));
+	} else if (process.platform === "win32") {
+		const { windowsBrowserAdapter } = await import("@/platform/windows/browser");
+		plugins.push(createBrowserPlugin(sections.browser, windowsBrowserAdapter()));
+	} else if (process.platform === "linux") {
+		const { linuxBrowserAdapter } = await import("@/platform/linux/browser");
+		plugins.push(createBrowserPlugin(sections.browser, linuxBrowserAdapter()));
 	} else {
 		plugins.push(createBrowserPlugin(sections.browser));
 	}

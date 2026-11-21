@@ -14,6 +14,14 @@ export interface FakeOptions {
 	failWindow?: boolean;
 	/** Return 0 from `shim_webview_new`, as a runtime that never answers does. */
 	failWebView?: boolean;
+	/** Return 0 from `shim_child_new`, as a refused child window does. */
+	failChild?: boolean;
+	/** Return 0 from `shim_child_move`, as a refused `SetWindowPos` does. */
+	failChildMove?: boolean;
+	/** Refuse the surface's navigation handlers, so a surface cannot be trusted with state. */
+	failWatch?: boolean;
+	/** Refuse the new-window handler, so a `target=_blank` would become a popup window. */
+	failPopups?: boolean;
 	/** What `shim_com_init` returns; negative is a failed apartment. */
 	comInit?: number;
 	/** What `shim_register_class` returns; 0 is a class that never registered. */
