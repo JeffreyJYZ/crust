@@ -2,16 +2,9 @@
  * The public app surface: `main.ts` registers commands, mounts plugins and adds listeners, then awaits `app.run()`. The window machinery stays behind the `Platform` seam in `app-types.ts`, so macOS plugs in without this file knowing AppKit exists.
  * Through `startApp` (dev and built apps) the platform and config are attached before `main.ts` is imported and the bridge is created on the first `run()`, so a plugin mounted there is in the table the bridge snapshots; called bare (`bun src/main.ts`) it loads both itself, importing the platform lazily so macOS is not linked into a process that never opens a window.
  */
-import {
-	ensureAppLogger,
-	logAppQuit,
-	logAppReady,
-	logAppStart,
-	logCommandRegistered,
-} from "./app-log.ts";
-import { flushLogger } from "@/logging/logger";
+import { ensureAppLogger, logAppReady, logAppStart, logCommandRegistered } from "./app-log.ts";
+import { createQuitter, finishQuit } from "./app-quit.ts";
 import { CrustError } from "@/bridge/errors";
-import { reapChildren } from "./child-reap.ts";
 import type { BridgeTarget } from "@/bridge/server.ts";
 import { type CrustConfig, loadConfig } from "@/config";
 import { frameQuitListener, quitAfterSaving } from "./app-frames.ts";
@@ -49,8 +42,7 @@ export class App {
 	#bridge?: BridgeTarget;
 	#bridgeFactory?: BridgeFactory;
 	#started = false;
-	#windowCheck?: ReturnType<typeof setInterval>;
-	#lifecycleCheck?: ReturnType<typeof setInterval>;
+	readonly #quitter = createQuitter();
 
 	/** Wire the platform and config in; `startApp` does this before `main.ts`, a test with a fake. */
 	attach(platform: Platform, config: CrustConfig, bridge?: BridgeTarget): this {
@@ -167,25 +159,20 @@ export class App {
 		logAppReady(platform);
 		platform.pump(PUMP_INTERVAL_MS);
 		const lifecycle = platform.lifecycle?.();
-		if (lifecycle) this.#lifecycleCheck = watchLifecycle(this.#listeners, lifecycle);
-
+		const lifecycleCheck = lifecycle ? watchLifecycle(this.#listeners, lifecycle) : undefined;
+		let windowCheck: ReturnType<typeof setInterval> | undefined;
 		if (this.#listeners.get("window-all-closed")?.size) {
-			this.#windowCheck = watchAllClosed(this.#listeners, config, platform);
+			windowCheck = watchAllClosed(this.#listeners, config, platform, () =>
+				this.#quitter.begin("window-all-closed"),
+			);
 		}
+		this.#quitter.timers(windowCheck, lifecycleCheck);
 	}
 
-	/** Quit the application, asking children to stop, closing every window and stopping the pump timers. */
+	/** Quit the application, emitting the save-on-quit events before anything closes. */
 	quit(): void {
-		logAppQuit("app.quit()");
-		quitAfterSaving(() => {
-			clearInterval(this.#windowCheck);
-			clearInterval(this.#lifecycleCheck);
-			this.#windowCheck = undefined;
-			this.#lifecycleCheck = undefined;
-			// A child that handles TERM exits during the flush below; the exit listener escalates to KILL.
-			reapChildren("SIGTERM");
-			// The logger's queue is async; the last records must reach the file before the process ends.
-			void flushLogger().finally(() => this.#platform?.quit());
+		this.#quitter.begin("app.quit()", () => {
+			quitAfterSaving(() => void finishQuit(this.#listeners, this.#platform));
 		});
 	}
 }

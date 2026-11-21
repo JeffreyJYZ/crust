@@ -4,7 +4,8 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
-import { findConfig, type CrustConfig, type SecurityConfig, validateConfig } from "@/config";
+import { findConfig, type CrustConfig, validateConfig } from "@/config";
+import { declaredSecurity } from "./single-pragma.ts";
 
 /** The extensions a single-file positional may carry. */
 export const SINGLE_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -30,32 +31,6 @@ export const SINGLE_WINDOW = { width: 900, height: 700 } as const;
  * `microphone` that is not a sentence, or a `script-src` with no `'unsafe-inline'`, is refused here
  * with the same message it would get in a project.
  */
-const SECURITY_PRAGMA = /^\s*(?:\/\/|<!--)\s*crust-security:\s*(\{[^\n]*\})\s*(?:-->)?\s*$/m;
-
-/** The declared `security`, or the reason the line is not usable. */
-function declaredSecurity(
-	source: string,
-	name: string,
-): { security?: SecurityConfig } | { error: string } {
-	const match = SECURITY_PRAGMA.exec(source);
-	if (!match) return {};
-	const literal = match[1] as string;
-	try {
-		const parsed: unknown = JSON.parse(literal);
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-			throw new Error("not a JSON object");
-		}
-		return { security: parsed as SecurityConfig };
-	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		return {
-			error:
-				`crust-security in ${name} is not a one-line JSON object (${reason}) — ` +
-				`write it as // crust-security: {"csp":"…","microphone":"…"}`,
-		};
-	}
-}
-
 export interface SingleApp {
 	/** Absolute path to the one source file. */
 	file: string;

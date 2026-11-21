@@ -9,24 +9,19 @@
  */
 
 import type { CrustConfig } from "@/config";
-import { flushLogger } from "@/logging/logger";
-import { watchWindows } from "./app-watch.ts";
-import { emitOnQuit } from "./app-watch.ts";
+import { emitOnQuit, watchWindows } from "./app-watch.ts";
+import { finishQuit } from "./app-quit.ts";
 import type { AppEvent, AppListener, Platform } from "./app-types.ts";
-import { frameMemory } from "./plugins/window-frame-memory.ts";
 
 export function watchAllClosed(
 	listeners: Map<AppEvent, Set<AppListener>>,
 	config: CrustConfig,
 	platform: Platform,
+	begin: () => boolean,
 ): ReturnType<typeof setInterval> | undefined {
 	if (!listeners.get("window-all-closed")?.size) return undefined;
 	return watchWindows(config, platform, () => {
-		void emitOnQuit(listeners, "window-all-closed")
-			.then(() => emitOnQuit(listeners, "before-quit"))
-			.then(() => emitOnQuit(listeners, "will-quit"))
-			.then(() => frameMemory()?.flush())
-			.then(() => flushLogger())
-			.then(() => platform.quit());
+		if (!begin()) return;
+		void emitOnQuit(listeners, "window-all-closed").then(() => finishQuit(listeners, platform));
 	});
 }
