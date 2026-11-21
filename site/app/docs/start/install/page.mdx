@@ -43,7 +43,7 @@ A global install is the one that looks like those and is not. `bun add -g crust`
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.2.11
+crust --version                 # 0.2.12
 ```
 
 macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or Windows use a [release binary](#download-a-binary) instead. It is a source install for darwin: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
@@ -52,11 +52,11 @@ macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or
   <TabPanel label="Bun global">
 
 ```sh
-bun add -g github:JeffreyJYZ/crust#v0.2.11
-crust --version                 # 0.2.11
+bun add -g github:JeffreyJYZ/crust#v0.2.12
+crust --version                 # 0.2.12
 ```
 
-The same tag `bunx` resolves, installed once instead of cached per run: `~/.bun/bin/crust` is a symlink into `~/.bun/install/global/node_modules/crust`, so `crust` answers anywhere — inside a scaffolded app or outside one. Upgrade by naming a newer tag (`bun add -g github:JeffreyJYZ/crust#v0.2.11` replaces that symlink); a non-default `BUN_INSTALL` prefix moves both `bin/` and `install/global/` under it.
+The same tag `bunx` resolves, installed once instead of cached per run: `~/.bun/bin/crust` is a symlink into `~/.bun/install/global/node_modules/crust`, so `crust` answers anywhere — inside a scaffolded app or outside one. Upgrade by naming a newer tag (`bun add -g github:JeffreyJYZ/crust#v0.2.12` replaces that symlink); a non-default `BUN_INSTALL` prefix moves both `bin/` and `install/global/` under it.
 
   </TabPanel>
   <TabPanel label="From a checkout">
@@ -91,7 +91,7 @@ One file with the framework sources embedded — `src/`, `templates/`, `tsconfig
 ## A tag, without cloning
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.2.11 init my-app
+bunx github:JeffreyJYZ/crust#v0.2.12 init my-app
 cd my-app && bun install
 bun run dev
 ```
@@ -108,7 +108,7 @@ crust: unknown option --next
 run "crust --help" for usage
 ```
 
-Name a tag. `#v0.2.11` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
+Name a tag. `#v0.2.12` is the one specifier whose answer cannot drift, because the commit it names does not move. Or clear both cache directories:
 
 ```sh
 rm -rf ~/.bun/install/cache/.bunx-501/crust@github@*
