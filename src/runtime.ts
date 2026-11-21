@@ -83,6 +83,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 			updater: config.updater,
 			fs: config.fs,
 			app: config.app.id,
+			pty: config.pty,
+			preview: config.preview,
+			browser: config.browser,
 		})),
 		single.plugin,
 	];

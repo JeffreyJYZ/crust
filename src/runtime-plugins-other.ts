@@ -8,6 +8,7 @@
  * which answer `not-implemented` by name instead of throwing at the first command.
  */
 import type { FsConfig, ShellConfig, UpdaterConfig } from "@/config";
+import type { FeatureSections } from "@/runtime-feature-plugins.ts";
 import {
 	createPositionerPlugin,
 	createWindowPlugin,
@@ -18,7 +19,7 @@ import { coreNamespacePlugins, replacesCoreNamespace } from "@/runtime-adapters-
 import { nonDarwinPlugins, nonDarwinScreenPlugin } from "@/runtime-non-darwin";
 
 /** The config sections that change which plugin an app gets. */
-export interface NativePluginOptions {
+export interface NativePluginOptions extends FeatureSections {
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
 	/** Filesystem scope: when set, every `fs` command must resolve inside it. */

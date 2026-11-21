@@ -10,6 +10,7 @@ import { createFsPlugin, createWindowPlugin, type PluginDefinition } from "@/plu
 import { createSidecarPlugin } from "@/plugins/sidecar";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
 import { startCrashPart } from "@/runtime-crash-start";
+import { featurePlugins } from "@/runtime-feature-plugins.ts";
 import { platformKeychainPlugin } from "@/runtime-keychain";
 import {
 	type NativePluginOptions,
@@ -38,7 +39,8 @@ export async function nativePlugins(
 	options: NativePluginOptions | ShellConfig = {},
 	os: string = process.platform,
 ): Promise<PluginDefinition[]> {
-	const { shell, updater, fs, app: appId } = optionsOf(options);
+	const { shell, updater, fs, app: appId, pty, preview, browser } = optionsOf(options);
+	const features = await featurePlugins({ pty, preview, browser });
 	// One data directory per app id; a static import, because the store is built before any platform.
 	const appRoot = defaultStateRoot(appId ?? "crust");
 	// `fs` carries the config's scope when one exists; with no scope the plugin
@@ -75,7 +77,7 @@ export async function nativePlugins(
 	// `os` is a parameter so the win32 arm is provable on a machine that is not Windows: the
 	// registry picks the adapter by OS, and no adapter branches on `process.platform` itself.
 	if (!platform || os !== "darwin") {
-		return otherPlatformPlugins({
+		const other = await otherPlatformPlugins({
 			core,
 			scoped,
 			app: appId,
@@ -89,6 +91,7 @@ export async function nativePlugins(
 			updater: updaterPlugins,
 			os,
 		});
+		return [...other, ...features];
 	}
 	const darwin = await import("@/platform/darwin");
 	const notifications = await import("@/platform/darwin/notifications");
@@ -191,5 +194,6 @@ export async function nativePlugins(
 		shellPlugin,
 		sidecarPlugin,
 		...updaterPlugins,
+		...features,
 	];
 }

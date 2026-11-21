@@ -8,6 +8,7 @@ import { validateApp } from "./validate-app.ts";
 import { validateBuild } from "./validate-build.ts";
 import { validateDev } from "./validate-dev.ts";
 import { validateExtensions } from "./validate-extensions.ts";
+import { validateBrowser, validatePreview, validatePty } from "./validate-features.ts";
 import { validateFs } from "./validate-fs.ts";
 import { validateLogging } from "./validate-logging.ts";
 import { validateSecurity } from "./validate-security.ts";
@@ -31,6 +32,9 @@ const ROOT_KEYS = [
 	"shell",
 	"updater",
 	"logging",
+	"pty",
+	"preview",
+	"browser",
 ] as const;
 
 /**
@@ -56,6 +60,9 @@ export function validateConfig(value: unknown, source = "crust config"): CrustCo
 		validateShell(v, root.shell);
 		validateUpdater(v, root.updater);
 		validateLogging(v, root.logging);
+		validatePty(v, root.pty);
+		validatePreview(v, root.preview);
+		validateBrowser(v, root.browser);
 	}
 
 	if (v.issues.length > 0) throw new ConfigError(source, v.issues);
