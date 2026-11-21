@@ -30,6 +30,8 @@ path you touched:
 - `bun run e2e:dev:react` — a real Vite driven through `crust dev`
 - `bun run e2e:window` — the `window` plugin
 - `bun run e2e:dogear` — any plugin surface, the widest example
+- `bun run e2e:preview` — the QuickLook panel, `hide()`, and the `fs.scope` refusal
+- `bun run e2e:browser` — the second WKWebView: capture, origins, `window.open`, capture denial
 - `bun run e2e:notify` — `notification`; diagnostic rather than a gate step, because it needs a
   person to answer the permission prompt
 

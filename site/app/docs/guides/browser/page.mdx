@@ -23,15 +23,17 @@ await crust.invoke("browser", "open", {
 });
 ```
 
-`browser.open` creates one surface; `navigate` points it at another allowlisted origin; `state` answers `{ url, title, loading, canGoBack, canGoForward }`; `setBounds` moves and resizes it; `close` ends it; `capture` renders the surface's own page as a base64 PNG. The app owns the chrome and re-applies bounds when the window resizes.
+`browser.open` creates one surface; `navigate` points it at another allowlisted origin; `state` answers `{ url, title, loading, canGoBack, canGoForward }`; `setBounds` moves and resizes it; `close` ends it. The app owns the chrome and re-applies bounds when the window resizes.
+
+## Capturing the surface
+
+`browser.capture { label }` answers `{ ok, width, height, scale, png }` — a base64 PNG with no `data:` prefix, at the surface's own page pixels. It exists because a browser surface is a **native sibling view**: `window.capture` photographs the app's own `WKWebView` and a native view beside it is never part of that render, so the overlay is missing from the picture. `browser.capture` is the picture of what was embedded, and its `width`/`height` are what `setBounds` last set. An unknown label is `not-found`.
 
 The surface runs from its own webview — a `WKWebView` configuration on macOS, a WebView2 controller in a child window on Windows, a `WebKitWebView` in the window's overlay on Linux — so it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
 
-`target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`.
+`target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`. Each platform refuses it in its own place: a `WKUIDelegate` on macOS, the `NewWindowRequested` event with `Handled` set on Windows, and the `create` signal on Linux.
 
-`target=_blank` is what each platform refuses: a `WKUIDelegate` on macOS, the `NewWindowRequested` event with `Handled` set on Windows, and the `create` signal on Linux.
-
-`capture` is macOS-only: WebKit renders the surface's own picture there, while WebView2 needs an `IStream` and WebKitGTK answers a cairo surface, so both answer `not-implemented` naming the call — never a screenshot of the screen, which would show something else.
+`capture` is macOS-only: WebKit renders the surface's own picture there, while WebView2's `CapturePreview` needs an `IStream` and WebKitGTK's `get_snapshot` answers a cairo surface, so both answer `not-implemented` naming the call — never a screenshot of the screen, which would show something else.
 
 ## Absent means nothing loads
 
@@ -39,4 +41,4 @@ No `browser` section still registers the plugin, with an empty allow list, so ev
 
 ## Capability
 
-The page calls `browser.open`, so a label needs the action `browser:open`. It is not implied by another surface's grant: an embedded browser can reach the network under your app's identity, so it is granted on its own, per window label. See [Permissions](/docs/guides/permissions).
+The page calls `browser.open`, so a label needs the action `browser:open`; every other command is its own action too, `browser:capture` included, since an action is `plugin:command`. It is not implied by another surface's grant: an embedded browser can reach the network under your app's identity, so it is granted on its own, per window label. See [Permissions](/docs/guides/permissions).
