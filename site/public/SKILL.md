@@ -204,7 +204,7 @@ command, so it answers `unknown-command` — and a grant of `app:greet` would no
 <!-- skill:commands:begin -->
 - `accessibility` — trusted prompt elementCount announce title focus
 - `autostart` — enable disable isEnabled
-- `browser` — open
+- `browser` — open navigate state setBounds close capture
 - `clipboard` — read write readImage writeImage
 - `crash-reporter` — last list report configure clear install uninstall
 - `database` — open close exec query get

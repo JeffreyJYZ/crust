@@ -1,8 +1,6 @@
 # Browser
 
-An embedded browser surface: a page that loads a remote `http(s)` origin inside the app, under the same bridge and the same grants as the app's own page. The plugin is always registered; the section names the origins it may load.
-
-**Not implemented yet — ships in 0.2.11.** This page is the contract the release will keep: calling `browser.open` today answers `not-implemented` naming the release.
+An embedded browser surface: a page that loads a remote `http(s)` origin inside the app, in a rectangle the app reserves. The plugin is always registered; the section names the origins it may load.
 
 ```ts
 // crust.config.ts
@@ -12,6 +10,26 @@ browser: {
 ```
 
 An entry is an **origin** — scheme, host and port — never a path: the check a load goes through compares origins, so a path in this list would authorise nothing while reading as though it did. A path, query or fragment in an entry is a config error naming its index.
+
+## An overlay, not a DOM element
+
+A native webview cannot be hosted by the page's DOM, so the app supplies a rectangle in window points and reserves the space itself:
+
+```js
+await crust.invoke("browser", "open", {
+	label: "docs",
+	url: "https://example.com/",
+	bounds: { x: 0, y: 0, width: 480, height: 640 },
+});
+```
+
+`browser.open` creates one surface; `navigate` points it at another allowlisted origin; `state` answers `{ url, title, loading, canGoBack, canGoForward }`; `setBounds` moves and resizes it; `close` ends it; `capture` renders the surface's own page as a base64 PNG. The app owns the chrome and re-applies bounds when the window resizes.
+
+The surface runs from its own `WKWebViewConfiguration`: it carries **no bridge token** and no `window.crust`. Anything that must read the embedded page belongs in your backend, against an API, not in an embedded browser.
+
+`target=_blank` and `window.open` never create a second webview. The URL is re-checked against `browser.origins` and, when allowed, handed to the system browser through the opener; the page is told on `browser:popup`.
+
+macOS is the only platform with the surface today; other platforms answer `not-implemented` naming `WKWebView`.
 
 ## Absent means nothing loads
 
