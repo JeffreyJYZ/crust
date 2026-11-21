@@ -30,6 +30,7 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 - **`41_surfaces.c` is pure: no Win32, no COM, no prelude typedef** — which is why `src/platform/windows/surfaces.test.ts` can compile it alone with `cc()` and execute the two-handle claim on macOS. What that cannot prove is Windows behaviour; `scripts/windows/surfaces.ts` builds two real surfaces in `gate (windows)` and checks distinct handles, distinct webview pointers, per-handle bounds and a close that leaves the other readable.
 - **One environment per process, one controller per surface, and the controller *request* is still one at a time** (`32_env.c`'s `g_ctrl_hwnd`/`g_ctrl_handler`). A second surface is created sequentially, after the first; parallel creation would need that singleton split.
 - **The child surface still has no window of its own** — `shim_window_new` hard-codes `WS_OVERLAPPEDWINDOW` with a top-level parent of 0, so a `WS_CHILD` host HWND is the next lane's work, not this table's.
+- **Probe mode 1 sits on a 5 s edge, and it is not a surface-table defect** — measured 2026-11-21: `main` reached the controller at 4.65 s (`controller_wait ok 1`), this branch at 5.0 s twice (`ok 0`), with the same `ctrl_from 2` / `env_inline 1` / `controller_begin ok 0`. `32_env.c`'s `handler_wait(&g_ctrl_handler, 5000)` is the bound; widening it is the owner's call because it would also mask the documented `E_ABORT` cold start. No verdict depends on it: the composite and `surfaces` children pass either way.
 
 
 ## COM: the one rule that shaped every file
