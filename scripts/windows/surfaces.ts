@@ -34,7 +34,7 @@ async function steps(): Promise<number> {
 	expect(!stageHr("com_init", () => shim.shim_com_init()));
 	expect(stage("register_class", () => shim.shim_register_class(cstring(APP))) !== 0);
 	const first = stage("window_new_a", () =>
-		shim.shim_window_new(cstring("crust surfaces a"), 400, 300, cstring(APP)),
+		shim.shim_window_new(cstring("crust surfaces a"), 400, 300, cstring(APP), 1),
 	);
 	if (first === 0) {
 		skipped("no first window, so no surface can be created");
@@ -52,7 +52,7 @@ async function steps(): Promise<number> {
 	expect(handleA === 0); // entry 0 is the app's own window
 
 	const second = stage("window_new_b", () =>
-		shim.shim_window_new(cstring("crust surfaces b"), 400, 300, cstring(APP)),
+		shim.shim_window_new(cstring("crust surfaces b"), 400, 300, cstring(APP), 1),
 	);
 	if (second === 0) {
 		skipped("no second window, so the second surface cannot be created");
