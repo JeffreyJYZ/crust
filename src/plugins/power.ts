@@ -90,6 +90,13 @@ export function createPowerPlugin(
 	} & PowerSubscribeHandlers
 > {
 	const requires = REQUIRES[platform] ?? "a platform power source";
+	/**
+	 * One assertion per process. The native shim overwrites its single IOKit id on every prevent, so
+	 * a second `sleepPrevent` would leak the first id and `sleepAllow` could only release the last.
+	 * The plugin deduplicates instead: a second caller gets the id already held.
+	 */
+	let held: number | undefined;
+	let taking: Promise<SleepPreventResult | PowerFailure> | undefined;
 
 	const missing = (command: string) =>
 		notImplemented(
@@ -130,27 +137,42 @@ export function createPowerPlugin(
 			},
 
 			/** Hold off idle sleep until `sleepAllow`, or until the process exits. */
-			sleepPrevent: async (
+			sleepPrevent: (
 				args: SleepPreventArgs,
 			): Promise<SleepPreventResult | PowerFailure | NotImplemented> => {
-				if (!adapter) return missing("sleepPrevent");
+				if (!adapter) return Promise.resolve(missing("sleepPrevent"));
 				const reason = args?.reason;
 				if (typeof reason !== "string" || reason.length === 0) {
-					throw new CrustError(
-						"bad-request",
-						'power.sleepPrevent: "reason" must be a non-empty string',
+					return Promise.reject(
+						new CrustError(
+							"bad-request",
+							'power.sleepPrevent: "reason" must be a non-empty string',
+						),
 					);
 				}
-				const answer = await adapter.preventSleep(reason);
-				if (!answer.ok) return { ok: false, code: "handler-error", message: answer.reason };
-				return { ok: true, id: answer.id };
+				if (held !== undefined) return Promise.resolve({ ok: true, id: held });
+				if (taking !== undefined) return taking;
+				const work = (async (): Promise<SleepPreventResult | PowerFailure> => {
+					const answer = await adapter.preventSleep(reason);
+					if (!answer.ok)
+						return { ok: false, code: "handler-error", message: answer.reason };
+					held = answer.id;
+					return { ok: true, id: answer.id };
+				})();
+				taking = work;
+				void work.finally(() => {
+					taking = undefined;
+				});
+				return work;
 			},
 
 			/** Release the assertion; `released: false` means none was held, not that the OS refused. */
 			sleepAllow: async (): Promise<SleepAllowResult | PowerFailure | NotImplemented> => {
 				if (!adapter) return missing("sleepAllow");
+				if (held === undefined) return { ok: true, released: false };
 				const answer = await adapter.allowSleep();
 				if (!answer.ok) return { ok: false, code: "handler-error", message: answer.reason };
+				held = undefined;
 				return { ok: true, released: answer.released };
 			},
 

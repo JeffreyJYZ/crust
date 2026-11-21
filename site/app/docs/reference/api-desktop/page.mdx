@@ -46,7 +46,7 @@ Failure codes: `bad-request` (a non-string `label`, a `value` outside 0–1), `h
 | `onScreenSleep` | none        | `{ ok: true, event: "power:screensleep" }`         |
 | `onScreenWake` | none         | `{ ok: true, event: "power:screenwake" }`          |
 
-`batteryPercent` is `null` on a machine with no battery. `idleSeconds` is fractional, from the combined session state. `sleepPrevent` holds off idle sleep and answers the assertion id, so a caller can prove which one it holds; the reason shows in `pmset -g assertions`. `sleepAllow` answers `released: false` when nothing was held — not an error — and the darwin adapter also releases on process exit, so a crash does not leave the machine awake.
+`batteryPercent` is `null` on a machine with no battery. `idleSeconds` is fractional, from the combined session state. `sleepPrevent` holds off idle sleep and answers the assertion id, so a caller can prove which one it holds; one assertion is held per process and a second call answers with the same id rather than leaking a first one. The reason shows in `pmset -g assertions`. `sleepAllow` answers `released: false` when nothing was held — not an error — and the darwin adapter also releases on process exit, so a crash does not leave the machine awake.
 
 The six `on*` commands arm a push event instead of reading a value: each answers the `event` name it armed, and every later report arrives as that `power:*` event. Each one names the OS notification it needs in a `not-implemented` refusal when the platform has no such notification, so a listener that could never fire is never silently installed.
 

@@ -41,7 +41,7 @@ const held = await window.crust.invoke("power", "sleepPrevent", { reason: "expor
 await window.crust.invoke("power", "sleepAllow");
 ```
 
-`reason` must be a non-empty string, because IOKit shows it in `pmset -g assertions` and an unnamed assertion is one nobody can attribute. The answer carries the assertion `id`.
+`reason` must be a non-empty string, because IOKit shows it in `pmset -g assertions` and an unnamed assertion is one nobody can attribute. The answer carries the assertion `id`. One assertion is held per process: a second `sleepPrevent` answers with that same id rather than taking a second one the single native id could not release.
 
 `sleepAllow` reports `released: false` when nothing was held. That is not an error: releasing twice is a legitimate call, and a caller that treats `false` as a failure will report one where nothing went wrong.
 

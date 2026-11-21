@@ -67,6 +67,28 @@ describe("theme.set", () => {
 		expect(call(plugin, "current")).toEqual({ ok: true, appearance: "dark", source: "system" });
 	});
 
+	test("a failed readback reports failure and leaves the override alone", () => {
+		let reads = 0;
+		const adapter = {
+			// The readback right after `set` refuses; later reads show the unchanged state.
+			current: (): "dark" => {
+				reads += 1;
+				if (reads === 1) throw new Error("the new appearance could not be read back");
+				return "dark";
+			},
+			set: () => {},
+		};
+		const plugin = createThemePlugin(adapter);
+		const sink = recorder();
+		expect(call(plugin, "set", { appearance: "light" }, sink.ctx)).toEqual({
+			ok: false,
+			code: "handler-error",
+			message: "the new appearance could not be read back",
+		});
+		expect(sink.events).toEqual([]);
+		expect(call(plugin, "current")).toEqual({ ok: true, appearance: "dark", source: "system" });
+	});
+
 	test("no adapter is not-implemented and emits nothing", () => {
 		const sink = recorder();
 		expect(call(createThemePlugin(), "set", { appearance: "light" }, sink.ctx)).toMatchObject({

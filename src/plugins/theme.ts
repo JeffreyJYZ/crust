@@ -50,10 +50,10 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 			"NSAppearance",
 		);
 
-	const state = (target: ThemeAdapter): ThemeState => ({
+	const state = (target: ThemeAdapter, active: Appearance | undefined): ThemeState => ({
 		ok: true,
 		appearance: target.current(),
-		source: override === undefined ? "system" : "override",
+		source: active === undefined ? "system" : "override",
 	});
 
 	const publish = (ctx: PluginContext | undefined, next: ThemeState): ThemeState => {
@@ -69,8 +69,12 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 	): ThemeState | ThemeFailure => {
 		try {
 			target.set(appearance);
-			override = appearance === "system" ? undefined : appearance;
-			return publish(ctx, state(target));
+			const wanted = appearance === "system" ? undefined : appearance;
+			// Read back before committing the flag: if the native read refuses, `set` answers a typed
+			// failure and leaves `override` describing what the app still draws, not what was asked.
+			const next = state(target, wanted);
+			override = wanted;
+			return publish(ctx, next);
 		} catch (error) {
 			return failureOf(error);
 		}
@@ -80,8 +84,14 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 		name: "theme",
 		commands: {
 			/** What the app draws in now, and whether a page asked for it. */
-			current: (): ThemeState | NotImplemented =>
-				native ? state(native) : missing("current"),
+			current: (): ThemeState | ThemeFailure | NotImplemented => {
+				if (!native) return missing("current");
+				try {
+					return state(native, override);
+				} catch (error) {
+					return failureOf(error);
+				}
+			},
 			/** Apply an appearance and tell every page; the state is read back from the app. */
 			set: (
 				args: { appearance: AppearancePreference },

@@ -104,5 +104,13 @@ export function parseAccelerator(text: string): ParsedAccelerator {
 		);
 	}
 	const modifiers = MODIFIER_ORDER.filter((modifier) => seen.includes(modifier));
+	// A bare key would be registered globally with a zero modifier mask, swallowing every press of
+	// that key in every app. The menu grammar already refuses this; the hot key grammar must too.
+	if (modifiers.length === 0) {
+		throw new AcceleratorError(
+			`shortcut: "${text}" needs at least one modifier — a bare key would swallow ordinary typing`,
+			keyToken,
+		);
+	}
 	return { accelerator: [...modifiers, key].join("+"), key, modifiers };
 }

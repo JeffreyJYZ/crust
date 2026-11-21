@@ -38,7 +38,7 @@ export interface ThemeAdapter {
 export type ThemePlugin = PluginDefinition<
 	"theme",
 	{
-		current: () => ThemeState | NotImplemented;
+		current: () => ThemeState | ThemeFailure | NotImplemented;
 		set: (
 			args: { appearance: AppearancePreference },
 			ctx: PluginContext,

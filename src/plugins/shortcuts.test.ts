@@ -78,9 +78,8 @@ describe("accelerator grammar", () => {
 			key: "space",
 			modifiers: ["control", "option"],
 		});
-		expect(parseAccelerator("F12")).toEqual({ accelerator: "f12", key: "f12", modifiers: [] });
 		expect(parseAccelerator("Option+F5").accelerator).toBe("option+f5");
-		expect(parseAccelerator("Escape").accelerator).toBe("escape");
+		expect(parseAccelerator("Cmd+Escape").accelerator).toBe("command+escape");
 	});
 
 	test("an unknown modifier, a repeat, an unknown key and an empty token each name themselves", () => {
@@ -89,6 +88,10 @@ describe("accelerator grammar", () => {
 		expect(refusedPart("Cmd+Nope")).toBe("Nope");
 		expect(refusedPart("Cmd+")).toBe("");
 		expect(refusedPart("")).toBe("accelerator");
+		// A bare key parses to a zero modifier mask and would capture that key in every app.
+		expect(refusedPart("k")).toBe("k");
+		expect(refusedPart("F12")).toBe("F12");
+		expect(refusedPart("Escape")).toBe("Escape");
 		expect(() => parseAccelerator("Cmd+Nope")).toThrow(AcceleratorError);
 	});
 });

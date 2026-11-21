@@ -27,6 +27,20 @@ describe("theme.current", () => {
 		});
 	});
 
+	test("a refused AppKit read is a typed failure, not a rejected invoke", () => {
+		const adapter = {
+			current: () => {
+				throw new Error("effective appearance could not be read");
+			},
+			set: () => {},
+		};
+		expect(call(createThemePlugin(adapter), "current")).toEqual({
+			ok: false,
+			code: "handler-error",
+			message: "effective appearance could not be read",
+		});
+	});
+
 	test("no adapter is not-implemented, naming NSAppearance", () => {
 		expect(call(createThemePlugin(), "current")).toMatchObject({
 			ok: false,
