@@ -42,6 +42,17 @@ export const PREFLIGHT: readonly PreflightEntry[] = [
 	{ library: GTK, symbol: "gtk_widget_show_all", pkg: GTK_PKG },
 	{ library: GTK, symbol: "gtk_widget_destroy", pkg: GTK_PKG },
 	{ library: GTK, symbol: "g_signal_connect_data", pkg: GTK_PKG },
+	// The positioned container every window holds, so an embedded surface has a place beside the
+	// app's own page. Required, not optional: a window whose box cannot be built has nowhere to put
+	// its own webview, so the absence belongs in the preflight text rather than in a half-built window.
+	{ library: GTK, symbol: "gtk_overlay_new", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_overlay_add_overlay", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_show", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_halign", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_valign", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_margin_start", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_margin_top", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_get_parent", pkg: GTK_PKG },
 	{ library: WEBKIT, symbol: "webkit_web_view_load_uri", pkg: WEBKIT_PKG },
 	// The three namespaces a normal app reaches first. All of these are GLib/GIO/GTK, which
 	// libgtk-3.so.0 already depends on — so a machine that has GTK at all has them, and a machine

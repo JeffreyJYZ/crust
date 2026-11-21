@@ -66,6 +66,8 @@ export function fakeWindowShim(options: FakeOptions = {}): FakeShim {
 			return next++;
 		},
 		shim_window_attach: () => 1,
+		shim_window_container: () => next++,
+		shim_webview_place: () => 1,
 		shim_window_show: () => {},
 		shim_window_destroy: (win) => {
 			calls.push("window_destroy");

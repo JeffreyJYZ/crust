@@ -18,6 +18,8 @@ function fakeSymbols() {
 		shim_pump: () => 1,
 		shim_window_new: () => 100,
 		shim_window_attach: () => 1,
+		shim_window_container: () => 102,
+		shim_webview_place: () => 1,
 		shim_window_show: () => {},
 		shim_window_destroy: () => {},
 		shim_window_alive: () => 1,
