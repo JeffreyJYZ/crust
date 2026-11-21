@@ -1,8 +1,9 @@
 /**
  * `crust:pty` — a real pseudo-terminal a page drives: open a shell, write keystrokes, read its bytes, resize, close.
- * `Bun.Terminal` is the pty on POSIX (measured on 1.4.5), so no libc is bound here; Windows has no
- * `Bun.Terminal` and no ConPTY shim yet, so `open` answers a named `not-implemented` rather than
- * registering a surface that cannot work.
+ *
+ * The pty itself is the platform's: `Bun.Terminal` on POSIX (`pty-posix.ts`) and a ConPTY shim on
+ * Windows (`platform/windows/pty-conpty.ts`). This file owns the handles, the argument readers and
+ * the two events, so neither platform's spawn rule leaks into the other.
  * The host's `pty.shell` is what may run: a page's `program` is accepted only when it is that same
  * program, because an unconstrained login shell reachable from the webview is local command execution.
  * Every child goes through `child-reap`, so a terminal cannot outlive `quit()` or a dev restart's SIGTERM.
@@ -16,7 +17,9 @@ import {
 	type PluginDefinition,
 } from "./define";
 import { type OpenArgs, readId, readOpen, readResize, readWrite } from "./pty-args";
+import { type PtyBackend, type PtyTerminal } from "./pty-backend";
 import { hostShell, sameProgram, windowsRefusal } from "./pty-host";
+import { posixPtyBackend } from "./pty-posix";
 import { frameSink } from "./pty-stream";
 import {
 	isPtyFailure,
@@ -27,7 +30,11 @@ import {
 } from "./pty-types";
 import { signalName } from "./shell-stream";
 
+/** What `signalName` reads: Bun's own `Signals` union, which a backend may answer as a plain string. */
+type SignalCode = Parameters<typeof signalName>[0];
+
 export type { PtyData, PtyExit, PtyFailure, PtyOptions } from "./pty-types";
+export type { PtyBackend, PtyTerminal } from "./pty-backend";
 
 const MAX_RECORDS = 64; // a closed handle keeps answering `terminal-closed` until this cap prunes it
 
@@ -47,16 +54,18 @@ export type PtyCommands = {
 
 interface Live {
 	id: string;
-	term: Bun.Terminal;
-	child: Bun.Subprocess;
+	term: PtyTerminal;
 	closed: boolean;
 }
 
 export function createPtyPlugin(
 	options: PtyOptions = {},
 	os: string = process.platform,
+	backend?: PtyBackend,
 ): PluginDefinition<"pty", PtyCommands> {
-	const host = hostShell(options);
+	const host = hostShell(options, os);
+	// A platform with no pty answers by name rather than advertising a terminal that cannot open.
+	const pty = backend ?? (os === "win32" ? undefined : posixPtyBackend());
 	const terminals = new Map<string, Live>();
 	let next = 0;
 	// The same reap `shell` uses: quitting must not leave a shell running beside the next dev start.
@@ -73,7 +82,7 @@ export function createPtyPlugin(
 		name: "pty",
 		commands: {
 			open: (args: OpenArgs, ctx?: PluginContext): OpenOutcome => {
-				if (os === "win32") return windowsRefusal();
+				if (pty === undefined) return windowsRefusal();
 				const parsed = readOpen(args);
 				if (isPtyFailure(parsed)) return parsed;
 				if (parsed.program !== undefined && !sameProgram(parsed.program, host)) {
@@ -85,22 +94,17 @@ export function createPtyPlugin(
 				}
 				const id = `pty-${++next}`;
 				const sink = frameSink(ctx?.emit, id);
-				const term = new Bun.Terminal({
-					cols: parsed.cols,
-					rows: parsed.rows,
-					name: "xterm-256color",
-					data: (_term, bytes) => void sink(bytes),
-				});
-				let child: Bun.Subprocess;
+				let term: PtyTerminal;
 				try {
-					child = Bun.spawn({
-						cmd: [host],
-						cwd: process.env.HOME ?? process.cwd(),
-						env: { ...process.env, TERM: "xterm-256color" },
-						terminal: term,
+					term = pty.open({
+						shell: host,
+						cols: parsed.cols,
+						rows: parsed.rows,
+						cwd: homeDir(),
+						env: { ...process.env, TERM: "xterm-256color" } as Record<string, string>,
+						onData: (bytes) => void sink(bytes),
 					});
 				} catch (error) {
-					term.close();
 					const detail = error instanceof Error ? error.message : String(error);
 					return ptyFailure(
 						"spawn-failed",
@@ -109,18 +113,18 @@ export function createPtyPlugin(
 				}
 				const emit = ctx?.emit;
 				if (emit !== undefined) {
-					void child.exited.then((code) => {
+					void term.exited.then((code) => {
 						emit("pty-exit", {
 							id,
 							exitCode: code,
-							signal: signalName(child.signalCode),
+							signal: signalName(term.signalCode as SignalCode),
 						} satisfies PtyExit);
 					});
 				}
-				terminals.set(id, { id, term, child, closed: false });
-				trackChild(child);
+				terminals.set(id, { id, term, closed: false });
+				trackChild(term);
 				prune();
-				return { ok: true, id, pid: child.pid };
+				return { ok: true, id, pid: term.pid };
 			},
 			write: (args): WriteOutcome => {
 				const parsed = readWrite(args);
@@ -154,15 +158,12 @@ export function createPtyPlugin(
 				if (record === undefined) return unknown("close", asked.id);
 				if (record.closed || record.term.closed)
 					return { ok: true, closed: false, id: asked.id };
-				// Closing the master hangs the pty up, which ends a cooperating shell; a program that
-				// traps SIGHUP is why the kill is here rather than left to the kernel.
 				try {
 					record.term.close();
 				} catch {
 					// Already closed under us; the close the page asked for still happened.
 				}
 				record.closed = true;
-				if (record.child.exitCode === null) record.child.kill("SIGTERM");
 				return { ok: true, closed: true, id: asked.id };
 			},
 			list: (): ListOutcome => ({
@@ -173,6 +174,11 @@ export function createPtyPlugin(
 			}),
 		},
 	});
+}
+
+/** Where a terminal starts: the user's home on either platform, else the process's own directory. */
+function homeDir(): string {
+	return process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
 }
 
 function unknown(command: string, id: string): PtyFailure {

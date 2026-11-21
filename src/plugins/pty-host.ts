@@ -24,28 +24,35 @@ function real(path: string): string {
 	}
 }
 
+/** The shell a platform logs a user in with when the host named none. */
+export function defaultShell(os: string = process.platform): string {
+	if (os === "win32") return process.env.ComSpec ?? "cmd.exe";
+	return process.env.SHELL ?? "/bin/sh";
+}
+
 /** The one program the host's section names; the login shell only when the host named none. */
-export function hostShell(options: PtyOptions): string {
-	const named = options.shell ?? process.env.SHELL ?? "/bin/sh";
-	const found = named.includes("/") ? real(named) : Bun.which(named);
+export function hostShell(options: PtyOptions, os: string = process.platform): string {
+	const named = options.shell ?? defaultShell(os);
+	const found = named.includes("/") || named.includes("\\") ? real(named) : Bun.which(named);
 	return found ?? named;
 }
 
 /** Whether a page's `program` is the host's own, compared as real paths so `/bin/sh` and `/bin/dash` differ. */
 export function sameProgram(asked: string, host: string): boolean {
-	const resolved = asked.includes("/") ? real(asked) : (Bun.which(asked) ?? asked);
+	const path = asked.includes("/") || asked.includes("\\");
+	const resolved = path ? real(asked) : (Bun.which(asked) ?? asked);
 	return resolved === host || real(resolved) === real(host);
 }
 
 /**
- * What `pty.open` answers on a platform with no pty. Named rather than silent: the page learns the
- * API crust is missing, so an app can fall back on `shell` instead of retrying a command that will
- * never work there.
+ * What `pty.open` answers on a Windows run with no platform attached, so no ConPTY shim exists.
+ * Named rather than silent: the page learns what is missing, so an app can fall back on `shell`
+ * instead of retrying a command that will never work there.
  */
 export function windowsRefusal(): ReturnType<typeof notImplemented> {
 	return notImplemented(
-		"pty.open needs a pseudo-console: Bun.Terminal is POSIX-only, so crust answers this " +
-			"command on Windows only once its ConPTY shim ships",
+		"pty.open needs a pseudo-console: no Windows platform is attached, so the ConPTY shim " +
+			"that backs Bun-less Windows has not compiled in this process",
 		"CreatePseudoConsole",
 	);
 }

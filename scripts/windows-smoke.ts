@@ -26,6 +26,7 @@ import { createWithAbortRetry } from "./windows/cold-abort.ts";
 import { FRAME_ADVICE } from "./windows/frame.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 import { provePreview } from "./windows/preview.ts";
+import { provePty } from "./windows/pty.ts";
 import { provePump } from "./windows/pump.ts";
 import { NOT_PROVEN } from "./windows/report.ts";
 import { runStages } from "./windows/stages.ts";
@@ -178,9 +179,9 @@ async function main(): Promise<number> {
 		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
 	);
 
-	// 7. The preview host: the shell's IPreviewHandler in a child window of this one.
-	const preview = provePreview(hwnd);
-	for (const check of preview) verdict.check(check.name, check.ok, check.detail);
+	// 7. The preview host in a child window, then ConPTY opened, typed into, resized and closed.
+	for (const check of provePreview(hwnd)) verdict.check(check.name, check.ok, check.detail);
+	for (const check of await provePty()) verdict.check(check.name, check.ok, check.detail);
 
 	// 8. Two surfaces on one environment. The handle table is the only thing that keeps a second
 	//    webview from overwriting the first's object, and nothing but this runtime can prove it.

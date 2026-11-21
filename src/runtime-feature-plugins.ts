@@ -27,10 +27,22 @@ export interface FeatureSections {
  * section, never because a plugin list mentioned its name. `preview` and `browser` are registered
  * either way — a panel is layout and an embedded page is bounded by its origin list, so neither
  * executes anything on its own.
+ *
+ * The Windows pty is reached by a dynamic import on this one string, so a macOS or Linux launch
+ * never loads the ConPTY unit's source. `os` is a parameter so the wiring is testable off Windows.
  */
-export async function featurePlugins(sections: FeatureSections): Promise<PluginDefinition[]> {
+export async function featurePlugins(
+	sections: FeatureSections,
+	os: string = process.platform,
+): Promise<PluginDefinition[]> {
 	const plugins: PluginDefinition[] = [];
-	if (sections.pty !== undefined) plugins.push(createPtyPlugin(sections.pty));
+	if (sections.pty !== undefined) {
+		const backend =
+			os === "win32"
+				? (await import("@/platform/windows/pty-conpty")).windowsPtyBackend()
+				: undefined;
+		plugins.push(createPtyPlugin(sections.pty, os, backend));
+	}
 	// With no `preview` section the panel opens at its own default size; the scope it reads comes
 	// from the runtime's `fs.scope` instance, resolved per call inside the plugin.
 	plugins.push(

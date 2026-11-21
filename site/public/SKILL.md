@@ -18,13 +18,13 @@ index is <https://crust.jyz.land/docs>.
 ## Quickstart
 
 ```sh
-bunx github:JeffreyJYZ/crust#v0.2.8 init my-app   # plain HTML, no bundler
-bunx github:JeffreyJYZ/crust#v0.2.8 init my-app --react   # also --next, --svelte, --vue, --solid
+bunx github:JeffreyJYZ/crust#v0.2.9 init my-app   # plain HTML, no bundler
+bunx github:JeffreyJYZ/crust#v0.2.9 init my-app --react   # also --next, --svelte, --vue, --solid
 cd my-app && bun install
 bun run dev        # crust dev
 ```
 
-`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS, and `bun add -g github:JeffreyJYZ/crust#v0.2.8` installs that tag globally as `~/.bun/bin/crust` on any platform (`bun add -g crust` is a different, unrelated npm package — always name the `github:` specifier). Release binaries for all six platform/arch pairs are on the releases page; a bun global sits earlier on `PATH` than Homebrew's prefix, so where both exist the bun copy answers `crust`.
+`brew install JeffreyJYZ/tap/crust` gives the same CLI on macOS, and `bun add -g github:JeffreyJYZ/crust#v0.2.9` installs that tag globally as `~/.bun/bin/crust` on any platform (`bun add -g crust` is a different, unrelated npm package — always name the `github:` specifier). Release binaries for all six platform/arch pairs are on the releases page; a bun global sits earlier on `PATH` than Homebrew's prefix, so where both exist the bun copy answers `crust`.
 
 ## What a scaffold is
 
@@ -162,8 +162,8 @@ one program it may run (absent is the login shell, and `open`'s `program` is acc
 resolves to that same one), and a window label needs the `pty:open` action — a `shell` grant never
 implies it. Commands are `open/write/resize/close/list`; output arrives as `pty-data` events whose
 `chunk` is **base64** (decode to bytes, never to text), and `pty-exit` carries the child's own code
-and signal. macOS and Linux run it over `Bun.Terminal`; on Windows `pty.open` answers
-`not-implemented` naming `CreatePseudoConsole` until the ConPTY half lands.
+and signal. macOS and Linux run it over `Bun.Terminal`; Windows runs it over a ConPTY
+pseudo-console, with `pty.shell` (`cmd.exe` by default) as the program.
 
 A namespace still needs its own capability and grant before a page may call it — see `security`
 above. For `store.get`:
