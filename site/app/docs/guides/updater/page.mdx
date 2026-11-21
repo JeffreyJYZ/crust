@@ -87,7 +87,7 @@ The key comes from `updater.pubkey` in the config and nowhere else — a `pubkey
 crust: updater.download requires updater.pubkey in crust.config.ts to verify a signature, and this app pins none, got …
 ```
 
-A page-supplied `pubkey` that differs from the pinned one is `refuses a pubkey that is not this app's`, and bytes that do not match the signature are `signature-mismatch`.
+A page-supplied `pubkey` that differs from the pinned one is `refuses a pubkey that is not this app's`, and bytes that do not match the signature are `signature-mismatch`. When the app pins `updater.pubkey`, a `download` with no `signature` is refused before any fetch with `requires: "signature"`: the manifest's `sha256` is not enough, because a server that answers both halves chooses both.
 
 ## install
 
@@ -118,6 +118,8 @@ That is `hash-mismatch`. `adapter.sha256` digests a directory as a tree, so a `.
 Both paths must already be `.app` directories — an archive is not extracted here. The new bundle is renamed over the old one, and the old one is parked at `<appPath>.old`, which is replaced on the next install. One rename on one volume is atomic; a cross-volume move fails rather than degrading into a copy that is no longer atomic.
 
 Nothing runs `codesign`: the signature belongs to whoever shipped the artifact.
+
+Check `ok` to know whether the app came back. `relaunch: true` that fails answers `{ ok: false, code: "relaunch-failed", installed: true, appPath, backup }` — the new bundle is installed but not running, and no rollback is attempted. A forward rename followed by a failed restore is `rollback-failed` with `parkedAt: <backup>`, naming the only copy of the old app.
 
 ## One limitation: a bundle cannot carry a signature
 
@@ -178,9 +180,10 @@ The hardening does not close the update path. A pinned `updater.pubkey`, a `down
 | `signature-mismatch`  | the bytes do not match the manifest signature                                                 |
 | `unverified-artifact` | `install` was handed a path this run never verified                                           |
 | `install-failed`      | the rename failed, including a cross-volume move                                              |
+| `rollback-failed`     | the forward rename failed and restoring the old bundle failed too; `parkedAt` names its copy  |
 | `not-an-app-bundle`   | a path is not an existing `.app`, or is not this app's own bundle                             |
 | `unsupported-platform`| `install` or `relaunch` on Linux or Windows — no macOS `.app` install path                     |
-| `relaunch-failed`     | the own bundle is right and the launcher still refused                                        |
+| `relaunch-failed`     | the swap landed (`installed: true`) but the launcher still refused                             |
 | `handler-error`       | an adapter threw something it could not name                                                  |
 
-`check` reports the first three inside `error`; `download` and `install` answer `{ ok: false, code, message, path?, requires? }`. `requires` names the argument or config key that would have let the call through — `sha256`, `updater.pubkey`, `updater.allowFileUrl` — so a UI can point at the fix rather than the symptom.
+`check` reports the first three inside `error`; `download` and `install` answer `{ ok: false, code, message, path?, requires? }`. `requires` names the argument or config key that would have let the call through — `sha256`, `signature`, `updater.pubkey`, `updater.allowFileUrl` — so a UI can point at the fix rather than the symptom.

@@ -15,6 +15,9 @@ import { UpdaterAdapterError } from "./updater-args";
 /** How many bytes one artifact may be. A bundle is tens of MB; half a gigabyte is generous. */
 export const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
+/** A manifest is one small JSON object, so its read is bounded far tighter than an artifact. */
+export const MANIFEST_BYTES = 256 * 1024;
+
 /** Hops a feed may chain through. GitHub Releases uses one; a redirect loop must not run free. */
 export const MAX_REDIRECT_HOPS = 5;
 
@@ -49,6 +52,12 @@ export async function readBounded(
 
 function isRedirect(response: Response): boolean {
 	return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400);
+}
+
+/** Read a feed through the same cap as an artifact, then parse: no unbounded `response.json()`. */
+export async function readJsonBounded(response: Response, url: string): Promise<unknown> {
+	const bytes = await readBounded(response, url, MANIFEST_BYTES);
+	return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 /** One request as this module makes it; injected by a test, never by the plugin. */

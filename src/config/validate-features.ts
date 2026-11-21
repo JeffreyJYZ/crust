@@ -60,6 +60,11 @@ export function validateBrowser(v: Validator, value: unknown): void {
 			v.fail(path, "an http(s) origin", item);
 			return;
 		}
+		if (url.username !== "" || url.password !== "") {
+			// originOf keeps only scheme, host and port, so a credential here silently widens
+			// the rule to every path on that origin while reading as a scoped endpoint.
+			v.fail(path, "an origin with no credentials — scheme, host and port only", item);
+		}
 		if (url.pathname !== "/" || url.search !== "" || url.hash !== "") {
 			v.fail(path, "an origin, with no path, query or fragment", item);
 		}

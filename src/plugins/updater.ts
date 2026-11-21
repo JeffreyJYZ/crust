@@ -19,13 +19,16 @@ import {
 } from "./updater-args";
 import { parseManifest } from "./updater-manifest";
 import { nodeUpdaterAdapter } from "./updater-node";
+import { samePubkey } from "./updater-signature";
 import { fetchUrlFailure } from "./updater-url";
 import { createLauncher, ownBundleFailure } from "./updater-bundle";
 import { runDownload } from "./updater-download";
+import { runRelaunch } from "./updater-relaunch-command";
 import {
 	archiveChangedSinceDownload,
 	changedSinceDownload,
 	createReceipts,
+	discardTemps,
 	unverifiedArtifact,
 } from "./updater-receipt";
 import type {
@@ -34,6 +37,7 @@ import type {
 	DownloadArgs,
 	DownloadResult,
 	InstallArgs,
+	InstallFailure,
 	InstallResult,
 	RelaunchResult,
 	UpdaterAdapter,
@@ -99,7 +103,7 @@ export function createUpdaterPlugin(
 				}
 				const { version, url, notes, sha256, signature, pubkey } = parsed.manifest;
 				const pinned = options.pubkey;
-				if (pubkey !== undefined && pinned !== undefined && pubkey !== pinned) {
+				if (pubkey !== undefined && pinned !== undefined && !samePubkey(pubkey, pinned)) {
 					return checkFailure(
 						"bad-manifest",
 						"crust: updater.check: the manifest's pubkey is not this app's",
@@ -110,7 +114,9 @@ export function createUpdaterPlugin(
 			},
 			download: (args: DownloadArgs): Promise<DownloadResult | UpdaterFailure> =>
 				runDownload(adapter, options, receipts, args),
-			install: async (args: InstallArgs): Promise<InstallResult | UpdaterFailure> => {
+			install: async (
+				args: InstallArgs,
+			): Promise<InstallResult | InstallFailure | UpdaterFailure> => {
 				if (platform !== "darwin") return platformFailure("install", platform);
 				const source = readString(args, "path");
 				const appPath = readString(args, "appPath");
@@ -119,6 +125,7 @@ export function createUpdaterPlugin(
 				}
 				const receipt = receipts.get(source);
 				if (receipt === undefined) return unverifiedArtifact(source);
+				const backup = `${appPath}.old`;
 				try {
 					if (!(await adapter.isAppBundle(appPath))) {
 						return notAppBundle(appPath, "is not an existing .app directory");
@@ -148,30 +155,34 @@ export function createUpdaterPlugin(
 					if (actual !== receipt.sha256) {
 						return changedSinceDownload(source, actual, receipt.sha256);
 					}
-					const backup = `${appPath}.old`;
 					await adapter.replaceBundle(source, appPath, backup);
+					await discardTemps(adapter, receipt.tempDirs);
 					if (args.relaunch !== true) return { ok: true, appPath, backup };
-					// The swap already landed, so a failed launch is reported beside it, not undone.
+					// The swap already landed, but `ok` means the app is running the new build.
+					// A launch failure is a typed failure carrying the paths, not a 200 with the
+					// error tucked inside an otherwise-successful answer.
 					const relaunchError = await start(appPath);
 					if (relaunchError === undefined) return { ok: true, appPath, backup };
-					return { ok: true, appPath, backup, relaunchError };
+					return {
+						ok: false,
+						code: "relaunch-failed",
+						message: relaunchError.message,
+						appPath,
+						backup,
+						installed: true,
+					};
 				} catch (error) {
-					return { ok: false, ...errorOf(error, "install-failed") };
+					const failure = errorOf(error, "install-failed");
+					if (failure.code === "rollback-failed") {
+						// Nothing moved back: the only copy of the old app is the backup, and a
+						// caller must not read this as "the rename never started".
+						return { ok: false, ...failure, appPath, backup, parkedAt: backup };
+					}
+					return { ok: false, ...failure };
 				}
 			},
-			relaunch: async (args: BundleArgs): Promise<RelaunchResult | UpdaterFailure> => {
-				if (platform !== "darwin") return platformFailure("relaunch", platform);
-				const appPath = readString(args, "appPath");
-				if (appPath === undefined) {
-					return invalidArguments("relaunch", "needs { appPath }", args);
-				}
-				if (!(await adapter.isAppBundle(appPath))) {
-					return notAppBundle(appPath, "is not an existing .app directory", "relaunch");
-				}
-				const failure = await start(appPath);
-				if (failure !== undefined) return { ok: false, ...failure, path: appPath };
-				return { ok: true, started: true };
-			},
+			relaunch: (args: BundleArgs): Promise<RelaunchResult | UpdaterFailure> =>
+				runRelaunch(args, adapter, start, platform),
 		},
 	});
 }

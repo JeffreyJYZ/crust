@@ -19,6 +19,13 @@ export function validateUpdater(v: Validator, value: unknown): void {
 	const pubkey = updater.pubkey;
 	if (pubkey !== undefined && (typeof pubkey !== "string" || !BASE64_32.test(pubkey))) {
 		v.fail("updater.pubkey", "base64 of 32 raw bytes", pubkey);
+	} else if (
+		typeof pubkey === "string" &&
+		Buffer.from(pubkey, "base64").toString("base64") !== pubkey
+	) {
+		// A dropped `=` makes the same 32 bytes import as a different key: every genuine
+		// signature would then fail as `signature-mismatch` and blame the update server.
+		v.fail("updater.pubkey", "canonical base64 of 32 raw bytes, including padding", pubkey);
 	}
 
 	const autoCheck = updater.autoCheck;

@@ -6,9 +6,18 @@
  * live in `updater-slip`, so every refusal names the entry that caused it.
  */
 
-import { ArchiveError, archiveRoot, assertEntryName, assertLinkInside } from "./updater-slip";
+import { MAX_DOWNLOAD_BYTES } from "./updater-fetch";
+import {
+	ArchiveError,
+	archiveRoot,
+	assertEntryName,
+	assertLinkInside,
+	assertNoSymlinkParents,
+} from "./updater-slip";
+import { assertRange, END, END_BYTES, findEnd, isZip, LOCAL, viewOf } from "./updater-zip-bytes";
 
 export * from "./updater-slip";
+export { isZip } from "./updater-zip-bytes";
 
 export type ArchiveEntryKind = "file" | "directory" | "symlink";
 export interface ArchiveEntry {
@@ -29,50 +38,19 @@ export interface Archive {
 	readonly entries: readonly ArchiveEntry[];
 }
 
-const LOCAL = 0x04034b50;
 const CENTRAL = 0x02014b50;
-const END = 0x06054b50;
-const END_BYTES = 22;
-const MAX_COMMENT = 0xffff;
 const TYPE_MASK = 0o170000;
 const SYMLINK = 0o120000;
 const DIRECTORY = 0o040000;
 
-const text = new TextDecoder();
-
-/** Whether these bytes open like a zip: a local header, or the record of an empty archive. */
-export function isZip(bytes: Uint8Array): boolean {
-	if (bytes.length < 4) return false;
-	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-	const magic = view.getUint32(0, true);
-	return magic === LOCAL || magic === END;
-}
-
-function viewOf(bytes: Uint8Array): DataView {
-	return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-}
-
-/** The end-of-central-directory record sits last, behind a comment of up to 64 KiB. */
-function findEnd(view: DataView): number {
-	const stop = Math.max(0, view.byteLength - END_BYTES - MAX_COMMENT);
-	for (let at = view.byteLength - END_BYTES; at >= stop; at -= 1) {
-		if (view.getUint32(at, true) === END) return at;
-	}
-	throw new ArchiveError("is not a zip archive: no end-of-central-directory record");
-}
-
 /**
- * Every offset in a header comes from the archive itself, so it is checked against the bytes on
- * hand before it is read: a truncated download is an ordinary failure and must refuse as
- * `invalid-archive`, not surface a `DataView` offset `RangeError` with no entry named.
+ * The wire cap bounds compressed bytes, not memory: deflate can expand one byte into roughly a
+ * thousand. The central directory's uncompressed sizes bound the output before `inflateSync` runs,
+ * because Bun's inflate has no `maxOutputLength` option.
  */
-function assertRange(view: DataView, at: number, length: number, what: string): void {
-	if (!Number.isInteger(at) || at < 0 || length < 0 || at + length > view.byteLength) {
-		throw new ArchiveError(
-			`is truncated: ${what} needs bytes ${at}..${at + length}, and the archive holds ${view.byteLength}`,
-		);
-	}
-}
+export const MAX_INFLATED_BYTES = MAX_DOWNLOAD_BYTES;
+
+const text = new TextDecoder();
 
 function kindOf(name: string, mode: number): ArchiveEntryKind {
 	const type = mode & TYPE_MASK;
@@ -88,6 +66,7 @@ function dataOf(
 	at: number,
 	size: number,
 	method: number,
+	declared: number,
 ): Uint8Array {
 	assertRange(view, at, 30, "a local header");
 	if (view.getUint32(at, true) !== LOCAL) {
@@ -98,14 +77,29 @@ function dataOf(
 	const start = at + 30 + nameLength + extraLength;
 	assertRange(view, start, size, "an entry's data");
 	const raw = bytes.subarray(start, start + size);
-	if (method === 0) return raw;
-	if (method === 8) return Bun.inflateSync(new Uint8Array(raw), { windowBits: -15 });
-	throw new ArchiveError(
-		`uses compression method ${method}, and updater reads stored and deflate`,
-	);
+	let data: Uint8Array;
+	if (method === 0) data = raw;
+	else if (method === 8) data = Bun.inflateSync(new Uint8Array(raw), { windowBits: -15 });
+	else {
+		throw new ArchiveError(
+			`uses compression method ${method}, and updater reads stored and deflate`,
+		);
+	}
+	if (data.byteLength > declared) {
+		throw new ArchiveError(
+			`has an entry inflated to ${data.byteLength} bytes, but its directory declares ${declared}`,
+		);
+	}
+	return data;
 }
 
-function readCentral(bytes: Uint8Array, view: DataView, at: number, out: ArchiveEntry[]): number {
+function readCentral(
+	bytes: Uint8Array,
+	view: DataView,
+	at: number,
+	out: ArchiveEntry[],
+	budget: { used: number },
+): number {
 	assertRange(view, at, 46, "a central directory header");
 	if (view.getUint32(at, true) !== CENTRAL) {
 		throw new ArchiveError("has a damaged central directory");
@@ -115,6 +109,12 @@ function readCentral(bytes: Uint8Array, view: DataView, at: number, out: Archive
 	}
 	const method = view.getUint16(at + 10, true);
 	const size = view.getUint32(at + 20, true);
+	const declared = view.getUint32(at + 24, true);
+	if (declared > MAX_INFLATED_BYTES - budget.used) {
+		throw new ArchiveError(
+			`declares ${declared} bytes in one entry, over the ${MAX_INFLATED_BYTES} byte cap for an update`,
+		);
+	}
 	const nameLength = view.getUint16(at + 28, true);
 	const extraLength = view.getUint16(at + 30, true);
 	const commentLength = view.getUint16(at + 32, true);
@@ -133,7 +133,8 @@ function readCentral(bytes: Uint8Array, view: DataView, at: number, out: Archive
 	);
 	const kind = kindOf(name, unix);
 	const mode = unix & 0o777;
-	const data = dataOf(bytes, view, local, size, method);
+	const data = dataOf(bytes, view, local, size, method, declared);
+	budget.used += data.byteLength;
 	if (kind === "symlink") out.push({ name, kind, mode, target: text.decode(data) });
 	else if (kind === "directory") out.push({ name, kind, mode });
 	else out.push({ name, kind, mode, bytes: data });
@@ -156,14 +157,16 @@ export function readArchive(bytes: Uint8Array): Archive {
 		);
 	}
 	const entries: ArchiveEntry[] = [];
+	const budget = { used: 0 };
 	let at = offset;
 	for (let index = 0; index < count; index += 1) {
-		at = readCentral(bytes, view, at, entries);
+		at = readCentral(bytes, view, at, entries, budget);
 	}
 	for (const entry of entries) assertEntryName(entry.name);
 	const root = archiveRoot(entries);
 	for (const entry of entries) {
 		if (entry.kind === "symlink") assertLinkInside(entry, root);
 	}
+	assertNoSymlinkParents(entries);
 	return { root, entries };
 }

@@ -30,12 +30,19 @@ export function validateWindows(v: Validator, value: unknown): void {
 		return;
 	}
 
+	const seen = new Set<string>();
 	value.forEach((item, index) => {
 		const path = `windows[${index}]`;
 		const window = v.object(path, item);
 		if (!window) return;
 		v.only(window, path, WINDOW_KEYS);
-		v.string(window, "label", path, true);
+		const label = v.string(window, "label", path, true);
+		if (label !== undefined) {
+			// Labels are window handles and grant-table keys. A duplicate crashes the native
+			// adapter on the second create, after the first window is already open.
+			if (seen.has(label)) v.fail(`${path}.label`, "a label no other window uses", label);
+			seen.add(label);
+		}
 		v.string(window, "url", path, false);
 		v.positiveInteger(window, "width", path);
 		v.positiveInteger(window, "height", path);

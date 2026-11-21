@@ -5,12 +5,65 @@ import type { Validator } from "./validator.ts";
 export const SHELL_KEYS = ["allow", "cwdRoot"] as const;
 
 /**
- * Programs that are a language rather than a tool. Allowlisting one hands the page every binary and
- * every file this process can reach — `sh -c`, `node -e`, `python -c` — so the allow list stops
- * bounding what runs, however short it is. A version suffix is common (`python3.12`, `node20`).
+ * Programs that carry their own execution primitive. A language (`sh -c`, `node -e`, `python -c`)
+ * is the obvious case, but so is `awk 'BEGIN{system("…")}'`, `find . -exec …`, `tar
+ * --checkpoint-action=exec=…`, `npx -c …` or `git -c core.fsmonitor=…`: the page supplies argv and
+ * the permitted binary runs it. Naming any of these hands the page every binary and every file
+ * this process can reach, so the allow list stops bounding what runs.
  */
-const INTERPRETER =
-	/^(?:sh|bash|zsh|dash|ksh|fish|csh|tcsh|env|node|nodejs|bun|deno|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*|lua[0-9.]*|osascript|pwsh|Rscript)$/i;
+const EXECUTION_CAPABLE = new Set([
+	"awk",
+	"gawk",
+	"mawk",
+	"sed",
+	"find",
+	"xargs",
+	"tar",
+	"git",
+	"busybox",
+	"npx",
+	"npm",
+	"pnpm",
+	"yarn",
+	"make",
+	"cmake",
+	"sudo",
+	"ssh",
+	"go",
+	"java",
+	"javac",
+	"powershell",
+	"pwsh",
+	"cmd",
+	"osascript",
+	"sh",
+	"bash",
+	"zsh",
+	"dash",
+	"ksh",
+	"fish",
+	"csh",
+	"tcsh",
+	"env",
+	"node",
+	"nodejs",
+	"bun",
+	"deno",
+	"python",
+	"perl",
+	"ruby",
+	"php",
+	"lua",
+	"rscript",
+]);
+
+/** Strip a Windows suffix and a common version suffix: `python3.12`, `node20`, `powershell.exe`. */
+function primitiveOf(base: string): string {
+	return base
+		.toLowerCase()
+		.replace(/\.(?:exe|bat|cmd|ps1)$/, "")
+		.replace(/[0-9.]+$/, "");
+}
 
 /** The program name an entry names, whether it is a bare name or an absolute path. */
 function baseName(entry: string): string {
@@ -55,9 +108,9 @@ export function validateShell(v: Validator, value: unknown): void {
 			return;
 		}
 		const base = baseName(item);
-		if (!INTERPRETER.test(base)) return;
+		if (!EXECUTION_CAPABLE.has(primitiveOf(base))) return;
 		console.warn(
-			`crust config: ${path} ${JSON.stringify(item)} is an interpreter — ` +
+			`crust config: ${path} ${JSON.stringify(item)} is an interpreter or an execution-capable tool — ` +
 				`allowing ${base} lets a page run any program and read any file this app can reach, ` +
 				"so the allow list no longer bounds what runs",
 		);

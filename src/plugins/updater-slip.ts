@@ -55,12 +55,45 @@ export function assertLinkInside(entry: ArchiveEntry, root: string): void {
 			name,
 		);
 	}
-	const resolved = posix.normalize(posix.join(posix.dirname(name), target));
+	const own = posix.dirname(name);
+	const resolved = posix.normalize(posix.join(own, target));
 	if (resolved !== root && !resolved.startsWith(`${root}/`)) {
 		throw new ArchiveError(
 			`has a symlink "${name}" pointing outside the archive at "${target}"`,
 			name,
 		);
+	}
+	if (resolved === root || resolved === own || own.startsWith(`${resolved}/`)) {
+		// A link back to the root or one of its own parents makes `stat` recurse until ELOOP,
+		// both while extracting and when the tree digest walks the result.
+		throw new ArchiveError(
+			`has a symlink "${name}" whose target "${target}" cycles back into the archive`,
+			name,
+		);
+	}
+}
+
+/**
+ * A later entry below a symlink is written *through* that link — `mkdir` and `writeFile` both
+ * follow it — so the tree `install` renames is not the entry list the digest described. Refuse the
+ * whole class, whatever order the two entries came in.
+ */
+export function assertNoSymlinkParents(entries: readonly ArchiveEntry[]): void {
+	const links = new Set<string>();
+	for (const entry of entries) {
+		if (entry.kind === "symlink") links.add(entry.name);
+	}
+	for (const entry of entries) {
+		const segments = entry.name.split("/");
+		for (let at = 1; at < segments.length; at += 1) {
+			const ancestor = segments.slice(0, at).join("/");
+			if (links.has(ancestor)) {
+				throw new ArchiveError(
+					`has an entry "${entry.name}" below symlink "${ancestor}", so it would be written through the link`,
+					entry.name,
+				);
+			}
+		}
 	}
 }
 

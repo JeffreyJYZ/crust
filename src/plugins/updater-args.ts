@@ -13,6 +13,7 @@ export type UpdaterErrorCode =
 	| "hash-mismatch"
 	| "signature-mismatch"
 	| "install-failed"
+	| "rollback-failed"
 	| "relaunch-failed"
 	| "not-an-app-bundle"
 	| "unsupported-platform"
