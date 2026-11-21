@@ -1,14 +1,22 @@
 /**
- * The two bounds `download` needs on a response: a byte cap, so a wrong or hostile URL answering
- * with an endless body cannot fill the temp dir before the digest is computed, and a redirect
- * refusal, so "only https" covers the bytes actually fetched and not just the URL handed in. A
- * `https:` URL answering 302 to `http://` would otherwise arrive in cleartext.
+ * The two bounds `fetchJson` and `download` need on a response: a byte cap, so a wrong or hostile URL
+ * answering with an endless body cannot fill the temp dir before the digest is computed, and a
+ * redirect policy, so "only https" covers the bytes actually fetched and not just the URL handed in.
+ *
+ * Following a hop looks like loosening pinning; it is not. The security boundary is the pinned
+ * Ed25519 `updater.pubkey` over the artifact bytes, not the host those bytes arrive from. That is
+ * what makes `https://github.com/<owner>/<repo>/releases/latest/download/<asset>` usable at all: it
+ * answers 302 on every request, so refusing every 3xx refused the most obvious place to host a feed.
+ * What stays refused is a hop that leaves https — a plaintext body is not the artifact anyone signed.
  */
 
 import { UpdaterAdapterError } from "./updater-args";
 
 /** How many bytes one artifact may be. A bundle is tens of MB; half a gigabyte is generous. */
 export const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
+
+/** Hops a feed may chain through. GitHub Releases uses one; a redirect loop must not run free. */
+export const MAX_REDIRECT_HOPS = 5;
 
 /** Read the body in chunks, refusing by name the moment it passes `limit`. */
 export async function readBounded(
@@ -39,18 +47,57 @@ export async function readBounded(
 	return new Uint8Array(Buffer.concat(chunks));
 }
 
+function isRedirect(response: Response): boolean {
+	return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400);
+}
+
+/** One request as this module makes it; injected by a test, never by the plugin. */
+export type RedirectFetch = (url: string) => Promise<Response>;
+
 /**
- * A 3xx is a refusal. `redirect: "manual"` hands it back instead of following it, so the scheme
- * policy in `updater-url` decides once, on the URL the caller passed, and no second hop is taken.
+ * Fetch `url`, following at most {@link MAX_REDIRECT_HOPS} `https` redirects. `redirect: "manual"`
+ * hands every 3xx back instead of letting `fetch` follow it silently, so each hop is checked here:
+ * a `location` that is not `https:` refuses before a request for it is made.
  */
-export function redirectFailure(url: string, response: Response): UpdaterAdapterError | undefined {
-	if (response.type !== "opaqueredirect" && !(response.status >= 300 && response.status < 400)) {
-		return undefined;
+export async function fetchFollowing(
+	url: string,
+	init: RequestInit = {},
+	fetchImpl?: RedirectFetch,
+): Promise<Response> {
+	const send: RedirectFetch =
+		fetchImpl ?? ((target) => fetch(target, { ...init, redirect: "manual" }));
+	let current = url;
+	for (let followed = 0; ; followed++) {
+		const response = await send(current);
+		if (!isRedirect(response)) return response;
+		const location = response.headers.get("location");
+		if (location === null) {
+			throw new UpdaterAdapterError(
+				"download-failed",
+				`updater: ${current} answered a redirect with no location`,
+			);
+		}
+		let next: URL;
+		try {
+			next = new URL(location, current);
+		} catch {
+			throw new UpdaterAdapterError(
+				"download-failed",
+				`updater: ${current} redirects to ${location}, which is not a url`,
+			);
+		}
+		if (next.protocol !== "https:") {
+			throw new UpdaterAdapterError(
+				"download-failed",
+				`updater: ${current} redirects to ${next.href}, refusing a ${next.protocol} hop: only https is followed`,
+			);
+		}
+		if (followed >= MAX_REDIRECT_HOPS) {
+			throw new UpdaterAdapterError(
+				"download-failed",
+				`updater: ${url} answered more than ${MAX_REDIRECT_HOPS} redirects, so the chain is refused`,
+			);
+		}
+		current = next.href;
 	}
-	const location = response.headers.get("location");
-	const where = location === null ? "a redirect" : `a redirect to ${location}`;
-	return new UpdaterAdapterError(
-		"download-failed",
-		`updater: ${url} answered ${where}, and download follows no redirect`,
-	);
 }
