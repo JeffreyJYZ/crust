@@ -28,6 +28,12 @@ const SUMMARIES = [
 			return `${passed} passed, ${failed} failed`;
 		},
 	],
+	[
+		// The committed SKILL.md is an installable deliverable, not a generated file.
+		"skill:check",
+		["bun", "run", "skill:check"],
+		(out: string) => out.trim() || "ok",
+	],
 ] as const;
 
 export async function gate(): Promise<void> {

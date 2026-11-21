@@ -37,3 +37,10 @@ test("gate reads bun test's stderr totals through shAll", async () => {
 	expect(calls).not.toContain("sh bun run test");
 	expect(steps.find(({ label }) => label === "test")?.detail).toBe("6 passed, 0 failed");
 });
+
+test("the gate checks the committed SKILL.md command table", async () => {
+	calls.length = 0;
+	steps.length = 0;
+	await gate();
+	expect(calls).toContain("shAll bun run skill:check");
+});

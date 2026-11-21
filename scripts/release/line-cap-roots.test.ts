@@ -21,4 +21,13 @@ describe("check:lines roots", () => {
 			expect(roots).toContain(root);
 		}
 	});
+
+	test("a bare build name does not prune the shipped src/cli/build tree", () => {
+		// src/cli/build holds real source and tests; a 250-line file there must fail the cap.
+		const script = readFileSync(join(ROOT, "scripts/line-cap.ts"), "utf8");
+		const skip = script.match(/const SKIP = new Set\(\[([^\]]*)\]\)/);
+		expect(skip).not.toBeNull();
+		expect(skip?.[1]).not.toContain('"build"');
+		expect(skip?.[1]).toContain('"node_modules"');
+	});
 });

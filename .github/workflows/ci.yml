@@ -67,6 +67,9 @@ jobs:
             # The parity matrix is hand-written, so this pins Tauri's official feature
             # names against its rows: a surface cannot go missing from it unnoticed.
             - run: bun run check:parity
+            # The committed SKILL.md command table is what users actually install. Without
+            # this, a contributor can add a command and ship a stale table with green tests.
+            - run: bun run skill:check
 
             # The docs site is a Next app in its own directory with its own lockfile, so it
             # needs its own install. A build failure here is a page that does not compile.
