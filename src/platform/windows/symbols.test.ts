@@ -52,11 +52,11 @@ function membersOf(name: string): string[] {
 
 /** Keys of the `symbols: { … }` map handed to `cc()`, matched by their `args:` entry. */
 function declaredSymbols(): string[] {
-	// Three files declare the map: `ffi.ts` carries the window/WebView2 table, `ffi-core.ts` the
-	// clipboard, opener and `os.info` symbols, and `ffi-dialog.ts` the file panels. All are read,
-	// because a table in one file only would let this cross-check pass while half the map went
-	// unexamined.
-	return ["ffi.ts", "ffi-core.ts", "ffi-dialog.ts"].flatMap((name) => {
+	// Four files declare the map: `ffi.ts` carries the window/WebView2 table, `ffi-core.ts` the
+	// clipboard, opener and `os.info` symbols, `ffi-dialog.ts` the file panels and `ffi-preview.ts`
+	// the preview host. All are read, because a table in one file only would let this cross-check
+	// pass while half the map went unexamined.
+	return ["ffi.ts", "ffi-core.ts", "ffi-dialog.ts", "ffi-preview.ts"].flatMap((name) => {
 		const source = lf(readFileSync(join(DIR, name), "utf8"));
 		const start = source.indexOf("symbols: {");
 		// `ffi-core.ts` exports the table itself, so the whole file is the block.

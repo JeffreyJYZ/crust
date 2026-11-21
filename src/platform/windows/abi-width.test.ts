@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { hresult } from "./platform-config.ts";
 import { readShimPart } from "./shim-source.ts";
 
-const PRELUDE = `${readShimPart("10_prelude.c")}\n${readShimPart("11_pointer_core.c")}\n${readShimPart("11_win32_style.c")}`;
+const PRELUDE = `${readShimPart("10_prelude.c")}\n${readShimPart("11_pointer_core.c")}\n${readShimPart("11_win32_style.c")}\n${readShimPart("11_preview_decls.c")}`;
 const BINDING = readFileSync(join(import.meta.dir, "ffi.ts"), "utf8");
 
 /** `static <ret> (*Name)(` — the return type with its line breaks collapsed to single spaces. */
@@ -67,6 +67,14 @@ const THIRTY_TWO: Record<string, string> = {
 	WideCharToMultiByte: "int", // int — the UTF-8 length, or 0
 	RtlGetVersion: "int", // LONG/NTSTATUS — 0 is success, and it is 32-bit even at x64
 	GetUserDefaultLocaleName: "int", // int — characters written, 0 on failure
+	// `11_preview_decls.c`: five HRESULTs, none of them a handle. `SHCreateStreamOnFileEx` and
+	// `SHCreateItemFromParsingName` hand their object back through the last parameter, so declaring
+	// either as `shim_h` would compare an HRESULT against a pointer.
+	CoCreateInstance: "int", // HRESULT
+	CLSIDFromString: "int", // HRESULT
+	AssocQueryStringW: "int", // HRESULT, and the category lookup is where `no-handler` comes from
+	SHCreateStreamOnFileEx: "int", // HRESULT
+	SHCreateItemFromParsingName: "int", // HRESULT
 };
 
 /** A 16-bit return, which zero-extends and must still not be declared wide. */

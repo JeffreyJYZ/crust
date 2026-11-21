@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { WindowsShim } from "./backend.ts";
 import { coreSymbols } from "./ffi-core.ts";
 import { dialogSymbols } from "./ffi-dialog.ts";
+import { previewSymbols } from "./ffi-preview.ts";
 import { shimSource } from "./shim-source.ts";
 
 const P = FFIType.ptr;
@@ -126,6 +127,9 @@ export function compile(): WindowsShim {
 
 				// The file panels: their own table, on the same rule.
 				...dialogSymbols,
+
+				// The preview host: the shell's IPreviewHandler in a child window.
+				...previewSymbols,
 
 				shim_webview_new: { args: [P, CS, CS], returns: I32 },
 				shim_webview_put_bounds: { args: [P, F64, F64], returns: I32 },
