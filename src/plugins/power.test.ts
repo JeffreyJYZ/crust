@@ -141,6 +141,20 @@ describe("power commands with an adapter", () => {
 		expect(await plugin.commands.sleepAllow()).toEqual({ ok: true, released: false });
 	});
 
+	test("a second sleepPrevent reuses the held assertion instead of leaking the first id", async () => {
+		const { adapter, calls, held } = fake();
+		const plugin = createPowerPlugin(adapter);
+		const first = await plugin.commands.sleepPrevent({ reason: "one" });
+		const second = await plugin.commands.sleepPrevent({ reason: "two" });
+		expect(second).toEqual(first);
+		// Only one native assertion exists: the shim's single id was never overwritten.
+		expect(held()).toBe(1);
+		expect(calls).toEqual(["prevent:one"]);
+		expect(await plugin.commands.sleepAllow()).toEqual({ ok: true, released: true });
+		expect(held()).toBe(0);
+		expect(calls).toEqual(["prevent:one", "allow"]);
+	});
+
 	test("an empty reason is bad-request before any assertion is attempted", async () => {
 		const { adapter, calls } = fake();
 		const error = await thrown(() =>

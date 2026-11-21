@@ -103,6 +103,23 @@ describe("dock refusals", () => {
 		});
 	});
 
+	test("a badgeLabel the native unit never read refuses instead of reporting no badge", async () => {
+		const adapter: DockAdapter = {
+			setBadge: () => ({ ok: false, reason: "the dock C unit did not compile" }),
+			// What darwinDockAdapter returns when compiled() fails: an empty label that is
+			// indistinguishable from a cleared tile unless the plugin proves the tile is reachable.
+			badgeLabel: () => "",
+			bounce: () => ({ ok: true, request: 1, reason: "bounced" }),
+			setProgress: () => ({ ok: true, reason: "progress set" }),
+		};
+		const answer = await createDockPlugin(adapter).commands.badgeLabel();
+		expect(answer).toEqual({
+			ok: false,
+			code: "handler-error",
+			message: "the dock C unit did not compile",
+		});
+	});
+
 	test("a progress bar that could not be installed names the selector it needed", async () => {
 		const { adapter } = fake({
 			setProgress: () => ({ ok: false, reason: "NSProgressIndicator is not reachable" }),

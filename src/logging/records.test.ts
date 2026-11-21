@@ -54,6 +54,23 @@ describe("bridge.invoke", () => {
 		expect(record.fields).toMatchObject({ ok: false, code: "forbidden" });
 		expect(record.msg).toContain("forbidden");
 	});
+
+	test("a megabyte-long page-supplied name cannot write a megabyte-long line", () => {
+		const huge = "p".repeat(1_500_000);
+		const record = invokeRecord({
+			ns: huge,
+			cmd: "x",
+			durMs: 0.5,
+			ok: false,
+			code: "unknown-command",
+			detail: huge,
+		});
+		expect(record.msg.length).toBeLessThanOrEqual(2000);
+		expect((record.fields as { ns: string }).ns.length).toBeLessThanOrEqual(400);
+		// `detail` lives in the message for an invoke; for a refusal it is a capped field too.
+		const refusal = refuseRecord({ reason: "capability", ns: huge, cmd: "x", detail: huge });
+		expect((refusal.fields as { detail: string }).detail.length).toBeLessThanOrEqual(400);
+	});
 });
 
 describe("bridge.refuse", () => {

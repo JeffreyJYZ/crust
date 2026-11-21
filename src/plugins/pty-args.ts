@@ -31,13 +31,13 @@ function size(
 	key: string,
 ): { ok: true; value: number } | PtyFailure {
 	if (value === undefined) return { ok: true, value: fallback };
-	if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+	if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
 		return ptyFailure(
 			"invalid-args",
 			`pty: ${JSON.stringify(key)} must be a positive integer, got ${JSON.stringify(value)}`,
 		);
 	}
-	return { ok: true, value: Math.min(Math.floor(value), max) };
+	return { ok: true, value: Math.min(value, max) };
 }
 
 export interface OpenArgs {
@@ -86,10 +86,13 @@ export function readWrite(args: unknown): WriteArgs | PtyFailure {
 	if (typeof data !== "string" || data.length === 0) {
 		return ptyFailure("invalid-args", "pty.write needs { id, data } with a non-empty string");
 	}
-	if (data.length > PTY_MAX_WRITE) {
+	// The cap is on UTF-8 *bytes* (what the terminal actually receives), not JS string length: 40,000
+	// CJK characters are 40,000 code units but 120,000 bytes, three times the documented budget.
+	const bytes = Buffer.byteLength(data, "utf8");
+	if (bytes > PTY_MAX_WRITE) {
 		return ptyFailure(
 			"invalid-args",
-			`pty.write: ${data.length} bytes is past the ${PTY_MAX_WRITE}-byte limit`,
+			`pty.write: ${bytes} bytes is past the ${PTY_MAX_WRITE}-byte limit`,
 		);
 	}
 	return { id: id.id, data };

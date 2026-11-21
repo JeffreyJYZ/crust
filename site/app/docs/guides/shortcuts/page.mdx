@@ -23,7 +23,8 @@ The accelerator is modifiers, then the key, joined by `+`:
 | key      | `a`–`z`, `0`–`9`, `f1`–`f19`, the named keys `escape tab space enter backspace forwarddelete insert home end pageup pagedown up down left right`, the punctuation `- = [ ] ; ' , . /` and the backtick |
 
 The last token is the key and everything before it is a modifier. Canonical order is command,
-control, option, shift.
+control, option, shift. At least one modifier is required: a bare key would be registered globally
+with no modifier and swallow every press of that key in every app, so it is a `bad-accelerator`.
 
 ## The press
 

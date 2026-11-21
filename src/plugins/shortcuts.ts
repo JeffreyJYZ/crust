@@ -70,7 +70,7 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 		unregisterAll: (
 			args?: unknown,
 			ctx?: PluginContext,
-		) => { removed: number } | NotImplemented;
+		) => { removed: number } | ShortcutFailure | NotImplemented;
 		isRegistered: (args: ShortcutArgs) => boolean;
 		list: () => string[];
 	}
@@ -146,7 +146,25 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 			unregisterAll: (_args?: unknown, ctx?: PluginContext) => {
 				if (!adapter) return missing("unregisterAll");
 				if (ctx) sink = ctx.emit;
-				const removed = adapter.unregisterAll();
+				const held = live.size;
+				let removed: number;
+				try {
+					removed = adapter.unregisterAll();
+				} catch (error) {
+					const detail = error instanceof Error ? error.message : String(error);
+					return refusal(
+						"native-failed",
+						`shortcut.unregisterAll: the OS refused to remove the hot keys${detail ? `: ${detail}` : ""}`,
+					);
+				}
+				if (held > 0 && removed === 0) {
+					// The adapter swallowed a native failure into 0. Answering { removed: 0 } while the
+					// keys still fire is a lie, and clearing the registry loses the only retry path.
+					return refusal(
+						"native-failed",
+						`shortcut.unregisterAll: the OS refused to remove ${held} registered hot key(s)`,
+					);
+				}
 				live.clear();
 				return { removed };
 			},

@@ -18,6 +18,7 @@ import {
 	loggerLevel,
 	loggerPaths,
 	type LogLevel,
+	MAX_MSG_CHARS,
 	type LogSource,
 	repointLogFile,
 	setLoggerLevel,
@@ -132,7 +133,8 @@ export function createLoggingPlugin(adapter: LoggingAdapter = {}) {
 					level,
 					source: "plugin",
 					event: "log.write",
-					msg: String(message),
+					// A page holding `logging:write` must not be able to put a megabyte on one line.
+					msg: String(message).slice(0, MAX_MSG_CHARS),
 				}),
 			tail: async (query: TailArgs = {}) => await tailRecords(query),
 		},

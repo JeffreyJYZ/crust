@@ -99,3 +99,11 @@ export const ERRORS_FILE = "errors.jsonl";
 
 /** Default number of records `tail` answers, and the cap on a single answer. */
 export const RING_SIZE = 200;
+
+/**
+ * Bounds on page-supplied text. A field value or a composed message is capped before it reaches the
+ * serialiser, so one invoke with a megabyte-long `ns` cannot write a megabyte-long line (twice, once
+ * in `app.jsonl` and again in `errors.jsonl`). Truncation is marked, never silent.
+ */
+export const MAX_MSG_CHARS = 2000;
+export const MAX_FIELD_CHARS = 400;

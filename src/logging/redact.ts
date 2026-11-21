@@ -25,9 +25,15 @@ const SECRET_WORDS = new Set([
 	"credential",
 	"credentials",
 	"authorization",
+	"auth",
+	"bearer",
+	"jwt",
+	"assertion",
+	"session",
 	"cookie",
 	"keychain",
 	"seed",
+	"sid",
 ]);
 
 /**
@@ -35,7 +41,7 @@ const SECRET_WORDS = new Set([
  * `api_key`, `privateKey`, `private_key`, `keyChain`. A name is matched on its joined words, so
  * every spelling lands on the same form.
  */
-const SECRET_COMPOUNDS = ["apikey", "privatekey", "keychain"];
+const SECRET_COMPOUNDS = ["apikey", "privatekey", "keychain", "refreshtoken"];
 
 /** camelCase, snake_case, kebab-case and dotted names all become space-separated lower-case words. */
 function words(name: string): string[] {
@@ -61,18 +67,53 @@ export function isSecretName(name: string): boolean {
 	return parts.some(isSecretWord);
 }
 
-/** Query pairs, JSON pairs and an authorization header, the three shapes a message can carry. */
-const QUERY =
-	/([?&](?:token|key|secret|password|api_key|access_token|private_key|credential)=)[^&#\s"']+/gi;
+/**
+ * Query keys are built from the same vocabulary as field names, in every spelling a URL uses. A
+ * curated shorter list left `?apiKey=`, `?jwt=` and `?refresh_token=` in messages unchanged.
+ */
+const QUERY_KEYS = [
+	"token",
+	"key",
+	"secret",
+	"password",
+	"passwd",
+	"passphrase",
+	"credential",
+	"credentials",
+	"api_key",
+	"apiKey",
+	"apikey",
+	"access_token",
+	"accessToken",
+	"accesstoken",
+	"private_key",
+	"privateKey",
+	"privatekey",
+	"refresh_token",
+	"refreshToken",
+	"refreshtoken",
+	"jwt",
+	"session",
+	"sessionid",
+	"auth",
+	"authorization",
+	"bearer",
+	"assertion",
+];
+const QUERY = new RegExp(`([?&](?:${QUERY_KEYS.join("|")})=)[^&#\\s"']+`, "gi");
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const BASIC = /\b(Authorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]+/gi;
+const COOKIE = /\b(Cookie\s*:\s*)[^\r\n;]+/gi;
 const JSON_PAIR =
-	/("(?:token|secret|password|key|authorization|apiKey|api_key|privateKey|private_key)"\s*:\s*")[^"]*"/gi;
+	/("(?:token|secret|password|key|authorization|apiKey|api_key|privateKey|private_key|jwt|refreshToken|refresh_token)"\s*:\s*")[^"]*"/gi;
 
 /** Replace every credential-looking substring with {@link REDACTED}. */
 export function redactText(text: string): string {
 	return text
 		.replace(QUERY, `$1${REDACTED}`)
 		.replace(BEARER, `Bearer ${REDACTED}`)
+		.replace(BASIC, `$1${REDACTED}`)
+		.replace(COOKIE, `$1${REDACTED}`)
 		.replace(JSON_PAIR, `$1${REDACTED}"`);
 }
 
@@ -110,7 +151,9 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 		return {
 			name: value.name,
 			message: redactText(value.message),
-			stack: value.stack?.split("\n").slice(0, 5),
+			// stack[0] is "Error: " + message: redacting the message alone leaks the same credential
+			// one line down. Every retained frame goes through the same text pass.
+			stack: value.stack?.split("\n").slice(0, 5).map((line) => redactText(line)),
 		};
 	}
 	if (value instanceof Uint8Array) return `[bytes ${value.byteLength}]`;

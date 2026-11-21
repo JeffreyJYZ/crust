@@ -91,6 +91,9 @@ describe("crust:pty", () => {
 		const deadline = performance.now() + 5000;
 		while (pty.exits.length === 0 && performance.now() < deadline) await Bun.sleep(25);
 		expect(pty.exits[0]).toMatchObject({ id, exitCode: 3 });
+		// A shell that exited on its own is closed and pruned, so `list` does not lie about it.
+		await Bun.sleep(25);
+		expect(pty.plugin.commands.list().ids).not.toContain(id);
 	});
 
 	test("close leaves no child behind and empties the reap set", async () => {

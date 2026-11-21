@@ -13,6 +13,7 @@
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { redactText } from "./redact.ts";
 import { parseLine, serializeRecord, sinceMs } from "./record.ts";
 import { rotateChain } from "./rotate.ts";
 import {
@@ -99,9 +100,11 @@ export function createSink(options: SinkOptions): Sink {
 						error: error instanceof Error ? error.message : String(error),
 					};
 				}
-				// `errors.jsonl` is a copy for triage, not the record of truth: a failure to mirror a
-				// warning must never take the app's log down with it.
-				if (SEVERITY[record.level] <= SEVERITY.warn) {
+				// `errors.jsonl` is the framework's triage subset. Page warnings are already in the
+				// app's own stream and a page can emit them without a grant, so mirroring them lets a
+				// page rotate away the real warnings; keep framework/plugin warnings only. A failure
+				// to mirror must never take the app's log down with it.
+				if (SEVERITY[record.level] <= SEVERITY.warn && record.source !== "page") {
 					await append(options.errorsFile, line, ERRORS_GENERATIONS).catch(
 						() => undefined,
 					);
@@ -133,8 +136,10 @@ export function createSink(options: SinkOptions): Sink {
 				if (parsed === undefined) continue;
 				if ("raw" in parsed) {
 					// A corrupt line carries no fields to filter on; it is returned only to an unfiltered read.
+					// It is still a line from the log file, so it gets the same text redaction a parsed
+					// record's fields get — a truncated `?token=` must not come back verbatim.
 					if (floor === undefined && wanted === undefined && source === undefined)
-						records.push(parsed);
+						records.push({ raw: redactText(String(parsed.raw)) });
 					continue;
 				}
 				if (wanted !== undefined && SEVERITY[parsed.level] > SEVERITY[wanted]) continue;

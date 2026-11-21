@@ -7,15 +7,30 @@
  * `window.*` plus `create/close/focus/resize`; there is no second `event` field to contradict it.
  */
 
-import type { LogInput, LogLevel, LogSource } from "./types.ts";
+import {
+	type LogInput,
+	type LogLevel,
+	MAX_FIELD_CHARS,
+	MAX_MSG_CHARS,
+	type LogSource,
+} from "./types.ts";
 
 /** Answer a level from an outcome, so a failure is never quieter than the call it failed. */
 function failureLevel(code: string | undefined): LogLevel {
 	return code === "handler-error" || code === "not-implemented" ? "error" : "warn";
 }
 
+function cap(text: string, limit: number): string {
+	return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
 function oneLine(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	return cap(text.replace(/\s+/g, " ").trim(), MAX_MSG_CHARS);
+}
+
+/** A page-supplied field: bounded before it is serialised, so a hostile name cannot fill the disk. */
+function field(value: string | undefined): string | undefined {
+	return value === undefined ? undefined : cap(value, MAX_FIELD_CHARS);
 }
 
 export interface InvokeFields {
@@ -48,13 +63,13 @@ export function invokeRecord(fields: InvokeFields): LogInput {
 				(fields.detail === undefined ? "" : `: ${fields.detail}`),
 		),
 		fields: {
-			window: fields.window,
-			hint: fields.hint,
-			ns: fields.ns,
-			cmd: fields.cmd,
+			window: field(fields.window),
+			hint: field(fields.hint),
+			ns: field(fields.ns),
+			cmd: field(fields.cmd),
 			durMs: Number(fields.durMs.toFixed(3)),
 			ok: fields.ok,
-			code,
+			code: field(code),
 			bytesIn: fields.bytesIn,
 			bytesOut: fields.bytesOut,
 		},
@@ -86,10 +101,10 @@ export function refuseRecord(fields: {
 		),
 		fields: {
 			reason: fields.reason,
-			window: fields.window,
-			ns: fields.ns,
-			cmd: fields.cmd,
-			detail: fields.detail,
+			window: field(fields.window),
+			ns: field(fields.ns),
+			cmd: field(fields.cmd),
+			detail: field(fields.detail),
 		},
 	};
 }
@@ -146,7 +161,7 @@ export function platformRecord(fields: {
 		msg: oneLine(
 			`${fields.api} refused: ${fields.code}${fields.detail === "" ? "" : `: ${fields.detail}`}`,
 		),
-		fields: { api: fields.api, code: fields.code, detail: fields.detail },
+		fields: { api: field(fields.api), code: field(fields.code), detail: field(fields.detail) },
 	};
 }
 

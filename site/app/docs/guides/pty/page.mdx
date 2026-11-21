@@ -40,9 +40,9 @@ window.crust.listen("pty-data", ({ id, chunk }) => terminal.write(atob(chunk)));
 window.crust.listen("pty-exit", ({ id, exitCode, signal }) => console.log(id, exitCode, signal));
 ```
 
-`chunk` is base64, because a pty delivers bytes: an ANSI escape sequence or a multi-byte character is routinely split across two reads, and a decoded string would corrupt it. Decode to bytes and hand them to your emulator. One frame carries at most 8 KiB, so a program that floods the pty produces many frames rather than one unbounded event.
+`chunk` is base64, because a pty delivers bytes: an ANSI escape sequence or a multi-byte character is routinely split across two reads, and a decoded string would corrupt it. Decode to bytes and hand them to your emulator. A normal frame carries at most 8 KiB, and one read emits at most 8 frames — a larger read is coalesced into the final frame rather than dropped, so a program that floods the pty cannot enqueue an unbounded number of events while every byte still reaches the page in order.
 
-`pty-exit` carries the child's own status. It is not `Bun.Terminal`'s exit callback — that reports the pty's lifecycle (0 for EOF, 1 for error) and would report every clean `exit` as the wrong number.
+`pty-exit` carries the child's own status when it ends on its own. It is not `Bun.Terminal`'s exit callback — that reports the pty's lifecycle (0 for EOF, 1 for error) and would report every clean `exit` as the wrong number. A `pty.close` is a termination, so that event reports `{ exitCode: null, signal: "SIGTERM" }` on every platform rather than a shell status the close itself never observed.
 
 ## Capability
 
@@ -52,7 +52,7 @@ Capabilities are per window label, so a pty can be held by a terminal window and
 
 ## Lifetime
 
-Every terminal is tracked by the same reap `shell` uses: `app.quit()`, a `crust dev` restart's `SIGTERM` and a normal exit all signal the children, so a shell cannot outlive the app that opened it. `pty.close` is still the way a page ends one, and it is the only way to reap a shell without quitting. A closed handle keeps answering `terminal-closed` until a 64-record cap prunes it, so a long-lived page that opens many terminals cannot grow that set without bound.
+Every terminal is tracked by the same reap `shell` uses: `app.quit()`, a `crust dev` restart's `SIGTERM` and a normal exit all signal the children, so a shell cannot outlive the app that opened it. `pty.close` is the way a page ends one. A shell that types `exit` is closed and dropped from `list()` by its own exit event, so a dead terminal is never reported as open. Closed and dead handles keep answering `terminal-closed` until a 64-record cap prunes them, so a long-lived page that opens many terminals cannot grow that set without bound.
 
 ## What stays the app's job
 

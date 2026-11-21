@@ -48,5 +48,7 @@ The plugin (`src/plugins/preview.ts`), its capability and its config section bel
 - Out of process, under `probe-run` (three consecutive clean runs): a real window, a real `.docx`
   built with `ditto`, `show` → `visible true`, panel window, capture 64.9 KB of live pixels;
   `hide` → `visible false`; re-show → `true`; raw `-close` of the window → `visible false`, `owner 0`.
-- Not wired yet: `preview.show`'s `fs.scope` containment, the capability, the cross-platform
-  `not-implemented` refusal, docs and the e2e all belong to the plugin lane.
+- Wired since this log was written: `src/plugins/preview.ts:95` calls `scope().check` for `fs.scope`
+  containment; `src/plugins/preview-surface.ts:90-131` supplies the cross-platform `not-implemented`
+  refusals; the capability is the ordinary `preview:*` grant; `site/app/docs/guides/preview/page.mdx`
+  and `e2e:preview` exist. No plugin-lane work remains from this note.
