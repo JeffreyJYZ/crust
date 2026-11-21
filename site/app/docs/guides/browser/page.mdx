@@ -1,0 +1,22 @@
+# Browser
+
+An embedded browser surface: a page that loads a remote `http(s)` origin inside the app, under the same bridge and the same grants as the app's own page. The plugin is always registered; the section names the origins it may load.
+
+**Not implemented yet — ships in 0.2.11.** This page is the contract the release will keep: calling `browser.open` today answers `not-implemented` naming the release.
+
+```ts
+// crust.config.ts
+browser: {
+	origins: ["https://example.com", "https://status.example.com"],
+},
+```
+
+An entry is an **origin** — scheme, host and port — never a path: the check a load goes through compares origins, so a path in this list would authorise nothing while reading as though it did. A path, query or fragment in an entry is a config error naming its index.
+
+## Absent means nothing loads
+
+No `browser` section still registers the plugin, with an empty allow list, so every load is refused. Nothing remote loads by default; naming an origin is the only way one does. That is the same deny-by-default shape as [shell](/docs/guides/shell)'s allow list.
+
+## Capability
+
+The page calls `browser.open`, so a label needs the action `browser:open`. It is not implied by another surface's grant: an embedded browser can reach the network under your app's identity, so it is granted on its own, per window label. See [Permissions](/docs/guides/permissions).

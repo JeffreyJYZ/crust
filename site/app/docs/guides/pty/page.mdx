@@ -1,0 +1,26 @@
+# Pty
+
+A terminal in the page, driven over the bridge. The section existing is what registers the plugin: a page-reachable pty is command execution, so an app that never declares one carries no `pty` namespace at all — naming `pty` in `plugins` is then the unknown-plugin error it should be.
+
+**Not implemented yet — ships in 0.2.9.** This page is the contract the release will keep: the section, the command and the grant are settled now, and calling one today answers `not-implemented` naming the release.
+
+```ts
+// crust.config.ts
+pty: {
+	shell: "/bin/zsh",
+},
+```
+
+`shell` is the program the terminal runs; absent means the user's login shell.
+
+## Capability
+
+The page calls `pty.open`, so a label needs the action `pty:open`. It is deliberately **not** implied by a shell grant: `shell:spawn` runs an allowlisted program with no terminal, while a pty is an interactive shell a page can type into, so the two are granted separately. See [Permissions](/docs/guides/permissions).
+
+Capabilities are per window label, so a pty can be held by a terminal window and refused to every other page in the app.
+
+## When the section is absent
+
+Nothing is registered. A page that calls `pty.open` gets `unknown-plugin`, and `plugins: ["pty"]` fails startup with `crust: unknown plugin "pty"`, because the name resolves to nothing without the section that declares it. That is the point of the gate: the surface exists because the app asked for it, never because a plugin list mentioned a name.
+
+Note that `plugins` restricts registration to what it names, so a `plugins` list that omits `pty` also keeps the surface out even with the section present. The section is the declaration; the list can only narrow.

@@ -150,6 +150,25 @@ Absent, `fs` has no scope and reaches any path the process can. A non-absolute e
 
 The section existing is what registers `crust:updater`; with no `updater` section the runtime carries no download-and-replace surface. `pubkey` is checked by shape at startup, so a wrong-size key fails a launch rather than every signature. See [Updater](/docs/guides/updater).
 
+## `pty`
+
+| key     | type   | default             | what it does                                                                                    |
+| ------- | ------ | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `shell` | string | unset — login shell | program the terminal runs; the section existing is the opt-in. Ships in 0.2.9 — [Pty](/docs/guides/pty) |
+
+## `preview`
+
+| key      | type             | default         | what it does                                                                                              |
+| -------- | ---------------- | --------------- | --------------------------------------------------------------------------------------------------------- |
+| `width`  | positive integer | the panel's own | default panel width in points; absent still registers the plugin. Ships in 0.2.10 — [Preview](/docs/guides/preview) |
+| `height` | positive integer | the panel's own | default panel height in points                                                                             |
+
+## `browser`
+
+| key       | type         | default        | what it does                                                                                                   |
+| --------- | ------------ | -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `origins` | string array | unset — deny all | `http(s)` origins, scheme and host only, an embedded surface may load. Ships in 0.2.11 — [Browser](/docs/guides/browser) |
+
 ## What `app.id` decides
 
 - **The bundle identifier.** It is written to `Info.plist` as `CFBundleIdentifier`, so it is what macOS keys notifications, privacy grants and per-app settings to. A changed id is a new app to the system.

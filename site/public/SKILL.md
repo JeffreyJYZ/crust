@@ -186,6 +186,7 @@ command, so it answers `unknown-command` — and a grant of `app:greet` would no
 <!-- skill:commands:begin -->
 - `accessibility` — trusted prompt elementCount announce title focus
 - `autostart` — enable disable isEnabled
+- `browser` — open
 - `clipboard` — read write readImage writeImage
 - `crash-reporter` — last list report configure clear install uninstall
 - `database` — open close exec query get
@@ -209,6 +210,7 @@ command, so it answers `unknown-command` — and a grant of `app:greet` would no
   rightCenter
 - `power` — state idleSeconds sleepPrevent sleepAllow onSleep onLock onWake onScreenSleep
   onScreenWake onUnlock
+- `preview` — show
 - `screen` — list primary
 - `shell` — spawn output write close kill list
 - `shortcut` — register unregister unregisterAll isRegistered list
