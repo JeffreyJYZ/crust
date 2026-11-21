@@ -4,6 +4,7 @@
  * The allow list is a set of real paths, not names, and a page-supplied `env` is refused unless the host opts in — either one alone would make the list decorative.
  */
 
+import { installReapOnExit, trackChild } from "../child-reap.ts";
 import { definePlugin, type PluginContext, type PluginDefinition } from "./define";
 import { type SpawnArgs, parseSpawn, requireId, unknownProcess } from "./shell-args";
 import { type ShellFailure, shellFailure } from "./shell-failure";
@@ -69,6 +70,9 @@ export function createShellPlugin(
 	const rules = shellRules(options);
 	const processes = new Map<string, Live>();
 	let next = 0;
+	// A spawned program is killed only by `shell.kill`, so quitting without it left every child
+	// running beside the next dev start. The reap covers the quit and the dev-restart signal.
+	installReapOnExit();
 
 	// Records outlive their process so `output` still answers; past the cap the
 	// oldest finished ones go, which is the only growth this map has.
@@ -110,6 +114,7 @@ export function createShellPlugin(
 					drain(child.stderr, stderr, lineSink(emit, id, "stderr")),
 				]).then(() => undefined);
 				processes.set(id, { id, child, stdout, stderr, drained, stdinClosed: false });
+				trackChild(child);
 				prune();
 				return { ok: true, id };
 			},
