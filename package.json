@@ -38,6 +38,7 @@
 		"e2e:capability": "bun run scripts/e2e-capability.ts",
 		"e2e:pty": "bun run scripts/e2e-pty.ts",
 		"e2e:browser": "bun run scripts/e2e-browser.ts",
+		"e2e:preview": "bun run scripts/e2e-preview.ts",
 		"e2e:logs": "bun run scripts/e2e-logs.ts",
 		"check:lines": "bun run scripts/line-cap.ts",
 		"skill": "bun run scripts/skill.ts",

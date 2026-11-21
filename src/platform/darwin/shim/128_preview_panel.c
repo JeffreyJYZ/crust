@@ -33,14 +33,24 @@ static pv_t preview_panel(void) {
 	return pv_msg0(objc_getClass("QLPreviewPanel"), "sharedPreviewPanel");
 }
 
-// The one teardown. `-orderOut:` is the only send that dismisses the system panel; there is no
-// `-close` for it. Called from the observer while the owner is still open, from `hide`, and as the
+// The one teardown: `-orderOut:`, sent to NSWindow's own implementation. QLPreviewPanel overrides it
+// and that override leaves `-isVisible` answering YES — measured on macOS 27 in `e2e:preview`: an
+// orderOut: to the class as-is, and to its immediate superclass, both kept the panel reading
+// visible, while the same selector starting at NSWindow cleared it in the same turn.
+// `objc_msgSendSuper`'s second word is the class the lookup starts at, so naming NSWindow skips the
+// panel's override. Called from the observer while the owner is still open, from `hide`, and as the
 // poll's last resort.
+extern void *objc_msgSendSuper(void *target, void *sel, ...);
+
 static void preview_order_out(void) {
 	pv_t panel = preview_panel();
 	if (!panel) return;
 	if (!pv_has("QLPreviewPanel", "orderOut:")) return;
-	pv_msg1(panel, "orderOut:", 0);
+	// `struct objc_super`'s two words do not cross bun:ffi, so they are built here as an array.
+	void *target[2];
+	target[0] = panel;
+	target[1] = objc_getClass("NSWindow");
+	((void (*)(void *, void *, pv_t))objc_msgSendSuper)(target, sel_registerName("orderOut:"), 0);
 }
 
 int shim_preview_show(void *owner, double width, double height) {

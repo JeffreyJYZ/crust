@@ -11,14 +11,20 @@ pty: {
 
 `shell` is the program the terminal runs; absent means the user's login shell. It is also the only program: `pty.open` accepts a `program` argument only when it resolves to this same one, so a grant of `pty:open` opens *this* terminal, never an arbitrary command. Nothing but the host's config decides what runs.
 
-The pty is `Bun.Terminal`, so macOS and Linux need no native half. Windows has no `Bun.Terminal` and no ConPTY shim yet: `pty.open` answers `not-implemented` with `requires: "CreatePseudoConsole"` rather than registering a surface that cannot work.
+The pty is `Bun.Terminal`, so macOS and Linux need no native half. Windows has no `Bun.Terminal` and no ConPTY shim yet, so `pty.open` there answers a named refusal rather than registering a surface that cannot work.
+
+| platform | what `pty.open` does |
+| --- | --- |
+| macOS | works — `Bun.Terminal` is the pty, no native half |
+| Linux | works — the same `Bun.Terminal` path |
+| Windows | `{ ok: false, code: "not-implemented", requires: "CreatePseudoConsole" }` until the ConPTY half lands; `shell` is the fallback that still answers |
 
 ## Commands
 
 | command | args → answer |
 | --- | --- |
-| `open` | `{ cols?, rows? }` → `{ ok, id, pid }`, 80×24 by default and clamped to 500×200 |
-| `write` | `{ id, data }` → `{ ok, bytes }`; `data` is UTF-8 text, so a keystroke burst is one call |
+| `open` | `{ cols?, rows? }` → `{ ok, id, pid }`, 80×24 by default and clamped to 500×200; the shell starts in `$HOME` (the process directory when unset) with `TERM=xterm-256color` |
+| `write` | `{ id, data }` → `{ ok, bytes }`; `data` is UTF-8 text up to 64 KiB, so a keystroke burst is one call and a larger paste is the page's to split |
 | `resize` | `{ id, cols, rows }` → `{ ok, id, cols, rows }` |
 | `close` | `{ id }` → `{ ok, closed, id }`; closing the master hangs the shell up, and a child that traps `SIGHUP` is signalled rather than left |
 | `list` | `{}` → `{ ok, ids }` — the handles still open |
@@ -46,7 +52,7 @@ Capabilities are per window label, so a pty can be held by a terminal window and
 
 ## Lifetime
 
-Every terminal is tracked by the same reap `shell` uses: `app.quit()`, a `crust dev` restart's `SIGTERM` and a normal exit all signal the children, so a shell cannot outlive the app that opened it. `pty.close` is still the way a page ends one, and it is the only way to reap a shell without quitting.
+Every terminal is tracked by the same reap `shell` uses: `app.quit()`, a `crust dev` restart's `SIGTERM` and a normal exit all signal the children, so a shell cannot outlive the app that opened it. `pty.close` is still the way a page ends one, and it is the only way to reap a shell without quitting. A closed handle keeps answering `terminal-closed` until a 64-record cap prunes it, so a long-lived page that opens many terminals cannot grow that set without bound.
 
 ## What stays the app's job
 
