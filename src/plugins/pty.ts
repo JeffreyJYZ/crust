@@ -55,7 +55,12 @@ export type PtyCommands = {
 interface Live {
 	id: string;
 	term: PtyTerminal;
+	/** The page called `close`. */
 	closed: boolean;
+	/** Set before `term.close()` so the exit handler can tell a page close from a natural exit. */
+	closing: boolean;
+	/** The child ended on its own; the master fd is released and `list` no longer reports the handle. */
+	dead: boolean;
 }
 
 export function createPtyPlugin(
@@ -74,7 +79,7 @@ export function createPtyPlugin(
 	const prune = (): void => {
 		for (const [id, record] of terminals) {
 			if (terminals.size <= MAX_RECORDS) return;
-			if (record.closed) terminals.delete(id);
+			if (record.closed || record.dead) terminals.delete(id);
 		}
 	};
 
@@ -111,17 +116,28 @@ export function createPtyPlugin(
 						`pty.open: ${JSON.stringify(host)}: ${detail}`,
 					);
 				}
+				const record: Live = { id, term, closed: false, closing: false, dead: false };
+				terminals.set(id, record);
 				const emit = ctx?.emit;
-				if (emit !== undefined) {
-					void term.exited.then((code) => {
-						emit("pty-exit", {
-							id,
-							exitCode: code,
-							signal: signalName(term.signalCode as SignalCode),
-						} satisfies PtyExit);
-					});
-				}
-				terminals.set(id, { id, term, closed: false });
+				void term.exited.then((code) => {
+					// A page-initiated close is a termination, not the child's own status. The ConPTY
+					// shim reports a fabricated `exitCode: 0` before it terminates the process, so map
+					// that path to the same `{ exitCode: null, signal: "SIGTERM" }` POSIX already sends.
+					emit?.("pty-exit", {
+						id,
+						exitCode: record.closing ? null : code,
+						signal: record.closing ? "SIGTERM" : signalName(term.signalCode as SignalCode),
+					} satisfies PtyExit);
+					// A shell that typed `exit` still owns a master fd and a handle entry. Release both
+					// and prune the record, or `list()` keeps reporting a dead terminal as open.
+					record.dead = true;
+					try {
+						term.close();
+					} catch {
+						// Already closed under us; the child is gone either way.
+					}
+					prune();
+				});
 				trackChild(term);
 				prune();
 				return { ok: true, id, pid: term.pid };
@@ -131,7 +147,7 @@ export function createPtyPlugin(
 				if (isPtyFailure(parsed)) return parsed;
 				const record = terminals.get(parsed.id);
 				if (record === undefined) return unknown("write", parsed.id);
-				if (record.closed || record.term.closed) return shut("write", parsed.id);
+				if (record.closed || record.dead || record.term.closed) return shut("write", parsed.id);
 				try {
 					return { ok: true, bytes: record.term.write(parsed.data) };
 				} catch (error) {
@@ -143,7 +159,7 @@ export function createPtyPlugin(
 				if (isPtyFailure(parsed)) return parsed;
 				const record = terminals.get(parsed.id);
 				if (record === undefined) return unknown("resize", parsed.id);
-				if (record.closed || record.term.closed) return shut("resize", parsed.id);
+				if (record.closed || record.dead || record.term.closed) return shut("resize", parsed.id);
 				try {
 					record.term.resize(parsed.cols, parsed.rows);
 				} catch (error) {
@@ -156,8 +172,11 @@ export function createPtyPlugin(
 				if (isPtyFailure(asked)) return asked;
 				const record = terminals.get(asked.id);
 				if (record === undefined) return unknown("close", asked.id);
-				if (record.closed || record.term.closed)
+				if (record.closed || record.dead || record.term.closed)
 					return { ok: true, closed: false, id: asked.id };
+				// Set before the native close: the `exited` handler reads it to report a termination
+				// rather than a child status, including on Windows where close fabricates code 0.
+				record.closing = true;
 				try {
 					record.term.close();
 				} catch {
@@ -169,7 +188,7 @@ export function createPtyPlugin(
 			list: (): ListOutcome => ({
 				ok: true,
 				ids: [...terminals.values()]
-					.filter((record) => !record.closed && !record.term.closed)
+					.filter((record) => !record.closed && !record.dead && !record.term.closed)
 					.map((record) => record.id),
 			}),
 		},
