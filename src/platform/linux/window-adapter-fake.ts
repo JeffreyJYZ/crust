@@ -34,6 +34,7 @@ export type LinuxWindowNative = WindowNative &
 			| "opacity"
 			| "setCursor"
 			| "setCursorVisible"
+			| "capture"
 		>
 	>;
 
@@ -59,6 +60,7 @@ const IMPLEMENTED = [
 	"opacity",
 	"setCursor",
 	"setCursorVisible",
+	"capture",
 ] as const satisfies readonly (keyof LinuxWindowNative)[];
 
 /** The adapter over a fake, proved complete before it is returned. */

@@ -1,18 +1,13 @@
 #!/usr/bin/env bun
 /**
- * The real GTK proof: `createPlatform()` against libgtk-3 and libwebkit2gtk-4.1, a window that
- * opens, the app's own bridge served into its webview, page JS evaluated through
- * `webkit_web_view_evaluate_javascript`, one `window.crust.invoke` crossing back to the host, and the
- * event stream in both directions: a page listener receiving what a plugin's `ctx.emit` pushed.
+ * The real GTK proof: `createPlatform()` against libgtk-3 and libwebkit2gtk-4.1, a window that opens,
+ * the app's bridge served into its webview, page JS evaluated through `webkit_web_view_evaluate_javascript`,
+ * one `window.crust.invoke` crossing back, and the event stream a plugin's `ctx.emit` pushed.
  * Every other linux test injects a fake backend, so this file is the only place the shim's `dlopen`
- * path runs against the libraries it names.
- *
- * Linux only, and it needs a display:
+ * path runs against the libraries it names. Linux only, and it needs a display:
  *   xvfb-run --auto-servernum bun run scripts/linux-smoke.ts
- * On macOS it prints `unavailable:` and exits 1 rather than passing — GTK is not installed there,
- * so a green here would claim a proof this machine cannot give.
- *
- * What it does not claim: the app's built frontend, or any plugin's effect on the machine. `invoke`
+ * On macOS it prints `unavailable:` and exits 1 rather than passing, since GTK is not installed.
+ * What it does not claim: the app's built frontend or any plugin's effect on the machine. `invoke`
  * is proven against one handler, and the stream against one push per subscription kind.
  */
 import {
@@ -35,6 +30,7 @@ import {
 	MISSING_FILE_URL,
 } from "./linux/proof-steps.ts";
 import { keyedStateStep, surfaceStep } from "./linux/proof-surface.ts";
+import { captureStep } from "./linux/proof-capture.ts";
 import { livenessStep, NOT_PROVEN, pumpStep } from "./linux/smoke-report.ts";
 
 /** The shared call shape wants a config; GTK reads nothing from it before a window exists. */
@@ -155,6 +151,10 @@ async function main(): Promise<number> {
 	//     refused, an allowed one opened in the window's container, its document titled, moved, closed.
 	const browser = await browserStep(symbols, created[0] as NativeWindow);
 	verdict.check("browser", browser.ok, browser.detail);
+
+	// 6d. The page as WebKitGTK rendered it: an async view snapshot, not a display grab.
+	const capture = await captureStep(symbols, web);
+	verdict.check("capture", capture.ok, capture.detail);
 
 	// 7. A load that must fail: WebKit answers `load-failed` and the shim records its message, so
 	//    the error path is a printed line rather than a pump that never settles.

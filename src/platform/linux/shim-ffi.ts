@@ -12,12 +12,13 @@ import type { LinuxDialogShim } from "./dialog-ffi.ts";
 import { linkError } from "./preflight.ts";
 import { shimSource } from "./shim-source.ts";
 import { shimSymbols } from "./shim-symbols.ts";
+import type { SnapshotSymbols } from "./snapshot-ffi.ts";
 
 /**
  * The entry points this shim exports, as JS sees them. Declared by hand because the argument types are the contract a fake has to satisfy: every `cstring` argument is a NUL-terminated byte buffer, never a JavaScript string — bun:ffi throws `a JavaScript string is not valid here` on one, measured against real GTK.
  * The file panels' optional members come from `dialog-ffi.ts`, split out at the line cap and because they are the one namespace that can be absent on an older GTK.
  */
-export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
+export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim, SnapshotSymbols {
 	shim_lib_open(): number;
 	shim_lib_error_text(): string | null;
 	shim_gtk_init(): number;

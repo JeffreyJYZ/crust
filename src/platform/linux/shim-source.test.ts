@@ -5,7 +5,7 @@ import { SHIM_PART_NAMES, SHIM_PART_PATHS, SHIM_PARTS, shimSource } from "./inde
 
 describe("shim assembly", () => {
 	test("every part is present and non-empty", () => {
-		expect(SHIM_PARTS).toHaveLength(17);
+		expect(SHIM_PARTS).toHaveLength(18);
 		for (const part of SHIM_PARTS) expect(part.trim().length).toBeGreaterThan(0);
 	});
 
@@ -44,7 +44,7 @@ describe("shim assembly", () => {
 			"32_view_state.c",
 			"40_window.c",
 			"41_container.c",
-		"42_host.c",
+			"42_host.c",
 			"45_window_api.c",
 			"46_window_state_api.c",
 			"50_pump.c",
@@ -55,6 +55,7 @@ describe("shim assembly", () => {
 			"82_osinfo.c",
 			"83_dialog.c",
 			"84_dialog_calls.c",
+			"90_snapshot.c",
 		]);
 	});
 
@@ -70,7 +71,8 @@ describe("shim assembly", () => {
  * original shim and is the guard that stops the defect from being reintroduced.
  */
 describe("native contracts", () => {
-	const [prelude, webview, browser, viewState, windowPart, container, host, , , pump] = SHIM_PARTS;
+	const [prelude, webview, browser, viewState, windowPart, container, host, , , pump] =
+		SHIM_PARTS;
 	void host;
 	void browser;
 
@@ -148,7 +150,9 @@ describe("native contracts", () => {
 		// the webview inside it is allocated at the requested size rather than the overlay's leftovers.
 		expect(container).toContain('shim_sym(h, "gtk_fixed_new"');
 		expect(host).toContain("if (shim_widget_parent(host) != box) shim_overlay_add(box, host);");
-		expect(host).toContain("if (shim_widget_parent(web) != host) shim_container_add(host, web);");
+		expect(host).toContain(
+			"if (shim_widget_parent(web) != host) shim_container_add(host, web);",
+		);
 		expect(host).toContain("shim_set_margin_start(host, x > 0 ? x : 0)");
 		expect(host).toContain("shim_set_size_request(web, w, h)");
 		// Six arguments, in the order the shim's prototype takes them.
@@ -168,5 +172,24 @@ describe("native contracts", () => {
 		expect(keyring).toContain("static char shim_keyring_value[SHIM_KEYRING_MAX]");
 		expect(keyring).toContain("((fn_secret_free)shim_secret_free)(value)");
 		expect(keyring).toContain("return truncated ? 0 : shim_keyring_value");
+	});
+
+	test("the snapshot is WebKitGTK's async view render, not a display grab", () => {
+		const snapshot = SHIM_PARTS[17];
+		expect(snapshot).toContain('shim_sym_or_null(w, "webkit_web_view_get_snapshot")');
+		expect(snapshot).toContain('shim_open("libcairo.so.2")');
+		expect(snapshot).toContain(
+			'shim_sym_or_null(shim_cairo, "cairo_surface_write_to_png_stream")',
+		);
+		expect(snapshot).toContain("shim_snapshot_start(web, 0, 0, 0, shim_snapshot_done, 0)");
+		// A view GTK has not realised is refused by name, never answered with an empty PNG.
+		expect(snapshot).toContain("return SHOT_NOT_REALISED");
+		expect(snapshot).toContain("shim_widget_realized(web)");
+		// No screen grab: the picture is cairo's PNG of the surface WebKit handed back.
+		expect(snapshot).not.toContain("XGetImage");
+		expect(snapshot).not.toContain("gdk_pixbuf_get_from_window");
+		const ffi = readFileSync(join(import.meta.dir, "shim-symbols.ts"), "utf8");
+		expect(ffi).toContain("shim_snapshot_take: { args: [P], returns: I32 }");
+		expect(ffi).toContain("shim_snapshot_read: { args: [P, I64], returns: I64 }");
 	});
 });

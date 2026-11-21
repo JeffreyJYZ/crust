@@ -66,6 +66,20 @@ describe("the linux window adapter", () => {
 		});
 	});
 
+	test("linux answers window.capture with a PNG for a label it holds", async () => {
+		await linuxWindow();
+		const window = await commandsOf("window");
+		const answer = (await window.capture?.({ label: "main" })) as {
+			ok: boolean;
+			width: number;
+			height: number;
+			scale: number;
+			png: string;
+		};
+		expect(answer).toMatchObject({ ok: true, width: 320, height: 200, scale: 1 });
+		expect(answer.png.length).toBeGreaterThan(0);
+	});
+
 	test("linux answers unknown-window for a label nobody opened", async () => {
 		await linuxWindow();
 		const window = await commandsOf("window");

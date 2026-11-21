@@ -13,6 +13,7 @@ export const SMOKE_STEPS = [
 	"events",
 	"ready",
 	"surface",
+	"capture",
 	"failure",
 	"state",
 ] as const;
@@ -51,8 +52,9 @@ export function livenessStep(platform: { window(label: string): unknown }): {
 /** What this smoke does not prove, printed once at the end so an absence is never silent. */
 export const NOT_PROVEN =
 	"not proven here: the app's built frontend, any plugin's effect on the machine, and a picture of " +
-	"the placed surface — window.capture has no WebKitGTK path yet, so browser.capture refuses by " +
-	"name instead of screenshotting the screen.";
+	"the placed browser surface — window.capture snapshots the app's own WebKitWebView through " +
+	"get_snapshot; a surface renders through its own call, so browser.capture still refuses by name " +
+	"rather than taking a screen grab.";
 
 /** One verdict per step, quoting the smoke's own line so the answer travels with it. */
 export function checkSmokeSteps(verdict: Verdict, transcript: string): void {
