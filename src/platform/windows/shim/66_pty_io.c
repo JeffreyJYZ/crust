@@ -23,7 +23,12 @@ unsigned long shim_pty_reader(void *arg) {
 	char buffer[2048];
 	for (;;) {
 		unsigned int got = 0;
-		if (!ReadFile(slot->output, buffer, (unsigned int)sizeof(buffer), &got, 0)) break;
+		if (!ReadFile(slot->output, buffer, (unsigned int)sizeof(buffer), &got, 0)) {
+			// The reason survives for the next call, so a page whose terminal stays silent can be
+			// told whether the pipe failed or the program simply wrote nothing.
+			shim_pty_fail("ReadFile on the console's output returned FALSE", GetLastError());
+			break;
+		}
 		if (got == 0) break;
 		EnterCriticalSection(&slot->lock);
 		for (unsigned int i = 0; i < got; i++) shim_pty_push(slot, (unsigned char)buffer[i]);
@@ -127,12 +132,6 @@ int shim_pty_close(int index) {
 	}
 	if (slot->console) ClosePseudoConsole(slot->console);
 	slot->console = 0;
-	// The console's own ends go before the join: while they are open the output pipe still has a
-	// writer, so the reader's ReadFile never returns and the join below would always time out.
-	if (slot->console_input) CloseHandle(slot->console_input);
-	if (slot->console_output) CloseHandle(slot->console_output);
-	slot->console_input = 0;
-	slot->console_output = 0;
 	int joined = 1;
 	if (slot->reader) {
 		// The reader is blocked in ReadFile until the console's end of the pipe goes; the wait is a

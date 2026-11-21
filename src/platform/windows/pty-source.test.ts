@@ -153,11 +153,12 @@ describe("the reader", () => {
 		);
 	});
 
-	test("the console's own pipe ends are held from open to close, never dropped early", () => {
-		expect(OPEN).toContain("slot->console_input = in_read;");
-		expect(OPEN).toContain("slot->console_output = out_write;");
-		expect(CODE).toContain("if (slot->console_input) CloseHandle(slot->console_input);");
-		expect(CODE).toContain("if (slot->console_output) CloseHandle(slot->console_output);");
+	test("the console's ends are released as soon as it has them, or close blocks", () => {
+		// Measured on windows-latest: holding them until close hung `ClosePseudoConsole` for the
+		// whole job, because it waits for the console host to finish. The host needs inheritable
+		// pipes, not a second owner.
+		expect(OPEN).toContain("CloseHandle(in_read);\n\tCloseHandle(out_write);");
+		expect(OPEN).not.toContain("slot->console_input");
 	});
 });
 

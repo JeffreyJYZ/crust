@@ -10,6 +10,7 @@
  * satisfy it), a resize is accepted and the shell still answers after it, and the child is gone
  * once `close` returns.
  */
+import { conptyShim } from "../../src/platform/windows/pty-ffi.ts";
 import { featurePlugins } from "../../src/runtime-feature-plugins.ts";
 import type { PluginContext } from "../../src/plugins/define.ts";
 import type { PtyCommands } from "../../src/plugins/pty.ts";
@@ -94,7 +95,8 @@ export async function provePty(): Promise<PtyCheck[]> {
 		ok: produced && frames.every((frame) => /^[A-Za-z0-9+/=]+$/.test(frame)),
 		detail: produced
 			? `6912 arrived in ${frames.length} base64 pty-data frame(s)`
-			: `no output after typing; the last frames were: ${text().slice(-120) || "none"}`,
+			: `no output after typing; the last frames were: ${text().slice(-120) || "none"}; ` +
+				`shim: ${conptyShim().shim_pty_reason() ?? "no reason recorded"}`,
 	});
 
 	const resized = pty.resize({ id, cols: 80, rows: 24 });

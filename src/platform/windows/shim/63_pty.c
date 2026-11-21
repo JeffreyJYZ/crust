@@ -127,8 +127,6 @@ typedef struct {
 	shim_h thread;
 	shim_h input;  // the write end the console reads
 	shim_h output; // the read end this side reads
-	shim_h console_input;  // the console's own end, kept until close
-	shim_h console_output; // the same, on the output side
 	shim_h reader;
 	unsigned int pid;
 	int used;
