@@ -150,11 +150,20 @@ Handlers run on the pump thread, so keep them fast. An async handler is awaited 
 ## Built-ins and capabilities
 
 These are the built-in namespaces: each registers before your code runs, as do `app` and
-`single-instance` — with three exceptions, so no count in prose can stay true. `updater` registers
-only when the config has an `updater` section; `testing` only when the process starts with
-`CRUST_TEST=1`; and a non-empty `plugins` array narrows the built-ins to exactly the names it lists
-(`app` and anything mounted with `app.use` always register). `app.use` is only for your own plugins,
-never a built-in, so a page may call `store.get` with no registration step.
+`single-instance` — with four exceptions, so no count in prose can stay true. `updater` registers
+only when the config has an `updater` section, and `pty` only when it has a `pty` one (so `pty` is
+absent from the list below, which is generated without a config); `testing` only when the process
+starts with `CRUST_TEST=1`; and a non-empty `plugins` array narrows the built-ins to exactly the
+names it lists (`app` and anything mounted with `app.use` always register). `app.use` is only for
+your own plugins, never a built-in, so a page may call `store.get` with no registration step.
+
+`pty` is a real terminal a page drives: `pty: {}` in the config registers it, `{ shell }` picks the
+one program it may run (absent is the login shell, and `open`'s `program` is accepted only when it
+resolves to that same one), and a window label needs the `pty:open` action — a `shell` grant never
+implies it. Commands are `open/write/resize/close/list`; output arrives as `pty-data` events whose
+`chunk` is **base64** (decode to bytes, never to text), and `pty-exit` carries the child's own code
+and signal. macOS and Linux run it over `Bun.Terminal`; on Windows `pty.open` answers
+`not-implemented` naming `CreatePseudoConsole` until the ConPTY half lands.
 
 A namespace still needs its own capability and grant before a page may call it — see `security`
 above. For `store.get`:

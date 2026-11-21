@@ -4,10 +4,10 @@ Three entry points, all real `exports` in `package.json`, so they resolve in an 
 
 ## Command namespaces
 
-A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. The 35 built-in namespaces are documented by area, one page each; `updater` joins them when the config has an `updater` section, and `testing` only when the process starts with `CRUST_TEST=1`:
+A page reaches the backend with `window.crust.invoke(plugin, command, args)`, or the two-argument form that routes to `app.invoke`. The 36 built-in namespaces are documented by area, one page each; `updater` joins them when the config has an `updater` section, `pty` when it has a `pty` one ([Pty](/docs/guides/pty)), and `testing` only when the process starts with `CRUST_TEST=1`:
 
 - [`window`](/docs/reference/api-window), `window-state`, `positioner` — a window's life, its remembered frame, and nine placements.
-- [`fs`](/docs/reference/api-fs), `store`, `database`, `keychain`, `shell`, `sidecar`, `stronghold` — text files and their scope, a JSON key-value file, SQLite, OS-protected secrets, an allowlisted program, a bundled helper process, an encrypted store.
+- [`fs`](/docs/reference/api-fs), `store`, `database`, `keychain`, `shell`, `sidecar`, `stronghold`, `pty` — text files and their scope, a JSON key-value file, SQLite, OS-protected secrets, an allowlisted program, a bundled helper process, an encrypted store, and a real terminal ([Pty](/docs/guides/pty)).
 - [`dialog`](/docs/reference/api-ui), `notification`, `tray`, `menu`, `clipboard`, `shortcut` — panels, the notification centre, the menu bar, the pasteboard, hot keys.
 - [`theme`](/docs/reference/api-desktop), `dock`, `power`, `screen`, `accessibility`, `opener`, `os` — appearance, the dock tile, power state, the displays, the AX trust read, the OS hand-off, machine facts.
 - [`app`](/docs/reference/api-app), `autostart`, `logging`, `i18n`, `single-instance`, `deep-link` — backend commands, launch at login, the log sink, the language catalogue, the lock, the launch URL.
