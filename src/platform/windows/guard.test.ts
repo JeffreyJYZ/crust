@@ -52,8 +52,10 @@ describe("the vtable guard", () => {
 
 	test("every vtable call site checks its own slot first", () => {
 		// One per call: AddRef 1, environment 3, put_IsVisible 4, get_Source 4, NavigateToString 6,
-		// put_Bounds 6, Close 24, get_CoreWebView2 25, Navigate 5.
-		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(9);
+		// put_Bounds 6, Close 24, get_CoreWebView2 25, Navigate 5 — plus the preview host's ten:
+		// QueryInterface 0 and Release 2 on every object, Initialize 3, SetWindow 3, SetRect 4,
+		// DoPreview 5 and Unload 6 on a handler.
+		expect(source.match(/shim_slot_ok\(vt, /g)?.length).toBe(19);
 		for (const slot of [
 			"SHIM_SLOT_ENV_CREATE_CONTROLLER",
 			"SHIM_SLOT_CONTROLLER_WEBVIEW",
@@ -129,8 +131,10 @@ describe("an unreadable object is a verdict, not a fault", () => {
 		for (const line of outside.split("\n").filter((text) => text.includes("*(void **)"))) {
 			expect(line).toContain("&g_env_handler");
 		}
-		// Nine call sites plus the definition in the guard.
-		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(14);
+		// Nine WebView2 call sites, the guard's one definition, and the preview host's own: eight
+		// sites over seven interfaces (`54_preview.c`/`55_preview_init.c`), each taken through the
+		// guard because a handler is the same untrusted object a WebView2 controller is.
+		expect(source.match(/shim_object_vtbl\(/g)?.length).toBe(22);
 	});
 });
 

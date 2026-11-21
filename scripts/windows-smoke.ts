@@ -24,6 +24,7 @@ import { formatBisect, runBisect } from "./windows/bisect.ts";
 import { createWithAbortRetry } from "./windows/cold-abort.ts";
 import { findLoader, stageLoader } from "./windows/loader.ts";
 import { provePump } from "./windows/pump.ts";
+import { provePreview } from "./windows/preview.ts";
 import { runStages } from "./windows/stages.ts";
 import { freshUserData } from "./windows/user-data.ts";
 
@@ -180,6 +181,10 @@ async function main(): Promise<number> {
 		stillOpen && platform.nativeWindow("smoke") === hwnd,
 		`shim_window_is_open still answers 1 for HWND ${hwnd} after the pump`,
 	);
+
+	// 7. The preview host: the shell's IPreviewHandler in a child window of this one.
+	const preview = provePreview(hwnd);
+	for (const check of preview) verdict.check(check.name, check.ok, check.detail);
 
 	console.log(
 		"not proven here: a loaded document, page JS, invoke — the window loads about:blank.",

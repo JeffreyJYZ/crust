@@ -114,9 +114,18 @@ Written 2026-11-16 by the lane that built `src/platform/windows/`. Nothing here 
 
 - **Two separate facts, two names in one message** — `WebView2Loader.dll` beside the binary and the Evergreen runtime under `%ProgramFiles(x86)%\Microsoft\EdgeWebView\Application`; the loader can be present while the runtime is absent, and only the bootstrapper fixes that one.
 - **The remedy URL is `https://go.microsoft.com/fwlink/p/?LinkId=2124703`** (Evergreen Bootstrapper) and appears once per message, never once per missing piece.
-- **`PREFLIGHT` is 20 entries across `user32`, `kernel32`, `ole32` and `WebView2Loader`** — every entry names what breaks without it, and `preflight.test.ts` spot-checks the ten that matter so a shim call added without an entry fails the suite.
+- **`PREFLIGHT` carries one entry per shim call the machine must export**, across `user32`, `kernel32`, `ole32`, `shell32`, `comdlg32`, `shlwapi` and `ntdll`, plus `WebView2Loader.dll` — every entry names what breaks without it, and `preflight.test.ts` derives the whole set from the shim's own `SHIM_BIND` lines, so a call added without an entry fails the suite.
 - **`preflight.test.ts` also asserts every entry has a `breaks` line** — a nameless entry is a message that says "something is missing" and helps nobody.
 - **The runtime version sort uses numeric collation** — a plain string sort puts `100.x` before `99.x` and would report an old runtime as the newest.
+
+## Preview: the shell's `IPreviewHandler`, not QuickLook
+
+- **The Windows answer is a child HWND, not a floating panel** — `IPreviewHandler` created for the file's registered CLSID, hosted in a child of the app window by `53_preview_host.c`; the app owns the surface, so a resize is `shim_preview_size` and a close is `shim_preview_hide`.
+- **The CLSID comes from `AssocQueryStringW(ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_SHELLEXTENSION, ".ext", "{8895b1c6-b41f-4c1c-a562-0d564250836f}")`** — that category GUID is also `IID_IPreviewHandler`, and a failure here is `no-handler`, which is an ordinary answer for a file type Windows does not preview and never an error.
+- **All three initialisers are tried because the choice belongs to the handler** — `IInitializeWithStream` first, then `IInitializeWithFile`, then `IInitializeWithItem`; a refused `QueryInterface` means "not this one", so only three refusals are `preview-failed`, and the Office handlers are the ones that need the item.
+- **The four IIDs are decoded back to their printed GUIDs by `preview-ids.test.ts`** — a byte in the wrong order still compiles and still runs, then answers `E_NOINTERFACE` and looks exactly like a handler without that initialiser; there is no other way to check them off Windows.
+- **`shlwapi` is bound on first use, not at launch** — `shim_preview_ready` loads it, `PREFLIGHT` names the five entry points, and `preview.ts` refuses a path that is not a file before any COM call, so `not-a-file` never reaches Windows at all.
+- **On the runner the text handler is the verdict and the image handler is printed** — `.txt` previews through a handler Windows ships, while a server image may register none for `.png`, and a red job over an optional handler would blame this layer for the image's composition.
 
 ## What the next lane must do first
 
