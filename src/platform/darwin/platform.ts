@@ -10,6 +10,8 @@ import { shim } from "./index.ts";
 import { applyDockIcon } from "./dock-icon.ts";
 import { ptrValue, S } from "./objc.ts";
 import type { DarwinOptions } from "./platform-options.ts";
+import { createPump } from "./pump.ts";
+import { previewOwnerCheck } from "./preview.ts";
 import { createNativeWindow } from "./window-create.ts";
 import { type DarwinWindowStore, createWindowStore } from "./window-store.ts";
 
@@ -24,9 +26,8 @@ export class DarwinPlatform implements Platform {
 	readonly #microphone: boolean;
 	#mode = 0;
 	#started = false;
-	#pumping = false;
-	#pumpTimer: ReturnType<typeof setTimeout> | undefined;
-	#ticks = 0;
+	/** The pump timer and its per-tick preview poll; `pump.ts` owns the re-arming chain. */
+	readonly #pump = createPump({ beforeTick: previewOwnerCheck });
 	readonly #windows: DarwinWindowStore;
 
 	constructor(options: DarwinOptions = {}, windows?: DarwinWindowStore) {
@@ -62,36 +63,23 @@ export class DarwinPlatform implements Platform {
 		}
 	}
 
-	/** Pump Cocoa from a self-rearming `setTimeout` chain; a repeating interval coalesces under power saving. */
+	/** Pump Cocoa from a self-rearming chain; the timer, its validation and its poll live in `pump.ts`. */
 	pump(intervalMs: number): void {
-		if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
-			throw new Error(`pump: intervalMs must be a positive number, got ${intervalMs}`);
-		}
 		this.ensureRunLoopMode();
-		if (this.#pumping) this.stopPump();
-		this.#pumping = true;
-		const tick = () => {
-			if (!this.#pumping) return;
-			shim().symbols.shim_pump(this.#mode);
-			this.#ticks++;
-			this.#pumpTimer = setTimeout(tick, intervalMs);
-		};
-		tick();
+		this.#pump.start(intervalMs, () => shim().symbols.shim_pump(this.#mode));
 	}
 
 	/** Stop the pump timer. `quit()` calls this; tests call it directly. */
 	stopPump(): void {
-		this.#pumping = false;
-		if (this.#pumpTimer !== undefined) clearTimeout(this.#pumpTimer);
-		this.#pumpTimer = undefined;
+		this.#pump.stop();
 	}
 
 	get pumping(): boolean {
-		return this.#pumping;
+		return this.#pump.pumping;
 	}
 
 	get ticks(): number {
-		return this.#ticks;
+		return this.#pump.ticks;
 	}
 
 	/** Validate the label, build the native window, then track it; `createNativeWindow` owns the AppKit ordering traps. */

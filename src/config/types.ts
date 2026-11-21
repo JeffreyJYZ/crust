@@ -146,6 +146,30 @@ export interface UpdaterConfig {
 	allowFileUrl?: boolean;
 }
 
+/**
+ * `crust:pty` — a terminal a page can drive. The section existing is what registers the plugin: a
+ * page-reachable pty is command execution, so it must be declared, never inherited from `plugins`.
+ */
+export interface PtyConfig {
+	/** Program the terminal runs; absent is the user's login shell. */
+	shell?: string;
+}
+
+/** `crust:preview` — the embedded panel's default size in points. Absent still registers it. */
+export interface PreviewConfig {
+	width?: number;
+	height?: number;
+}
+
+/**
+ * `crust:browser` — the `http(s)` origins an embedded surface may load. Absent still registers the
+ * plugin, with nothing allowed, so no URL loads until one is named here.
+ */
+export interface BrowserConfig {
+	/** An origin is scheme and host only: `https://example.com`, never a path. */
+	origins?: string[];
+}
+
 export interface CrustConfig {
 	app: AppConfig;
 	windows: WindowConfig[];
@@ -159,6 +183,9 @@ export interface CrustConfig {
 	shell?: ShellConfig;
 	updater?: UpdaterConfig;
 	logging?: LoggingConfig;
+	pty?: PtyConfig;
+	preview?: PreviewConfig;
+	browser?: BrowserConfig;
 }
 
 export interface ConfigIssue {

@@ -33,6 +33,7 @@ import {
 	jsStep,
 	MISSING_FILE_URL,
 } from "./linux/proof-steps.ts";
+import { keyedStateStep, surfaceStep } from "./linux/proof-surface.ts";
 
 /** The shared call shape wants a config; GTK reads nothing from it before a window exists. */
 const CONFIG = {
@@ -80,12 +81,13 @@ async function main(): Promise<number> {
 	// 3. GTK up. A failure here is the preflight text or the no-display message, and both are
 	//    printed verbatim as the reason rather than summarised.
 	const backend = createGtkBackend();
-	let native: NativeWindow | undefined;
+	const created: NativeWindow[] = [];
 	const platform = createPlatform(CONFIG, {
 		...backend,
 		createWindow(options, target) {
-			native = backend.createWindow(options, target);
-			return native;
+			const window = backend.createWindow(options, target);
+			created.push(window);
+			return window;
 		},
 	});
 	try {
@@ -115,7 +117,7 @@ async function main(): Promise<number> {
 		verdict.check("window", false, message(error));
 		return verdict.report("linux:smoke");
 	}
-	const web = native?.web ?? 0n;
+	const web = created[0]?.web ?? 0n;
 	verdict.check(
 		"window",
 		platform.window("smoke") !== undefined && web !== 0n,
@@ -149,6 +151,12 @@ async function main(): Promise<number> {
 	verdict.check("events", events.stream.ok, events.stream.detail);
 	verdict.check("ready", events.ready.ok, events.ready.detail);
 
+	// 6b. The window's container: one per window, with the app's page as its main child, and a
+	//     second webview placed over it and moved. This is the groundwork an embedded browser
+	//     surface needs, and the step is the only place it runs against real GTK.
+	const surface = await surfaceStep(symbols, created[0] as NativeWindow);
+	verdict.check("surface", surface.ok, surface.detail);
+
 	// 7. A load that must fail: WebKit answers `load-failed` and the shim records its message, so
 	//    the error path is a printed line rather than a pump that never settles.
 	platform.createWindow({
@@ -158,8 +166,12 @@ async function main(): Promise<number> {
 		width: 320,
 		height: 200,
 	});
-	const failure = await failureStep(symbols);
+	const brokenWeb = created[created.length - 1]?.web ?? 0n;
+	const failure = await failureStep(symbols, brokenWeb);
 	verdict.check("failure", failure.ok, failure.detail);
+	// The state is per handle: the app's view stays finished after another window's load failed.
+	const keyed = keyedStateStep(symbols, web, brokenWeb);
+	verdict.check("state", keyed.ok, keyed.detail);
 
 	// 8. Liveness is read out of C, not from a freed widget: this is the call that would fault on a
 	//    stale pointer if the slot table were wrong.
@@ -173,7 +185,8 @@ async function main(): Promise<number> {
 	if (page !== undefined) await page.stop();
 
 	console.log(
-		"not proven here: the app's built frontend, and any plugin's effect on the machine.",
+		"not proven here: the app's built frontend, any plugin's effect on the machine, and a picture " +
+			"of the placed surface — window.capture has no WebKitGTK path yet.",
 	);
 	return verdict.report("linux:smoke");
 }

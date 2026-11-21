@@ -1,0 +1,23 @@
+# Preview
+
+An embedded panel a page can show beside its own content — a rendered document, a form preview, a second surface that is part of the app rather than a window. The plugin is always registered; the section only sets the panel's default size.
+
+**Not implemented yet — ships in 0.2.10.** This page is the contract the release will keep: calling `preview.show` today answers `not-implemented` naming the release.
+
+```ts
+// crust.config.ts
+preview: {
+	width: 640,
+	height: 480,
+},
+```
+
+Both dimensions are in points and are the panel's size when the page does not pass its own. Either key may be left out.
+
+## Absent is valid
+
+No `preview` section still registers the plugin, and `preview.show` then opens at the panel's own default size. That differs from [pty](/docs/guides/pty) on purpose: a terminal is command execution and must be declared, while a panel is layout and has nothing to execute.
+
+## Capability
+
+The page calls `preview.show`, so a label needs the action `preview:show`. See [Permissions](/docs/guides/permissions) for grants, which are per window label.

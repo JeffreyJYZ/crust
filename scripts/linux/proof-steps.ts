@@ -35,10 +35,10 @@ const INVOKE_POLLS = 40;
  */
 export async function documentStep(shim: LinuxProofShim, web: bigint): Promise<Step> {
 	const settled = await waitFor(
-		() => [LOAD_FINISHED, LOAD_FAILED].includes(shim.shim_webview_load_state()),
+		() => [LOAD_FINISHED, LOAD_FAILED].includes(shim.shim_webview_load_state(web)),
 		LOAD_MS,
 	);
-	const state = shim.shim_webview_load_state();
+	const state = shim.shim_webview_load_state(web);
 	const title = shim.shim_webview_title(web) ?? "";
 	if (!settled)
 		return {
@@ -48,7 +48,7 @@ export async function documentStep(shim: LinuxProofShim, web: bigint): Promise<S
 	if (state !== LOAD_FINISHED)
 		return {
 			ok: false,
-			detail: `load FAILED: ${shim.shim_webview_load_text() ?? "no message"}`,
+			detail: `load FAILED: ${shim.shim_webview_load_text(web) ?? "no message"}`,
 		};
 	return {
 		ok: title === DOCUMENT_TITLE,
@@ -110,15 +110,15 @@ export const MISSING_FILE_URL = "file:///nonexistent-crust-smoke/x.html";
  * A load that must fail: WebKit answers `load-failed`, the shim records its URI and GLib's message,
  * and the pump settles — so the error path is a printed line rather than a hang.
  */
-export async function failureStep(shim: LinuxProofShim): Promise<Step> {
-	const settled = await waitFor(() => shim.shim_webview_load_state() === LOAD_FAILED, LOAD_MS);
-	const state = shim.shim_webview_load_state();
+export async function failureStep(shim: LinuxProofShim, web: bigint): Promise<Step> {
+	const settled = await waitFor(() => shim.shim_webview_load_state(web) === LOAD_FAILED, LOAD_MS);
+	const state = shim.shim_webview_load_state(web);
 	if (!settled)
 		return {
 			ok: false,
 			detail: `no load-failed within ${LOAD_MS} ms (state ${state})`,
 		};
-	const text = shim.shim_webview_load_text() ?? "";
+	const text = shim.shim_webview_load_text(web) ?? "";
 	return {
 		ok: text.length > 0,
 		detail: `load-failed reported: ${text || "(no message)"}`,

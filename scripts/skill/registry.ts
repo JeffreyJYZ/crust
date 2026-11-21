@@ -1,7 +1,7 @@
 /**
  * The live command surface, enumerated with no platform and no window.
  *
- * `nativePlugins(corePlugins, undefined, { app: "x" })` is measured to register the full set (32
+ * `nativePlugins(corePlugins, undefined, { app: "x" })` is measured to register the full set (34
  * on this tree): passing `undefined` for the platform takes the non-Darwin branch, which still
  * registers every namespace under its own name with honest `not-implemented` answers. The table
  * is therefore read from the registry, never guessed from prose.

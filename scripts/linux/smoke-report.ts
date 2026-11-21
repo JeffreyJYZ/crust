@@ -6,7 +6,16 @@
 import type { Verdict } from "../e2e-harness.ts";
 
 /** The steps `scripts/linux-smoke.ts` prints, in the order it prints them. */
-export const SMOKE_STEPS = ["document", "js", "invoke", "events", "ready", "failure"] as const;
+export const SMOKE_STEPS = [
+	"document",
+	"js",
+	"invoke",
+	"events",
+	"ready",
+	"surface",
+	"failure",
+	"state",
+] as const;
 
 /** One verdict per step, quoting the smoke's own line so the answer travels with it. */
 export function checkSmokeSteps(verdict: Verdict, transcript: string): void {

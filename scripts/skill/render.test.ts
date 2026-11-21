@@ -27,6 +27,6 @@ describe("skill command table", () => {
 	test("one entry per namespace, matching the real registry", () => {
 		const count = table.split("\n").filter((line) => line.startsWith("- `")).length;
 		expect(count).toBe(namespaces.length);
-		expect(namespaces.length).toBe(32);
+		expect(namespaces.length).toBe(34);
 	});
 });
