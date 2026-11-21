@@ -30,7 +30,7 @@ await crust.invoke("preview", "hide");
 
 **Size is both halves or neither.** One side alone sized the panel blank, so a one-sided request is `bad-request` rather than a panel drawn at half a size. Omit both and the config's `preview` defaults apply, then the panel's own.
 
-Failure codes: `bad-request` (a missing or relative `path`, a non-positive or non-integer size, one side without the other); `outside-scope` (the path is outside `fs.scope`); `not-implemented` with the API the platform would need.
+Failure codes: `bad-request` (a missing or relative `path`, a non-positive or non-integer size, one side without the other); `outside-scope` (the path is outside `fs.scope`); `not-implemented` with the API the platform would need, used **only** when the platform has no panel at all; `preview-failed` when the panel is present but this `show` or `hide` call refused it, carrying the native reason and no `requires` field. A preview that cannot find an owner window also answers `preview-failed` — the panel exists, it just has nothing to float over.
 
 ## Absent is valid
 
@@ -38,7 +38,7 @@ No `preview` section still registers the plugin, and `preview.show` then opens a
 
 ## Platforms
 
-macOS drives the system `QLPreviewPanel` over the app's own window, so the panel floats and nothing in your layout reserves a rectangle for it. Windows has the `IPreviewHandler` host but no window handle handed to this registration, and Linux has no embedded system preview API at all — each answers `not-implemented` naming what it waits on rather than opening the file in another app behind a command called `show`. On those two, `opener.openPath` opens the file in the app that owns its type.
+macOS drives the system `QLPreviewPanel` over the app's own window, so the panel floats and nothing in your layout reserves a rectangle for it. A macOS call the panel refuses answers `preview-failed` with that reason; `not-implemented` is reserved for a platform with no panel. Windows has the `IPreviewHandler` host but no window handle handed to this registration, and Linux has no embedded system preview API at all — each answers `not-implemented` naming what it waits on rather than opening the file in another app behind a command called `show`. On those two, `opener.openPath` opens the file in the app that owns its type.
 
 ## Capability
 

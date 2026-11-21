@@ -24,15 +24,35 @@ export interface SurfaceShown {
 	window: number;
 }
 
-/** A platform that refused, in the caller's words: `requires` becomes the `not-implemented` selector. */
+/** A platform with no panel: `requires` becomes the `not-implemented` selector. */
 export interface SurfaceRefused {
 	ok: false;
 	message: string;
 	requires: string;
 }
 
-export type SurfaceAnswer = SurfaceShown | SurfaceRefused;
-export type HideAnswer = { ok: true } | SurfaceRefused;
+/** The panel is present, but this call failed. Not a capability gap — the call's own refusal. */
+export interface PreviewFailure {
+	readonly ok: false;
+	readonly code: "preview-failed";
+	readonly message: string;
+}
+
+export function previewFailed(message: string): PreviewFailure {
+	return { ok: false, code: "preview-failed", message };
+}
+
+export function isPreviewFailure(value: unknown): value is PreviewFailure {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		(value as PreviewFailure).code === "preview-failed" &&
+		(value as PreviewFailure).ok === false
+	);
+}
+
+export type SurfaceAnswer = SurfaceShown | SurfaceRefused | PreviewFailure;
+export type HideAnswer = { ok: true } | SurfaceRefused | PreviewFailure;
 
 export interface PreviewSurface {
 	readonly name: string;
@@ -64,27 +84,31 @@ export interface DarwinAdapter {
  * than that a call returned success.
  */
 export function darwinSurface(adapter: DarwinAdapter): PreviewSurface {
-	const refused = (reason: string): SurfaceRefused => ({
+	// No panel at all is a capability gap. A panel that exists but refused this call is not —
+	// saying `requires: QLPreviewPanel` there would claim the framework is missing when it is not.
+	const absent = (reason: string): SurfaceRefused => ({
 		ok: false,
 		message: reason.length > 0 ? reason : "QLPreviewPanel refused the request",
 		requires: "QLPreviewPanel",
 	});
+	const failed = (reason: string): PreviewFailure =>
+		previewFailed(reason.length > 0 ? reason : "QLPreviewPanel refused the request");
 	return {
 		name: "darwin",
 		show(request) {
 			const state = adapter.available();
-			if (!state.available) return refused(state.reason);
+			if (!state.available) return absent(state.reason);
 			const owner = adapter.owner(request.window);
 			// QLPreviewPanel is a system singleton, not a child of the app window. An ownerless panel
 			// survives every close path, so show refuses rather than installing one nothing can veto.
-			if (owner === 0) return refused("preview.show needs an open owner window to float over");
+			if (owner === 0) return failed("preview.show needs an open owner window to float over");
 			const outcome = adapter.show({ ...request, window: owner });
-			if (!outcome.ok) return refused(outcome.reason);
+			if (!outcome.ok) return failed(outcome.reason);
 			return { ok: true, window: adapter.windowNumber() };
 		},
 		hide() {
 			const outcome = adapter.hide();
-			return outcome.ok ? { ok: true } : refused(outcome.reason);
+			return outcome.ok ? { ok: true } : failed(outcome.reason);
 		},
 		visible: () => adapter.visible(),
 	};

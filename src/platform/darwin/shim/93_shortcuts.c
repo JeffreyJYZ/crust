@@ -96,21 +96,25 @@ int shortcut_register(int keycode, int modifiers) {
 int shortcut_unregister(int id) {
 	for (int i = 0; i < SHORTCUT_MAX; i++) {
 		if (!shortcut_refs[i] || (int)shortcut_ids[i] != id) continue;
-		long status = UnregisterEventHotKey(shortcut_refs[i]);
+		// Keep the ref on failure: the OS still holds the hot key, so a retry (or unregister_all)
+		// must still be able to reach it. Dropping the bookkeeping here loses the only retry path.
+		if (UnregisterEventHotKey(shortcut_refs[i]) != 0) return 0;
 		shortcut_refs[i] = 0;
 		shortcut_ids[i] = 0;
-		return status == 0 ? 1 : 0;
+		return 1;
 	}
 	return 0;
 }
 
 // Every hot key, answering how many the OS let go of. The handler stays installed:
-// re-installing per registration would leak one handler per cycle.
+// re-installing per registration would leak one handler per cycle. A slot whose OS call
+// refused keeps its ref and id, so a retry can still reach the hot keys that remain.
 int shortcut_unregister_all(void) {
 	int removed = 0;
 	for (int i = 0; i < SHORTCUT_MAX; i++) {
 		if (!shortcut_refs[i]) continue;
-		if (UnregisterEventHotKey(shortcut_refs[i]) == 0) removed++;
+		if (UnregisterEventHotKey(shortcut_refs[i]) != 0) continue;
+		removed++;
 		shortcut_refs[i] = 0;
 		shortcut_ids[i] = 0;
 	}

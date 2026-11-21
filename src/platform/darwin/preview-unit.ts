@@ -8,8 +8,7 @@
  * reachable, which a machine without QuickLookUI answers honestly.
  */
 import { cc, FFIType, ptr } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,31 +75,48 @@ export interface PreviewUnit {
 	};
 }
 
-function compile(): PreviewUnit {
-	/** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
-	const hash = createHash("sha256").update(previewSource).digest("hex").slice(0, 16);
-	const file = join(tmpdir(), `crust-preview-${hash}.c`);
-	if (!existsSync(file)) writeFileSync(file, previewSource);
-	return cc({
-		source: file,
-		flags: ["-framework", "QuickLookUI", "-framework", "AppKit", "-framework", "Foundation"],
-		symbols: {
-			shim_preview_available: { args: [], returns: I32 },
-			shim_preview_set_paths: { args: [P, I32], returns: I32 },
-			shim_preview_count: { args: [], returns: I32 },
-			shim_preview_path: { args: [I32], returns: CS },
-			shim_preview_show: { args: [P, F64, F64], returns: I32 },
-			shim_preview_hide: { args: [], returns: I32 },
-			shim_preview_visible: { args: [], returns: I32 },
-			shim_preview_key: { args: [], returns: I32 },
-			shim_preview_window_number: { args: [], returns: I32 },
-			shim_preview_owner: { args: [], returns: P },
-			shim_preview_owner_live: { args: [], returns: I32 },
-			shim_preview_reason: { args: [], returns: CS },
-			shim_preview_probe_count: { args: [], returns: I32 },
-			shim_preview_probe_item_url: { args: [I32], returns: CS },
-		},
-	}) as unknown as PreviewUnit;
+/**
+ * Compile from a private, per-process directory and remove it on every path. A predictable name in
+ * the shared temp dir let a same-user process plant C that this app would compile and bind before
+ * its first preview; `mkdtempSync` gives an unguessable 0700 directory and the `finally` leaves
+ * nothing behind whether `cc()` succeeds or throws. The unit itself is cached in `unitOnce`, so the
+ * compile still happens at most once per process.
+ */
+export function compilePreviewUnit(): PreviewUnit {
+	const dir = mkdtempSync(join(tmpdir(), "crust-preview-"));
+	const file = join(dir, "unit.c");
+	try {
+		writeFileSync(file, previewSource);
+		return cc({
+			source: file,
+			flags: [
+				"-framework",
+				"QuickLookUI",
+				"-framework",
+				"AppKit",
+				"-framework",
+				"Foundation",
+			],
+			symbols: {
+				shim_preview_available: { args: [], returns: I32 },
+				shim_preview_set_paths: { args: [P, I32], returns: I32 },
+				shim_preview_count: { args: [], returns: I32 },
+				shim_preview_path: { args: [I32], returns: CS },
+				shim_preview_show: { args: [P, F64, F64], returns: I32 },
+				shim_preview_hide: { args: [], returns: I32 },
+				shim_preview_visible: { args: [], returns: I32 },
+				shim_preview_key: { args: [], returns: I32 },
+				shim_preview_window_number: { args: [], returns: I32 },
+				shim_preview_owner: { args: [], returns: P },
+				shim_preview_owner_live: { args: [], returns: I32 },
+				shim_preview_reason: { args: [], returns: CS },
+				shim_preview_probe_count: { args: [], returns: I32 },
+				shim_preview_probe_item_url: { args: [I32], returns: CS },
+			},
+		}) as unknown as PreviewUnit;
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 }
 
 let unitOnce: PreviewUnit | undefined;
@@ -110,7 +126,7 @@ export function previewUnit(): PreviewUnit {
 	if (process.platform !== "darwin") {
 		throw new Error(`crust: preview needs AppKit, and this is ${process.platform}`);
 	}
-	return (unitOnce ??= compile());
+	return (unitOnce ??= compilePreviewUnit());
 }
 
 /** Compile the unit and report whether every export resolved. Nothing is shown. */

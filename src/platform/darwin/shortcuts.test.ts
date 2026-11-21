@@ -5,8 +5,14 @@
 
 import { describe, expect, test } from "bun:test";
 import type { PluginContext } from "@/plugins/define.ts";
+import { parseAccelerator } from "@/plugins/shortcut-accelerator.ts";
 import { createShortcutsPlugin } from "@/plugins/shortcuts.ts";
-import { darwinShortcutsAdapter, shortcutUnit, shortcutUnitStatus } from "./shortcuts.ts";
+import {
+	darwinShortcutsAdapter,
+	type ShortcutUnit,
+	shortcutUnit,
+	shortcutUnitStatus,
+} from "./shortcuts.ts";
 
 const skip = process.platform !== "darwin";
 
@@ -47,5 +53,49 @@ describe("a hot key fired without the keyboard", () => {
 		} finally {
 			await plugin.commands.unregisterAll();
 		}
+	});
+});
+
+/** A native unit that refuses the first N removals, so the OS-side retry is observable. */
+function refusingUnit(refusals: number) {
+	const state = { unregister: 0, unregisterAll: 0, next: 1 };
+	const symbols = {
+		shortcut_abi: () => 1,
+		shortcut_install: () => 1,
+		shortcut_register: () => state.next++,
+		shortcut_unregister: () => (++state.unregister <= refusals ? 0 : 1),
+		shortcut_unregister_all: () => (++state.unregisterAll <= refusals ? 0 : 1),
+		shortcut_dispatch: () => 1,
+		shortcut_event_abi: () => 31,
+	};
+	return { unit: { symbols } as unknown as ShortcutUnit, state };
+}
+
+describe("unregister failure and retry", () => {
+	test("a refused OS removal keeps the key so the retry reaches the OS again", () => {
+		const { unit, state } = refusingUnit(1);
+		const adapter = darwinShortcutsAdapter(unit);
+		const parsed = parseAccelerator("Cmd+K");
+		expect(adapter.register(parsed).ok).toBe(true);
+
+		expect(adapter.unregister(parsed)).toBe(false);
+		// Bookkeeping survived: the press still has a route and a second call still reaches C.
+		expect(adapter.dispatch(parsed.accelerator)).toBe(true);
+		expect(adapter.unregister(parsed)).toBe(true);
+		expect(state.unregister).toBe(2);
+		expect(adapter.dispatch(parsed.accelerator)).toBe(false);
+	});
+
+	test("a refused unregisterAll keeps every key so the retry reaches the OS again", () => {
+		const { unit, state } = refusingUnit(1);
+		const adapter = darwinShortcutsAdapter(unit);
+		adapter.register(parseAccelerator("Cmd+K"));
+		adapter.register(parseAccelerator("Cmd+J"));
+
+		expect(adapter.unregisterAll()).toBe(0);
+		expect(adapter.dispatch("command+k")).toBe(true);
+		expect(adapter.dispatch("command+j")).toBe(true);
+		expect(adapter.unregisterAll()).toBe(1);
+		expect(state.unregisterAll).toBe(2);
 	});
 });

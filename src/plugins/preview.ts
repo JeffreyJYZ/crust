@@ -26,11 +26,17 @@ import { createFsScope, type FsScopeOptions } from "./fs-scope.ts";
 import { type ScopeCheck, scopedFsScope } from "./fs-scope-in-force.ts";
 import { canonical } from "./fs-scope-path.ts";
 import { readShow, type ShowArgs, type ShowDefaults } from "./preview-args.ts";
-import { type PreviewSurface, resolvePreviewSurface } from "./preview-surface.ts";
+import {
+	isPreviewFailure,
+	type PreviewFailure,
+	type PreviewSurface,
+	resolvePreviewSurface,
+} from "./preview-surface.ts";
 
 export type { ShowArgs } from "./preview-args.ts";
 export type {
 	DarwinAdapter,
+	PreviewFailure,
 	PreviewSurface,
 	SurfaceAnswer,
 	SurfaceRefused,
@@ -58,10 +64,13 @@ export interface PreviewShown {
 	window: number;
 }
 
-export type PreviewHideResult = { ok: true; visible: boolean } | NotImplemented;
+export type PreviewHideResult = { ok: true; visible: boolean } | PreviewFailure | NotImplemented;
 
 export type PreviewCommands = {
-	show: (args: ShowArgs, ctx?: PluginContext) => Promise<PreviewShown | NotImplemented>;
+	show: (
+		args: ShowArgs,
+		ctx?: PluginContext,
+	) => Promise<PreviewShown | PreviewFailure | NotImplemented>;
 	hide: () => Promise<PreviewHideResult>;
 };
 
@@ -90,7 +99,10 @@ export function createPreviewPlugin(
 	return definePlugin({
 		name: "preview",
 		commands: {
-			show: async (args: ShowArgs, ctx?: PluginContext): Promise<PreviewShown | NotImplemented> => {
+			show: async (
+				args: ShowArgs,
+				ctx?: PluginContext,
+			): Promise<PreviewShown | PreviewFailure | NotImplemented> => {
 				const request = readShow(args, defaults);
 				// Check the same bytes the platform will open. The canonical path is what the scope
 				// resolved and authorised; handing the caller's raw string to QuickLook left a window
@@ -102,7 +114,11 @@ export function createPreviewPlugin(
 				const target = await surface();
 				if (isNotImplemented(target)) return target;
 				const answer = target.show({ ...request, path: approved, window: ctx?.window });
-				if (!answer.ok) return notImplemented(answer.message, answer.requires);
+				if (!answer.ok) {
+					return isPreviewFailure(answer)
+						? answer
+						: notImplemented(answer.message, answer.requires);
+				}
 				return {
 					ok: true,
 					path: request.path,
@@ -116,7 +132,11 @@ export function createPreviewPlugin(
 				const target = await surface();
 				if (isNotImplemented(target)) return target;
 				const answer = target.hide();
-				if (!answer.ok) return notImplemented(answer.message, answer.requires);
+				if (!answer.ok) {
+					return isPreviewFailure(answer)
+						? answer
+						: notImplemented(answer.message, answer.requires);
+				}
 				return { ok: true, visible: target.visible() };
 			},
 		},

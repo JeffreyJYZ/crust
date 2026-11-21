@@ -435,9 +435,10 @@ grant: `window:*` for `capture`, `testing:*` for the rest.
 `unauthorized` (401), `forbidden` (403, capability refused), `bad-origin`, `not-found`,
 `unknown-plugin`, `unknown-command`, `bad-json`, `bad-request`, `handler-error`, `too-large`,
 `not-implemented`, `outside-scope` (403, an `fs` path resolving outside every `fs.scope` prefix).
-`shell` answers a typed `{ ok: false, code, message }` value instead of rejecting, with its own
-codes (`program-not-allowed`, `program-outside-root`, `cwd-not-allowed`, `env-not-allowed`, and
-others).
+`preview-failed` means the panel exists but this `show`/`hide` call refused it, with the native reason
+and no `requires` field — `not-implemented` is only for a platform with no panel. `shell` answers a
+typed `{ ok: false, code, message }` value instead of rejecting, with its own codes
+(`program-not-allowed`, `program-outside-root`, `cwd-not-allowed`, `env-not-allowed`, and others).
 
 ## Gotchas that cost time
 

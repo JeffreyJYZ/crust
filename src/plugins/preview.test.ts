@@ -1,71 +1,14 @@
 /**
  * The `preview` plugin's own behaviour, driven through a fake surface: a shown file, a hidden panel,
- * and — the point of the namespace — a path outside `fs.scope` refused with the same code and sentence
- * `fs` uses instead of a preview that quietly did nothing.
+ * and the two distinct refusals — a platform with no panel versus a panel that refused this call.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import type { CrustError } from "@/bridge/errors";
 import { canonical } from "@/plugins/fs-scope-path";
-import { createFsScope } from "@/plugins/fs-scope";
 import { createPreviewPlugin } from "@/plugins/preview";
-import type { PreviewSurface } from "@/plugins/preview-surface";
+import { cleanup, fakeSurface, OFFLINE } from "./preview-fixture.ts";
 
-const roots: string[] = [];
-afterAll(async () => {
-	for (const root of roots) await rm(root, { recursive: true, force: true });
-});
-
-/** A surface that answers like a panel: shown until hidden, with its own visible read. */
-function fakeSurface(): PreviewSurface & { path?: string; window?: string } {
-	const state = {
-		visible: false,
-		path: undefined as string | undefined,
-		window: undefined as string | undefined,
-	};
-	return {
-		name: "fake",
-		get path() {
-			return state.path;
-		},
-		get window() {
-			return state.window;
-		},
-		show(request) {
-			state.path = request.path;
-			state.window = request.window;
-			state.visible = true;
-			return { ok: true, window: 7 };
-		},
-		hide() {
-			state.visible = false;
-			return { ok: true };
-		},
-		visible: () => state.visible,
-	};
-}
-
-/** A real `fs.scope` over one directory, in the system temp dir so no app data is touched. */
-async function scopeWith(): Promise<{
-	inside: string;
-	outside: string;
-	scope: ReturnType<typeof createFsScope>;
-}> {
-	const root = await mkdtemp(join(tmpdir(), "crust-preview-scope-"));
-	roots.push(root);
-	const inside = join(root, "inside");
-	const outside = join(root, "outside");
-	await mkdir(inside, { recursive: true });
-	await mkdir(outside, { recursive: true });
-	await writeFile(join(inside, "report.txt"), "inside");
-	await writeFile(join(outside, "secret.txt"), "outside");
-	return { inside, outside, scope: createFsScope({ allow: [inside], root }) };
-}
-
-const OFFLINE = { check: async () => {} };
+afterAll(cleanup);
 
 describe("preview.show and preview.hide", () => {
 	test("show answers visible true and the file it was given", async () => {
@@ -133,63 +76,34 @@ describe("preview.show and preview.hide", () => {
 			requires: "IPreviewHandler",
 		});
 	});
-});
 
-describe("the fs.scope boundary", () => {
-	test("a file inside the scope is shown", async () => {
-		const { inside, scope } = await scopeWith();
-		const plugin = createPreviewPlugin({ surface: fakeSurface(), scope });
-		expect(await plugin.commands.show({ path: join(inside, "report.txt") })).toMatchObject({
-			ok: true,
+	test("a panel that exists but refused the call answers preview-failed with its reason", async () => {
+		const surface = fakeSurface();
+		surface.show = () => ({
+			ok: false,
+			code: "preview-failed",
+			message: "QLPreviewPanel is missing orderOut:",
 		});
-	});
-
-	test("a symlink is opened at the path the scope approved, not the caller's spelling", async () => {
-		const { inside, scope } = await scopeWith();
-		const surface = fakeSurface();
-		const plugin = createPreviewPlugin({ surface, scope });
-		const link = join(inside, "link.txt");
-		await symlink(join(inside, "report.txt"), link);
-		expect(await plugin.commands.show({ path: link })).toMatchObject({ ok: true });
-		expect(surface.path).toBe(await canonical(link));
-		expect(surface.path).toBe(await canonical(join(inside, "report.txt")));
-		expect(surface.path).not.toBe(link);
-	});
-
-	test("the calling window's label reaches the surface as the panel owner", async () => {
-		const surface = fakeSurface();
 		const plugin = createPreviewPlugin({ surface, scope: OFFLINE });
-		await plugin.commands.show({ path: "/tmp/a.docx" }, { window: "side", emit: () => {} });
-		expect(surface.window).toBe("side");
-	});
-
-	test("a file outside the scope is refused with fs's own code and sentence", async () => {
-		const { outside, scope } = await scopeWith();
-		const plugin = createPreviewPlugin({ surface: fakeSurface(), scope });
-		const file = join(outside, "secret.txt");
-		let thrown: CrustError | undefined;
-		try {
-			await plugin.commands.show({ path: file });
-		} catch (error) {
-			thrown = error as CrustError;
-		}
-		expect(thrown?.code).toBe("outside-scope");
-		expect(thrown?.message).toContain(file);
-	});
-
-	test("a scope registered after construction still bounds the preview", async () => {
-		// The registration runs before the `fs` plugin exists, so the boundary is read per call: a
-		// scope captured at construction would be the unscoped fallback in every real app.
-		const { inside, outside } = await scopeWith();
-		const plugin = createPreviewPlugin({ surface: fakeSurface() });
-		await expect(
-			plugin.commands.show({ path: join(outside, "secret.txt") }),
-		).rejects.toMatchObject({
-			code: "outside-scope",
-		});
-		expect(await plugin.commands.show({ path: join(inside, "report.txt") })).toMatchObject({
-			ok: true,
+		expect(await plugin.commands.show({ path: "/tmp/a.docx" })).toEqual({
+			ok: false,
+			code: "preview-failed",
+			message: "QLPreviewPanel is missing orderOut:",
 		});
 	});
 
+	test("a refused hide with a live panel answers preview-failed, not not-implemented", async () => {
+		const surface = fakeSurface();
+		surface.hide = () => ({
+			ok: false,
+			code: "preview-failed",
+			message: "orderOut: was refused",
+		});
+		const plugin = createPreviewPlugin({ surface, scope: OFFLINE });
+		expect(await plugin.commands.hide()).toEqual({
+			ok: false,
+			code: "preview-failed",
+			message: "orderOut: was refused",
+		});
+	});
 });

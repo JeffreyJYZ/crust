@@ -8,9 +8,10 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { ptr } from "bun:ffi";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { compilePreviewUnit } from "./preview-unit.ts";
 import { previewUnit, previewUnitStatus } from "./preview.ts";
 
 const notDarwin = process.platform !== "darwin";
@@ -45,6 +46,20 @@ function encoded(text: string): { address: number; length: number } {
 }
 
 describe("the compiled QuickLook unit", () => {
+	test("the C source lives in a private dir that is removed on every path", () => {
+		const leftovers = () =>
+			readdirSync(tmpdir())
+				.filter((name) => name.startsWith("crust-preview-"))
+				.sort();
+		const before = leftovers();
+		try {
+			compilePreviewUnit();
+		} catch {
+			// A machine without QuickLookUI (or a non-darwin run) refuses cc(); cleanup still applies.
+		}
+		expect(leftovers()).toEqual(before);
+	});
+
 	test.skipIf(notDarwin)("builds the data source over the C path array", () => {
 		expect(previewUnitStatus().available).toBe(true);
 		const unit = previewUnit();
