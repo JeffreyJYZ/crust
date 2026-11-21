@@ -41,17 +41,6 @@ async function until(read: () => boolean, ms: number): Promise<boolean> {
 	return read();
 }
 
-/** A `PluginContext` whose `emit` records instead of pushing to a stream. */
-function collector() {
-	const events: Array<{ event: string; data: unknown }> = [];
-	return {
-		events,
-		ctx: {
-			emit: (event: string, data: unknown) => events.push({ event, data }),
-		},
-	};
-}
-
 /**
  * The adapter, driven through the plugin exactly as a page drives it. The ports are the real ones,
  * wrapped so this proof knows the child HWND the adapter created — the adapter keeps its surfaces to
@@ -77,7 +66,9 @@ async function proveBrowser(platform: WindowsPlatform): Promise<BrowserProof> {
 		},
 	};
 	const plugin = createBrowserPlugin({ origins: [origin] }, windowsBrowserAdapter(wrapped));
-	const { events, ctx } = collector();
+	// No popup happens in this fixture page, so no event reaches a stream; the popup path is proved by
+	// the adapter's unit tests and by the shim's own check in `scripts/windows/surfaces.ts`.
+	const ctx = { emit: () => {} };
 	const shim = platform.shim();
 	// The pump dispatches WebView2's own events and completions, so a load never settles without it.
 	platform.pump(8);
@@ -149,7 +140,7 @@ async function proveBrowser(platform: WindowsPlatform): Promise<BrowserProof> {
 			`refused a foreign origin; "${state.title}" from ${state.url}; ${surfaces} surface(s) live; ` +
 			`client ${before.width}x${before.height} → ${after.width}x${after.height} for ` +
 			`${BROWSER_MOVED.width}x${BROWSER_MOVED.height}; close ${JSON.stringify(closed)} and state ` +
-			`${JSON.stringify(gone)}; ${events.length} event(s)`;
+			`${JSON.stringify(gone)}`;
 		return {
 			ok:
 				surfaces === 2 &&

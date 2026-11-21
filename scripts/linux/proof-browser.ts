@@ -30,17 +30,6 @@ export const MOVED = { x: 40, y: 32, width: 180, height: 90 };
 const LOAD_MS = 20_000;
 const ALLOC_MS = 5_000;
 
-/** A `PluginContext` whose `emit` records instead of pushing to a stream. */
-function collector() {
-	const events: Array<{ event: string; data: unknown }> = [];
-	return {
-		events,
-		ctx: {
-			emit: (event: string, data: unknown) => events.push({ event, data }),
-		},
-	};
-}
-
 /** Poll one read until it answers what was asked, or the deadline says it never did. */
 async function until(read: () => boolean, ms: number): Promise<boolean> {
 	return waitFor(read, ms);
