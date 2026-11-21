@@ -4,6 +4,16 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.8] — 2026-11-21
+
+### Fixed
+
+- **A `shell` or `sidecar` child no longer outlives crust.** Only the page's own `kill` reaped a process; `app.quit()` and the SIGTERM that a `crust dev` restart sends both ended the app and left every spawned child running. `src/child-reap.ts` now tracks what the app spawns: `quit()` sends SIGTERM while the logger flushes and a synchronous exit pass sends SIGKILL, which cannot hang the quit. Proven with real children that trap TERM, through both `quit()` and SIGTERM.
+- **The updater can follow GitHub Releases.** Every 3xx was refused, so `…/releases/latest/download/…` — a 302 — could not serve a feed or an artefact. It now follows at most five `https`→`https` hops, re-checks each `location`, and refuses any `http:` target before the request. The boundary stays the pinned Ed25519 `updater.pubkey` over the bytes, not the hostname, so a redirect that changes host cannot widen what installs.
+- **`media-src` was missing from the default policy**, so `blob:` audio and video were refused by fallback to `default-src`. It is `media-src 'self' blob:` now: a page that records can play back what it recorded.
+- **A single-file app could not declare `security`**, so it had no CSP override, no grants and no microphone. One `crust-security:` JSON line — `//` in a module, `<!-- -->` in HTML — reaches the built config through the same validator as `crust.config.ts`.
+- **`crust dev` serves no crust CSP while a built app does**, which made an external provider call work in dev and fail after build. It now says so on startup instead of leaving the difference to be discovered in production.
+
 ## [0.2.7] — 2026-11-20
 
 ### Fixed
