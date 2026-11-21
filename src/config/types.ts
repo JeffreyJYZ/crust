@@ -6,6 +6,10 @@
  */
 export type WindowMaterial = "vibrancy" | "mica" | "acrylic" | "tabbed" | "none";
 
+import type { TestingConfig } from "./types-testing.ts";
+
+export * from "./types-testing.ts";
+
 /** One window the app opens at startup. `label` is the key `app.window(label)` uses. */
 export interface WindowConfig {
 	label: string;
@@ -173,6 +177,11 @@ export interface BrowserConfig {
 export interface CrustConfig {
 	app: AppConfig;
 	windows: WindowConfig[];
+	/**
+	 * How a probe run treats activation. Absent is `auto`, which is today's launch; a probe that
+	 * must not steal focus sets `none` or `on-demand`.
+	 */
+	testing?: TestingConfig;
 	dev?: DevConfig;
 	build?: BuildConfig;
 	plugins?: string[];
@@ -188,11 +197,4 @@ export interface CrustConfig {
 	browser?: BrowserConfig;
 }
 
-export interface ConfigIssue {
-	/** Dotted path to the offending key, e.g. `windows[0].label`. */
-	path: string;
-	/** What that key should have been. */
-	expected: string;
-	/** What was there instead, as short a form as possible. */
-	received?: string;
-}
+export type { ConfigIssue } from "./issues.ts";

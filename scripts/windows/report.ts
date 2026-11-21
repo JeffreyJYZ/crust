@@ -149,15 +149,17 @@ export function lateReport(shim: WindowsShim): void {
 	);
 }
 
-/** The ICoreWebView2 object, before `Navigate` is called on it. */
-export function webReport(shim: WindowsShim): void {
-	const web = shim.shim_webview_handle();
+/** The ICoreWebView2 object at one surface, before `Navigate` is called on it. */
+export function webReport(shim: WindowsShim, handle: number): void {
+	const web = shim.shim_webview_handle(handle);
 	console.log(
 		`stage     webview read ${addr(web)} ${objectStateName(shim.shim_object_state(web))} ` +
-			`first ${addr(shim.shim_webview_vtbl())}`,
+			`first ${addr(shim.shim_webview_vtbl(handle))}`,
 	);
 	console.log(`stage     webview bytes ${words(shim, web)}`);
-	const slots = [3, 4, 5, 6].map((index) => `${index}:${addr(shim.shim_webview_slot(index))}`);
+	const slots = [3, 4, 5, 6].map(
+		(index) => `${index}:${addr(shim.shim_webview_slot(handle, index))}`,
+	);
 	console.log(
 		`stage     webview entries ${slots.join(" ")} bad_slot ${shim.shim_bad_slot()} bad_object ${shim.shim_bad_object()}`,
 	);

@@ -1,5 +1,5 @@
+import type { ConfigIssue } from "./issues.ts";
 import { describe } from "./issues.ts";
-import type { ConfigIssue } from "./types.ts";
 
 export type Dict = Record<string, unknown>;
 

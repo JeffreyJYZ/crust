@@ -26,6 +26,7 @@ export const LAUNCHERS = [
 	"e2e-window.ts",
 	"e2e.ts",
 	"first-run.ts",
+	"probe-focus-control.ts",
 	"probe-tray.ts",
 ];
 

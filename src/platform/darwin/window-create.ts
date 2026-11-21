@@ -4,18 +4,21 @@
  */
 import type { WindowOptions } from "@/app.ts";
 import type { WindowMaterial } from "@/config";
-import { type Activation, activateForWindow } from "./activation.ts";
+import { type Activation, activateForWindow, appkitRaiseSends } from "./activation.ts";
 import { installContentWorldBridge } from "./content-world.ts";
 import { devInspectEnabled } from "./devtools.ts";
 import { shim } from "./index.ts";
 import { installWindowMediaCapture } from "./media-capture.ts";
-import { cls, cstr, ptrValue, S } from "./objc.ts";
+import { cstr, ptrValue, S } from "./objc.ts";
 import { webviewConfiguration } from "./webview-configuration.ts";
+import { createActivation, raiseWindow, windowOrderSends } from "./window-order.ts";
 import type { NativeWindowPointers } from "./windows.ts";
 
 /** `minHeight` and `material` are validated on the config window but `WindowOptions` has not caught up. */
-type MaterialOptions = WindowOptions & { minHeight?: number; material?: WindowMaterial };
-
+type MaterialOptions = WindowOptions & {
+	minHeight?: number;
+	material?: WindowMaterial;
+};
 /**
  * Effective create size and minimums. Clamping here keeps a window from opening smaller than the
  * size the user can later drag it back to; zero is AppKit's "no minimum" for either dimension.
@@ -138,37 +141,22 @@ export function createNativeWindow(
 			throw new Error(`window title applied as ${JSON.stringify(applied)}`);
 	}
 
-	S.v1(win, "makeKeyAndOrderFront:", 0);
-	// `makeKeyAndOrderFront:` raises the window but still depends on the app being able to
-	// activate, and macOS 14+ refuses that for an unbundled process — which is exactly how
-	// `crust dev` runs. Measured 2026-11-16: such a window is built, its page loads, and it is
-	// still off screen and out of the accessibility tree (AppKit `visible 1` while the
-	// WindowServer reported it not on screen). This raises it above its siblings without needing
-	// activation.
-	S.v0(win, "orderFrontRegardless");
+	// `activate: false` is the passive create: `raiseWindow` skips the key send, and the activation
+	// below answers `never` whatever `app.activate` says. Both measurements live in `window-order.ts`.
+	raiseWindow(options.activate, windowOrderSends(win));
 	// See `collectionBehavior`: fullscreen-primary, and the window still follows the active Space.
 	try {
 		S.vq1(win, "setCollectionBehavior:", collectionBehavior());
 	} catch {
 		// Older systems: the default behaviour is the fallback.
 	}
-	// `-activate` is the macOS 14 cooperative call, and it is silently refused for a process
-	// LaunchServices did not launch, so it alone never lands. Measured from a separate trusted
-	// process: a directly-exec'd bundle answered `active no`, and its app element carried
-	// `AXWindows` 0 with `AXChildren` = the menu bar alone — the window was mapped and
-	// `screencapture -l` captured it, yet VoiceOver was blind to it. AppKit lists only windows on
-	// the active Space (its own `accessibilityWindows` tracked `isOnActiveSpace` 1:1), and a
-	// window joins that Space only when its app is the active one. `-activateIgnoringOtherApps:`
-	// does land: `active yes`, then `AXWindows` 1 with 4 children from the same external read,
-	// which is what makes the window key, on the active Space and in the tree.
-	// Gated on `app.activate`: `always` tests `isActive` per window, `first` uses one process-wide
-	// flag because `isActive` is false whenever the human is in another app, and `never` sends
-	// nothing.
-	activateForWindow(activation.mode, activation.once, {
-		sharedApp: () => S.p0(cls("NSApplication"), "sharedApplication", true),
-		isActive: (app) => S.b0(app, "isActive"),
-		activateIgnoringOtherApps: (app) => S.vb1(app, "activateIgnoringOtherApps:", 1),
-	});
+	// `-activateIgnoringOtherApps:` is the call that lands for a directly-exec'd process, where
+	// `-activate` is silently refused; gated on `app.activate` and on `activate: false`.
+	activateForWindow(
+		createActivation(activation.mode, options.activate),
+		activation.once,
+		appkitRaiseSends(),
+	);
 
 	// A relative URL needs the bridge server, which the platform does not own;
 	// only an absolute URL can be handed to NSURL as-is.

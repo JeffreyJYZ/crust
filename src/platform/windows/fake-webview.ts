@@ -1,153 +1,118 @@
 /**
- * The fake's WebView2 members — the environment, the controller, the attach and the handler ABI read
- * back — split out of `fake-shim.ts` when that table passed the line cap, along the same seam
- * `backend-webview.ts` splits the real interface.
+ * The fake's surface half — the table, the create/close path and the handle-keyed calls — split from
+ * `fake-shim.ts` when that table passed the line cap, along the same seam `backend-webview.ts` splits
+ * the real interface. The environment, thread, object and handler numbers live in
+ * `fake-webview-probe.ts`, because none of them reads the table.
  *
- * Each answers from `FakeOptions`, so one fake covers a webview that attached and one that refused.
+ * The surface table is modelled here because the real one is what a second webview stops being a
+ * singleton on: a handle is an index into `hwndOf`, 0 for the first window, exactly as
+ * `41_surfaces.c` numbers them. The C table itself is executed by `surfaces.test.ts`; this fake is for
+ * the platform path, so it records calls rather than proving the table.
  */
 import type { WindowsShim } from "./backend.ts";
 import type { FakeOptions } from "./fake-backend.ts";
 import { text } from "./fake-bytes.ts";
+import { type FakeWebViewProbeShim, fakeWebViewProbe } from "./fake-webview-probe.ts";
 
 export type FakeWebViewShim = Pick<
 	WindowsShim,
 	| "shim_webview_new"
 	| "shim_webview_put_bounds"
 	| "shim_webview_close"
-	| "shim_env_begin"
-	| "shim_env_wait"
-	| "shim_env_callback"
-	| "shim_controller_begin"
-	| "shim_controller_wait"
-	| "shim_controller_callback"
-	| "shim_webview_attach"
+	| "shim_webview_live"
+	| "shim_webview_index"
+	| "shim_webview_set_bounds"
+	| "shim_webview_bound"
 	| "shim_navigate_hresult"
 	| "shim_webview_source"
 	| "shim_webview_navigate_string"
-	| "shim_controller_visible"
 	| "shim_webview_navigate"
-	| "shim_env_hresult"
-	| "shim_controller_hresult"
-	| "shim_thread_at"
-	| "shim_thread_id"
-	| "shim_window_thread"
-	| "shim_apartment_type"
-	| "shim_apartment_bound"
-	| "shim_apartment_hresult"
-	| "shim_apartment_qualifier"
-	| "shim_object_state"
-	| "shim_bad_object"
-	| "shim_object_bytes"
-	| "shim_handler_created"
-	| "shim_handler_addref"
-	| "shim_env_inline"
-	| "shim_ctrl_from"
-	| "shim_ctrl_inline"
-	| "shim_ctrl_mode"
-	| "shim_controller_addr"
-	| "shim_environment_addr"
-	| "shim_controller_vtbl"
-	| "shim_controller_slot"
 	| "shim_webview_vtbl"
 	| "shim_webview_slot"
-	| "shim_bad_slot"
 	| "shim_webview_handle"
 	| "shim_attach_hresult"
 	| "shim_webview_bind"
 	| "shim_webview_size"
-	| "shim_handler_prepare"
-	| "shim_handler_vtbl_addr"
-	| "shim_handler_object_addr"
-	| "shim_handler_first_field"
-	| "shim_handler_entry"
->;
+	| "shim_webview_attach"
+> &
+	FakeWebViewProbeShim;
 
 export function fakeWebView(calls: string[], options: FakeOptions = {}): FakeWebViewShim {
+	// The table `41_surfaces.c` holds, in the same shape: `hwnd` per handle (0 = free), and one
+	// rectangle and one Navigate HRESULT per handle. Entry 0 is the first window, as it is in C.
+	const hwndOf: number[] = [];
+	const bounds: [number, number, number, number][] = [];
+	const navigateHr: number[] = [];
+	const find = (hwnd: number): number => hwndOf.indexOf(hwnd);
+	/** `shim_surface_has`: a live handle, never a hole or an index past the table. */
+	const live = (handle: number): boolean => handle >= 0 && (hwndOf[handle] ?? 0) !== 0;
+	const reserve = (hwnd: number): number => {
+		const existing = find(hwnd);
+		if (existing >= 0) return existing;
+		const free = hwndOf.indexOf(0);
+		const handle = free < 0 ? hwndOf.length : free;
+		hwndOf[handle] = hwnd;
+		bounds[handle] = [0, 0, 0, 0];
+		navigateHr[handle] = 0;
+		return handle;
+	};
+
 	return {
-		shim_webview_new: (_hwnd, url) => {
+		shim_webview_new: (hwnd, url) => {
 			calls.push(`webview_new:${text(url)}`);
-			return options.failWebView ? 0 : 1;
-		},
-		shim_webview_put_bounds: (_hwnd, width, height) => {
-			calls.push(`bounds:${width}x${height}`);
+			if (options.failWebView) return 0;
+			reserve(Number(hwnd));
 			return 1;
 		},
-		shim_webview_close: () => {
+		shim_webview_put_bounds: (hwnd, width, height) => {
+			calls.push(`bounds:${Number(width)}x${Number(height)}`);
+			const handle = find(Number(hwnd));
+			if (live(handle)) bounds[handle]?.splice(0, 4, 0, 0, width, height);
+			return 1;
+		},
+		shim_webview_close: (hwnd) => {
 			calls.push("webview_close");
+			const handle = find(Number(hwnd));
+			if (handle >= 0) hwndOf[handle] = 0;
 		},
-
-		// The WebView2 steps, in the same order the platform would make them.
-		shim_env_begin: () => {
-			calls.push("env_begin");
-			return 0;
+		shim_webview_live: () => hwndOf.reduce((count, hwnd) => count + (hwnd ? 1 : 0), 0),
+		shim_webview_index: (hwnd) => find(Number(hwnd)),
+		shim_webview_set_bounds: (handle, x, y, width, height) => {
+			calls.push(`set_bounds:${Number(handle)}:${Number(width)}x${Number(height)}`);
+			if (!live(Number(handle))) return 0;
+			bounds[Number(handle)]?.splice(0, 4, x, y, width, height);
+			return 1;
 		},
-		shim_env_wait: () => {
-			calls.push("env_wait");
+		shim_webview_bound: (handle, which) => bounds[Number(handle)]?.[Number(which)] ?? 0,
+		shim_navigate_hresult: (handle) => navigateHr[Number(handle)] ?? 0,
+		shim_webview_source: (handle) => (live(Number(handle)) ? 0 : -2147467259),
+		shim_webview_navigate_string: (handle) => (live(Number(handle)) ? 1 : 0),
+		shim_webview_navigate: (handle, url) => {
+			calls.push(`webview_navigate:${Number(handle)}:${text(url)}`);
+			if (!live(Number(handle))) return 0;
+			navigateHr[Number(handle)] = options.failWebView ? -2147467259 : 0;
 			return options.failWebView ? 0 : 1;
 		},
-		shim_env_callback: () => 0,
-		shim_controller_begin: () => {
-			calls.push("controller_begin");
-			return 0;
-		},
-		shim_controller_wait: () => {
-			calls.push("controller_wait");
-			return options.failWebView ? 0 : 1;
-		},
-		shim_controller_callback: () => 0,
-		shim_webview_attach: () => {
-			calls.push("webview_attach");
-			return options.failWebView ? 0 : 1;
-		},
-		shim_navigate_hresult: () => 0,
-		shim_webview_source: () => 0,
-		shim_webview_navigate_string: () => 1,
-		shim_controller_visible: () => 0,
-		shim_webview_navigate: (_url) => {
-			calls.push("webview_navigate");
-			return options.failWebView ? 0 : 1;
-		},
-		shim_env_hresult: () => 0,
-		shim_controller_hresult: () => (options.failWebView ? -2147467259 : 0),
-		shim_thread_at: () => 4242,
-		shim_thread_id: () => 4242,
-		shim_window_thread: () => 4242,
-		shim_apartment_type: () => 0,
-		shim_apartment_bound: () => 1,
-		shim_apartment_hresult: () => 0,
-		shim_apartment_qualifier: () => 0,
-		shim_object_state: () => 0,
-		shim_bad_object: () => 0,
-		shim_object_bytes: (_obj, out) => out.length,
-		shim_handler_created: () => 0x2000,
-		shim_handler_addref: () => 1,
-		shim_env_inline: () => 0,
-		shim_ctrl_from: () => 2,
-		shim_ctrl_inline: () => 0,
-		shim_ctrl_mode: () => 1,
-		shim_controller_addr: () => 0x2000,
-		shim_environment_addr: () => 0x2100,
-		shim_controller_vtbl: () => 0x3000,
-		shim_controller_slot: () => 0x4000,
-		shim_webview_vtbl: () => 0x6000,
-		shim_webview_slot: () => 0x7000,
-		shim_bad_slot: () => -1,
-		shim_webview_handle: () => 0x5000,
+		shim_webview_vtbl: (handle) => (live(Number(handle)) ? 0x6000 : 0),
+		shim_webview_slot: (handle) => (live(Number(handle)) ? 0x7000 : 0),
+		shim_webview_handle: (handle) => (live(Number(handle)) ? 0x5000 + Number(handle) : 0),
 		shim_attach_hresult: () => 0,
-		shim_webview_bind: () => {
+		shim_webview_bind: (hwnd) => {
 			calls.push("webview_bind");
-			return options.failWebView ? 0 : 1;
+			if (options.failWebView) return 0;
+			reserve(Number(hwnd));
+			return 1;
 		},
 		shim_webview_size: () => {
 			calls.push("webview_size");
 			return options.failWebView ? 0 : 1;
 		},
+		shim_webview_attach: () => {
+			calls.push("webview_attach");
+			return options.failWebView ? 0 : 1;
+		},
 
-		// The handler readback: a table at 0x1000, an object whose first field is that table.
-		shim_handler_prepare: () => 1,
-		shim_handler_vtbl_addr: () => 0x1000,
-		shim_handler_object_addr: () => 0x2000,
-		shim_handler_first_field: () => 0x1000,
-		shim_handler_entry: () => 0x3000,
+		// The numbers: environment, thread, apartment, object and handler readbacks.
+		...fakeWebViewProbe(calls, options),
 	};
 }

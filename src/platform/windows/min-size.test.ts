@@ -27,8 +27,10 @@ describe("the Win32 window enforces its configured minimum", () => {
 		expect(proc.indexOf("pt[7] = minh")).toBeLessThan(proc.indexOf("return DefWindowProcW("));
 	});
 
-	test("the minimum table lives beside g_hwnd and is set at create", () => {
-		expect(source).toContain("static shim_h g_hwnd[SHIM_MAX_WINDOWS];");
+	test("the minimum table is its own part and is set at create", () => {
+		// The webview table it used to live beside is `41_surfaces.c` now, and the two bounds are
+		// deliberately separate constants: a surface is not a window.
+		expect(source).toContain("#define SHIM_MAX_WINDOWS 8");
 		expect(source).toContain("static int g_min_w[SHIM_MAX_WINDOWS];");
 		expect(source).toContain("static int g_min_h[SHIM_MAX_WINDOWS];");
 		expect(body("shim_h shim_window_new(")).toContain("shim_window_set_min(hwnd, w, h)");

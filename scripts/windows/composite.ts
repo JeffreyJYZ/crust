@@ -32,7 +32,7 @@ export async function compositeSteps(): Promise<number> {
 	expect(!stageHr("com_init", () => shim.shim_com_init()));
 	expect(stage("register_class", () => shim.shim_register_class(cstring(APP))) !== 0);
 	const hwnd = stage("window_new", () =>
-		shim.shim_window_new(cstring("crust composite"), 480, 320, cstring(APP)),
+		shim.shim_window_new(cstring("crust composite"), 480, 320, cstring(APP), 1),
 	);
 	if (hwnd === 0) {
 		skipped("no window, so the composite cannot run");
@@ -48,11 +48,14 @@ export async function compositeSteps(): Promise<number> {
 	// A few slices, as `platform.pump` would after `openWindows` returns.
 	for (let slice = 0; slice < 4; slice++) stage(`pump_${slice}`, () => shim.shim_pump());
 	expect(stage("is_open", () => shim.shim_window_is_open(hwnd)) === 1);
-	expect(shim.shim_webview_handle() !== 0);
+	// The handle the surface sits at: 0 for this process's first window, which is what a second surface
+	// would sit beside rather than replace.
+	const handle = shim.shim_webview_index(hwnd);
+	expect(shim.shim_webview_handle(handle) !== 0);
 	console.log(
-		`stage     composite webview ${addr(shim.shim_webview_handle())} navigate ${hex(
-			shim.shim_navigate_hresult(),
-		)} ctrl_from ${shim.shim_ctrl_from()} ctrl_inline ${shim.shim_ctrl_inline()}`,
+		`stage     composite surface ${handle} webview ${addr(shim.shim_webview_handle(handle))} ` +
+			`navigate ${hex(shim.shim_navigate_hresult(handle))} ctrl_from ${shim.shim_ctrl_from()} ` +
+			`ctrl_inline ${shim.shim_ctrl_inline()}`,
 	);
 	stage("destroy", () => shim.shim_window_destroy(hwnd));
 	console.log(`stage     ${failures} step(s) did not answer`);

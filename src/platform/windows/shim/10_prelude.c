@@ -77,6 +77,8 @@ int shim_win32_ready(void);
 #define SHIM_WS_OVERLAPPEDWINDOW 0x00CF0000u
 #define SHIM_CW_USEDEFAULT ((int)0x80000000)
 #define SHIM_SW_SHOW 5
+// SW_SHOWNOACTIVATE: shown at its current size without becoming active or taking the foreground.
+#define SHIM_SW_SHOWNOACTIVATE 4
 #define SHIM_SW_MAXIMIZE 3
 #define SHIM_SW_MINIMIZE 6
 #define SHIM_SW_RESTORE 9

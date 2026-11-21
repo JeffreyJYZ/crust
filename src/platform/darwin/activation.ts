@@ -7,7 +7,7 @@
  * call that steals the front from another app, which is why `app.activate` exists.
  */
 import type { ActivateMode } from "@/config";
-import { S } from "./objc.ts";
+import { cls, S } from "./objc.ts";
 
 export type { ActivateMode };
 
@@ -74,6 +74,28 @@ export function activateForWindow(mode: ActivateMode, once: () => void, send: Ra
 	raiseApp(send);
 	once();
 	return true;
+}
+
+/**
+ * `-activateIgnoringOtherApps:` at most once per process, for a read that needs the app active now
+ * (`testing.activation: "on-demand"`). Unlike `activateAppOnce` this skips `-activate`, which a
+ * directly-exec'd process — `crust dev` — has silently refused since macOS 14. It shares the
+ * `appActivated` flag, because "the app was activated once" is one fact whichever call did it.
+ */
+export function raiseAppOnce(): boolean {
+	if (appActivated) return false;
+	appActivated = true;
+	raiseApp(appkitRaiseSends());
+	return true;
+}
+
+/** The sends `raiseApp` needs, as AppKit receives them. */
+export function appkitRaiseSends(): RaiseSends {
+	return {
+		sharedApp: () => S.p0(cls("NSApplication"), "sharedApplication", true),
+		isActive: (app) => S.b0(app, "isActive"),
+		activateIgnoringOtherApps: (app) => S.vb1(app, "activateIgnoringOtherApps:", 1),
+	};
 }
 
 /**

@@ -12,10 +12,10 @@
  * written on, so the tests drive it through a fake shim and prove the shape, not the display.
  */
 import { WindowAdapterError, type WindowNative } from "@/plugins/window";
-import { type LinuxShim, shim } from "./shim-ffi.ts";
 import type { LinuxPlatform } from "./platform.ts";
-import { gtkWindowSends, refusalGate } from "./window-sends.ts";
+import { type LinuxShim, shim } from "./shim-ffi.ts";
 import { windowChromeAdapter } from "./window-chrome-adapter.ts";
+import { gtkWindowSends, refusalGate } from "./window-sends.ts";
 import { windowStateAdapter } from "./window-state-adapter.ts";
 
 export function linuxWindowAdapter(
@@ -49,9 +49,7 @@ export function linuxWindowAdapter(
 			if (url === undefined || !/^https?:/i.test(url)) continue;
 			try {
 				return new URL(url);
-			} catch {
-				continue;
-			}
+			} catch {}
 		}
 		throw new WindowAdapterError(
 			"handler-error",
@@ -70,6 +68,8 @@ export function linuxWindowAdapter(
 		...windowStateAdapter(require, sends, gate),
 		...windowChromeAdapter(require, sends, gate),
 		create(options): { label: string } {
+			// `activate: false` asks for a passive create, and GTK already is one here: this path shows
+			// the window and never calls `gtk_window_present`, which only `window.focus` sends.
 			// The platform's own map, not a copy: a live window holding this label is refused here,
 			// and a closed one was already pruned, so re-creating it is not a duplicate.
 			if (platform.window(options.label) !== undefined) {
@@ -78,7 +78,10 @@ export function linuxWindowAdapter(
 					`crust: a window labelled ${JSON.stringify(options.label)} is already open`,
 				);
 			}
-			const handle = platform.createWindow({ ...options, url: resolveDocument(options.url) });
+			const handle = platform.createWindow({
+				...options,
+				url: resolveDocument(options.url),
+			});
 			return { label: handle.label };
 		},
 		close(label: string): void {
