@@ -23,9 +23,11 @@ import { darwinWebviews, installTestingAdapter } from "@/runtime-testing.ts";
 export type { NativePluginOptions } from "@/runtime-plugins-other.ts";
 /**
  * The `app` namespace moved to `runtime-app-namespace.ts` when this file crossed the 200-line cap.
- * Re-exported so every caller keeps importing it from here.
+ * The re-export goes through the wrapper in `runtime-app-deep-link.ts`, which arms page-side deep-link
+ * delivery when a page invokes `app.info()`/`app.invoke()` — the one place a page's `ctx.emit` exists
+ * outside the bridge. Every caller keeps importing it from here.
  */
-export { createAppNamespacePlugin } from "./runtime-app-namespace.ts";
+export { createAppNamespacePlugin } from "./runtime-app-deep-link.ts";
 
 /**
  * Swap in the platform's native plugins. `dialog` and `window` are the two with a native half; each default export answers `not-implemented` and the real answer arrives through that plugin's `create*Plugin` hook, with `window` appended here because it also needs the running platform.
