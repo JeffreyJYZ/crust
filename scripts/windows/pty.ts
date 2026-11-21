@@ -99,8 +99,8 @@ export async function provePty(): Promise<PtyCheck[]> {
 
 	const resized = pty.resize({ id, cols: 80, rows: 24 });
 	const alive = resized.ok === true;
-	pty.write({ id, data: "set /a 2+2\r\n" });
-	const afterwards = await waitForText(text, "4");
+	pty.write({ id, data: "set /a 111*111\r\n" });
+	const afterwards = await waitForText(text, "12321");
 	checks.push({
 		name: "pty:resize",
 		ok: alive && afterwards,
