@@ -37,6 +37,8 @@ export const shimSymbols = {
 	// 1 height.
 	shim_webview_allocated: { args: [P, I32], returns: I32 },
 	shim_webview_requested: { args: [P, I32], returns: I32 },
+	shim_webview_layout: { args: [P, I32], returns: I32 },
+	shim_webview_parent: { args: [P], returns: P },
 	// The browser surface's reads and policy. `shim_webview_uri` answers a string WebKit owns, so
 	// the buffer's lifetime is the view's, not the caller's.
 	shim_webview_uri: { args: [P], returns: CS },

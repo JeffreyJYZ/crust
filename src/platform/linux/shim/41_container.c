@@ -31,6 +31,11 @@ static int (*shim_widget_allocated_width)(void *);
 static int (*shim_widget_allocated_height)(void *);
 static void (*shim_queue_resize)(void *);
 static void (*shim_get_size_request)(void *, int *, int *);
+static int (*shim_get_hexpand)(void *);
+static int (*shim_get_vexpand)(void *);
+static int (*shim_get_halign)(void *);
+static int (*shim_get_valign)(void *);
+static int (*shim_get_margin_start)(void *);
 
 // Resolved by `shim_lib_open` with the rest of GTK: a window whose box cannot be
 // built is a window with nowhere to put its own page, so the absence belongs in
@@ -68,6 +73,33 @@ static void shim_container_resolve_reads(void) {
 	if (!shim_get_size_request)
 		shim_get_size_request =
 		    (void (*)(void *, int *, int *))shim_sym_or_null(h, "gtk_widget_get_size_request");
+	if (!shim_get_hexpand)
+		shim_get_hexpand = (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_hexpand");
+	if (!shim_get_vexpand)
+		shim_get_vexpand = (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_vexpand");
+	if (!shim_get_halign)
+		shim_get_halign = (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_halign");
+	if (!shim_get_valign)
+		shim_get_valign = (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_valign");
+	if (!shim_get_margin_start)
+		shim_get_margin_start = (int (*)(void *))shim_sym_or_null(h, "gtk_widget_get_margin_start");
+}
+
+/** What GTK actually holds for a placed view: 0 hexpand, 1 vexpand, 2 halign, 3 valign, 4 margin. */
+int shim_webview_layout(void *web, int which) {
+	shim_container_resolve_reads();
+	if (!web) return -1;
+	if (which == 0) return shim_get_hexpand ? shim_get_hexpand(web) : -1;
+	if (which == 1) return shim_get_vexpand ? shim_get_vexpand(web) : -1;
+	if (which == 2) return shim_get_halign ? shim_get_halign(web) : -1;
+	if (which == 3) return shim_get_valign ? shim_get_valign(web) : -1;
+	return shim_get_margin_start ? shim_get_margin_start(web) : -1;
+}
+
+/** The parent GTK holds for one widget, so a proof can name whose allocation it read. */
+void *shim_webview_parent(void *web) {
+	if (!web || !shim_widget_parent) return 0;
+	return shim_widget_parent(web);
 }
 
 /** The size request GTK holds for one view: 0 width, 1 height; 0 for a refused read. */

@@ -15,7 +15,9 @@ import { linuxBrowserAdapter } from "../../src/platform/linux/browser.ts";
 import type { LinuxBrowserPorts } from "../../src/platform/linux/browser-ports.ts";
 import { realPorts } from "../../src/platform/linux/browser-ports.ts";
 import type { LinuxProofShim, LinuxShim } from "../../src/platform/linux/shim-ffi.ts";
+import { hex, readAllocation, readRequest } from "./proof-layout.ts";
 import { createBrowserPlugin } from "../../src/plugins/browser.ts";
+import type { NativeWindow } from "../../src/platform/linux/backend.ts";
 import { waitFor } from "./proof-eval.ts";
 import type { Step } from "./proof-steps.ts";
 
@@ -49,7 +51,10 @@ async function until(read: () => boolean, ms: number): Promise<boolean> {
  * wrapped so this proof knows the `WebKitWebView *` the adapter created and can read GTK's allocation
  * for it — the adapter deliberately keeps its views to itself.
  */
-export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Step> {
+export async function browserStep(
+	shim: LinuxShim & LinuxProofShim,
+	app: NativeWindow,
+): Promise<Step> {
 	const server = Bun.serve({
 		port: 0,
 		fetch: () =>
@@ -132,41 +137,56 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 				detail: `state.url answered "${state.url}", not ${origin}`,
 			};
 
-		// The view's own allocation, not the request: a placement that never reached GTK shows here.
-		const grew = await until(
-			() => {
-				const rect = readAllocation(shim, web);
-				return rect.width === FIRST.width && rect.height === FIRST.height;
-			},
-			ALLOC_MS,
-		);
+		// Attribute the allocation before judging it: three widgets live in this window, and only the
+		// placed surface's own allocation answers the question. The parent and the placement log say
+		// whether `setBounds` reached the same C placement path the first `open` took.
+		const boxRect = readAllocation(shim, app.box);
+		const appRect = readAllocation(shim, app.web);
+		const parent = BigInt(Number(shim.shim_webview_parent?.(web) ?? 0));
+		const grew = await until(() => {
+			const rect = readAllocation(shim, web);
+			return rect.width === FIRST.width && rect.height === FIRST.height;
+		}, ALLOC_MS);
 		const before = readAllocation(shim, web);
 		const requested = readRequest(shim, web);
+		const layout = [0, 1, 2, 3, 4].map((which) =>
+			Number(shim.shim_webview_layout?.(web, which) ?? -1),
+		);
 		const moved = plugin.commands.setBounds({ label: "docs", bounds: MOVED }, ctx);
 		if (!("ok" in moved) || moved.ok !== true)
 			return {
 				ok: false,
 				detail: `setBounds refused: ${JSON.stringify(moved)}`,
 			};
-		const resized = await until(
-			() => readAllocation(shim, web).width === MOVED.width,
-			ALLOC_MS,
-		);
+		const resized = await until(() => {
+			const rect = readAllocation(shim, web);
+			return rect.width === MOVED.width && rect.height === MOVED.height;
+		}, ALLOC_MS);
 		const after = readAllocation(shim, web);
 		const requestAfter = readRequest(shim, web);
 		const closed = plugin.commands.close({ label: "docs" }, ctx);
 		const gone = plugin.commands.state({ label: "docs" }, ctx);
+		const rect = (r: { width: number; height: number }) => `${r.width}x${r.height}`;
+		const placeLog = placements.map((p) => `${p.x},${p.y} ${p.width}x${p.height}`).join(" > ");
 		const detail =
-			`refused a foreign origin; "${state.title}" from ${state.url}; allocated ` +
-			`${before.width}x${before.height} then ${after.width}x${after.height} for ` +
-			`${MOVED.width}x${MOVED.height} (GTK size request ${requested.width}x${requested.height} then ` +
-			`${requestAfter.width}x${requestAfter.height}); closed ${JSON.stringify(closed)} and state answered ` +
-			`${JSON.stringify(gone)}`;
+			`box ${hex(app.box)} ${rect(boxRect)}, app ${hex(app.web)} ${rect(appRect)}, ` +
+			`surface ${hex(web)} parent ${hex(parent)} allocated ${rect(before)} then ${rect(after)} ` +
+			`for ${MOVED.width}x${MOVED.height} (request ${rect(requested)} then ${rect(requestAfter)}; ` +
+			`expand ${layout[0]}/${layout[1]} align ${layout[2]}/${layout[3]} margin ${layout[4]}); ` +
+			`placements ${placeLog}; refused a foreign origin; "${state.title}" from ${state.url}; ` +
+			`closed ${JSON.stringify(closed)} and state ${JSON.stringify(gone)}`;
 		return {
 			ok:
+				parent === app.box &&
+				(placements.length as number) === 2 &&
 				grew &&
 				resized &&
 				before.width === FIRST.width &&
+				before.height === FIRST.height &&
+				after.width === MOVED.width &&
+				after.height === MOVED.height &&
+				requestAfter.width === MOVED.width &&
+				requestAfter.height === MOVED.height &&
 				closed.ok &&
 				"code" in gone &&
 				gone.code === "not-found",
@@ -175,26 +195,4 @@ export async function browserStep(shim: LinuxShim & LinuxProofShim): Promise<Ste
 	} finally {
 		server.stop(true);
 	}
-}
-
-/** GTK's size request for one view, read back after each placement. */
-function readRequest(
-	shim: LinuxShim & LinuxProofShim,
-	web: bigint,
-): { width: number; height: number } {
-	return {
-		width: Number(shim.shim_webview_requested?.(web, 0) ?? 0),
-		height: Number(shim.shim_webview_requested?.(web, 1) ?? 0),
-	};
-}
-
-/** GTK's allocation for one view, as the two numbers the proof compares. */
-function readAllocation(
-	shim: LinuxShim & LinuxProofShim,
-	web: bigint,
-): { width: number; height: number } {
-	return {
-		width: Number(shim.shim_webview_allocated?.(web, 0) ?? 0),
-		height: Number(shim.shim_webview_allocated?.(web, 1) ?? 0),
-	};
 }

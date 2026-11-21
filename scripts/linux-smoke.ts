@@ -153,7 +153,7 @@ async function main(): Promise<number> {
 
 	// 6c. The browser adapter itself, driven through the plugin as a page drives it: a foreign origin
 	//     refused, an allowed one opened in the window's container, its document titled, moved, closed.
-	const browser = await browserStep(symbols);
+	const browser = await browserStep(symbols, created[0] as NativeWindow);
 	verdict.check("browser", browser.ok, browser.detail);
 
 	// 7. A load that must fail: WebKit answers `load-failed` and the shim records its message, so

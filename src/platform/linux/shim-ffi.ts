@@ -55,6 +55,10 @@ export interface LinuxShim extends LinuxDialogShim, LinuxBrowserShim {
 	shim_webview_allocated?(web: bigint, which: number): number;
 	/** The size request a placement set, read back from GTK: 0 width, 1 height. */
 	shim_webview_requested?(web: bigint, which: number): number;
+	/** What GTK holds after a placement: 0 hexpand, 1 vexpand, 2 halign, 3 valign, 4 margin-start. */
+	shim_webview_layout?(web: bigint, which: number): number;
+	/** The parent GTK holds for a widget, so a proof can attribute the allocation it read. */
+	shim_webview_parent?(web: bigint): number;
 
 	/**
 	 * The `crust:window` half, every member optional because a fake shim need not carry it and an
