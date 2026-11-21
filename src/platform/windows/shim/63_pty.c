@@ -135,6 +135,7 @@ typedef struct {
 	unsigned int exit_code;
 	int head;
 	int tail;
+	unsigned int total; // every byte the reader has pushed, for a probe that needs the number
 	unsigned char ring[SHIM_PTY_RING];
 	shim_pty_lock lock;
 } shim_pty_slot;

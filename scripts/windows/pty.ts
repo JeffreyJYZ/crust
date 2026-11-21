@@ -10,6 +10,8 @@
  * satisfy it), a resize is accepted and the shell still answers after it, and the child is gone
  * once `close` returns.
  */
+import { ptr } from "bun:ffi";
+import { cstring } from "../../src/platform/windows/cstring.ts";
 import { conptyShim } from "../../src/platform/windows/pty-ffi.ts";
 import { featurePlugins } from "../../src/runtime-feature-plugins.ts";
 import type { PluginContext } from "../../src/plugins/define.ts";
@@ -63,8 +65,57 @@ async function ptyCommands(shell: string): Promise<PtyCommands> {
 	return plugin.commands as PtyCommands;
 }
 
+/**
+ * The same console with a client that writes one line and exits, driven through the shim with no
+ * plugin in between: it says whether the pipe carries bytes at all, which an interactive banner
+ * cannot, because a shell waiting on its own console and a dead pipe look identical from outside.
+ */
+async function rawProbe(): Promise<PtyCheck> {
+	const shim = conptyShim();
+	if (Number(shim.shim_pty_load()) !== 1) {
+		return {
+			name: "pty:raw",
+			ok: false,
+			detail: `kernel32!${shim.shim_pty_missing() ?? "an export"} did not resolve`,
+		};
+	}
+	const index = Number(
+		shim.shim_pty_open(
+			cstring(hostShell()),
+			cstring('/d /c "echo conpty-raw"'),
+			cstring(process.env.USERPROFILE ?? process.cwd()),
+			100,
+			30,
+		),
+	);
+	if (index < 0) {
+		return { name: "pty:raw", ok: false, detail: shim.shim_pty_reason() ?? "open refused" };
+	}
+	const deadline = performance.now() + 10000;
+	while (performance.now() < deadline && Number(shim.shim_pty_total(index)) <= 0) {
+		await Bun.sleep(25);
+	}
+	const total = Number(shim.shim_pty_total(index));
+	const buffer = new Uint8Array(8192);
+	let seen = "";
+	for (;;) {
+		const got = Number(shim.shim_pty_read(index, ptr(buffer), buffer.length));
+		if (got <= 0) break;
+		seen += Buffer.from(buffer.slice(0, got)).toString("utf8");
+	}
+	shim.shim_pty_close(index);
+	return {
+		name: "pty:raw",
+		ok: seen.includes("conpty-raw"),
+		detail:
+			total > 0
+				? `${total} byte(s) from cmd /c echo: ${JSON.stringify(seen.slice(0, 80))}`
+				: "the console wrote nothing within 10 s",
+	};
+}
+
 export async function provePty(): Promise<PtyCheck[]> {
-	const checks: PtyCheck[] = [];
+	const checks: PtyCheck[] = [await rawProbe()];
 	const frames: string[] = [];
 	const ctx: PluginContext = {
 		emit: (event, data): void => {

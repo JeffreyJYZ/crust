@@ -33,9 +33,10 @@ function fake(overrides: Partial<WindowsPtyShim> = {}): Fake {
 		shim_pty_missing: () => "",
 		shim_pty_reason: () => "the stub's reason",
 		shim_pty_last_error: () => 0,
-		shim_pty_open: (shell, cwd) => {
+		shim_pty_open: (shell, args, cwd) => {
 			calls.push(
-				`open ${Buffer.from(shell).toString("utf8")} ${Buffer.from(cwd).toString("utf8")}`,
+				`open ${Buffer.from(shell).toString("utf8")} ${Buffer.from(args).toString("utf8")} ` +
+					Buffer.from(cwd).toString("utf8"),
 			);
 			return 0;
 		},
@@ -55,6 +56,7 @@ function fake(overrides: Partial<WindowsPtyShim> = {}): Fake {
 		},
 		shim_pty_resize: () => 1,
 		shim_pty_state: () => (states.length > 0 ? (states.shift() as number) : 0),
+		shim_pty_total: () => 0,
 		shim_pty_exit_code: () => 7,
 		shim_pty_kill: () => 1,
 		shim_pty_close: () => {
@@ -105,7 +107,7 @@ describe("opening", () => {
 		const shim = fake();
 		const terminal = windowsPtyBackend(() => shim).open(request);
 		expect(terminal.pid).toBe(4242);
-		expect(shim.calls[0]).toBe(`open ${request.shell}\0 ${request.cwd}\0`);
+		expect(shim.calls[0]).toBe(`open ${request.shell}\0 \0 ${request.cwd}\0`);
 		terminal.close();
 	});
 });

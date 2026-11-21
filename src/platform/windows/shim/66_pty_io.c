@@ -14,6 +14,7 @@ static void shim_pty_push(shim_pty_slot *slot, unsigned char byte) {
 	if (next == slot->tail) slot->tail = (slot->tail + 1) % SHIM_PTY_RING;
 	slot->ring[slot->head] = byte;
 	slot->head = next;
+	slot->total++;
 }
 
 // The reader thread. It ends when the console closes the output pipe — `shim_pty_close` does that
@@ -92,6 +93,12 @@ int shim_pty_state(int index) {
 		slot->finished = 1;
 	}
 	return slot->finished ? 1 : 0;
+}
+
+// Every byte the reader has pushed so far: a probe uses it to say whether the console wrote at all.
+int shim_pty_total(int index) {
+	shim_pty_slot *slot = shim_pty_at(index);
+	return slot ? (int)slot->total : -1;
 }
 
 // The child's own exit code, or -1 while it runs. Never the pty's lifecycle number.

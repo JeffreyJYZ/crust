@@ -22,7 +22,7 @@ int shim_pty_pid(int index) {
 // Open one pseudo-console and its shell. Answers the slot index, or -1 with `shim_pty_reason`.
 // The two pipe pairs are the console's wire: the console reads `in_read` and writes `out_write`,
 // this side keeps `in_write` and `out_read` and closes the console's ends as soon as it has them.
-int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
+int shim_pty_open(const char *shell, const char *args, const char *cwd, int cols, int rows) {
 	if (!shim_pty_load()) return -1;
 	int index = -1;
 	for (int i = 0; i < SHIM_PTY_MAX; i++) {
@@ -121,6 +121,13 @@ int shim_pty_open(const char *shell, const char *cwd, int cols, int rows) {
 	command[0] = '"';
 	command[length + 1] = '"';
 	command[length + 2] = 0;
+	// The probe's arguments, so a proof can run `cmd /c echo` instead of an interactive banner.
+	int at = length + 2;
+	if (args && args[0] && at < 510) {
+		command[at++] = ' ';
+		int extra = shim_pty_wide(args, command + at, 512 - at);
+		if (extra > 0) at += extra;
+	}
 	const shim_wchar *working = shim_pty_wide(cwd, directory, 512) >= 0 ? directory : 0;
 	int spawned = CreateProcessW(0, command, 0, 0, 0, SHIM_PTY_EXTENDED, 0, working, &startup,
 	                             &info);

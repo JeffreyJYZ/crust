@@ -33,6 +33,7 @@ function openTerminal(shim: WindowsPtyShim, request: PtyOpenRequest): PtyTermina
 	const index = Number(
 		shim.shim_pty_open(
 			cstring(request.shell),
+			cstring(request.args ?? ""),
 			cstring(request.cwd),
 			request.cols,
 			request.rows,

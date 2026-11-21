@@ -33,7 +33,13 @@ export interface WindowsPtyShim {
 	shim_pty_last_error(): number;
 
 	/** A slot index ≥ 0, or -1 with `shim_pty_reason` explaining which call refused. */
-	shim_pty_open(shell: Uint8Array, cwd: Uint8Array, cols: number, rows: number): number;
+	shim_pty_open(
+		shell: Uint8Array,
+		args: Uint8Array,
+		cwd: Uint8Array,
+		cols: number,
+		rows: number,
+	): number;
 	shim_pty_pid(index: number): number;
 	/** Bytes that arrived since the last read, up to `cap`; 0 none, -1 a bad index. `dst` is `ptr()`. */
 	shim_pty_read(index: number, dst: number, cap: number): number;
@@ -43,6 +49,8 @@ export interface WindowsPtyShim {
 	shim_pty_resize(index: number, cols: number, rows: number): number;
 	/** 0 running, 1 exited, -1 a bad index. */
 	shim_pty_state(index: number): number;
+	/** Every byte the reader has pushed, or -1 for a bad index. */
+	shim_pty_total(index: number): number;
 	/** The child's own exit code, or -1 while it runs. */
 	shim_pty_exit_code(index: number): number;
 	shim_pty_kill(index: number): number;
@@ -109,12 +117,13 @@ export function compilePty(): WindowsPtyShim {
 			shim_pty_missing: { args: [], returns: CS },
 			shim_pty_reason: { args: [], returns: CS },
 			shim_pty_last_error: { args: [], returns: I32 },
-			shim_pty_open: { args: [CS, CS, I32, I32], returns: I32 },
+			shim_pty_open: { args: [CS, CS, CS, I32, I32], returns: I32 },
 			shim_pty_pid: { args: [I32], returns: I32 },
 			shim_pty_read: { args: [I32, P, I32], returns: I32 },
 			shim_pty_write: { args: [I32, P, I32], returns: I32 },
 			shim_pty_resize: { args: [I32, I32, I32], returns: I32 },
 			shim_pty_state: { args: [I32], returns: I32 },
+			shim_pty_total: { args: [I32], returns: I32 },
 			shim_pty_exit_code: { args: [I32], returns: I32 },
 			shim_pty_kill: { args: [I32], returns: I32 },
 			shim_pty_close: { args: [I32], returns: I32 },

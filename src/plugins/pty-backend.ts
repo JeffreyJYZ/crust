@@ -15,6 +15,8 @@
 export interface PtyOpenRequest {
 	/** The host's `pty.shell`, resolved to a real path by `pty-host.ts`. */
 	shell: string;
+	/** Extra command line for a probe that needs a non-interactive client; the plugin passes none. */
+	args?: string;
 	cols: number;
 	rows: number;
 	cwd: string;
