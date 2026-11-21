@@ -10,8 +10,11 @@ const CAP = 200;
 const ROOTS = ["src", "scripts", "examples", "site", "templates"];
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".c", ".css", ".mjs", ".mdx"]);
 
-/** Directories that are generated, vendored or not ours to read. */
-const SKIP = new Set(["node_modules", "dist", "web", "target", ".git", "build", ".next"]);
+/**
+ * Directories that are generated, vendored or not ours to read. `build` is deliberately
+ * absent: `src/cli/build/` is shipped source, and a bare name would prune it at any depth.
+ */
+export const SKIP = new Set(["node_modules", "dist", "web", "target", ".git", ".next"]);
 
 interface Offender {
 	path: string;
@@ -62,4 +65,4 @@ async function main(): Promise<number> {
 	return 1;
 }
 
-process.exit(await main());
+if (import.meta.main) process.exit(await main());

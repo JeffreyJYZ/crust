@@ -73,11 +73,17 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 		files: [
 			"butter-sweep-commands.ts",
 			"butter-sweep-helpers.ts",
+			"check-links.test.ts",
 			"docs-reference.test.ts",
 			"e2e-detail.test.ts",
 			"e2e-harness.ts",
 			"e2e-parity-patterns.test.ts",
+			"test-files.test.ts",
 		],
+	},
+	{
+		reason: "enumerates test files and runs the suite with bun test: it never launches a GUI app",
+		files: ["test-all.ts", "test-files.ts"],
 	},
 	{
 		reason: "a unit test that drives a GUI child: its own `finally` restores that child's focus, and arming a process-wide exit handler inside the shared `bun test` runner would activate an app at the end of every run",
