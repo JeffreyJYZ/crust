@@ -70,8 +70,17 @@ Absent is `"none"` — opaque, with no backdrop call. [The parity page](/docs/re
 | ------------------ | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `url`              | string | unset   | one dev-server origin every window loads verbatim; `windows[].url` is then ignored, and its origin is the one extra origin the bridge allows |
 | `beforeDevCommand` | string | unset   | started, not awaited, by `crust dev` through `sh -c` in the project directory                                                                |
+| `ignore`           | string array | unset | extra path fragments that never restart the backend, for output the built-in rules cannot know — every entry is a substring of the changed path |
 
-With `dev.url` set, `crust dev` waits up to 30 s for a TCP connect on that port before starting the runtime, because the window loads the URL exactly once and cannot retry.
+With `dev.url` set, `crust dev` waits up to 30 s for a TCP connect on that port before starting the runtime, because the window loads the URL exactly once and cannot retry. A restart rotates the bridge token, so a file written into the project while the backend runs must not look like backend code: `public/`, `dist/`, `node_modules/`, `.next/`, `out/`, `.crust/` and frontend extensions are already ignored, and `dev.ignore` covers the rest. See [Dev server](/docs/guides/dev).
+
+## `singleInstance`
+
+| key  | type   | default | what it does |
+| ---- | ------ | ------- | ------------ |
+| `id` | string | the app id, plus a hash of the project directory under `crust dev` | names the lock file, so a probe runs beside the user's copy instead of raising it; one file-name token |
+
+`CRUST_SINGLE_INSTANCE=0` disables the check for one launch. See [Single instance](/docs/guides/single-instance).
 
 ## `build`
 
@@ -173,28 +182,4 @@ The section existing is what registers `crust:updater`; with no `updater` sectio
 | --------- | ------------ | -------------- | -------------------------------------------------------------------------------------------------------------- |
 | `origins` | string array | unset — deny all | `http(s)` origins, scheme and host only, an embedded surface may load. Ships in 0.2.11 — [Browser](/docs/guides/browser) |
 
-## What `app.id` decides
-
-- **The bundle identifier.** It is written to `Info.plist` as `CFBundleIdentifier`, so it is what macOS keys notifications, privacy grants and per-app settings to. A changed id is a new app to the system.
-- **The bridge port.** `preferredPortFor` hashes the id (FNV-1a) into `45000 + (hash % 4000)`; the bridge tries `preferred + offset` for offsets 0 to 19 and binds `0` on the 21st attempt. Two launches normally share one origin, which is what keeps `localStorage`, IndexedDB and service workers alive across a restart.
-- **The notification identity.** A permission answer is remembered per id: an id macOS recorded as denied keeps answering `UNErrorDomain code 1` whatever the signature, and changing the id is the only way to be asked again.
-
-The port guarantee is "stable unless the port is occupied". When the walk moves, that launch has a different origin and nothing migrates old state.
-
-## Validation
-
-`validateConfig` throws `ConfigError` listing **every** issue, not just the first, with the issues intact on `error.issues`.
-
-```text
-invalid crust config in crust.config.ts:
-  windows[0].width — expected a positive integer, got "wide"
-```
-
-An unknown key is reported the same way, with the accepted set:
-
-```text
-invalid crust config in crust.config.ts:
-  app.color — expected one of "id", "name", "version", "icon", "activate", got "red"
-```
-
-`loadConfig` throws plain `Error` naming the path for: no config file, an explicit path that does not exist, unreadable or unparsable JSON, a module with no default export, and an unsupported extension. Expected filenames are in `CONFIG_FILES`; `findConfig(dir)` answers the same question without loading.
+See [Config rules](/docs/reference/config-rules) for what `app.id` decides at runtime, and how a bad config is reported.

@@ -1,0 +1,32 @@
+# Config rules
+
+What a validated config decides at runtime, and how a bad one is reported. The key tables and their
+defaults live in [Config](/docs/reference/config).
+
+## What `app.id` decides
+
+- **The bundle identifier.** It is written to `Info.plist` as `CFBundleIdentifier`, so it is what macOS keys notifications, privacy grants and per-app settings to. A changed id is a new app to the system.
+- **The bridge port.** `preferredPortFor` hashes the id (FNV-1a) into `45000 + (hash % 4000)`; the bridge tries `preferred + offset` for offsets 0 to 19 and binds `0` on the 21st attempt. Two launches normally share one origin, which is what keeps `localStorage`, IndexedDB and service workers alive across a restart.
+- **The notification identity.** A permission answer is remembered per id: an id macOS recorded as denied keeps answering `UNErrorDomain code 1` whatever the signature, and changing the id is the only way to be asked again.
+- **The data root.** `store`, `database` and `stronghold` each write a file under `~/Library/Application Support/<app.id>/`, so two apps never share a store, a database or a vault.
+- **The single-instance lock.** The lock file is named after the id, or after `singleInstance.id` when that is set.
+
+The port guarantee is "stable unless the port is occupied". When the walk moves, that launch has a different origin and nothing migrates old state.
+
+## Validation
+
+`validateConfig` throws `ConfigError` listing **every** issue, not just the first, with the issues intact on `error.issues`.
+
+```text
+invalid crust config in crust.config.ts:
+  windows[0].width — expected a positive integer, got "wide"
+```
+
+An unknown key is reported the same way, with the accepted set:
+
+```text
+invalid crust config in crust.config.ts:
+  app.color — expected one of "id", "name", "version", "icon", "activate", got "red"
+```
+
+`loadConfig` throws plain `Error` naming the path for: no config file, an explicit path that does not exist, unreadable or unparsable JSON, a module with no default export, and an unsupported extension. Expected filenames are in `CONFIG_FILES`; `findConfig(dir)` answers the same question without loading.
