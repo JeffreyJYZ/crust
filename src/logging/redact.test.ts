@@ -135,6 +135,45 @@ describe("message text", () => {
 		);
 	});
 
+	test("the common credential names are secret, while a bare key is not", () => {
+		for (const name of [
+			"jwt",
+			"auth",
+			"bearer",
+			"sessionId",
+			"session",
+			"sid",
+			"assertion",
+			"refreshToken",
+			"refresh_token",
+		]) {
+			expect(isSecretName(name)).toBe(true);
+		}
+		expect(isSecretName("keyCount")).toBe(false);
+	});
+
+	test("apiKey, jwt, refresh_token, Basic and Cookie credentials leave no value behind", () => {
+		expect(redactText("/x?apiKey=sk-live-ABC")).toBe(`/x?apiKey=${REDACTED}`);
+		expect(redactText("/x?jwt=eyJhbGciOi")).toBe(`/x?jwt=${REDACTED}`);
+		expect(redactText("/x?refresh_token=xyz")).toBe(`/x?refresh_token=${REDACTED}`);
+		expect(redactText("Authorization: Basic dXNlcjpwYXNz")).toBe(
+			`Authorization: Basic ${REDACTED}`,
+		);
+		expect(redactText("Cookie: session=sk-live-XYZ; theme=dark")).toBe(
+			`Cookie: ${REDACTED}; theme=dark`,
+		);
+	});
+
+	test("an Error's stack does not repeat the credential removed from its message", () => {
+		const secret = "sk-live-SECRET-abc123";
+		const redacted = redactValue(
+			new Error(`GET https://api.example.com/v1/me?token=${secret} failed`),
+		) as { message: string; stack: string[] };
+		expect(redacted.message).toContain(REDACTED);
+		expect(redacted.stack[0]).toContain(REDACTED);
+		expect(JSON.stringify(redacted)).not.toContain(secret);
+	});
+
 	test("a long value is truncated and marked, never silently cut", () => {
 		const long = "x".repeat(2500);
 		const out = redactValue(long, "msg") as string;

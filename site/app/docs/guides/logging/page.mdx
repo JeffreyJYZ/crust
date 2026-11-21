@@ -12,13 +12,14 @@ The files sit under the app's own data root; on macOS that is `~/Library/Applica
 ```
 ~/Library/Application Support/<app.id>/logs/app.jsonl      live file
 ~/Library/Application Support/<app.id>/logs/app.1.jsonl    one generation back, then .2, .3
-~/Library/Application Support/<app.id>/logs/errors.jsonl   warn and above only
+~/Library/Application Support/<app.id>/logs/errors.jsonl   framework warn and above only
 ```
 
 `<app.id>` is `app.id` from `crust.config.ts`, so two apps never share a directory. `app.jsonl`
 rotates when it reaches `logging.maxBytes`; the live file moves to `app.1.jsonl`, the previous `.1`
 to `.2`, and the oldest generation is deleted last. `errors.jsonl` is the subset you attach to a bug
-report: it keeps `warn` and `error` only, rotates at the same size, and keeps one generation.
+report: it keeps framework and plugin `warn` and `error` only — page warnings stay in `app.jsonl`, so
+a page cannot rotate the triage file away — and rotates at the same size keeping one generation.
 
 ## One line
 
