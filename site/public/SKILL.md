@@ -283,11 +283,18 @@ empty but not NUL-bearing.
 ### Mounting your own native adapters
 
 `crust/plugin` exports plugin factories but not the platform adapters. To mount a custom native
-set (a menu, notifications, keychain, panels), import the factories from `crust/native`, e.g.
-`import { darwinDialogAdapter, darwinMenuAdapter } from "crust/native"`. Every export is a static
-re-export, so `crust build` embeds it. Do not reach into `node_modules/crust/src/platform/...` or
-call `import.meta.resolve("crust")`: neither survives a compiled binary, where the package root is
-`/$bunfs/root`. On macOS the entry exports the darwin set; a compiled binary is platform-specific.
+set (a menu, notifications, keychain, panels), import your platform's subpath:
+
+- macOS: `import { darwinDialogAdapter, darwinMenuAdapter } from "crust/native/darwin"`
+- Windows: `import { windowsDialogAdapter, windowsTrayAdapter } from "crust/native/windows"`
+- Linux: `import { linuxDialogAdapter, linuxTrayAdapter } from "crust/native/linux"`
+
+Each export is a static re-export of that platform's modules only. A compiled bundle embeds exactly
+one platform's set: a Windows build imports `crust/native/windows` and carries no AppKit code, a
+Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. There is no bare
+`crust/native` entry. Do not reach into `node_modules/crust/src/platform/...` or call
+`import.meta.resolve("crust")`: neither survives a compiled binary, where the package root is
+`/$bunfs/root`.
 
 ## CLI
 

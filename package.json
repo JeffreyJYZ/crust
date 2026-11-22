@@ -9,7 +9,9 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
-		"./native": "./src/native.ts",
+		"./native/darwin": "./src/native/darwin.ts",
+		"./native/windows": "./src/native/windows.ts",
+		"./native/linux": "./src/native/linux.ts",
 		"./plugin": "./src/plugins/index.ts",
 		"./extension": "./src/extensions/define.ts",
 		"./extensions": "./src/extensions/load.ts",
