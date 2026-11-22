@@ -48,10 +48,11 @@ export function windowsKeychainAdapter(
 		assertName(service, account);
 		const status = native.set(service, account, secret);
 		if (status === WINDOWS_KEYCHAIN_STATUS.ok) return;
+		// Name the OS call and status so the plugin's refusal is actionable, never a bare failure.
 		throw new Error(
 			status === WINDOWS_KEYCHAIN_STATUS.badName
 				? "keychain: the service or account name is unusable"
-				: "keychain: the Windows credential store refused the write",
+				: `keychain: CredWriteW refused the write (status ${status})`,
 		);
 	};
 
@@ -66,7 +67,7 @@ export function windowsKeychainAdapter(
 			// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
 			if (length === WINDOWS_KEYCHAIN_STATUS.refused) return null;
 			if (length < 0)
-				throw new Error("keychain: the Windows credential store refused the read");
+				throw new Error(`keychain: CredReadW refused the read (status ${length})`);
 			if (length <= buffer.length - 1) {
 				return new TextDecoder().decode(buffer.subarray(0, length));
 			}
@@ -83,7 +84,7 @@ export function windowsKeychainAdapter(
 		if (status === 1) return true;
 		// Nothing stored is the same success: the entry the caller named is gone.
 		if (status === 0) return false;
-		throw new Error("keychain: the Windows credential store refused the delete");
+		throw new Error(`keychain: CredDeleteW refused the delete (status ${status})`);
 	};
 
 	const list = (service: string): string[] => {

@@ -182,12 +182,12 @@ export function windowsKeychainShim(): WindowsKeychainShim {
 			let needed = read();
 			if (needed === 0) return null;
 			if (needed < 0)
-				throw new Error("keychain: the Windows credential store refused the read");
+				throw new Error(`keychain: CredEnumerateW refused the read (status ${needed})`);
 			if (needed > buffer.length) {
 				buffer = new Uint8Array(needed);
 				needed = read();
 				if (needed < 0)
-					throw new Error("keychain: the Windows credential store refused the read");
+					throw new Error(`keychain: CredEnumerateW refused the read (status ${needed})`);
 			}
 			// The C half counts the final NUL; TextDecoder would emit it, so strip it here.
 			return new TextDecoder("utf-16le")
