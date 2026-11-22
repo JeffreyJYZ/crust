@@ -24,27 +24,19 @@ export {
 	type ShortcutModifier,
 } from "./shortcut-accelerator";
 
-export type ShortcutFailureCode =
-	"bad-accelerator" | "already-registered" | "not-registered" | "native-failed";
-
-export interface ShortcutFailure {
-	ok: false;
-	code: ShortcutFailureCode;
-	message: string;
-	/** The accelerator or token at fault, when one can be named. */
-	part?: string;
-}
-
-export interface ShortcutSuccess {
-	ok: true;
-	accelerator: string;
-}
-
-export type ShortcutResult = ShortcutSuccess | ShortcutFailure;
-
-export interface ShortcutArgs {
-	accelerator: string;
-}
+export type {
+	ShortcutArgs,
+	ShortcutFailure,
+	ShortcutFailureCode,
+	ShortcutResult,
+	ShortcutSuccess,
+} from "./shortcut-types";
+import type {
+	ShortcutArgs,
+	ShortcutFailure,
+	ShortcutFailureCode,
+	ShortcutResult,
+} from "./shortcut-types";
 
 /**
  * The native half. It owns only the OS: the plugin keeps the registry, so an adapter
@@ -71,8 +63,8 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 			args?: unknown,
 			ctx?: PluginContext,
 		) => { removed: number } | ShortcutFailure | NotImplemented;
-		isRegistered: (args: ShortcutArgs) => boolean;
-		list: () => string[];
+		isRegistered: (args: ShortcutArgs) => boolean | NotImplemented;
+		list: () => string[] | NotImplemented;
 	}
 > & { dispose(): void } {
 	const live = new Map<string, ParsedAccelerator>();
@@ -102,6 +94,7 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 
 	const plugin = definePlugin({
 		name: "shortcut",
+		native: { requires: "RegisterEventHotKey", available: adapter !== undefined },
 		commands: {
 			register: (args: ShortcutArgs, ctx: PluginContext) => {
 				if (!adapter) return missing("register");
@@ -168,14 +161,24 @@ export function createShortcutsPlugin(adapter?: ShortcutAdapter): PluginDefiniti
 				live.clear();
 				return { removed };
 			},
-			isRegistered: (args: ShortcutArgs) => {
+			/**
+			 * Both reads are answered from the plugin's own map, so it is tempting to skip the
+			 * adapter check — but then a missing native half is the same `false` or `[]` a real
+			 * registry gives when nothing is held. Refuse by name instead; a cancelled pick has
+			 * its own shape, and so does an empty hot-key list.
+			 */
+			isRegistered: (args: ShortcutArgs): boolean | NotImplemented => {
+				if (!adapter) return missing("isRegistered");
 				try {
 					return live.has(parseAccelerator(args?.accelerator).accelerator);
 				} catch {
 					return false;
 				}
 			},
-			list: () => [...live.keys()],
+			list: (): string[] | NotImplemented => {
+				if (!adapter) return missing("list");
+				return [...live.keys()];
+			},
 		},
 	});
 	let disposed = false;

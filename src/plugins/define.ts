@@ -29,12 +29,23 @@ export type CommandHandler<Args = any, Result = any> = (
 
 export type CommandMap = Record<string, CommandHandler<any, any>>;
 
+/**
+ * The native half a plugin needs and whether this instance got one. `requires` is the same bare
+ * symbol a `not-implemented` answer carries, so a startup report names exactly what a later call
+ * would blame. Absent means the plugin needs no native half and must not appear in that report.
+ */
+export interface NativeRequirement {
+	readonly requires: string;
+	readonly available: boolean;
+}
+
 export interface PluginDefinition<
 	Name extends string = string,
 	Commands extends CommandMap = CommandMap,
 > {
 	readonly name: Name;
 	readonly commands: Commands;
+	readonly native?: NativeRequirement;
 }
 
 /** The result a command returns when the platform cannot run it yet. */
@@ -99,8 +110,9 @@ export async function invokeCommand(
 export function definePlugin<Name extends string, Commands extends CommandMap>(plugin: {
 	name: Name;
 	commands: Commands;
+	native?: NativeRequirement;
 }): PluginDefinition<Name, Commands> {
-	const { name, commands } = plugin;
+	const { name, commands, native } = plugin;
 	if (typeof name !== "string" || name.length === 0) {
 		throw new CrustError("bad-request", "definePlugin: name must be a non-empty string");
 	}
@@ -131,7 +143,11 @@ export function definePlugin<Name extends string, Commands extends CommandMap>(p
 			);
 		}
 	}
-	return Object.freeze({ name, commands: Object.freeze({ ...commands }) });
+	return Object.freeze({
+		name,
+		commands: Object.freeze({ ...commands }),
+		...(native === undefined ? {} : { native: Object.freeze({ ...native }) }),
+	});
 }
 
 /** Arguments of a command handler, for typed clients. */

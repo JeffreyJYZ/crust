@@ -10,6 +10,9 @@ import {
 	type PluginDefinition,
 	isNotImplemented,
 } from "./define";
+import { reportNativeGaps } from "./native-gaps";
+
+export { nativeGaps } from "./native-gaps";
 
 /** Anything the bridge can turn into `"<plugin>.<command>"` handlers. */
 export type HandlerSource =
@@ -32,6 +35,7 @@ export class PluginRegistry {
 			}
 			this.plugins.set(plugin.name, plugin);
 		}
+		reportNativeGaps(plugins);
 		return this;
 	}
 

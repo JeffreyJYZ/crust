@@ -106,6 +106,7 @@ export function createPowerPlugin(
 		);
 	return definePlugin({
 		name: "power",
+		native: { requires, available: adapter !== undefined },
 		commands: {
 			/** Battery, wall power and the low-power flag, in one read. */
 			state: async (): Promise<PowerStateResult | PowerFailure | NotImplemented> => {

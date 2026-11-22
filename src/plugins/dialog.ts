@@ -70,6 +70,7 @@ export function createDialogPlugin(native?: DialogNative): PluginDefinition<
 > {
 	return definePlugin({
 		name: "dialog",
+		native: { requires: "NSOpenPanel", available: native !== undefined },
 		commands: {
 			openPanel: async (
 				options: OpenPanelOptions = {},

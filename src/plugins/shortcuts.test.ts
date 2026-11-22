@@ -183,11 +183,11 @@ describe("shortcut plugin without an adapter", () => {
 			await plugin.commands.register({ accelerator: "Cmd+K" }, quiet),
 			await plugin.commands.unregister({ accelerator: "Cmd+K" }, quiet),
 			await plugin.commands.unregisterAll(),
+			plugin.commands.list(),
+			plugin.commands.isRegistered({ accelerator: "Cmd+K" }),
 		]) {
 			expect(isNotImplemented(result)).toBe(true);
 			if (isNotImplemented(result)) expect(result.requires).toBe("RegisterEventHotKey");
 		}
-		expect(plugin.commands.list()).toEqual([]);
-		expect(plugin.commands.isRegistered({ accelerator: "Cmd+K" })).toBe(false);
 	});
 });

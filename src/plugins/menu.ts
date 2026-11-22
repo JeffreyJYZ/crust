@@ -127,6 +127,7 @@ export function createMenuPlugin(adapter?: MenuAdapter): PluginDefinition<
 
 	return definePlugin({
 		name: "menu",
+		native: { requires: "NSMenu", available: adapter !== undefined },
 		commands: {
 			setAppMenu: (args: unknown, ctx?: PluginContext) => {
 				if (!adapter) return missing("setAppMenu");
