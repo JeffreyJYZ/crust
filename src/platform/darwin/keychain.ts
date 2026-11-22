@@ -47,10 +47,12 @@ export function darwinKeychainAdapter(
 	const set = (service: string, account: string, secret: string): void => {
 		const status = native.set(service, account, secret);
 		if (status === KEYCHAIN_STATUS.ok) return;
+		// Name the OS call and status so a refusal is actionable: an ad-hoc bundle has no
+		// application-identifier entitlement and SecItemAdd answers a denial, not a file.
 		throw new Error(
 			status === KEYCHAIN_STATUS.badName
 				? "keychain: the service or account name is unusable"
-				: "keychain: the OS keychain refused the write",
+				: `keychain: SecItemUpdate/SecItemAdd refused the write (status ${status})`,
 		);
 	};
 
@@ -63,7 +65,10 @@ export function darwinKeychainAdapter(
 			const length = native.get(service, account, buffer);
 			// "Not stored" is the normal answer; the plugin turns it into `{ found: false }`.
 			if (length === KEYCHAIN_STATUS.refused) return null;
-			if (length < 0) throw new Error("keychain: the OS keychain refused the read");
+			if (length < 0)
+				throw new Error(
+					`keychain: SecItemCopyMatching refused the read (status ${length})`,
+				);
 			if (length <= buffer.length - 1) {
 				return new TextDecoder().decode(buffer.subarray(0, length));
 			}
@@ -79,7 +84,7 @@ export function darwinKeychainAdapter(
 		if (status === 1) return true;
 		// Nothing stored is the same success: the entry the caller named is gone.
 		if (status === 0) return false;
-		throw new Error("keychain: the OS keychain refused the delete");
+		throw new Error(`keychain: SecItemDelete refused the delete (status ${status})`);
 	};
 
 	const list = (service: string): string[] => {
@@ -87,7 +92,10 @@ export function darwinKeychainAdapter(
 		// Same bounded retry as `get`; a list that keeps growing is refused, never truncated.
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const length = native.list(service, buffer);
-			if (length < 0) throw new Error("keychain: the OS keychain refused the list");
+			if (length < 0)
+				throw new Error(
+					`keychain: SecItemCopyMatching refused the list (status ${length})`,
+				);
 			if (length <= buffer.length) return splitAccounts(buffer.subarray(0, length));
 			buffer = new Uint8Array(length);
 		}
