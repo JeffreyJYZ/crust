@@ -82,6 +82,7 @@ export function createTrayPlugin(adapter?: TrayNative): PluginDefinition<
 
 	return definePlugin({
 		name: "tray",
+		native: { requires: "NSStatusBar", available: adapter !== undefined },
 		commands: {
 			setTitle: (args: TraySetTitleArgs): TrayTitleResult | TrayFailure | NotImplemented => {
 				if (!adapter) return missing("setTitle");

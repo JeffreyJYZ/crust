@@ -82,6 +82,7 @@ export function createThemePlugin(adapter?: ThemeAdapter): ThemePlugin {
 
 	return definePlugin({
 		name: "theme",
+		native: { requires: "NSAppearance", available: native !== undefined },
 		commands: {
 			/** What the app draws in now, and whether a page asked for it. */
 			current: (): ThemeState | ThemeFailure | NotImplemented => {

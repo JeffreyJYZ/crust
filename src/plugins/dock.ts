@@ -99,6 +99,7 @@ export function createDockPlugin(adapter?: DockAdapter): PluginDefinition<
 
 	return definePlugin({
 		name: "dock",
+		native: { requires: "NSDockTile", available: adapter !== undefined },
 		commands: {
 			/** Set the badge text; an empty string clears it. */
 			badge: async (

@@ -129,6 +129,10 @@ export function createAccessibilityPlugin(
 
 	return definePlugin({
 		name: "accessibility",
+		native: {
+			requires: accessibilityNeed("trusted", platform).requires,
+			available: adapter !== undefined,
+		},
 		commands: {
 			...trustCommands(adapter, missing),
 			...pageCommands(adapter, guards),

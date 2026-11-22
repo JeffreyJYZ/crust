@@ -138,6 +138,7 @@ export function createScreenPlugin(options: ScreenAdapter | ScreenOptions = {}):
 
 	return definePlugin({
 		name: "screen",
+		native: { requires, available: adapter !== undefined },
 		commands: {
 			/**
 			 * Every display. An empty list is a real answer for a headless process rather than a

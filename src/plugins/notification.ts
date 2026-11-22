@@ -87,6 +87,7 @@ export function createNotificationPlugin(
 
 	return definePlugin({
 		name: "notification",
+		native: { requires: "UNUserNotificationCenter", available: adapter !== undefined },
 		commands: {
 			/**
 			 * There is no synchronous way to ask for the authorization state:
