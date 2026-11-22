@@ -280,6 +280,15 @@ fallback: use `stronghold` for a secret an ad-hoc build must keep. Windows and L
 entitlement. `service`/`account` may not contain a NUL (nor a backslash on Windows); `secret` may be
 empty but not NUL-bearing.
 
+### Mounting your own native adapters
+
+`crust/plugin` exports plugin factories but not the platform adapters. To mount a custom native
+set (a menu, notifications, keychain, panels), import the factories from `crust/native`, e.g.
+`import { darwinDialogAdapter, darwinMenuAdapter } from "crust/native"`. Every export is a static
+re-export, so `crust build` embeds it. Do not reach into `node_modules/crust/src/platform/...` or
+call `import.meta.resolve("crust")`: neither survives a compiled binary, where the package root is
+`/$bunfs/root`. On macOS the entry exports the darwin set; a compiled binary is platform-specific.
+
 ## CLI
 
 | command | does |

@@ -1,6 +1,6 @@
 # Imports
 
-Three entry points, all real `exports` in `package.json`, so they resolve in an installed project with no build step. Page code imports none of them — a page uses the `window.crust` the bridge injects. `crust/vite` is imported by `vite.config.ts`, never by a page.
+Four entry points, all real `exports` in `package.json`, so they resolve in an installed project with no build step. Page code imports none of them — a page uses the `window.crust` the bridge injects. `crust/vite` is imported by `vite.config.ts`, never by a page.
 
 ## Command namespaces
 
@@ -60,6 +60,12 @@ The last three are what `startApp` calls before importing your `main.ts`; they a
 ### Types
 
 `AppEvent`, `AppListener`, `CommandHandler`, `Platform`, `WindowHandle`, `WindowOptions`, `AppConfig`, `BuildConfig`, `ConfigIssue`, `CrustConfig`, `DevConfig`, `LoadedConfig`, `LoadConfigOptions`, `SecurityConfig`, `WindowConfig`.
+
+## `crust/native`
+
+The native adapter entry point, `src/native.ts`. An app that mounts its own native set needs the platform's adapter factories; `crust/plugin` exports only plugin factories. Every export here is a literal static re-export from `src/platform/darwin/`, so `bun build --compile` embeds the adapter and a compiled app gets the same factory a dev run gets. On macOS it exports `darwinDialogAdapter`, `darwinMenuAdapter`, `darwinNotificationAdapter`, `darwinKeychainAdapter`, `createStatusBar`/`currentStatusBar` (tray), `darwinShortcutsAdapter`, `darwinDockAdapter`, `darwinThemeAdapter`, `listScreens`/`windowWorkAreas`/`mainScreenFrame` (screen), `darwinPowerAdapter`, `darwinAccessibilityAdapter`, `darwinNavigationAdapter`, `darwinFindAdapter`, `darwinDownloadsAdapter`, `darwinOpenerAdapter`, `darwinOsAdapter`, plus `darwinClipboardAdapter`. A compiled binary is platform-specific, so this is the darwin set.
+
+An app must not use `import.meta.resolve("crust")` or a relative `require` into `node_modules/crust/src/platform/...` to find these. Inside a compiled executable the package root is `/$bunfs/root`, where no `package.json` exists, so resolution throws and a loader that catches it answers `undefined` for every adapter — the panel, menu or notification then fails silently. Import from `crust/native` instead.
 
 ## `crust/plugin`
 
