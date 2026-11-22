@@ -4,6 +4,22 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.13] — 2026-11-22
+
+### Added
+
+- **`crust/native/<platform>`: the native adapter factories, as literal static exports.** An app that mounts its own native set (a custom menu, notifications, its own keychain) takes the plugin factories from `crust/plugin` but had no supported way to get the platform adapters — so apps reached into `node_modules/crust/src/platform/...` or resolved the package with `import.meta.resolve("crust")`. The second never survives `bun build --compile`: inside a binary the package root is `/$bunfs/root`, where no `package.json` exists, so the resolve throws and a loader that catches it answers `undefined` for every adapter — the picker then returns `null` in 0 ms and the menu installs nothing. `crust/native/darwin`, `crust/native/windows` and `crust/native/linux` each re-export only their own platform, so a compiled bundle embeds exactly the set it can run and a Windows build carries no AppKit. There is no bare `crust/native`, which would have to resolve one platform's modules on every host.
+- **A plugin declares the native half it needs.** `PluginDefinition.native` is `{ requires, available }`, and the registry writes one `error` line at startup naming every namespace whose adapter is missing, once per distinct set. A built app with no native half now says so instead of failing every later call in silence.
+
+### Fixed
+
+- **`shortcut.isRegistered` and `shortcut.list` refused nothing.** With no adapter they answered `false` and `[]` — indistinguishable from an empty registry — so an app could believe a hot key was unregistered or that none existed. Both answer `not-implemented` with `requires: "RegisterEventHotKey"` now, and the nine plugins that already refused per call are unchanged.
+- **A keychain refusal names the failing OS call.** A present adapter that refuses no longer answers only "the OS keychain refused": the message carries `SecItemAdd`/`SecItemUpdate`/`SecItemCopyMatching`/`SecItemDelete` on macOS and `CredWriteW`/`CredReadW`/`CredDeleteW`/`CredEnumerateW` on Windows, and a test pins that nothing on the keychain path writes a secret to a file. crust never had a `0600` fallback; the one observed came from a consuming app's own store, and the guide says so.
+
+### Docs
+
+- `site/public/SKILL.md` and `reference/api` document the three native subpaths with the import each platform writes, and why the resolved-package trick cannot work in a compiled bundle.
+
 ## [0.2.12] — 2026-11-21
 
 ### Security

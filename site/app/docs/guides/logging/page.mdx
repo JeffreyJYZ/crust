@@ -144,6 +144,15 @@ real app, which had to rename its field. So name a field after what it holds, no
 word: `keys: ["a", "b"]` is logged verbatim, while the same array under `apiKey` arrives as
 `[redacted]`.
 
+## A plugin with no native half
+
+A plugin declares the native half it needs as `native: { requires, available }`. At registration the
+runtime writes one `error` line naming every namespace whose adapter is missing — `dialog`,
+`notification`, `shortcut`, … — once per distinct set, before the first window opens. A compiled app
+whose platform adapters did not load therefore says so at startup, instead of answering `null` to a
+picker and installing nothing for a menu. Under `crust dev` the same line is usually absent, because
+the native halves are built from this checkout; in a bundle it is the first thing to read.
+
 ## Seeing it while you work
 
 `crust dev` streams each written record to the terminal, so the run you are watching prints its own
