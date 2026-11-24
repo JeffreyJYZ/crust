@@ -67,15 +67,29 @@
 		if (manualTimer !== null) { clearInterval(manualTimer); manualTimer = null; }
 		manual = false;
 	}
-	function pumpManual(hz) {
+	function pumpManual(hz, paced) {
 		stopInvoke();
 		manual = true;
-		manualTimer = setInterval(function () {
-			window.crust.invoke("pagei", "ping").then(function () {
+		if (!paced) {
+			manualTimer = setInterval(function () {
+				window.crust.invoke("pagei", "ping").then(function () {
+					invokes++;
+					workDirect(performance.now());
+				}, function () { errors++; });
+			}, Math.max(1, Math.round(1000 / hz)));
+			return;
+		}
+		// Lane A's driver was sequential: one invoke, then the next only after its reply.
+		var next = function () {
+			if (!manual) return;
+			window.crust.invoke("pagei", "pace", { ms: 16 }).then(function () {
+				if (!manual) return;
 				invokes++;
 				workDirect(performance.now());
-			}, function () { errors++; });
-		}, Math.max(1, Math.round(1000 / hz)));
+				next();
+			}, function () { errors++; next(); });
+		};
+		manualTimer = setTimeout(next, 0);
 	}
 	function pumpInvoke(hz) {
 		stopInvoke();
@@ -95,7 +109,7 @@
 			return "started";
 		},
 		invoke: function (hz) { pumpInvoke(hz); return "invoke:" + hz; },
-		manual: function (hz) { pumpManual(hz); return "manual:" + hz; },
+		manual: function (hz, paced) { pumpManual(hz, paced === true); return "manual:" + hz; },
 		listenEvents: function () {
 			window.crust.listen("pagei:tick", function () { events++; });
 			return "listening";
@@ -143,17 +157,29 @@
 				roundTrip: stats(window.__payloadTimes || []),
 			});
 		},
-		micro: function (n) {
-			var small = { ok: true, v: true };
-			var medium = { items: [] };
-			for (var i = 0; i < 200; i++) medium.items.push({ name: "field-" + i, value: "x".repeat(16) });
-			var binary = "A".repeat(1024 * 1024);
-			var parse = { small: [], medium: [], binary: [] };
-			for (var k = 0; k < n; k++) {
-				var t;
-				t = performance.now(); JSON.parse(JSON.stringify(small)); parse.small.push(performance.now() - t);
-				t = performance.now(); JSON.parse(JSON.stringify(medium)); parse.medium.push(performance.now() - t);
-				t = performance.now(); JSON.parse(JSON.stringify({ __crustBytes: binary })); parse.binary.push(performance.now() - t);
+		micro: function (rounds) {
+			// WKWebView clamps performance.now() to whole ms, so time a batch and divide; the result
+			// is microseconds per op, the same unit lane B used for its hot-path table.
+			var objs = {
+				small: { ok: true, v: true },
+				medium: { items: [] },
+				binary: { __crustBytes: "A".repeat(1024 * 1024) },
+			};
+			for (var i = 0; i < 200; i++) objs.medium.items.push({ name: "field-" + i, value: "x".repeat(16) });
+			var wire = { small: JSON.stringify(objs.small), medium: JSON.stringify(objs.medium), binary: JSON.stringify(objs.binary) };
+			function timed(fn, batch) {
+				var out = [];
+				for (var r = 0; r < rounds; r++) {
+					var t = performance.now();
+					for (var b = 0; b < batch; b++) fn();
+					out.push((performance.now() - t) * 1000 / batch);
+				}
+				return stats(out);
+			}
+			var out = { parseUs: {}, stringifyUs: {} };
+			for (var k in wire) {
+				out.parseUs[k] = timed(function () { JSON.parse(wire[k]); }, 50);
+				out.stringifyUs[k] = timed(function () { JSON.stringify(objs[k]); }, 50);
 			}
 			var listeners = [];
 			for (var l = 0; l < 10; l++) {
@@ -161,17 +187,11 @@
 				listeners.push(fn);
 				document.addEventListener("bench:noop", fn);
 			}
-			var dispatch = [];
-			for (var d = 0; d < n; d++) {
-				var t2 = performance.now();
+			out.dispatch10Us = timed(function () {
 				document.dispatchEvent(new CustomEvent("bench:noop", { detail: "{}" }));
-				dispatch.push(performance.now() - t2);
-			}
+			}, 50);
 			for (var u = 0; u < listeners.length; u++) document.removeEventListener("bench:noop", listeners[u]);
-			return JSON.stringify({
-				parse: { small: stats(parse.small), medium: stats(parse.medium), binary: stats(parse.binary) },
-				dispatch10: stats(dispatch),
-			});
+			return JSON.stringify(out);
 		},
 	};
 })();

@@ -31,7 +31,7 @@ const ARMS = [
 	{ name: "invoke-200", hz: 200, ev: 0 },
 	{ name: "events-120", hz: 0, ev: 120 },
 	{ name: "both-A", hz: 90, ev: 30 },
-	{ name: "laneA-manual", hz: 0, ev: 0, manual: 90 },
+	{ name: "laneA-paced", hz: 0, ev: 0, manual: 90, paced: true },
 	{ name: "idle", hz: 0, ev: 0 },
 	{ name: "idle-self", hz: 0, ev: 0 },
 ] as const;
@@ -53,6 +53,10 @@ async function main(): Promise<number> {
 		name: "pagei",
 		commands: {
 			ping: () => ({ n: ++ticks }),
+			pace: async ({ ms }: { ms?: number }) => {
+				await Bun.sleep(Math.min(100, Math.max(1, ms ?? 16)));
+				return { n: ++ticks };
+			},
 			payload: ({ kind }: { kind?: string }) => {
 				if (kind === "small") return { ok: true, value: true };
 				if (kind === "medium") return { items: Array.from({ length: 200 }, (_, i) => ({ name: `field-${i}`, value: "x".repeat(16) })) };
@@ -117,13 +121,23 @@ async function main(): Promise<number> {
 		}
 		if (!pageReady) throw new Error("page never loaded");
 		await testing.evaluate("main", "window.__bench.listenEvents()");
-		const micro = JSON.parse(String(await testing.evaluate("main", "window.__bench.micro(200)")));
+		const micro = JSON.parse(String(await testing.evaluate("main", "window.__bench.micro(20)")));
 		await appendFile(OUT, JSON.stringify({ round: ROUND, arm: "micro", micro }) + "\n", "utf8");
+		for (const kind of ["small", "medium", "binary"]) {
+			await testing.evaluate("main", `window.__bench.payload("${kind}",10)`);
+			let payload: unknown = null;
+			for (let i = 0; i < 80; i++) {
+				const answer = JSON.parse(String(await testing.evaluate("main", "window.__bench.payloadResult()")));
+				if (answer.done) { payload = answer.roundTrip; break; }
+				await sleep(50);
+			}
+			await appendFile(OUT, JSON.stringify({ round: ROUND, arm: `payload-${kind}`, roundTrip: payload }) + "\n", "utf8");
+		}
 
 		for (const arm of ARMS) {
 			await testing.evaluate("main", "window.__bench.start()");
 			if (arm.hz) await testing.evaluate("main", `window.__bench.invoke(${arm.hz})`);
-			if ("manual" in arm) await testing.evaluate("main", `window.__bench.manual(${arm.manual})`);
+			if ("manual" in arm) await testing.evaluate("main", `window.__bench.manual(${arm.manual},${"paced" in arm && arm.paced})`);
 			if (arm.ev) await pagei.commands.stream({ hz: arm.ev }, { emit } as PluginContext);
 			const start = await snapshot();
 			await sleep(ARM_MS);
