@@ -31,6 +31,7 @@ const ARMS = [
 	{ name: "invoke-200", hz: 200, ev: 0 },
 	{ name: "events-120", hz: 0, ev: 120 },
 	{ name: "both-A", hz: 90, ev: 30 },
+	{ name: "laneA-manual", hz: 0, ev: 0, manual: 90 },
 	{ name: "idle", hz: 0, ev: 0 },
 	{ name: "idle-self", hz: 0, ev: 0 },
 ] as const;
@@ -116,10 +117,13 @@ async function main(): Promise<number> {
 		}
 		if (!pageReady) throw new Error("page never loaded");
 		await testing.evaluate("main", "window.__bench.listenEvents()");
+		const micro = JSON.parse(String(await testing.evaluate("main", "window.__bench.micro(200)")));
+		await appendFile(OUT, JSON.stringify({ round: ROUND, arm: "micro", micro }) + "\n", "utf8");
 
 		for (const arm of ARMS) {
 			await testing.evaluate("main", "window.__bench.start()");
 			if (arm.hz) await testing.evaluate("main", `window.__bench.invoke(${arm.hz})`);
+			if ("manual" in arm) await testing.evaluate("main", `window.__bench.manual(${arm.manual})`);
 			if (arm.ev) await pagei.commands.stream({ hz: arm.ev }, { emit } as PluginContext);
 			const start = await snapshot();
 			await sleep(ARM_MS);

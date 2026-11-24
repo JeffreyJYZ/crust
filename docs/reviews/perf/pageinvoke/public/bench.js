@@ -6,7 +6,8 @@
 (function () {
 	var ROWS = 60, RECTS = 200;
 	var deltas = [], last = 0, on = false, longTasks = [], observed = false;
-	var invTimer = null, invokes = 0, errors = 0, lastFrameAt = 0, events = 0;
+	var invTimer = null, manualTimer = null, manual = false;
+	var invokes = 0, errors = 0, lastFrameAt = 0, events = 0;
 	try {
 		var po = new PerformanceObserver(function (list) {
 			for (var i = 0; i < list.getEntries().length; i++) longTasks.push(list.getEntries()[i].duration);
@@ -31,8 +32,7 @@
 		paint = canvas.getContext("2d");
 		if (status) status.textContent = "bench installed";
 	});
-	function frame(now) {
-		if (!on) return;
+	function workDirect(now) {
 		if (last !== 0) deltas.push(now - last);
 		last = now;
 		lastFrameAt = now;
@@ -43,6 +43,10 @@
 			paint.fillStyle = (j + tick) % 2 === 0 ? "#3a6ea5" : "#a53a6e";
 			paint.fillRect((j * 17 + tick) % canvas.width, (j * 13) % canvas.height, 12, 8);
 		}
+	}
+	function frame(now) {
+		if (!on) return;
+		if (!manual) workDirect(now);
 		requestAnimationFrame(frame);
 	}
 	function pct(values, p) {
@@ -60,6 +64,18 @@
 	}
 	function stopInvoke() {
 		if (invTimer !== null) { clearInterval(invTimer); invTimer = null; }
+		if (manualTimer !== null) { clearInterval(manualTimer); manualTimer = null; }
+		manual = false;
+	}
+	function pumpManual(hz) {
+		stopInvoke();
+		manual = true;
+		manualTimer = setInterval(function () {
+			window.crust.invoke("pagei", "ping").then(function () {
+				invokes++;
+				workDirect(performance.now());
+			}, function () { errors++; });
+		}, Math.max(1, Math.round(1000 / hz)));
 	}
 	function pumpInvoke(hz) {
 		stopInvoke();
@@ -79,6 +95,7 @@
 			return "started";
 		},
 		invoke: function (hz) { pumpInvoke(hz); return "invoke:" + hz; },
+		manual: function (hz) { pumpManual(hz); return "manual:" + hz; },
 		listenEvents: function () {
 			window.crust.listen("pagei:tick", function () { events++; });
 			return "listening";
