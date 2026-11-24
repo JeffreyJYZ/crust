@@ -1,0 +1,6 @@
+:root { color-scheme: dark; }
+body { background: #12151a; color: #e8ecf2; font: 13px ui-monospace, monospace; margin: 16px; }
+canvas { background: #1b2028; border: 1px solid #303845; display: block; }
+#rows { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 8px; }
+#rows span { background: #202733; padding: 2px 4px; }
+#result { font-size: 11px; white-space: pre-wrap; color: #8fa3bd; }

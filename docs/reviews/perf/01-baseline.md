@@ -1,92 +1,108 @@
 # Perf baseline, lane A — measured on this machine
 
-**Verdict: indicative, not a baseline.** This run is marked `contaminated`: one-minute load
-was **4.69 measured** at the start and **4.12 measured** at the end, both above the 2.0 limit in
-`docs/plan/perf/BRIEF.md`. Three sibling lanes were building and running suites. Do not compare
-these fps numbers to a later run as if the machine were the same.
+**Verdict: contaminated, indicative, not a clean baseline.** One-minute load was **4.27 measured**
+at the start and **4.08 measured** at the end, above the 2.0 limit in `docs/plan/perf/BRIEF.md`.
+Sibling lanes were building and running suites. Do not present these numbers as a clean-machine
+baseline or as a cross-branch win.
 
-JSON sample with all three levels: `docs/reviews/perf/baseline.json`.
-Split-validation sample (two levels only): `docs/reviews/perf/baseline-final.json`.
-Harness: `scripts/perf/measure.ts` with `scripts/perf/conditions.ts`,
-`scripts/perf/kill-guard.ts`, `scripts/perf/compare.ts`.
-Probe app: `examples/perf-probe/` (`crust.config.ts`, `main.ts`, `public/`).
+Usable sample: `docs/reviews/perf/baseline-final-occlusion.json`.
+Harness: `scripts/perf/measure.ts`, `scripts/perf/in-process.ts`, `scripts/perf/conditions.ts`,
+`scripts/perf/compare.ts`, `scripts/perf/perf-native.c` + `perf-native.ts`.
+Probe app: `examples/perf-probe/` (`crust.config.ts`, `main.ts`, `public/workload.js`, `public/app.js`).
 
-## What was measured
+## Three arms, occlusion disabled
 
-A fixed workload: **60 measured** DOM rows re-rendered and **200 measured** canvas rects repainted
-per tick, three consecutive **3000 ms measured** windows. Numbers below are from the page and are
-labelled `measured`; numbers derived from them are labelled `derived`.
+Fixed workload: **60 measured** DOM rows rendered and **200 measured** canvas rects repainted per
+tick, three consecutive **3000 ms measured** windows. Every number below is `measured` from the
+labelled JSON; derived values say `derived`.
 
-| Level | fps | frame p50 | frame p95 | long tasks >50 ms | long frames >50 ms | load start → end | bun start → end |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| none | 44.56 `measured` | 22.00 ms `measured` | 25.00 ms `measured` | 0 `measured` | 0 `measured` | 4.69 → 4.12 `measured` | 17 → 17 `measured` |
-| one invoke/second | 0.00 `measured` | n/a `measured` | n/a `measured` | 0 `measured` | 0 `measured` | 4.69 → 4.12 `measured` | 17 → 17 `measured` |
-| sustained invoke only | 26.80 `measured` | 24.00 ms `measured` | **212.00 ms `measured`** | 0 `measured` | 8 `measured` | 4.69 → 4.12 `measured` | 17 → 17 `measured` |
+| Arm | fps | frame p50 | frame p95 | frames drawn | long tasks >50 ms | long frames | invokes | events | load start → end | bun start → end |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bridge idle | 54.59 | 22.00 ms | 25.00 ms | 164 | 0 | 0 | 0 | 0 | 4.27 → 4.08 | 2 → 2 |
+| one invoke/second | 54.56 | 23.00 ms | 25.00 ms | 164 | 0 | 0 | 2 | 0 | 4.27 → 4.08 | 2 → 2 |
+| sustained invoke + 30 Hz SSE | 40.74 | 24.00 ms | 26.00 ms | 123 | 0 | 0 | 275 | 83 | 4.27 → 4.08 | 2 → 2 |
 
-Frame counts: **148 measured** (none), **0 measured** (one/sec), **81 measured** (sustained).
-Bridge counts: **0 measured** invokes (none), **2 measured** (one/sec), **87 measured**
-(sustained); backend total **89 measured** pings.
-Worst long-task count: **0 measured** from `PerformanceObserver` (`longtask` supported, no
-entries). Worst long-frame count: **8 measured** at sustained load.
+All rows are `measured`. `longtask` observer was supported and reported **0 measured** entries in
+every arm. Worst long-task count: **0 measured**. No arm had fewer than 100 frames drawn.
+Driver was `requestAnimationFrame` for the first two arms and backend-paced invokes for the third;
+the third is a bridge-load arm, not a compositor-only fps arm.
 
-Heap: page `performance.memory` is **absent `measured`** in this WKWebView, so page heap is `null`.
-Proxy on the Bun backend at report time: **6,932,108 bytes heapUsed `measured`**,
-**70,255,960 bytes RSS `measured`**. These are not webview heap and must not be read as such.
+The event stream is real: backend emitted **83 measured** `perf:tick` frames at **30 Hz measured**,
+page received them, and **275 measured** invokes crossed the bridge. Event cost is now measured.
 
-`window.capture` (crust's own capture, no OS screenshot): **ok `measured`**, **1800×1280 `measured`**
-at **scale 2 `measured`**, **148,192 base64 bytes `measured`**.
+Heap: page `performance.memory` is **absent measured** in WKWebView, so page heap is `null`.
+Proxy at report time on the Bun backend: **5,325,153 bytes heapUsed measured**,
+**65,307,968 bytes RSS measured**; neither is webview heap.
+`window.capture` (crust's own capture, no OS screenshot): **ok measured**, **1800×1280 measured**
+at **scale 2 measured**, **146,752 base64 bytes measured**.
 
-## What blocked whole-app measurement
+## Occlusion scaffolding — dev only
 
-- The probe uses `testing.activation: "none"`, as required. The page reports
-  `document.visibilityState = "hidden"` `measured`. In that state requestAnimationFrame is
-  throttled to a stop in some windows: the one-invoke-per-second window delivered **0 frames
-  `measured`**, so its fps and frame percentiles are real zeros, not missing data.
-- A backend SSE `perf:tick` stream at **30 Hz attempted** and then **2 Hz attempted** froze the
-  hidden page's timers; five earlier probe attempts were killed at the 14 s deadline before the
-  page could write JSON. Those attempts produced console diagnostics only (`visibility=hidden`,
-  `fps 0`, stream started but no subsequent level), not a sample. They are not silently deleted:
-  this paragraph is their record.
-- The reported sustained window therefore uses **backend-paced invokes** (`perf.pace`, 16 ms
-  requested): backend timers are not throttled. It is a sustained-invoke proxy, **not** the
-  required sustained invoke + event stream. Event-stream cost is **not measured** here; claiming
-  it would be guessing.
-- Driver per row is in the JSON: `requestAnimationFrame`, `timer-16ms`, `backend-paced-invoke`.
-  Only the first is a compositor-frame measurement; the other two are timer/round-trip proxies.
+`testing.activation: "none"` is correct for no focus theft but leaves the window occluded, and
+WebKit then suspends rAF: the earlier run reported `visibilityState=hidden` and **0 frames**. That
+arm was a failed measurement, not a slow app. The scaffold now applies, before the first page
+evaluate:
+
+- `-[WKWebView _setWindowOcclusionDetectionEnabled:NO]` — **private WebKit SPI, harness
+  scaffolding only, never a shipped default.** Occluding a background window is correct battery
+  behaviour. This is why the field `occlusionDetection: false` is in the sample.
+- public `NSWindow setCollectionBehavior:` = 1 (`canJoinAllSpaces`) so the page renders on the
+  active Space without activating the app;
+- public `NSProcessInfo beginActivityWithOptions:` held for the process lifetime to defeat App Nap.
+
+The run logged `occlusionDisabled=true`, `keepAwake=true`, `occlusionState=8192`, page
+`visibilityState=visible`. The raw AppKit state still reads occluded, but WebKit detection is off,
+so rAF ran. Each level records its own `occlusion` object. The harness **fails loudly and writes no
+sample** when any arm draws zero frames or fps < 10.
+
+Superseded samples kept as diagnostics, not data:
+`baseline.json` (occlusion on, one 0-fps arm), `baseline-final.json` (occlusion on, two arms),
+`baseline-occlusion.json` (checkpoints ended the run early), `baseline-occlusion2.json`
+(double-driven workload inflated the third arm to 96 fps). None is comparable to the usable sample.
 
 ## Process and focus safety
 
-- Probe-scoped `bun`/app processes: **0 before, 0 after, 0 new `measured`**, leak gate **PASS
-  `measured`**. Global `bun` processes: **17 before, 17 after `measured`**; siblings are visible
-  there and are reported, not used as a leak gate.
-- Every run is killed by recorded PID in a trap covering success, throw, the 14 s deadline, and
-  SIGINT/SIGTERM/SIGHUP. No OS screenshot and no activation or cursor movement was used.
-- Probe wall time is **11.3 s `derived`** from the start/end timestamps in the JSON, within the
-  15 s limit.
+Probe-scoped `bun`/app processes: **0 before, 0 after, 0 new measured**, leak gate **PASS measured**.
+Global `bun` processes: **2 before, 2 after measured**. This harness is in-process, so it spawns no
+long-lived child; cleanup runs from `finally` and from an exit/SIGINT/SIGTERM/SIGHUP trap. No OS
+screenshot, no activation, no cursor movement. Probe wall time **9.6 s derived** from JSON
+timestamps, within the 15 s cap.
 
-## Exact commands
+## Lane E context — do not claim a win
+
+Lane E measured each pump tick blocking **6.8 ms of the 16 ms budget** and cut it to **2.7 ms**.
+That change has not landed in this worktree. Any `--label after` run taken before it merges would
+compare against a slower baseline than the one we will ship, so a cross-branch delta here is not a
+win. The clean pass belongs on merged main, interleaved with a same-flag-vs-itself control row.
+
+## Commands
 
 Run from `~/dev/worktrees/crust/perf-baseline`, branch `perf/baseline`:
 
 ```
-bun run src/cli/index.ts build --dir examples/perf-probe
-bun run scripts/perf/measure.ts measure --label baseline
-bun run scripts/perf/measure.ts compare baseline baseline
+bun check
+bun run test
+bun run check:lines
+bun run e2e:single
+bun run scripts/perf/measure.ts measure --label baseline-final-occlusion
+bun run scripts/perf/measure.ts compare baseline-final-occlusion baseline-final-occlusion
 ```
 
-The third command printed `compare: OK load drift 0.00; contaminated true/true`. The refusal
-path was checked with a copy whose start load was rewritten to 1.0:
+The build command for the standalone probe app is
+`bun run src/cli/index.ts build --dir examples/perf-probe`; the in-process harness serves
+`examples/perf-probe/public` directly and needs no build step.
 
-```
-jq '.conditions.start.load.one = 1.0' docs/reviews/perf/baseline.json > /private/var/folders/mv/nj8xwzr10psf34t9m8dsxhwc0000gn/T/opencode/low-load.json
-bun run scripts/perf/measure.ts compare /private/var/folders/mv/nj8xwzr10psf34t9m8dsxhwc0000gn/T/opencode/low-load.json docs/reviews/perf/baseline.json
-```
+## Gate results
 
-It printed `compare: REFUSE load drift 3.69 > 1.0` and exited 1.
+`bun check` PASS (1,241 files). `bun run check:lines` PASS. `bun run e2e:single` PASS, 27/27
+assertions in 5.8 s. `bun run test` FAILED while sibling lanes held load at 3–5:
+`scripts/butter-sweep.test.ts` reported a frontmost-lost AX answer twice, and
+`src/plugins/stronghold-concurrency.test.ts` timed out inside the 600 s chain. Retrying the
+latter alone passed 4/4 in 543 ms. Neither failure touches the harness or probe app. All four
+gate commands were run; no suite was re-run after a genuine regression.
 
 ## One number to attack first
 
-**212.00 ms measured frame-time p95** under sustained invokes, with **8 measured** long frames.
-That is the largest tail in the sample. It is contaminated and proxy-driven, so the next pass must
-be `--label after` on a quiet machine with interleaved A/B and a same-flag-vs-itself control row
-before any fix is credited.
+**40.74 fps measured** under sustained invokes plus 30 Hz SSE, down from **54.59 fps measured**
+idle — a **13.85 fps derived** drop at load 4.27. Attack the bridge-load path after lane E lands,
+not this contaminated cross-branch sample.

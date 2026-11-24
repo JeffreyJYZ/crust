@@ -1,0 +1,119 @@
+{
+  "at": "2026-11-24T14:36:40.073Z",
+  "visibilityState": "hidden",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "workload": {
+    "rows": 60,
+    "rects": 200,
+    "levelMs": 3000
+  },
+  "capture": {
+    "ok": true,
+    "width": 1800,
+    "height": 1280,
+    "scale": 2,
+    "pngBytes": 148192
+  },
+  "levels": [
+    {
+      "name": "none",
+      "activity": "none",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "requestAnimationFrame",
+      "rafFrames": 149,
+      "durationMs": 3321,
+      "frames": 148,
+      "fps": 44.564890093345376,
+      "frameP50Ms": 22,
+      "frameP95Ms": 25,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 0,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 0,
+      "eventCount": 0,
+      "errorCount": 0
+    },
+    {
+      "name": "one-invoke-per-second",
+      "activity": "one",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "timer-16ms",
+      "rafFrames": 0,
+      "durationMs": 3192,
+      "frames": 0,
+      "fps": 0,
+      "frameP50Ms": null,
+      "frameP95Ms": null,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 0,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 2,
+      "eventCount": 0,
+      "errorCount": 0
+    },
+    {
+      "name": "sustained-invoke-only",
+      "activity": "sustained-invoke",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "blocked: hidden-webview SSE stalls timers",
+      "driver": "backend-paced-invoke",
+      "rafFrames": 17,
+      "durationMs": 3022,
+      "frames": 81,
+      "fps": 26.803441429516877,
+      "frameP50Ms": 24,
+      "frameP95Ms": 212,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 8,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 87,
+      "eventCount": 0,
+      "errorCount": 0
+    }
+  ],
+  "backend": {
+    "pingCount": 89,
+    "eventCount": 0,
+    "eventHz": 0,
+    "heapUsedBytes": 6932108,
+    "rssBytes": 70255960
+  },
+  "label": "baseline",
+  "conditions": {
+    "start": {
+      "at": "2026-11-24T14:36:28.861Z",
+      "load": {
+        "one": 4.69,
+        "five": 4.66,
+        "fifteen": 4.01
+      },
+      "bunProcesses": 17,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-24T14:36:40.143Z",
+      "load": {
+        "one": 4.12,
+        "five": 4.54,
+        "fifteen": 3.98
+      },
+      "bunProcesses": 17,
+      "probePids": []
+    },
+    "contaminated": true
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "levels": [
+    {
+      "name": "none",
+      "activity": "none",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "timer-16ms",
+      "rafFrames": 0,
+      "durationMs": 3173,
+      "frames": 9,
+      "fps": 2.8364323983611723,
+      "frameP50Ms": 17,
+      "frameP95Ms": 1195,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 4,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 0,
+      "eventCount": 0,
+      "errorCount": 0
+    },
+    {
+      "name": "one-invoke-per-second",
+      "activity": "one",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "timer-16ms",
+      "rafFrames": 0,
+      "durationMs": 3187,
+      "frames": 2,
+      "fps": 0.627549419516787,
+      "frameP50Ms": 894,
+      "frameP95Ms": 1172,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 2,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 2,
+      "eventCount": 0,
+      "errorCount": 0
+    }
+  ],
+  "backend": {
+    "pingCount": 2,
+    "eventCount": 0,
+    "eventHz": 0,
+    "heapUsedBytes": 5587508,
+    "rssBytes": 55051584
+  },
+  "label": "baseline-final",
+  "conditions": {
+    "start": {
+      "at": "2026-11-24T14:39:23.521Z",
+      "load": {
+        "one": 6.26,
+        "five": 5.77,
+        "fifteen": 4.59
+      },
+      "bunProcesses": 32,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-24T14:39:37.565Z",
+      "load": {
+        "one": 5.39,
+        "five": 5.6,
+        "fifteen": 4.55
+      },
+      "bunProcesses": 32,
+      "probePids": []
+    },
+    "contaminated": true
+  }
+}

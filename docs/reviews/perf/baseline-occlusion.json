@@ -1,0 +1,69 @@
+{
+  "levels": [
+    {
+      "name": "none",
+      "activity": "none",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "requestAnimationFrame",
+      "rafFrames": 160,
+      "durationMs": 3008,
+      "frames": 159,
+      "fps": 52.859042553191486,
+      "frameP50Ms": 23,
+      "frameP95Ms": 25,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 0,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 0,
+      "eventCount": 0,
+      "errorCount": 0,
+      "occlusion": {
+        "disabled": true,
+        "keepAwake": true,
+        "state": 8192,
+        "occluded": true
+      }
+    }
+  ],
+  "backend": {
+    "pingCount": 0,
+    "eventCount": 0,
+    "heapUsedBytes": 3764378,
+    "rssBytes": 52430216
+  },
+  "label": "baseline-occlusion",
+  "conditions": {
+    "start": {
+      "at": "2026-11-24T16:02:46.917Z",
+      "load": {
+        "one": 3.68,
+        "five": 4.71,
+        "fifteen": 4.69
+      },
+      "bunProcesses": 8,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-24T16:02:50.338Z",
+      "load": {
+        "one": 3.55,
+        "five": 4.66,
+        "fifteen": 4.67
+      },
+      "bunProcesses": 8,
+      "probePids": []
+    },
+    "contaminated": true
+  },
+  "occlusion": {
+    "disabled": true,
+    "keepAwake": true,
+    "state": 8192,
+    "occluded": true
+  }
+}
