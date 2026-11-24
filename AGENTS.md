@@ -17,6 +17,7 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 - **The trio is for crust's own release only** — an app that consumes a crust tag bumps `package.json` to `github:JeffreyJYZ/crust#vX.Y.Z`, runs `bun install` and confirms `node_modules/crust/package.json`; it never runs `skills update crust` or the global installs (user, 2026-11-21, caps: "ONLY FOR CRUST").
 - **Never mint a version with no content** (user, 2026-11-21: "no need for tag if no content") — a tag ships a change; when parallel lanes land several roadmap items under one version, the missing numbers are retired rather than faked with empty releases.
 - **Every release includes a docs and SKILL.md review, not just a pin bump** (user, 2026-11-20, caps: "EVERY RELEASE HAS TO HAVE U REVIEW DOCS AND SKILL.MD UP TO DATE") — read each new command, config key and app-facing API against the code, because 0.2.6 shipped the framework log documented and `log.info` missing from the skill.
+- **`skill:check` proves only the command table, so a new entry point, export or config key needs an actual read of `site/public/SKILL.md` and its guide, by the agent that changed it** (user, 2026-11-22: "remember to actually check the skill and docs", then "u read") — never a human-read checklist and never a claim, because the checker cannot see prose and a missing import path is exactly what a consuming app hits first; grep the new symbol in both and quote the line.
 - **The log redactor matches field names, so an over-broad pattern silently deletes data** — a field named `keys` shipped as `[redacted]` and an app renamed it to `shape` to get its array back (perch-crust, 2026-11-20); the pattern is curated to secret names and their suffixes now, and `keys`/`key`/`publicKey` survive, because over-redaction costs the caller information nothing can recover.
 
 ## The gate
@@ -47,6 +48,10 @@ A green gate is the only proof a landing is safe.
 - **Never run `bun fmt` without a path list here** — it rewrites every file it can reach, including
   lanes' in-flight work, and a tree-wide sweep has already reformatted ~135 files at once; format the
   files you changed, or wait for the lanes to land (2026-11-16).
+- **A perf number measured while sibling lanes build is not the app's cost** — record `sysctl -n vm.loadavg` and the `bun` process count before and after each run, and label any run over 2.0 `contaminated`, because load drift manufactures wins that then get attributed to the change.
+- **Interleave A/B perf arms and keep a same-flag-vs-itself control row** — sequential-then-sequential under drifting load invents a winner, and a delta smaller than that control row's spread is not a win.
+- **An inactive probe window is occluded, so WebKit renders 0 fps** — `testing.activation: "none"` is the right way to avoid focus theft and the wrong way to measure frames; disable window occlusion detection in the probe scaffold (dev-only, never a shipped default), and fail the run when the drawn frame count is zero.
+- **No shippable WKWebView flag moves crust frame time** — measured 21-24 ms p50 / 26 ms p95 with `drawsBackground`, `wantsLayer`, `layerContentsRedrawPolicy`, `suppressesIncrementalRendering` and a fresh process pool each varied, so attack work on the main thread, not webview configuration.
 - **When a formatting sweep lands, keep the formatting edits — never revert** — reverting wiped two
   lanes' first passes at 15:39 on 2026-11-16, while a formatting-only diff costs nothing; a revert
   destroys real work, so keep it and carry on (user, 2026-11-16).
@@ -140,3 +145,4 @@ A green gate is the only proof a landing is safe.
   page-serving scheme would collide with an app's own deep links.
 - **A new platform implements `Platform` and nothing more** — five methods; inventing a page-serving
   scheme is the defect that put `crust://` in two layers at once (2026-11-16).
+- **An adapter contract added in `src/plugins/**` is inert until every `src/platform/**` adapter calls it** — `onNavigate` shipped declared, built and consumed only by the fake, so `browser.origins` still gated entry only in every built app; land the native caller in the same wave or the boundary is prose (2026-11-21).
