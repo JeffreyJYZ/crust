@@ -4,8 +4,11 @@
  * this is a separate responsibility — a timer, not AppKit lifecycle.
  * A repeating interval would coalesce under power saving, so each tick re-arms itself.
  */
+/** The shim's -1 means every window is occluded, so WebKit has stopped painting. */
+export const OCCLUDED_PUMP_INTERVAL_MS = 100;
+
 export interface Pump {
-	start(intervalMs: number, tick: () => void): void;
+	start(intervalMs: number, tick: () => unknown, slowMs?: number): void;
 	stop(): void;
 	readonly pumping: boolean;
 	readonly ticks: number;
@@ -20,10 +23,20 @@ export interface PumpOptions {
 	beforeTick?: () => void;
 }
 
+/** Opt-in perf accounting: off by default, so the shipped pump has no clock reads or sample array. */
+const STATS = process.env.CRUST_PUMP_STATS === "1";
+const SAMPLE_CAP = 4096;
+const REPORT_EVERY = 120;
+
 export function createPump(options: PumpOptions = {}): Pump {
 	let running = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let count = 0;
+	const samples = STATS ? new Float64Array(SAMPLE_CAP) : undefined;
+	let filled = 0;
+	let total = 0;
+	let started = 0;
+	let reported = 0;
 
 	const stop = (): void => {
 		running = false;
@@ -31,18 +44,44 @@ export function createPump(options: PumpOptions = {}): Pump {
 		timer = undefined;
 	};
 
-	const start = (intervalMs: number, tick: () => void): void => {
+	const start = (
+		intervalMs: number,
+		tick: () => unknown,
+		slowMs: number = OCCLUDED_PUMP_INTERVAL_MS,
+	): void => {
 		if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
 			throw new Error(`pump: intervalMs must be a positive number, got ${intervalMs}`);
 		}
+		if (!Number.isFinite(slowMs) || slowMs <= 0) {
+			throw new Error(`pump: slowMs must be a positive number, got ${slowMs}`);
+		}
 		if (running) stop();
 		running = true;
+		if (samples) started = performance.now();
 		const step = (): void => {
 			if (!running) return;
+			const begin = samples ? performance.now() : 0;
 			options.beforeTick?.();
-			tick();
+			// A null from an unbound shim symbol is a normal tick; only -1 means occluded.
+			const status = Number(tick() ?? 0);
 			count++;
-			timer = setTimeout(step, intervalMs);
+			if (samples) {
+				const elapsed = performance.now() - begin;
+				total += elapsed;
+				samples[filled++ % SAMPLE_CAP] = elapsed;
+				if (filled - reported >= REPORT_EVERY) {
+					reported = filled;
+					const take = Math.min(filled, SAMPLE_CAP);
+					const sorted = Array.from(samples.subarray(0, take)).sort((a, b) => a - b);
+					const seconds = (performance.now() - started) / 1000;
+					console.log(
+						`PUMPSTATS count=${count} tps=${(count / seconds).toFixed(1)} ` +
+							`mean=${(total / filled).toFixed(3)} p95=${sorted[Math.floor(take * 0.95)]?.toFixed(3)} ` +
+							`max=${sorted[take - 1]?.toFixed(3)}`,
+					);
+				}
+			}
+			timer = setTimeout(step, status === -1 ? slowMs : intervalMs);
 		};
 		step();
 	};

@@ -25,6 +25,25 @@ describe("the darwin pump's autorelease pool", () => {
 		expect(pump.slice(created, drained)).not.toMatch(/\breturn\b/);
 	});
 
+	test("an empty queue does not wait on an NSDate deadline", () => {
+		const pump = read("shim/50_app.c").split("int shim_pump(")[1] ?? "";
+		// A nil date makes nextEventMatchingMask: return at once; the 4 ms deadline held the JS
+		// thread 6.84 ms per tick in the measured baseline, for only 1.7% process CPU.
+		expect(pump).not.toContain('sel_registerName("dateByAddingTimeInterval:")');
+		expect(pump).toContain("nextEventMatchingMask:untilDate:inMode:dequeue:\"), ~0UL, 0, mode, 1");
+		expect(pump).toContain("CFRunLoopRunInMode(mode, 0.00025, 0)");
+	});
+
+	test("occluded windows stop the tick and report -1", () => {
+		const source = read("shim/50_app.c");
+		const pump = source.split("int shim_pump(")[1] ?? "";
+		expect(source).toContain('sel_registerName("occlusionState")');
+		expect(source).toContain("state & 2LL");
+		expect(source).toContain("SHIM_STARTUP_TICKS");
+		expect(pump).toContain("!shim_any_window_painting(app)");
+		expect(pump).toContain("result = -1;");
+	});
+
 	test("the three pool exports are bound on the TS side", () => {
 		const index = read("index.ts");
 		for (const symbol of ["shim_pool_new", "shim_pool_init", "shim_pool_drain"]) {
