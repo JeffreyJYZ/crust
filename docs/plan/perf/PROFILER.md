@@ -96,6 +96,29 @@ timing call itself.
 6. **Not in the production bundle**: build the examples for production and assert the overlay module is
    absent from the output (a byte search, not a config read).
 
+## The seam between the two halves
+
+`frame` cannot be measured by the runtime — only the page sees its own `requestAnimationFrame` deltas — so
+the page hands them over and the runtime never invents them:
+
+```ts
+// page half, once per second at most:
+window.crust.perf.frameReport({ fps, p50, p95, worst, longTasks, framesDrawn });
+
+// either half, whenever a sample is wanted:
+window.crust.perf.sample(): PerfSample // frame is null until a page has reported
+```
+
+Rules:
+
+- `sample().frame` is `null` — never a zero-filled block — until a page half reports. A consumer must be
+  able to tell "no frame data" from "0 frames", because an occluded window genuinely draws nothing and that
+  is not a slow app.
+- `framesDrawn` travels with the frame block, because the recorder's failure rule is "zero frames drawn",
+  not "fps looks low".
+- `frameReport` is fire-and-forget and bounded: last-writer-wins, one allocation per call, and it never
+  wakes anything.
+
 ## Two traps the recorder must handle
 
 - **An occluded window renders nothing.** macOS/WebKit suspends rendering for a window that is not
