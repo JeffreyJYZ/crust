@@ -17,6 +17,7 @@ import {
 	compileCapabilities,
 	forbiddenMessage,
 } from "./capabilities.ts";
+import { perfCollector } from "@/perf/collector"; // perf-hook
 
 export { MAX_BODY_BYTES } from "./body.ts";
 export { invokeRequest } from "./invoke-request.ts";
@@ -52,6 +53,7 @@ export function createRunner(
 	return async function run(plugin, command, args, routing, authority, bytesIn) {
 		const key = `${plugin}.${command}`;
 		const started = performance.now();
+		perfCollector.beforeInvoke(plugin); // perf-hook
 		// The authoritative label is what a failure is attributable to; the page's own hint is logged
 		// beside it when it differs, because a mismatched hint is the interesting case.
 		const window = authority ?? routing;
@@ -107,13 +109,16 @@ export function createRunner(
 				});
 			}
 			const value = result === undefined ? null : result;
+			// The log record needs this duration anyway; share the one clock read with the collector.
+			const durMs = performance.now() - started;
+			perfCollector.afterInvoke(plugin, durMs); // perf-hook
 			logEvent(
 				invokeRecord({
 					window,
 					hint,
 					ns: plugin,
 					cmd: command,
-					durMs: performance.now() - started,
+					durMs,
 					ok: true,
 					bytesIn: sizeIn,
 					bytesOut: byteLengthOf(value),
@@ -121,6 +126,7 @@ export function createRunner(
 			);
 			return value;
 		} catch (error) {
+			perfCollector.recordError(plugin); // perf-hook
 			const failure = toCrustError(error);
 			logEvent(
 				invokeRecord({
