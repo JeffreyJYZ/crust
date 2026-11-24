@@ -96,6 +96,17 @@ timing call itself.
 6. **Not in the production bundle**: build the examples for production and assert the overlay module is
    absent from the output (a byte search, not a config read).
 
+## Two traps the recorder must handle
+
+- **An occluded window renders nothing.** macOS/WebKit suspends rendering for a window that is not
+  frontmost and is considered occluded, so an app launched headlessly measures 0 fps — measured: 0 fps →
+  ~56 fps on the same page with occlusion detection disabled (lane C). The recorder therefore disables
+  window occlusion detection **in its own launch path only**, states that in the sample metadata, and
+  fails the run when the page drew zero frames instead of writing a `PerfSample` that reads as slow.
+  Ship-side default stays occlusion-aware: only the recorder and test scaffolding may disable it.
+- **Sampling must not become the cost.** One sample per second, pulled; never per frame, never pushed
+  from the runtime on a hot path.
+
 ## Non-negotiables
 
 - No OS screenshot, no focus theft: the harness that measures the overlay uses

@@ -22,6 +22,10 @@ crust perf diff before.json after.json [--tolerance 5]
 - `record` launches the app with the perf sink on, collects one `PerfSample` per second, writes JSON, and
   prints the headline line `fps=<n> p50=<n>ms p95=<n>ms long=<n> heap=<n>MB`. Exit 0; exit 2 if the app
   never produced a sample.
+- **`record` must disable window occlusion detection in its own launch path** (private selector, recorder
+  only, recorded in the sample metadata). Without it an unfocused app is occluded, WebKit renders nothing,
+  and every run records 0 fps — measured 0 → ~56 fps on the same page (`03-renderer.md`). A zero-frame run
+  is exit 2 with the reason, never a JSON sample.
 - `diff` prints a per-field table of `before → after` with the percentage delta, and exits 1 when any
   metric worse than `--tolerance` percent regressed, 0 otherwise. Frame time and p95 are "lower is
   better"; fps, event delivery and invoke throughput are "higher is better" — encode that per field
