@@ -6,7 +6,7 @@
 (function () {
 	var ROWS = 60, RECTS = 200;
 	var deltas = [], last = 0, on = false, longTasks = [], observed = false;
-	var invTimer = null, invokes = 0, errors = 0, lastFrameAt = 0;
+	var invTimer = null, invokes = 0, errors = 0, lastFrameAt = 0, events = 0;
 	try {
 		var po = new PerformanceObserver(function (list) {
 			for (var i = 0; i < list.getEntries().length; i++) longTasks.push(list.getEntries()[i].duration);
@@ -14,19 +14,23 @@
 		po.observe({ entryTypes: ["longtask"] });
 		observed = true;
 	} catch (error) { observed = false; }
-	var status = document.getElementById("status");
-	var rowHost = document.createElement("div");
-	rowHost.id = "rows";
-	document.body.appendChild(rowHost);
-	var cells = [];
-	for (var r = 0; r < ROWS; r++) {
-		var cell = document.createElement("span");
-		cell.textContent = String(r);
-		rowHost.appendChild(cell);
-		cells.push(cell);
-	}
-	var canvas = document.getElementById("paint");
-	var paint = canvas.getContext("2d");
+	var status, cells = [], canvas, paint;
+	// External script runs in <head>, before <body> exists. Build the DOM view only when parsed.
+	document.addEventListener("DOMContentLoaded", function () {
+		status = document.getElementById("status");
+		var rowHost = document.createElement("div");
+		rowHost.id = "rows";
+		document.body.appendChild(rowHost);
+		for (var r = 0; r < ROWS; r++) {
+			var cell = document.createElement("span");
+			cell.textContent = String(r);
+			rowHost.appendChild(cell);
+			cells.push(cell);
+		}
+		canvas = document.getElementById("paint");
+		paint = canvas.getContext("2d");
+		if (status) status.textContent = "bench installed";
+	});
 	function frame(now) {
 		if (!on) return;
 		if (last !== 0) deltas.push(now - last);
@@ -68,13 +72,17 @@
 		}, Math.max(1, Math.round(1000 / hz)));
 	}
 	window.__bench = {
-		ready: function () { return typeof window.crust === "object" && window.crust !== null; },
+		ready: function () { return typeof window.crust === "object" && window.crust !== null && cells.length === ROWS; },
 		start: function () {
-			deltas = []; last = 0; longTasks = []; invokes = 0; errors = 0; on = true;
+			deltas = []; last = 0; longTasks = []; invokes = 0; errors = 0; events = 0; on = true;
 			requestAnimationFrame(frame);
 			return "started";
 		},
 		invoke: function (hz) { pumpInvoke(hz); return "invoke:" + hz; },
+		listenEvents: function () {
+			window.crust.listen("pagei:tick", function () { events++; });
+			return "listening";
+		},
 		stop: function () {
 			on = false;
 			stopInvoke();
@@ -89,6 +97,7 @@
 				longTaskSupported: observed,
 				invokes: invokes,
 				errors: errors,
+				events: events,
 				visibility: document.visibilityState,
 				lastFrameAgeMs: performance.now() - lastFrameAt,
 			});
@@ -148,5 +157,4 @@
 			});
 		},
 	};
-	status.textContent = "bench installed";
 })();

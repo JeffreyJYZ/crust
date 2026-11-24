@@ -10,11 +10,10 @@ import { resolve } from "node:path";
 import { windowUrl } from "../../../../src/app-windows.ts";
 import { setTestingActivation } from "../../../../src/plugins/activation-policy.ts";
 import { startBridge, type BridgeHandle } from "../../../../src/bridge/server.ts";
-import { definePlugin } from "../../../../src/plugins/define.ts";
+import { definePlugin, type PluginContext } from "../../../../src/plugins/define.ts";
 import { createWindowPlugin } from "../../../../src/plugins/window.ts";
 import { darwinWindowAdapter } from "../../../../src/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "../../../../src/platform/darwin/platform.ts";
-import { createTestingPlugin } from "../../../../src/plugins/testing.ts";
 import { darwinTestingAdapter } from "../../../../src/plugins/testing-darwin.ts";
 import { createPerfPlugin } from "../../../../src/plugins/perf.ts";
 import { runConditions, snapshot, type Conditions } from "../../../../scripts/perf/conditions.ts";
@@ -58,9 +57,9 @@ async function main(): Promise<number> {
 				if (kind === "medium") return { items: Array.from({ length: 200 }, (_, i) => ({ name: `field-${i}`, value: "x".repeat(16) })) };
 				return new Uint8Array(1024 * 1024);
 			},
-			stream: ({ hz }: { hz?: number }) => {
+			stream: ({ hz }: { hz?: number }, ctx: PluginContext) => {
 				if (emitter !== undefined) clearInterval(emitter);
-				emitter = setInterval(() => { events++; emit("pagei:tick", { n: events }); }, Math.round(1000 / (hz ?? 30)));
+				emitter = setInterval(() => { events++; ctx.emit("pagei:tick", { n: events }); }, Math.round(1000 / (hz ?? 30)));
 				return { started: true, hz: hz ?? 30 };
 			},
 			stop: () => {
@@ -72,12 +71,11 @@ async function main(): Promise<number> {
 		},
 	});
 	const perf = createPerfPlugin();
-	let emit: (event: string, payload: unknown) => void = () => {};
+	const emit: (event: string, payload: unknown) => void = (event, payload) => bridge.emit(event, payload);
 	const bridge: BridgeHandle = startBridge({
 		handlers: [pagei, perf, createWindowPlugin(darwinWindowAdapter(platform))],
 		root: resolve(import.meta.dir, "public"),
 	});
-	emit = bridge.emit;
 	let opened = false;
 	const cleanup = (): void => {
 		try { if (opened) platform.destroy("main"); platform.stopPump(); } catch { /* already gone */ }
@@ -104,15 +102,25 @@ async function main(): Promise<number> {
 			if (label !== undefined && label !== "main") throw new Error("no window " + label);
 			return web;
 		});
-		const plugin = createTestingPlugin(testing);
-		const ready = await plugin.commands.waitFor({ selector: "#paint", timeoutMs: 8000 });
-		if (!("found" in ready) || !ready.found) throw new Error("page never loaded");
-		for (let i = 0; i < 30 && (await testing.evaluate("main", "window.__bench && window.__bench.ready()")) !== true; i++) await sleep(100);
+		// Navigation is async and `testing.query` is unreliable for this page; the page's own ready
+		// flag is the load gate. A failure here is a failed measurement, never zero frames.
+		let pageReady = false;
+		await sleep(1200);
+		for (let i = 0; i < 40; i++) {
+			await sleep(100);
+			const answer = String(await testing.evaluate("main", "JSON.stringify(!!(window.__bench && window.__bench.ready()))"));
+			if (answer === "true") {
+				pageReady = true;
+				break;
+			}
+		}
+		if (!pageReady) throw new Error("page never loaded");
+		await testing.evaluate("main", "window.__bench.listenEvents()");
 
 		for (const arm of ARMS) {
 			await testing.evaluate("main", "window.__bench.start()");
 			if (arm.hz) await testing.evaluate("main", `window.__bench.invoke(${arm.hz})`);
-			if (arm.ev) await pagei.commands.stream({ hz: arm.ev });
+			if (arm.ev) await pagei.commands.stream({ hz: arm.ev }, { emit } as PluginContext);
 			const start = await snapshot();
 			await sleep(ARM_MS);
 			const end = await snapshot();
