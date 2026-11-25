@@ -52,6 +52,8 @@ const PAGE = `<!doctype html>
 <div id="out">idle</div>
 <script>
 	window.__state = "";
+	var frames = 0;
+	(function tick(){ frames++; if (frames % 10 === 0) try { fetch('/frames?n=' + frames); } catch(e){} requestAnimationFrame(tick); })();
 	var input = document.getElementById("name");
 	var state = document.getElementById("state");
 	var proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
@@ -85,14 +87,18 @@ describe("a live page", () => {
 		const { DarwinPlatform } = await import("../platform/darwin/platform.ts");
 		const { shim } = await import("../platform/darwin/index.ts");
 		const { PAGE_BRIDGE_SOURCE } = await import("../platform/darwin/content-world-source.ts");
-		const { darwinTestingAdapter } = await import("./testing-darwin.ts");
+		const { darwinTestingAdapter, setTestingTimeoutFrames } = await import("./testing-darwin.ts");
 		const { createTestingPlugin } = await import("./testing.ts");
 
+		let frames = 0;
 		const server = Bun.serve({
 			hostname: "127.0.0.1",
 			port: 0,
-			fetch: () =>
-				new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } }),
+			fetch: (req) => {
+				const u = new URL(req.url);
+				if (u.pathname === "/frames") { frames = Number(u.searchParams.get("n") ?? 0); return new Response("ok"); }
+				return new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } });
+			},
 		});
 		const platform = new DarwinPlatform({ appName: "crust-testing", activate: "never" });
 		let win = 0;
@@ -129,6 +135,9 @@ describe("a live page", () => {
 			// scripts/perf/in-process.ts applies the same remedy for the same reason.
 			const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
 			const native = perfNative();
+			// macOS may nap the WebContent process while our own pump keeps ticking; hold the same
+			// NSProcessInfo activity the perf recorder uses, for the whole test.
+			expect(native.perf_keep_awake()).toBe(1);
 			expect(native.perf_occlusion(web, 0)).toBe(1);
 			// Public counterpart from scripts/perf/in-process.ts: join the active Space without
 			// activating the app, or WebKit still keeps the display link idle.
@@ -146,6 +155,7 @@ describe("a live page", () => {
 					return web;
 				}),
 			);
+			setTestingTimeoutFrames(() => frames);
 			const ready = await plugin.commands.waitFor({ selector: "#go", timeoutMs: 8000 });
 			expect(ready).toMatchObject({ ok: true, found: true });
 

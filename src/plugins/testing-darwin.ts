@@ -61,6 +61,11 @@ function native(): TestingNative {
 let sink: JSCallback | undefined;
 let evaluations: EvalQueue | undefined;
 const labeled = createLabeledQueue();
+let timeoutFrames: (() => number) | undefined;
+/** Test scaffolding: page frame count for the unconditional timeout diagnostic. */
+export function setTestingTimeoutFrames(frames: () => number): void {
+	timeoutFrames = frames;
+}
 
 function callbackPointer(callback: JSCallback): number {
 	const raw: unknown = callback.ptr;
@@ -97,6 +102,19 @@ function queueFor(table: TestingNative): EvalQueue {
 			// The completion is delivered by the pump. On a starved runner the pump stops and the
 			// wall clock does not, so a wall-clock deadline would report a page it never gave a turn.
 			progress: pumpProgressMs,
+			frames: () => timeoutFrames?.() ?? -1,
+			// A stale or mismatched id used to vanish silently, leaving a timeout with no evidence.
+			onDrop: ({ id, kind, text, waitedIds }) =>
+				console.warn(
+					`crust: dropped completion id=${id} kind=${kind} ` +
+						`waited=[${waitedIds.join(",")}] text=${text.slice(0, 80)}`,
+				),
+			// A timeout is the one moment evidence must not sit behind CRUST_TEST.
+			onTimeout: (d) =>
+				console.log(
+					`crust: eval timeout id=${d.id} waited=[${d.waitedIds.join(",")}] ` +
+						`progress=${d.progressStart}->${d.progressNow} frames=${d.framesStart}->${d.framesNow}`,
+				),
 		});
 	}
 	return evaluations;
