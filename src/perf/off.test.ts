@@ -13,13 +13,13 @@ import { loadavg } from "node:os";
 import { join } from "node:path";
 import { createRunner, type Run } from "../bridge/server/invoke.ts";
 import type { CommandHandler, PluginContext } from "../plugins/define.ts";
-import { requestedBytes } from "./alloc.ts";
+import { countWrites, requestedBytes } from "./alloc.ts";
 import { perfCollector } from "./collector.ts";
 
 const N = 10_000;
 const REPS = 5;
-/** Four bytes per invoke over 10k calls. A real per-invoke object is >= 8 B, i.e. >= 80 KB. */
-const ALLOC_BOUND_BYTES = N * 4;
+/** Exact bound on lazy InvokeStat creations in the measured window; warm-up already made them. */
+const ALLOC_WRITES_BOUND = 0;
 const ALL_OFF = { overlay: false, file: false, stdout: false };
 const ANSWER = { ok: true };
 const ARGS = { hello: "world" };
@@ -139,20 +139,26 @@ test("off is free: no extra clock read, no allocation, overhead inside the contr
 
 	const rows: Row[] = [];
 	const controlRows: Row[] = [];
-	for (let rep = 0; rep < REPS; rep++) {
-		rows.push({
-			a1: await measure(bare),
-			b: await measure(instrumented),
-			a2: await measure(bare),
-			a3: await measure(bare),
-		});
-		controlRows.push({
-			a1: await measure(bare),
-			b: await measure(bareControl),
-			a2: await measure(bare),
-			a3: await measure(bare),
-		});
+	const writes = countWrites(perfCollector.invokes);
+	try {
+		for (let rep = 0; rep < REPS; rep++) {
+			rows.push({
+				a1: await measure(bare),
+				b: await measure(instrumented),
+				a2: await measure(bare),
+				a3: await measure(bare),
+			});
+			controlRows.push({
+				a1: await measure(bare),
+				b: await measure(bareControl),
+				a2: await measure(bare),
+				a3: await measure(bare),
+			});
+		}
+	} finally {
+		writes.stop();
 	}
+	const statWrites = writes.read();
 	const allA = (rows: Row[], field: keyof Cost): number[] =>
 		rows.flatMap((row) => [row.a1[field], row.a2[field], row.a3[field]]);
 	const usA = median(allA(rows, "us"));
@@ -177,8 +183,9 @@ test("off is free: no extra clock read, no allocation, overhead inside the contr
 		`time: baseline=${usA.toFixed(4)}us instrumented=${usB.toFixed(4)}us delta=${overheadUs.toFixed(4)}us same-arm-control=${controlUs.toFixed(4)}us spread=${controlSpreadUs.toFixed(4)}us`,
 	);
 	console.log(
-		`alloc: baseline=${bytesA}B instrumented=${bytesB}B delta=${overheadBytes}B same-arm-control=${controlBytes}B`,
+		`alloc (diagnostic, GC-sensitive): baseline=${bytesA}B instrumented=${bytesB}B delta=${overheadBytes}B same-arm-control=${controlBytes}B`,
 	);
+	console.log(`alloc (exact): InvokeStat writes=${statWrites} bound=${ALLOC_WRITES_BOUND}`);
 	console.log(
 		invisible
 			? `VERDICT within control spread: overhead ${overheadUs.toFixed(4)}us vs control ${controlUs.toFixed(4)}us`
@@ -187,5 +194,6 @@ test("off is free: no extra clock read, no allocation, overhead inside the contr
 
 	expect(readsB).toBe(readsA);
 	expect(readsA2).toBe(readsA);
-	expect(overheadBytes - controlBytes).toBeLessThanOrEqual(ALLOC_BOUND_BYTES);
+	// Exact counter, not heap size: see alloc.ts for the measured GC swing that killed the old bound.
+	expect(statWrites).toBeLessThanOrEqual(ALLOC_WRITES_BOUND);
 }, 30_000);
