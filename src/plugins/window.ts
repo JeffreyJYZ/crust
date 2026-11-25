@@ -12,6 +12,7 @@ import {
 import { logEvent } from "@/logging/logger";
 import { windowRecord } from "@/logging/records";
 import { failure, invalidLabel, knownWindow, missingWindow, readLabel } from "./window-args.ts";
+import { invalidTitle } from "./window-title.ts";
 import { type WindowCaptureCommands, windowCaptureCommands } from "./window-capture.ts";
 import { type WindowChromeCommands, windowChromeCommands } from "./window-chrome.ts";
 import { createWindowCommand } from "./window-create.ts";
@@ -101,15 +102,7 @@ export function createWindowPlugin(adapter?: WindowNative): PluginDefinition<
 				const label = readLabel(args);
 				if (label === undefined) return invalidLabel(args);
 				const title = typeof args?.title === "string" ? args.title : undefined;
-				if (title === undefined) {
-					return {
-						ok: false as const,
-						code: "invalid-label" as const,
-						message:
-							"crust: window.setTitle needs { label, title } with a string title",
-						label,
-					};
-				}
+				if (title === undefined) return invalidTitle(label, args?.title, "setTitle");
 				const unknown = knownWindow(native, label);
 				if (unknown) return unknown;
 				try {

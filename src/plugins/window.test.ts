@@ -120,9 +120,21 @@ describe("typed failures", () => {
 			ok: false,
 			code: "invalid-label",
 		});
-		expect(
-			plugin.commands.setTitle({ label: "main" } as { label: string; title: string }),
-		).toMatchObject({ ok: false, code: "invalid-label", label: "main" });
+	});
+
+	test("a bad title is invalid-title, never invalid-label, and reaches no adapter", () => {
+		const adapter = fakeAdapter();
+		const plugin = createWindowPlugin(adapter);
+		for (const title of [undefined, 42, null] as unknown[]) {
+			expect(
+				plugin.commands.setTitle({ label: "main", title } as { label: string; title: string }),
+			).toMatchObject({ ok: false, code: "invalid-title", label: "main" });
+		}
+		expect(adapter.calls).toEqual([]);
+		expect(plugin.commands.setTitle({ label: "main", title: "good" })).toMatchObject({
+			ok: true,
+			title: "good",
+		});
 	});
 
 	test("an adapter that throws is converted, not propagated", () => {

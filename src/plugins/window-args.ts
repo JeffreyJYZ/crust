@@ -9,6 +9,7 @@ import {
 	type WindowFailure,
 	type WindowNative,
 } from "./window-types.ts";
+import { invalidTitle } from "./window-title.ts";
 
 /** The not-implemented answer, naming the selector a platform would need. */
 export function missingWindow(command: string): NotImplemented {
@@ -110,17 +111,7 @@ export function parseCreate(
 	// here so the adapter never receives an argument it would coerce.
 	if (source.title !== undefined) {
 		if (typeof source.title !== "string") {
-			return {
-				ok: false,
-				failure: {
-					ok: false,
-					code: "invalid-label",
-					message:
-						"crust: window.create title must be a string when given, got " +
-						`${JSON.stringify(source.title)}`,
-					label,
-				},
-			};
+			return { ok: false, failure: invalidTitle(label, source.title, "create") };
 		}
 		options.title = source.title;
 	}

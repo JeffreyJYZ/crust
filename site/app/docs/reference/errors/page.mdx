@@ -57,6 +57,7 @@ These two return a typed failure value rather than a rejected invoke: `{ ok: fal
 | code              | raised when                                                                 |
 | ----------------- | --------------------------------------------------------------------------- |
 | `invalid-label`   | the command needs `{ label }` with a non-empty string                       |
+| `invalid-title`   | `create` or `setTitle` got a title that is not a string                     |
 | `unknown-window`  | no open window carries that label                                           |
 | `duplicate-label` | `create` names a label that is already open                                 |
 | `invalid-size`    | `create` width or height is not a positive integer — refused, never clamped |
@@ -67,6 +68,7 @@ These two return a typed failure value rather than a rejected invoke: `{ ok: fal
 | code              | message                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `invalid-label`   | `crust: window command needs { label } with a non-empty string, got …`                                                                 |
+| `invalid-title`   | `crust: window.setTitle title must be a string, got 42`                                                                               |
 | `unknown-window`  | `crust: no window labelled "main"`                                                                                                     |
 | `duplicate-label` | `crust: a window labelled "main" already exists; a second one would replace it in the platform's map. Close it or pick another label.` |
 | `invalid-size`    | `crust: window.create width must be a positive integer, got 1.5 in …`                                                                  |

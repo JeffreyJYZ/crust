@@ -26,7 +26,7 @@ describe("window.create arguments", () => {
 		});
 		expect(plugin.commands.create(type({ label: "ok", title: 5 }))).toMatchObject({
 			ok: false,
-			code: "invalid-label",
+			code: "invalid-title",
 			label: "ok",
 		});
 
