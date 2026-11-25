@@ -4,6 +4,44 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.20] — 2026-11-25
+
+### Fixed
+
+- **A testing eval reported a starved page as a lost answer.** The 4000 ms budget counted pump progress alone, so on a loaded runner the pump ticked steadily while WebKit ran a page it considers hidden at low QoS: one `console` command answered **22 seconds later with the correct payload** and was reported as `crust: the page did not answer within 4000 ms`. The budget is now 30 000 ms of wall time behind a pump gate — a starved runner pauses the deadline, a slow page's late answer resolves, and a page that never calls its completion still fails naming the id it waited on. `window.crust.hide()` is a supported state, so this reached users, not only the CI runner.
+- **The timeout diagnostic measured visibility and reported it as liveness.** `frames` is a rAF counter, and rAF never fires for a hidden page, so `frames=0->0` read as a dead page when it meant a hidden one; it is now labelled a visibility signal, and `visibility` (`document.visibilityState`) plus a non-rAF `setInterval` heartbeat distinguish throttled from dead. `waited=[…]` also printed an empty list while a waiter was live, because the timeout path forgot the id before listing the survivors.
+- **A completion with no waiter vanished.** `deliver()` returned silently on an unknown id, so a mismatched or late completion was indistinguishable from one that never arrived; it is now counted and reported as `crust: dropped completion id=… elapsed=… waited=[…]`, which is what separated this defect's real cause (`late`) from four rounds of the wrong one (`lost`).
+
+## [0.2.19] — 2026-11-25
+
+A defect wave across packaging, authority, containment, runtime, shim and CLI. Every fix below came with
+either a test that fails when the bug is reintroduced, or a stated reason runtime evidence was impossible.
+
+### Added
+
+- **Opt-in native ownership audit.** `CRUST_SHIM_AUDIT=1` (or `-DCRUST_SHIM_AUDIT`) in a checkout reports per-unit retain/release balance and fails the gate on imbalance. A shipped app cannot be audited this way, and the docs say so rather than leaving a switch that looks reachable.
+
+### Fixed
+
+- **Package signing could notarize a bundle whose own sidecars were unsigned**, and NSIS failed on nested sidecar paths. Sidecars are Developer-ID signed before the app, `--timestamp` applies to that path only, verification is `codesign --verify --deep --strict`, and NSIS creates the parent directory first. (#67)
+- **A page could mint a bridge token bound to another window's label.** `window.create` binds the mint to the native label (escalation answers `403`), the bridge `Location` is absolute so a token cannot travel off-origin, and `withToken` compares decoded keys so `%74oken=` cannot shadow the seed. (#68)
+- **`fs`, `i18n.load` and SQLite could reach outside their configured root.** `ATTACH`, `VACUUM INTO` and `load_extension` are refused, `fs` operates on the path it validated rather than the one it was given, and `i18n.load` respects scope. Compiled apps also stopped serving `cwd/public`, and asset symlinks are refused rather than silently skipped. (#71, #77)
+- **A failed `class_addMethod` left a wedge in the Objective-C class table**, so the runtime delegate could never be rebuilt. All four units now dispose their class pair on every failure path, naming the selector — 13 branches proven against a fake runtime that refuses a reallocation while a pair is live. (#84)
+- **Linux wrote native sources into a shared directory and leaked a window slot.** A 0700 per-user directory with `lstat` refusals, a preflight symbol list derived from the shipped C, the 33rd window refused instead of overwriting, and policy handlers installed before the first load. (#70)
+- **Inherited `Object.prototype` names were treated as commands.** `constructor` and friends now answer as unknown commands with a 4xx, server faults are 5xx rather than 4xx, `typedHost` stops reporting a ctx it does not have, and crash records are validated at the disk boundary. (#72)
+- **Lifecycle races:** autostart argv, quit events that never reached the page, a non-atomic single-instance lock, dropped stronghold commits, and a deep-link throw that could leave a half-started app. (#75)
+- **Shim ownership:** `WKContentWorld` retained against the pump's drain (the one use-after-free), tray/menu/find/announce releases, AX focus checked rather than assumed, `menu.read` walking every level, `trusted` distinguishing a missing grant from a compile failure, and an eval slot that could cross-talk between requests. (#76)
+- **Leaks and forged log lines.** `runCommand` cancels its deadlines (512 ms → 24 ms hold), the log mirror cannot be forged by page text, `seed`/`sid`/`keychain` are redacted, and one 2000-char page cap keeps a visible `…`. (#79)
+- **`invalid-title` overloaded `invalid-label`**, so callers could not tell a bad label from a bad title. It has its own code, mapped to 400, documented in four places. (#80)
+- **The profiler punished honest results.** The sampler window now prunes, each sample uses one clock, the recorder exits on a signal, a static page is no longer called a stalled one, a covered window is recorded as occluded rather than idle, and `perf diff` writes failures to stderr with exit 1. (#69, #74)
+- **Smaller fixes:** Windows tray menu newlines, CLI `$` substitution, cursor idempotency, multi-cookie redaction, and single-file `dist/single` output cleaned before a successful write. (#77, #81)
+
+### Changed
+
+- **Dev tokens are documented as a preview, not a boundary.** Under `crust dev` a page selects its bridge token with `?window=<label>`, and any page can name any label: the navigation carries only that query, Vite's transform context exposes no request identity, and the handshake has no grant sets, so no server-side binding exists to enforce. "Dev is not a boundary" is now stated in the dev and permissions guides, with "test the built output, not the dev server" as the consequence.
+- **Six assertions that could not fail now fail when the bug is reintroduced**, proven by disabling `reapChildren()` and finding four live children plus four leaked dirs, then zero. (#82)
+- **The live-page test skips with a stated reason** when `_setWindowOcclusionDetectionEnabled:` is absent, instead of asserting a private WebKit selector exists on every runner; the skip is allowlisted with its reason. (#85)
+
 ## [0.2.18] — 2026-11-25
 
 ### Fixed
