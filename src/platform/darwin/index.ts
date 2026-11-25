@@ -10,10 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Shim } from "./shim-symbols.ts";
 
-// Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file
-// does not exist. The shim therefore travels inside the binary as text and is
-// materialised to a temp file before `cc()` is called.
+// A compiled binary has no .c file at import.meta.dir, so the shim travels as text.
 import { shimSource } from "./shim-source.ts";
+import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -24,12 +23,12 @@ const CS = FFIType.cstring;
 
 /** Compile the shipped C shim. `cc()` compiles C only, and a framework must be linked. */
 function compile() {
-	/** Materialise the embedded shim and return its path. Content-hashed, so a
-	 * second launch reuses the same file and TinyCC's per-path cache. */
+	/** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
 	function shimPath(): string {
-		const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
+		const source = auditSource(shimSource);
+		const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
 		const path = join(tmpdir(), `crust-shim-${hash}.c`);
-		if (!existsSync(path)) writeFileSync(path, shimSource);
+		if (!existsSync(path)) writeFileSync(path, source);
 		return path;
 	}
 
@@ -44,8 +43,10 @@ function compile() {
 			"WebKit",
 			"-framework",
 			"CoreFoundation",
+			...auditFlags(),
 		],
 		symbols: {
+			...auditSymbols,
 			shim_cls: { args: [P], returns: P },
 			shim_sel: { args: [P], returns: P },
 			shim_object_class: { args: [P], returns: P },
