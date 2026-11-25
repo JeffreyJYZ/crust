@@ -3,13 +3,18 @@
  * The reported fullscreen capture condition as a command the owner can type:
  *
  *     bun run scripts/probe-capture-fullscreen.ts
+ *     bun run scripts/probe-capture-fullscreen.ts --wait 15   # press ⌃⌘F while it waits
  *
- * One process, no arguments, at most eight short lines. It detects the condition instead of assuming
- * it: the frontmost app and its fullscreen windows come from read-only System Events, and the probe
- * window's Space and occlusion come from AppKit. `condition: YES` needs BOTH a fullscreen app owning
- * the active Space and this probe window off it. A normal desktop is a refusal, never a pass.
+ * One process, a screenful of lines at most. It detects the condition instead of assuming it: the
+ * frontmost app and its fullscreen windows come from read-only System Events, and the probe window's
+ * Space and occlusion come from AppKit. `condition: YES` needs BOTH a fullscreen app owning the
+ * active Space and this probe window off it. A normal desktop is a refusal, never a pass.
  *
- * Three captures on that same never-composited window, in order: bare, `ignoreOcclusion: true` (not
+ * The condition is a transition: an accessory window joins the Space active when it is created, so
+ * a probe started inside a fullscreen Space lands there and can never see the reported state.
+ * `--wait` creates the window first, prints its state, then waits for another app to go fullscreen.
+ *
+ * Three captures on that never-composited window, in order: bare, `ignoreOcclusion: true` (not
  * enough on its own), and `prime: true` (the fix). Only the prime capture decides the verdict.
  *
  * No activation, no window movement, no cursor, no other app's Space. `activate: "never"` and the
@@ -22,42 +27,14 @@ import { shim } from "@/platform/darwin/index.ts";
 import { cls, cstr, S } from "@/platform/darwin/objc.ts";
 import { DarwinPlatform } from "@/platform/darwin/platform.ts";
 import { capture, type Shot } from "./capture-fullscreen/shot.ts";
-import { captureFrontmost } from "./e2e-harness.ts";
-
-const APP = "crust-fullscreen-capture";
-const FULLSCREEN = `tell application "System Events"
-set found to {}
-repeat with p in (every process whose background only is false)
-try
-repeat with w in (windows of p)
-if (value of attribute "AXFullScreen" of w) is true then
-set end of found to (name of p)
-exit repeat
-end if
-end repeat
-end try
-end repeat
-return found
-end tell`;
+import { APP, printState, readState } from "./capture-fullscreen/state.ts";
+import { parseWait, USAGE, waitForCondition } from "./capture-fullscreen/wait.ts";
 
 /** Four opaque bands, so distinct colours prove a render rather than a uniform fill. */
 const PAGE = `<!doctype html><meta charset="utf-8"><title>fullscreen capture probe</title>
 <style>html,body{margin:0;height:100%;overflow:hidden}i{display:block;height:25%}</style>
 <i style="background:#e11d48"></i><i style="background:#2563eb"></i>
 <i style="background:#16a34a"></i><i style="background:#f59e0b"></i>`;
-
-/** Read-only AppleScript; an empty answer is reported, never guessed at. */
-function ask(source: string): string {
-	try {
-		const result = Bun.spawnSync(["osascript", "-e", source], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		return result.exitCode === 0 ? new TextDecoder().decode(result.stdout).trim() : "";
-	} catch {
-		return "";
-	}
-}
 
 /** One line per capture: elapsed, answer, and every number the decoded PNG gives. */
 function describe(label: string, shot: Shot): string {
@@ -71,18 +48,12 @@ function describe(label: string, shot: Shot): string {
 }
 
 async function main(): Promise<number> {
-	const frontmost = (await captureFrontmost()) ?? "unknown";
-	const listed = ask(FULLSCREEN);
-	const fullscreen = listed
-		? listed
-				.split(",")
-				.map((name) => name.trim())
-				.filter(Boolean)
-		: [];
-	const other = fullscreen.filter((name) => name.toLowerCase() !== APP.toLowerCase());
-	const fullscreenFrontmost = other.some(
-		(name) => name.toLowerCase() === frontmost.toLowerCase(),
-	);
+	const args = parseWait(process.argv.slice(2));
+	if (args.error) {
+		console.error(`crust: ${args.error}`);
+		console.error(USAGE);
+		return 2;
+	}
 
 	if (process.platform !== "darwin") {
 		console.log("frontmost: n/a (not macOS)");
@@ -116,24 +87,23 @@ async function main(): Promise<number> {
 		platform.pump(16);
 		await Bun.sleep(500);
 
-		const onActiveSpace = S.b0(win, "isOnActiveSpace");
-		const occlusion = S.q0(win, "occlusionState");
-		const visible = S.b0(win, "isVisible");
-		// A fullscreen app on another display keeps this window on the active Space, which is
-		// visibly NOT the reported state. Both facts are required before the gate applies.
-		const condition = fullscreenFrontmost && !onActiveSpace;
-		const reason = !fullscreenFrontmost
-			? `frontmost ${frontmost} has no fullscreen window`
-			: onActiveSpace
-				? `the probe window is on the active Space, so no fullscreen app owns it`
-				: `frontmost ${frontmost} is fullscreen and the probe window is off its Space`;
-
-		console.log(`frontmost: ${frontmost}`);
-		console.log(`fullscreen: ${other.length ? other.join(", ") : "none"}`);
-		console.log(
-			`window: onActiveSpace=${onActiveSpace ? 1 : 0} occlusion=${occlusion} visible=${visible ? 1 : 0}`,
-		);
-		console.log(`condition: ${condition ? "YES" : "NO"} (${reason})`);
+		// The window exists before any wait starts: the transition needs something to leave behind.
+		let state = await readState(win);
+		printState(state);
+		if (args.seconds !== undefined) {
+			console.log(
+				`waiting up to ${args.seconds} s for another app to go fullscreen — press ⌃⌘F in any app`,
+			);
+			const waited = await waitForCondition(async () => {
+				state = await readState(win);
+				return { ok: state.condition, reason: state.reason };
+			}, args.seconds);
+			console.log(
+				`waited: ${(waited.waitedMs / 1000).toFixed(1)} s ` +
+					(waited.ok ? `(condition met)` : `(timed out — ${waited.last.reason})`),
+			);
+			printState(state);
+		}
 
 		const bare = await capture(web);
 		console.log(describe("bare", bare));
@@ -142,8 +112,8 @@ async function main(): Promise<number> {
 		const primed = await capture(web, { prime: true });
 		console.log(describe("prime=true", primed));
 
-		if (!condition) {
-			console.log(`verdict: REFUSED (condition absent: ${reason})`);
+		if (!state.condition) {
+			console.log(`verdict: REFUSED (condition absent: ${state.reason})`);
 			return 2;
 		}
 		if (primed.picture !== "real") {
