@@ -143,7 +143,21 @@ export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 					options.loader === undefined && options.scope !== undefined
 						? await scopedDirectory(args?.directory, options.scope)
 						: args?.directory;
-				Object.assign(catalogue, await loader(directory));
+				// Merge per key, not per locale: a loaded locale that names a table already supplied in
+				// code must add its keys, not replace the whole table and silently drop the defaults.
+				// Assign through `defineProperty` so a file named `__proto__.json` cannot hit the
+				// inherited setter and replace the catalogue's prototype.
+				const loaded = await loader(directory);
+				for (const [locale, table] of Object.entries(loaded)) {
+					if (locale === "__proto__" || locale === "constructor") continue;
+					const merged = { ...(catalogue[locale] ?? {}), ...table };
+					Object.defineProperty(catalogue, locale, {
+						value: merged,
+						enumerable: true,
+						configurable: true,
+						writable: true,
+					});
+				}
 				const available = Object.keys(catalogue);
 				const chosen = preferred() ?? available[0] ?? options.locale ?? "en";
 				return { ok: true, locale: chosen, dir: textDirection(chosen), available };

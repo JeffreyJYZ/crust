@@ -90,6 +90,38 @@ describe("i18n.load command", () => {
 		expect(call(plugin, "translate", { key: "greeting" })).toMatchObject({ text: "Bonjour" });
 	});
 
+	test("a loaded locale adds its keys instead of replacing a table supplied in code", async () => {
+		const plugin = createI18nPlugin({
+			messages: { en: { title: "Crust", greeting: "Old hello" } },
+			locale: "en",
+			loader: () => ({ en: { greeting: "New hello" } }),
+		});
+		await call(plugin, "load", { directory: "locales" });
+		expect(call(plugin, "messages")).toMatchObject({
+			locale: "en",
+			messages: { title: "Crust", greeting: "New hello" },
+		});
+		expect(call(plugin, "translate", { key: "title" })).toMatchObject({ text: "Crust" });
+	});
+
+	test("a __proto__ locale key is ignored instead of replacing the catalogue prototype", async () => {
+		const loaded: Record<string, unknown> = { en: { greeting: "Hi" } };
+		Object.defineProperty(loaded, "__proto__", {
+			value: { pwned: "yes" },
+			enumerable: true,
+		});
+		const plugin = createI18nPlugin({
+			messages: { en: { title: "Crust" } },
+			locale: "en",
+			loader: () => loaded as never,
+		});
+		const result = (await call(plugin, "load", { directory: "locales" })) as {
+			available: string[];
+		};
+		expect(result.available).toEqual(["en"]);
+		expect(call(plugin, "translate", { key: "title" })).toMatchObject({ text: "Crust" });
+	});
+
 	test("an async loader is awaited before the command answers", async () => {
 		const plugin = createI18nPlugin({
 			loader: async (directory) => {
