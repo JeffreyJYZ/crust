@@ -36,11 +36,7 @@ export function sourceOwner(): number {
 }
 
 /** Refuse anything but a private, regular file owned by this user. */
-export function assertPrivateSource(
-	path: string,
-	info: SourceFileInfo,
-	uid = sourceOwner(),
-): void {
+export function assertPrivateSource(path: string, info: SourceFileInfo, uid = sourceOwner()): void {
 	if (info.symlink) throw new Error(`crust: refusing symlinked native source ${path}`);
 	if (!info.regular) throw new Error(`crust: refusing non-file native source ${path}`);
 	if (info.uid !== uid)

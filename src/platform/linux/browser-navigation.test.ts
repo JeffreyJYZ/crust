@@ -50,7 +50,10 @@ function harness() {
 	return { fake, adapter, seen, popups, decide, open };
 }
 
-function partsFor(decide: (url: string) => boolean, onPopup: (url: string) => void): NavigationParts<Surface> {
+function partsFor(
+	decide: (url: string) => boolean,
+	onPopup: (url: string) => void,
+): NavigationParts<Surface> {
 	const decisions = new NavigationDecisions();
 	decisions.set("docs", decide);
 	const surface: Surface = { label: "docs", onPopup };
@@ -85,7 +88,10 @@ describe("the Linux committed-navigation gate", () => {
 
 	test("an allowed target goes through to WebKit", () => {
 		const { adapter, fake } = harness();
-		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({ ok: true, loaded: true });
+		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({
+			ok: true,
+			loaded: true,
+		});
 		expect(fake.calls.some((call) => call.startsWith("navigate:"))).toBe(true);
 	});
 
@@ -112,7 +118,11 @@ describe("the Linux committed-navigation gate", () => {
 	});
 
 	test("a throwing decision refuses rather than slips past the gate", () => {
-		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
+		expect(
+			navigationAllowed(() => {
+				throw new Error("page bug");
+			}, TRUSTED),
+		).toBe(false);
 	});
 
 	test("kind 1 reads the decision URL, not the popup buffer", () => {
@@ -152,9 +162,9 @@ describe("the Linux committed-navigation gate", () => {
 describe("the decide-policy hook in the shim", () => {
 	test("a navigation decision is read from the action's URI request", () => {
 		const browser = SHIM_PARTS[2];
-		expect(browser).toContain('webkit_policy_decision_get_navigate_action');
-		expect(browser).toContain('webkit_navigation_action_get_request');
-		expect(browser).toContain('webkit_uri_request_get_uri');
+		expect(browser).toContain("webkit_policy_decision_get_navigate_action");
+		expect(browser).toContain("webkit_navigation_action_get_request");
+		expect(browser).toContain("webkit_uri_request_get_uri");
 		expect(browser).toContain('shim_view_connect(web, "decide-policy"');
 		// Only navigation-action decisions are gated; a NEW_WINDOW_ACTION belongs to browser-popup.
 		expect(browser).toContain("if (type != 0) return 0;");

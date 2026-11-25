@@ -36,20 +36,14 @@ describe("PREFLIGHT", () => {
 		const symbols = PREFLIGHT.map((entry) => entry.symbol);
 		const required = [
 			...new Set(
-				[
-					...shimSource.matchAll(
-						/\bshim_sym\(\s*h\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"/g,
-					),
-				].map((match) => match[1] as string),
+				[...shimSource.matchAll(/\bshim_sym\(\s*h\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"/g)].map(
+					(match) => match[1] as string,
+				),
 			),
 		];
 		expect(required.length).toBeGreaterThan(20);
 		for (const symbol of required) expect(symbols).toContain(symbol);
-		for (const symbol of [
-			"gtk_fixed_new",
-			"gtk_widget_set_hexpand",
-			"gtk_widget_set_vexpand",
-		])
+		for (const symbol of ["gtk_fixed_new", "gtk_widget_set_hexpand", "gtk_widget_set_vexpand"])
 			expect(required).toContain(symbol);
 		// Optional proof entries stay optional: launching an app must not require
 		// `evaluate_javascript`, which arrived only in WebKitGTK 2.40.

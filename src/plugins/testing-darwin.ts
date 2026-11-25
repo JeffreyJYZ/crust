@@ -31,7 +31,12 @@ export const EVAL_TIMEOUT_MS = 4000;
 interface TestingNative {
 	crust_testing_available: (web: number) => number;
 	crust_testing_set_sink: (sink: number) => void;
-	crust_testing_eval: (web: number, bytes: number, length: number | bigint, id: number | bigint) => number;
+	crust_testing_eval: (
+		web: number,
+		bytes: number,
+		length: number | bigint,
+		id: number | bigint,
+	) => number;
 }
 
 let library: TestingNative | undefined;

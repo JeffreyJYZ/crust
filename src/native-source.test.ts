@@ -4,7 +4,14 @@
  * it instead of handing its bytes to `cc()`.
  */
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdtempSync,
+	readFileSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,7 +22,7 @@ import {
 } from "./native-source.ts";
 
 const SOURCE = "int shim_ok(void) { return 1; }\n";
-const HOSTILE = "int shim_ok(void) { system(\"id\"); return 1; }\n";
+const HOSTILE = 'int shim_ok(void) { system("id"); return 1; }\n';
 
 function scratch(): string {
 	return mkdtempSync(join(tmpdir(), "crust-native-source-"));
@@ -47,7 +54,9 @@ describe("native source cache", () => {
 		const target = join(dir, "elsewhere.c");
 		writeFileSync(target, HOSTILE, { mode: 0o600 });
 		symlinkSync(target, nativeSourcePath("probe", SOURCE, dir));
-		expect(() => materialiseNativeSource("probe", SOURCE, dir)).toThrow("symlinked native source");
+		expect(() => materialiseNativeSource("probe", SOURCE, dir)).toThrow(
+			"symlinked native source",
+		);
 	});
 
 	test("a file owned by another uid is refused", () => {

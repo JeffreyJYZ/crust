@@ -14,7 +14,9 @@ void viewState;
 
 describe("native defect guards (read source, no GTK)", () => {
 	test("a window with no free slot is destroyed, never returned untracked", () => {
-		expect(windowPart).toContain("if (slot < 0 && shim_slot_count < 32) slot = shim_slot_count++;");
+		expect(windowPart).toContain(
+			"if (slot < 0 && shim_slot_count < 32) slot = shim_slot_count++;",
+		);
 		expect(windowPart).toContain("if (slot < 0) {");
 		expect(windowPart).toContain("if (shim_destroy) shim_destroy(win);\n\t\treturn 0;");
 		expect(windowPart).not.toContain("if (slot >= 0) {");
