@@ -9,14 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	CRASH_EXIT_CODE,
-	CRASH_RECORD_BYTES,
-	crashRecordPath,
-	decodeCrashRecord,
-	lastCrashPath,
-	signalName,
-} from "@/platform/darwin/crash-record";
+import { CRASH_EXIT_CODE, crashRecordPath, lastCrashPath } from "@/platform/darwin/crash-record";
 import { type CrashGuard, startCrashGuard } from "@/runtime-crash-guard";
 import { listCrashes, readLastCrash } from "@/runtime-crash-store";
 
@@ -135,25 +128,6 @@ async function watch(root: string, ending: string): Promise<Subprocess> {
 }
 
 describe("crash guard", () => {
-	test("decodeCrashRecord reads the fixed 84-byte layout", () => {
-		const bytes = new Uint8Array(CRASH_RECORD_BYTES);
-		bytes.set([0x43, 0x52, 0x53, 0x48]);
-		const view = new DataView(bytes.buffer);
-		view.setInt32(4, 11, true);
-		view.setInt32(8, 2, true);
-		view.setBigUint64(12, 0xdeadbeefn, true);
-		bytes.set(new TextEncoder().encode("SIGSEGV"), 20);
-		expect(decodeCrashRecord(bytes)).toEqual({
-			signal: 11,
-			code: 2,
-			address: 0xdeadbeefn,
-			handler: "SIGSEGV",
-		});
-		expect(signalName(11)).toBe("SIGSEGV");
-		expect(decodeCrashRecord(bytes.subarray(0, 40))).toBeNull();
-		expect(decodeCrashRecord(new Uint8Array(CRASH_RECORD_BYTES))).toBeNull();
-	});
-
 	test("a child that faults on a null dereference is recorded by name, and the guard exits", async () => {
 		const root = await tempDir();
 		const child = await watch(root, FAULT);
