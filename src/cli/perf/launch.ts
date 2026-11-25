@@ -49,7 +49,10 @@ export async function launchApp(
 			// An exit trap cannot report, and the window may already be gone.
 		}
 	};
-	const onExit = (): void => cleanupSync();
+	const onExit = (): void => {
+		cleanupSync();
+		restoreFocus();
+	};
 	const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 	const handlers = new Map<(typeof signals)[number], () => void>();
 	const onSignal = (signal: (typeof signals)[number]): void => {
@@ -70,6 +73,7 @@ export async function launchApp(
 		}
 	};
 
+	let restoreFocus = (): void => {};
 	try {
 		platform = new DarwinPlatform({ appName, activate: "never" });
 		bridge = startBridge({
@@ -94,9 +98,29 @@ export async function launchApp(
 		const win = platform.nativeWindow("main");
 		if (web === undefined || win === undefined)
 			throw new Error("recorder window has no webview");
-		const { S } = await import("@/platform/darwin/objc.ts");
+		const { S, cls } = await import("@/platform/darwin/objc.ts");
+		const nsApp = S.p0(cls("NSApplication"), "sharedApplication", true);
+		const workspace = S.p0(cls("NSWorkspace"), "sharedWorkspace", true);
+		const previous = S.p0(workspace, "frontmostApplication");
+		if (previous !== 0) S.p0(previous, "retain");
+		let restored = false;
+		restoreFocus = (): void => {
+			if (restored || previous === 0) return;
+			restored = true;
+			// NSApplicationActivateAllWindows, not the deprecated ignoring-other-apps bit.
+			S.v1(previous, "activateWithOptions:", 1);
+			S.v0(previous, "release");
+		};
+		// WKWebView suspends rAF once AppKit marks the window fully occluded. The private
+		// _setWindowOcclusionDetectionEnabled:NO selector alone holds for about two seconds; the
+		// window has to stay on screen and key for the whole run. Re-assert every tick, because a
+		// person switching apps can take the front back mid-run. Focus is returned at stop().
 		const reassert = (): void => {
-			S.vq1(win, "setCollectionBehavior:", 1);
+			S.vq1(win, "setLevel:", 3); // NSFloatingWindowLevel
+			S.vq1(win, "setCollectionBehavior:", 130); // moveToActiveSpace | fullScreenPrimary
+			S.v1(nsApp, "activateIgnoringOtherApps:", 1);
+			S.v1(win, "makeKeyAndOrderFront:", 0);
+			S.vq1(win, "setLevel:", 3); // ordering can drop the level
 			native.perf_occlusion(web, 0);
 		};
 		reassert();
@@ -112,6 +136,7 @@ export async function launchApp(
 			if (stopped) return;
 			stopped = true;
 			cleanupSync();
+			restoreFocus();
 			detach();
 			resetActivationPolicy();
 			await bridge?.stop();
@@ -126,6 +151,7 @@ export async function launchApp(
 		};
 	} catch (error) {
 		cleanupSync();
+		restoreFocus();
 		process.removeListener("exit", onExit);
 		for (const signal of signals) process.removeAllListeners(signal);
 		resetActivationPolicy();
