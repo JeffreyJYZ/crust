@@ -5,8 +5,8 @@ import { useEffect } from "react";
 
 /**
  * A second route, so the scaffold proves client-side navigation instead of only the first
- * paint: `output: "export"` emits `/about/index.html`, and the link below is handled by the
- * router in the window rather than by the bridge.
+ * paint: `output: "export"` emits `about.html` (no `trailingSlash`), and the link below is
+ * handled by the router in the window rather than by the bridge.
  */
 export default function About() {
 	// A direct load of /about never mounts the start page, so bind lang and dir here too.

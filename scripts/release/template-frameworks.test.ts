@@ -88,6 +88,15 @@ for (const row of VITE_TEMPLATES) {
 	});
 }
 
+test("the Next about comment names the file static export actually emits", async () => {
+	const about = await file("next", "app/about/page.tsx");
+	const config = await file("next", "next.config.mjs");
+	// With no trailingSlash, Next emits about.html, not about/index.html.
+	expect(config).not.toContain("trailingSlash");
+	expect(about).toContain("about.html");
+	expect(about).not.toContain("/about/index.html");
+});
+
 test("every scaffold registers window-all-closed so closing its window ends the app", async () => {
 	for (const name of ["default", "next", "react", "svelte", "vue", "solid"]) {
 		const main = await file(name, "main.ts");
