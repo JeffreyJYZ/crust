@@ -23,7 +23,7 @@ window.crust.listen("network:change", ({ online, interfaceKinds }) => {
 
 The observer is scheduled on the main run loop, which is the same loop the app pumps events through. `onChange` installs it once; a second call replaces the listener rather than stacking a duplicate `network:change` per call.
 
-**Not on a platform without the call:** `status` and `onChange` answer `not-implemented` naming `SCNetworkReachability in SystemConfiguration` (macOS), `INetworkListManager in NetworkListManager` (Windows) or `NetworkChangeNotifier from Gdk` (Linux). A `status` with no adapter is a refusal, never an empty `{ online: false }` that reads as a real reading.
+**Not on a platform without the call:** `status` and `onChange` answer `not-implemented` naming `SCNetworkReachability in SystemConfiguration` (macOS), `INetworkListManager in NetworkListManager` (Windows) or `GNetworkMonitor in GIO (libgio-2.0.so.0, loaded through libgtk-3)` (Linux). A `status` with no adapter is a refusal, never an empty `{ online: false }` that reads as a real reading.
 
 The interception half is a `WKURLSchemeHandler` the darwin adapter registers, so its decision runs in the process that owns the webview. It is registered by the macOS runtime with `darwinNetworkAdapter()`, so `window.crust.invoke("network", …)` works in an app that names no plugin. What it does **not** do is intercept a scheme it did not register — see [what it does not intercept](#what-it-does-not-intercept).
 

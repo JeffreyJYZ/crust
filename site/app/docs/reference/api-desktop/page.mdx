@@ -71,6 +71,9 @@ The rectangles are not the frame `window.setPosition` takes: the darwin half fli
 
 | command        | arguments | answer                                  |
 | -------------- | --------- | --------------------------------------- |
+| `announce`     | `{ text, priority? }` | `{ ok: true, announced, trusted, priority, reason }` |
+| `title`        | `{ text, label? }` | `{ ok: true, titled, reason }`          |
+| `focus`        | `{ label? }`      | `{ ok: true, focused, reason }`         |
 | `trusted`      | none      | `{ ok: true, trusted }`                 |
 | `prompt`       | none      | `{ ok: true, trusted, prompted: true }` |
 | `elementCount` | none      | `{ ok: true, count }`                   |

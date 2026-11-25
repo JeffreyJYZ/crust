@@ -1,6 +1,6 @@
 # CLI
 
-One binary, five commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
+One binary, six commands. From a checkout `bun run src/cli/index.ts` is the same entry point and takes every command and flag below.
 
 ## Commands
 
@@ -16,6 +16,10 @@ One binary, five commands. From a checkout `bun run src/cli/index.ts` is the sam
 | `crust build [file]`             | compile the binary; on macOS assemble `X.app` in `dist/` and ad-hoc sign it; `--sign --notarize --dmg` add the release stages |
 | `crust package [--format <fmt>]` | release artefacts for `dmg`, `appimage` or `nsis`; `--format` is repeatable and defaults to `dmg`                            |
 | `crust doctor`                   | one line per launch check; exit 1 if any check failed                                                                        |
+| `crust perf record --app <dir>`  | launch with the perf sink and write one sample per second to `--out`; see the [performance guide](/docs/guides/performance)   |
+| `crust perf diff <a> <b>`        | compare two records field by field; exit 1 when a metric regressed past `--tolerance`                                        |
+
+`crust perf` owns its argv and its own `crust perf --help`, so it is not one of the five cac commands — but it is the sixth thing the binary can do.
 
 `crust sign`, `crust dmg` and `crust notarize` are gone. Each now prints `crust: unknown command "<verb>"` and exits 1. Their work is done by stages of `crust build`, run in one invocation after the plain build in this order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--sign` replaces the ad-hoc signature with a Developer ID; `--notarize` submits the signed app, then staples and validates its ticket; `--dmg` builds the image from the already-stapled app. The disk image itself is **not** notarized — the app's ticket travels inside it.
 
