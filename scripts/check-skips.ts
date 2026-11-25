@@ -12,7 +12,9 @@
 // The only skipped test names that are sanctioned. Add a name here only when
 // the skip has a documented justification (see docs/agents/check-skips.md).
 // An empty allowlist means every skip fails the check.
-const ALLOWLIST = new Set<string>([]);
+const ALLOWLIST = new Set<string>([
+	"click, type and console work in a real WKWebView — skipped: private WebKit _setWindowOcclusionDetectionEnabled: is unavailable on this macOS, so the occluded page draws no frames and no evaluate can be trusted",
+]);
 
 const DEFAULT_REPORT = ".junit-skips.xml";
 
