@@ -21,6 +21,7 @@ extern media_t objc_getClass(const char *name);
 extern media_t sel_registerName(const char *name);
 extern media_t objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
+extern void objc_disposeClassPair(void *cls);
 extern int class_addMethod(void *cls, void *sel, void *imp, const char *types);
 extern void objc_setAssociatedObject(void *object, const void *key, void *value,
                                      unsigned long policy);
@@ -93,11 +94,15 @@ static void *media_class(void) {
 	// objc_allocateClassPair answers nil for a name that already exists, so the lookup comes first.
 	cls = objc_allocateClassPair(super, "CrustMediaDelegate", 0);
 	if (!cls) return 0;
+	// A half-built class is disposed, never cached: an allocated but unregistered name is invisible
+	// to objc_getClass while still occupying the name, so keeping it wedges every later install.
 	if (!class_addMethod(cls,
 	                     sel_registerName("webView:requestMediaCapturePermissionForOrigin:"
 	                                      "initiatedByFrame:type:decisionHandler:"),
-	                     (void *)media_decide, "v@:@@@q@"))
+	                     (void *)media_decide, "v@:@@@q@")) {
+		objc_disposeClassPair(cls); // webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:
 		return 0;
+	}
 	objc_registerClassPair(cls);
 	return cls;
 }

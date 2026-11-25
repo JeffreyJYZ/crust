@@ -16,11 +16,12 @@ import { join } from "node:path";
 // A compiled binary has no readable `import.meta.dir`, so the C units travel inside the
 // binary as text and are materialised before `cc()` sees them.
 import delegatePart from "./shim/107_navigation.c" with { type: "text" };
+import installPart from "./shim/107_navigation_install.c" with { type: "text" };
 import policyPart from "./shim/110_navigation_policy.c" with { type: "text" };
 import statePart from "./shim/109_navigation_state.c" with { type: "text" };
 
-/** The three halves as one translation unit; the policy IMP needs the delegate's helpers. */
-export const navigationSource = [delegatePart, policyPart, statePart].join("\n");
+/** The four halves as one translation unit; the policy IMP needs the delegate's helpers. */
+export const navigationSource = [delegatePart, policyPart, statePart, installPart].join("\n");
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;

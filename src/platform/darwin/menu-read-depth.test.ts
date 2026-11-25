@@ -52,6 +52,14 @@ void *objc_msgSend(void *self, void *sel, ...) {
 	return (void *)1;
 }
 void *class_getInstanceMethod(void *cls, void *sel) { (void)cls; (void)sel; return (void *)1; }
+void *objc_allocateClassPair(void *super, const char *name, unsigned long extra) {
+	(void)super; (void)name; (void)extra; return (void *)2;
+}
+void objc_registerClassPair(void *cls) { (void)cls; }
+void objc_disposeClassPair(void *cls) { (void)cls; }
+int class_addMethod(void *cls, void *name, void *imp, const char *types) {
+	(void)cls; (void)name; (void)imp; (void)types; return 1;
+}
 `;
 
 const MAIN = `

@@ -10,6 +10,7 @@ extern void *objc_getClass(const char *name);
 extern void *sel_registerName(const char *name);
 extern void *objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
+extern void objc_disposeClassPair(void *cls);
 extern int class_addMethod(void *cls, void *sel, void *imp, const char *types);
 
 // Defined in shim/117_lifecycle.c, concatenated after this part into one unit.
@@ -66,6 +67,37 @@ static void dl_open_urls(void *self, void *cmd, void *urls) {
 	                                                          sel_registerName("absoluteString")));
 }
 
+// Build the delegate class, or answer 0 and write the install status the caller must refuse with.
+// Every failed selector disposes the pair: an allocated, unregistered name is invisible to
+// objc_getClass yet still occupies the name, so keeping it wedges every later install.
+static void *dl_class(int *status) {
+	void *super = objc_getClass("NSObject");
+	void *openSel = sel_registerName("application:openURLs:");
+	if (!super || !openSel) {
+		*status = 1;
+		return 0;
+	}
+	void *cls = objc_allocateClassPair(super, "CrustDeepLinkDelegate", 0);
+	if (!cls) {
+		*status = 3;
+		return 0;
+	}
+	if (!class_addMethod(cls, openSel, (void *)dl_open_urls, "v@:@")) {
+		objc_disposeClassPair(cls); // application:openURLs:
+		*status = 3;
+		return 0;
+	}
+	if (!crust_lifecycle_add_methods(cls)) {
+		// applicationDidBecomeActive:, applicationShouldTerminate:, applicationWillTerminate: or
+		// applicationShouldHandleReopen:hasVisibleWindows: — the helper stops at the first refusal.
+		objc_disposeClassPair(cls);
+		*status = 6;
+		return 0;
+	}
+	objc_registerClassPair(cls);
+	return cls;
+}
+
 // 0 installed, 1 AppKit is missing a class or selector, 2 there is no shared
 // NSApplication yet, 3 the delegate class could not be built, 4 already
 // installed, 5 another delegate is already set, 6 a lifecycle method could
@@ -83,14 +115,9 @@ int crust_deeplink_install(void) {
 	    ((void *(*)(void *, void *))objc_msgSend)(app, sel_registerName("delegate"));
 	if (current) return 5;
 
-	void *super = objc_getClass("NSObject");
-	void *openSel = sel_registerName("application:openURLs:");
-	if (!super || !openSel) return 1;
-	void *cls = objc_allocateClassPair(super, "CrustDeepLinkDelegate", 0);
-	if (!cls) return 3;
-	if (!class_addMethod(cls, openSel, (void *)dl_open_urls, "v@:@")) return 3;
-	if (!crust_lifecycle_add_methods(cls)) return 6;
-	objc_registerClassPair(cls);
+	int status = 0;
+	void *cls = dl_class(&status);
+	if (!cls) return status;
 	void *obj = ((void *(*)(void *, void *))objc_msgSend)(cls, sel_registerName("new"));
 	if (!obj) return 3;
 	// NSApplication's delegate is unretained, so this static is the only reference.
