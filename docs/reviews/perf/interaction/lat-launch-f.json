@@ -1,0 +1,53 @@
+{
+  "at": "2026-11-25T00:38:46.011Z",
+  "mode": "launch",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "launchAnchors": {
+    "readyAt": 1795567126009,
+    "firstRafAt": 1795567126010
+  },
+  "captureControl": null,
+  "arms": {},
+  "final": true,
+  "launch": {
+    "readyMs": 634,
+    "firstFrameMs": 635
+  },
+  "processStartMs": 1795567125375,
+  "label": "lat-launch-f",
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T00:38:45.392Z",
+      "load": {
+        "one": 3.22,
+        "five": 4.95,
+        "fifteen": 5.38
+      },
+      "bunProcesses": 23,
+      "probePids": [
+        7083
+      ]
+    },
+    "end": {
+      "at": "2026-11-25T00:38:46.067Z",
+      "load": {
+        "one": 3.22,
+        "five": 4.95,
+        "fifteen": 5.38
+      },
+      "bunProcesses": 23,
+      "probePids": [
+        7083
+      ]
+    },
+    "contaminated": true
+  },
+  "occlusionDetection": false,
+  "occlusion": {
+    "disabled": true,
+    "keepAwake": true,
+    "state": 8192,
+    "occluded": true
+  }
+}

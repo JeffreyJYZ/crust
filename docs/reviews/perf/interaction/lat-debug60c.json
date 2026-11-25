@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-25T00:19:20.291Z",
+  "mode": "debug",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "launchAnchors": {
+    "readyAt": 1795565960289,
+    "firstRafAt": 1795565960290
+  },
+  "captureControl": null,
+  "arms": {},
+  "progress": {
+    "keystroke": 30,
+    "lastPaintMs": 22,
+    "lastPolls": 1,
+    "lastPngLen": 47696,
+    "basePngLen": 45920
+  }
+}

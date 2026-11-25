@@ -1,0 +1,49 @@
+{
+  "at": "2026-11-25T00:23:57.262Z",
+  "mode": "core",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "launchAnchors": {
+    "readyAt": 1795566237262,
+    "firstRafAt": 1795566237260
+  },
+  "captureControl": {
+    "n": 6,
+    "p50": 22,
+    "p95": 44,
+    "max": 44,
+    "min": 22
+  },
+  "arms": {
+    "keystroke": {
+      "domArrival": {
+        "n": 60,
+        "p50": 0,
+        "p95": 0,
+        "max": 6,
+        "min": 0
+      },
+      "paintedCapture": {
+        "n": 8,
+        "p50": 22,
+        "p95": 23,
+        "max": 23,
+        "min": 22
+      },
+      "paintedFrames": {
+        "n": 52,
+        "p50": 251,
+        "p95": 251,
+        "max": 252,
+        "min": 28
+      },
+      "capturePolls": {
+        "n": 8,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "min": 1
+      }
+    }
+  }
+}

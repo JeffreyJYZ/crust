@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-25T00:15:22.454Z",
+  "mode": "core",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "launchAnchors": {
+    "readyAt": 1795565722453,
+    "firstRafAt": 1795565722452
+  },
+  "captureControl": {
+    "n": 20,
+    "p50": 22,
+    "p95": 23,
+    "max": 30,
+    "min": 21
+  },
+  "arms": {}
+}

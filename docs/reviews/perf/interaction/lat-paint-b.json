@@ -1,0 +1,81 @@
+{
+  "at": "2026-11-25T00:32:02.314Z",
+  "mode": "paint",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "launchAnchors": {
+    "readyAt": 1795566722314,
+    "firstRafAt": 1795566722312
+  },
+  "captureControl": null,
+  "arms": {
+    "scroll": {
+      "durationMs": 4500,
+      "frames": 95,
+      "expectedFrames": 270,
+      "droppedFrames": 175,
+      "fps": 21.11111111111111,
+      "frame": {
+        "n": 94,
+        "p50": 17,
+        "p95": 18,
+        "max": 18,
+        "min": 1
+      },
+      "longFrames": 0,
+      "painted": false
+    },
+    "resize": {
+      "steps": 20,
+      "frames": 0,
+      "frame": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null,
+        "min": null
+      },
+      "longFrames": 0,
+      "setSizeCost": {
+        "n": 20,
+        "p50": 2,
+        "p95": 3,
+        "max": 4,
+        "min": 2
+      }
+    }
+  },
+  "final": true,
+  "processStartMs": 1795566721579,
+  "label": "lat-paint-b",
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T00:32:01.674Z",
+      "load": {
+        "one": 9.75,
+        "five": 7.15,
+        "fifteen": 6.05
+      },
+      "bunProcesses": 25,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-25T00:32:12.459Z",
+      "load": {
+        "one": 8.98,
+        "five": 7.11,
+        "fifteen": 6.06
+      },
+      "bunProcesses": 25,
+      "probePids": []
+    },
+    "contaminated": true
+  },
+  "occlusionDetection": false,
+  "occlusion": {
+    "disabled": true,
+    "keepAwake": true,
+    "state": 8192,
+    "occluded": true
+  }
+}
