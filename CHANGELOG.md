@@ -4,6 +4,20 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.17] — 2026-11-25
+
+### Fixed
+
+- **`crust perf record` refused every run longer than one sample window.** The guard treated a page that had finished drawing as a stalled one: `!advanced` on a cumulative `framesDrawn` counter and `fps === 0` both punished a static page, so `--seconds 2`, `3` and `10` all exited 2 with `renderer stopped drawing` while `--seconds 1` worked. That is the difference between a profiler you can use and one you cannot. The one failure the recorder now owns is **the renderer never painted in the whole run** (`samples.some(s => s.frame !== null && s.frame.framesDrawn > 0)`); a page that painted and then went idle is a valid measurement, and `frame.idleWindows` in the file says so rather than being silently averaged away. `diff` shows it with a direction, so an idle-heavy run cannot be mistaken for a slow one.
+
+### Changed
+
+- **Docs audited against the shipped code, and 14 claims were wrong.** The worst was an invoke example that looked right and did nothing: `crust.invoke("perf.overlay", { … })` resolves as an *app* handler and answers `unknown-command`, because the page half takes `invoke(plugin, command, args)`. Both examples now read `crust.invoke("perf", "overlay", { enabled: true })`, proven against the real adapter. The before/after table had pairs of numbers taken from different measurement passes; it now carries per-row provenance to the review file each number comes from, and the CPU claim the review killed is gone rather than kept because it was flattering. Startup arithmetic was corrected from 40 ms to the like-for-like 72 ms, and the previously undocumented `--format json|text`, the text headline shape and the accepted `--app` shapes are now documented.
+
+### Tests
+
+- The live-page test no longer flakes the macOS gate. It builds its window off every display, which WebKit treats as occluded, and a suspended renderer never services the evaluate callback — the page was booting `visibilityState: hidden` with zero animation frames on every run. It now applies the private occlusion selector before the first evaluate (the same remedy `scripts/perf/in-process.ts` uses), proved 10/10 under four CPU hogs. The 10 s deadline I had raised to paper over it is reverted to 4 s, because a page that never answers should be reported promptly.
+
 ## [0.2.16] — 2026-11-25
 
 ### Fixed
