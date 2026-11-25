@@ -34,7 +34,9 @@ type Observer = {
 	observe: (args: { type: string }) => void;
 	disconnect: () => void;
 };
-type ObserverCtor = new (cb: (list: { getEntries(): Array<{ startTime: number }> }) => void) => Observer;
+type ObserverCtor = new (
+	cb: (list: { getEntries(): Array<{ startTime: number }> }) => void,
+) => Observer;
 
 function percentile(sorted: number[], fraction: number): number {
 	if (sorted.length === 0) return 0;
@@ -48,22 +50,28 @@ function percentile(sorted: number[], fraction: number): number {
  */
 export function createSampler(options: SamplerOptions = {}) {
 	const globals = globalThis as Record<string, unknown>;
-	const raf: Raf = options.raf ?? ((globals.requestAnimationFrame as Raf | undefined) ?? (() => 0));
+	const raf: Raf = options.raf ?? (globals.requestAnimationFrame as Raf | undefined) ?? (() => 0);
 	const cancelRaf =
-		options.cancelRaf ?? ((globals.cancelAnimationFrame as ((id: number) => void) | undefined) ?? (() => {}));
+		options.cancelRaf ??
+		(globals.cancelAnimationFrame as ((id: number) => void) | undefined) ??
+		(() => {});
 	const now = options.now ?? (() => performance.now());
 	const windowMs = options.windowMs ?? 10_000;
 	const ObserverClass = (options.performanceObserver ?? globals.PerformanceObserver) as
-		| ObserverCtor
-		| undefined;
+		ObserverCtor | undefined;
 	const supported =
 		ObserverClass !== undefined &&
-		Array.isArray((ObserverClass as unknown as { supportedEntryTypes?: unknown }).supportedEntryTypes) &&
-		((ObserverClass as unknown as { supportedEntryTypes: readonly string[] }).supportedEntryTypes).includes(
-			"longtask",
-		);
+		Array.isArray(
+			(ObserverClass as unknown as { supportedEntryTypes?: unknown }).supportedEntryTypes,
+		) &&
+		(
+			ObserverClass as unknown as { supportedEntryTypes: readonly string[] }
+		).supportedEntryTypes.includes("longtask");
 
 	const stamps: number[] = [];
+	// Deltas need their own timestamps: `stamps` is trimmed to one second for fps, so testing it
+	// against a ten-second window would never expire a delta.
+	const deltaStamps: number[] = [];
 	const deltas: number[] = [];
 	const longTaskStamps: number[] = [];
 	let framesDrawn = 0;
@@ -88,15 +96,22 @@ export function createSampler(options: SamplerOptions = {}) {
 
 	function prune(at: number): void {
 		while (stamps.length > 0 && (stamps[0] ?? 0) < at - 1000) stamps.shift();
-		while (deltas.length > 0 && (stamps[0] ?? 0) < at - windowMs) deltas.shift();
-		while (longTaskStamps.length > 0 && (longTaskStamps[0] ?? 0) < at - 1000) longTaskStamps.shift();
+		while (deltaStamps.length > 0 && (deltaStamps[0] ?? 0) < at - windowMs) {
+			deltaStamps.shift();
+			deltas.shift();
+		}
+		while (longTaskStamps.length > 0 && (longTaskStamps[0] ?? 0) < at - 1000)
+			longTaskStamps.shift();
 	}
 
 	function tick(at: number): void {
 		if (!running) return;
 		framesDrawn += 1;
 		stamps.push(at);
-		if (lastFrame !== 0) deltas.push(at - lastFrame);
+		if (lastFrame !== 0) {
+			deltas.push(at - lastFrame);
+			deltaStamps.push(at);
+		}
 		lastFrame = at;
 		prune(at);
 		handle = raf(tick);
@@ -123,6 +138,11 @@ export function createSampler(options: SamplerOptions = {}) {
 		start(): void {
 			if (running) return;
 			running = true;
+			// A hide/show must not mix frames from before the hide into the new window.
+			stamps.length = 0;
+			deltaStamps.length = 0;
+			deltas.length = 0;
+			longTaskStamps.length = 0;
 			startedAt = now();
 			lastFrame = 0;
 			handle = raf(tick);
@@ -135,6 +155,7 @@ export function createSampler(options: SamplerOptions = {}) {
 		},
 		reset(): void {
 			stamps.length = 0;
+			deltaStamps.length = 0;
 			deltas.length = 0;
 			longTaskStamps.length = 0;
 			framesDrawn = 0;
