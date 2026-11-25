@@ -99,15 +99,25 @@ export async function record(args: RecordArgs): Promise<number> {
 		// WebKit re-occludes an unfocused window on any app switch; keep the private selector live
 		// for the whole run rather than only at launch.
 		keepAlive = setInterval(() => app?.reassert(), 100);
+		const occlusionStates: number[] = [];
 		for (let index = 0; index < seconds; index++) {
 			await sleep(1000);
+			occlusionStates.push(app.occlusionNow());
 			app.reassert();
 			samples.push(buildSample(collector, Date.now()));
 		}
+		const occluded = occlusionStates.map((state) => (state & 2) === 0);
+		const occludedWindows = occluded.flatMap((value, index) => (value ? [index] : []));
+		const occlusionTransitions = occluded.filter(
+			(value, index) => index > 0 && value !== occluded[index - 1],
+		).length;
 		meta = {
 			app: root,
 			seconds,
 			occlusionDetectionEnabled: app.occlusionDetectionEnabled,
+			occlusionStates,
+			occludedWindows,
+			occlusionTransitions,
 			occlusionState: app.occlusionState,
 			keepAwake: app.keepAwake,
 			activation: "none",
@@ -125,7 +135,7 @@ export async function record(args: RecordArgs): Promise<number> {
 	const after = await recorderSnapshot();
 	const gate = processGate(before, after);
 	console.error(gate.text);
-	const summary = summaryOf(samples);
+	const summary = summaryOf(samples, meta?.occludedWindows ?? []);
 	if (meta === undefined || summary === undefined) {
 		return fail("no page frame report was collected; no sample written");
 	}

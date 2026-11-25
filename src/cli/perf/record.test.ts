@@ -89,7 +89,9 @@ describe("perf record", () => {
 		const two = JSON.parse(await readFile(out2, "utf8")) as PerfRecordFile;
 		expect(two.summary.frame.framesDrawn).toBeGreaterThan(0);
 		expect(two.samples.length).toBe(2);
-		expect(two.summary.frame.idleWindows).toBe(idleWindowCount(two.samples));
+		expect(two.summary.frame.idleWindows).toBe(
+			idleWindowCount(two.samples, two.meta.occludedWindows),
+		);
 	}, 60_000);
 
 	test("diff routes through the CLI entry point", async () => {

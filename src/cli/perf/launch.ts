@@ -21,6 +21,8 @@ export interface LaunchedApp {
 	keepAwake: boolean;
 	/** Re-assert the private selectors; a transient app switch re-suspends rAF. */
 	reassert(): void;
+	/** Live AppKit occlusion state; bit 2 means the window is composited. */
+	occlusionNow(): number;
 	evaluate(source: string): Promise<unknown>;
 	stop(): Promise<void>;
 }
@@ -95,11 +97,18 @@ export async function launchApp(
 		if (web === undefined || win === undefined)
 			throw new Error("recorder window has no webview");
 		const { S } = await import("@/platform/darwin/objc.ts");
+		// A created-but-never-ordered window can report visible while WebKit keeps its display
+		// link idle. `orderFrontRegardless` brings it in without activation: no focus is stolen,
+		// and the private occlusion selector is re-applied on every tick in case WebKit caches it
+		// at the first visibility change.
 		const reassert = (): void => {
-			S.vq1(win, "setCollectionBehavior:", 1);
+			// Keep the probe above an app the human switches to; no activation, so no focus theft.
+			S.vq1(win, "setLevel:", 3); // NSFloatingWindowLevel
+			S.v0(win, "orderFrontRegardless");
 			native.perf_occlusion(web, 0);
 		};
 		reassert();
+		const occlusionNow = (): number => Number(native.perf_occlusion_state(win));
 		const disabled = native.perf_occlusion(web, 0) === 1;
 		if (!disabled)
 			throw new Error("private WebKit occlusion selector absent: rAF would be suspended");
@@ -121,6 +130,7 @@ export async function launchApp(
 			occlusionState,
 			keepAwake,
 			reassert,
+			occlusionNow,
 			evaluate: (source: string) => adapter.evaluate("main", source),
 			stop,
 		};

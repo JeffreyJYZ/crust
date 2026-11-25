@@ -9,11 +9,18 @@ const MB = 1_048_576;
  * One-second windows where `framesDrawn` did not advance. A page that finishes its first paint
  * keeps its cumulative count with `fps` 0 in later windows; that is idle, not a stalled renderer.
  */
-export function idleWindowCount(samples: PerfSample[]): number {
+export function idleWindowCount(samples: PerfSample[], occluded: number[] = []): number {
 	let idle = 0;
 	let previous: number | undefined;
-	for (const sample of samples) {
+	for (let index = 0; index < samples.length; index++) {
+		const sample = samples[index];
+		if (sample === undefined) continue;
 		const drawn = sample.frame?.framesDrawn ?? 0;
+		if (occluded.includes(index)) {
+			// A suspended renderer is neither idle nor fast: it did not get a chance to paint.
+			previous = drawn;
+			continue;
+		}
 		if (previous !== undefined && drawn <= previous) idle += 1;
 		previous = drawn;
 	}
@@ -21,7 +28,7 @@ export function idleWindowCount(samples: PerfSample[]): number {
 }
 
 /** The last pulled sample is the headline; earlier samples travel in `samples` unchanged. */
-export function summaryOf(samples: PerfSample[]): Summary | undefined {
+export function summaryOf(samples: PerfSample[], occluded: number[] = []): Summary | undefined {
 	const last = samples.at(-1);
 	if (last === undefined || last.frame === null) return undefined;
 	let throughput = 0;
@@ -31,7 +38,11 @@ export function summaryOf(samples: PerfSample[]): Summary | undefined {
 		if (stat.p95 > invokeP95) invokeP95 = stat.p95;
 	}
 	return {
-		frame: { ...last.frame, idleWindows: idleWindowCount(samples) },
+		frame: {
+			...last.frame,
+			idleWindows: idleWindowCount(samples, occluded),
+			occludedWindows: occluded.length,
+		},
 		runtime: { ...last.runtime },
 		events: { ...last.events },
 		invokeThroughput: throughput,
@@ -44,6 +55,7 @@ export function headline(summary: Summary): string {
 	return (
 		`fps=${frame.fps.toFixed(1)} p50=${frame.p50.toFixed(2)}ms ` +
 		`p95=${frame.p95.toFixed(2)}ms long=${frame.longTasks} ` +
-		`idle=${frame.idleWindows}s heap=${(summary.runtime.heapUsed / MB).toFixed(1)}MB`
+		`idle=${frame.idleWindows}s occluded=${frame.occludedWindows}s ` +
+		`heap=${(summary.runtime.heapUsed / MB).toFixed(1)}MB`
 	);
 }

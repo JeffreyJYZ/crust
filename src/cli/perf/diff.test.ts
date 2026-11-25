@@ -19,6 +19,9 @@ function fixture(): PerfRecordFile {
 			app: "fixture",
 			seconds: 1,
 			occlusionDetectionEnabled: false,
+			occlusionStates: [2],
+			occludedWindows: [],
+			occlusionTransitions: 0,
 			occlusionState: 2,
 			keepAwake: true,
 			activation: "none",
@@ -38,7 +41,9 @@ describe("perf diff", () => {
 		expect(typeof result).not.toBe("string");
 		if (typeof result === "string") return;
 		expect(result.regressions).toEqual([]);
-		expect(result.lines.some((line) => line.includes("frame.p95") && line.includes("+0.0%"))).toBe(true);
+		expect(
+			result.lines.some((line) => line.includes("frame.p95") && line.includes("+0.0%")),
+		).toBe(true);
 		const dir = await mkdtemp(join(tmpdir(), "crust-perf-diff-"));
 		const path = join(dir, "same.json");
 		await writeFile(path, JSON.stringify(file), "utf8");

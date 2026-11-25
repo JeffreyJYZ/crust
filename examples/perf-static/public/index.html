@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head><meta charset="utf-8" /><title>Static perf probe</title></head>
+	<body>
+		<h1>Static page</h1>
+		<p id="status">painting…</p>
+		<script type="module">
+			// Genuinely idle after the first paint window. The recorder's sampler captures this
+			// wrapper when it is injected, so once the budget is spent no more frames are asked
+			// for; a later window with no new frames is idleness, not a suspended webview.
+			const real = window.requestAnimationFrame.bind(window);
+			let remaining = 60;
+			window.requestAnimationFrame = (callback) => {
+				if (remaining <= 0) return 0;
+				remaining -= 1;
+				return real((now) => {
+					callback(now);
+					if (remaining === 0) document.getElementById("status").textContent = "idle";
+				});
+			};
+		</script>
+	</body>
+</html>
