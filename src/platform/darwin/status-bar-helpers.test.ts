@@ -47,7 +47,7 @@ function shim(overrides: Partial<Record<StatusBarSymbolName, LooseSymbol>> = {})
 
 describe("status-bar ABI names", () => {
 	test("the declared symbol list is unique and covers the adapter's calls", () => {
-		expect(STATUS_BAR_SYMBOL_NAMES.length).toBe(22);
+		expect(STATUS_BAR_SYMBOL_NAMES.length).toBe(26);
 		expect(new Set(STATUS_BAR_SYMBOL_NAMES).size).toBe(STATUS_BAR_SYMBOL_NAMES.length);
 		for (const name of [
 			"tray_create",

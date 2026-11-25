@@ -1,18 +1,9 @@
-// --- accessibility: the page-facing announcement surface, beside 106_accessibility.c --
-// Compiled by platform/darwin/accessibility-page-ffi.ts with AppKit and ApplicationServices linked.
-// Every Objective-C symbol is a hand-written extern, no header is included, and no NSString leaves this
-// unit: a short ASCII NSString is a tagged pointer that cannot cross bun:ffi, so text is built here and
-// consumed here.
-//
-// A window is resolved here rather than passed in, because this unit's caller is the plugin and the
-// plugin has no platform instance: `crust:accessibility` is registered by the runtime with a bare
-// adapter, the same shape `crust:dialog` uses. Resolution deliberately lives in one function so the
-// rule is stated once — key window, else the first window, else the first whose title or accessible
-// label the caller named.
-//
-// The announcement keys are built with __CFStringMakeConstantString rather than read from the AppKit
-// externs NSAccessibilityAnnouncementKey/NSAccessibilityPriorityKey: AppKit looks the dictionary up by
-// string equality, so "AXAnnouncement"/"AXPriority" is the whole contract.
+// --- accessibility: page-facing announcement surface, beside 106_accessibility.c --
+// Compiled by accessibility-page-ffi.ts; no header, every symbol a hand-written extern. No NSString
+// leaves C (a short one is a tagged pointer that cannot cross bun:ffi), and a window is resolved here
+// because the plugin has no platform instance: key window, else first, else the named one.
+// Announcement keys use __CFStringMakeConstantString, not AppKit's key externs: AppKit compares the
+// dictionary by string equality, so "AXAnnouncement"/"AXPriority" is the whole contract.
 
 typedef void *ax_t;
 typedef void *obj_t;
@@ -57,9 +48,11 @@ static obj_t ax_nsstring(const char *text) {
 	obj_t allocated = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
 	                                                           sel_registerName("alloc"));
 	if (!allocated) return 0;
-	return ((obj_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
+	obj_t string = ((obj_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
 	    allocated, sel_registerName("initWithBytes:length:encoding:"), text,
 	    (unsigned long)ax_len(text), 4LL);
+	crust_own(string);
+	return string;
 }
 
 static const char *ax_utf8(obj_t string) {
@@ -112,7 +105,10 @@ int crust_ax_announce(const char *text, int assertive) {
 	// NSAccessibilityPriorityHigh = 90, NSAccessibilityPriorityMedium = 50.
 	obj_t priority = ((obj_t (*)(void *, void *, long long))objc_msgSend)(
 	    objc_getClass("NSNumber"), sel_registerName("numberWithInteger:"), assertive ? 90LL : 50LL);
-	if (!priority) return 0;
+	if (!priority) {
+		crust_release(message);
+		return 0;
+	}
 	ax_t keys[2];
 	ax_t values[2];
 	keys[0] = __CFStringMakeConstantString("AXAnnouncement");
@@ -120,16 +116,23 @@ int crust_ax_announce(const char *text, int assertive) {
 	keys[1] = __CFStringMakeConstantString("AXPriority");
 	values[1] = priority;
 	ax_t info = CFDictionaryCreate(0, (const void **)keys, (const void **)values, 2, 0, 0);
-	if (!info) return 0;
+	crust_cf_own(info);
+	if (!info) {
+		crust_release(message);
+		return 0;
+	}
 	ax_t app = AXUIElementCreateApplication(getpid());
+	crust_cf_own(app);
 	if (!app) {
-		CFRelease(info);
+		crust_cf_release(info);
+		crust_release(message);
 		return 0;
 	}
 	NSAccessibilityPostNotificationWithUserInfo(
 	    app, __CFStringMakeConstantString("AXAnnouncementRequested"), info);
-	CFRelease(info);
-	CFRelease(app);
+	crust_cf_release(info);
+	crust_cf_release(app);
+	crust_release(message);
 	return 1;
 }
 
@@ -143,6 +146,7 @@ int crust_ax_title(const char *text, const char *label) {
 	if (!name) return 0;
 	((void (*)(void *, void *, obj_t))objc_msgSend)(window,
 	                                                sel_registerName("setAccessibilityLabel:"), name);
+	crust_release(name);
 	return 1;
 }
 

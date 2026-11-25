@@ -19,9 +19,12 @@ import item from "./status_bar/30_item.c" with { type: "text" };
 import readback from "./status_bar/40_readback.c" with { type: "text" };
 import menu from "./status_bar/50_menu.c" with { type: "text" };
 import teardown from "./status_bar/60_teardown.c" with { type: "text" };
+import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
 /** The whole unit as C source, in declaration order, byte-exact as one file. */
 export const statusBarSource = [prelude, guards, target, item, readback, menu, teardown].join("");
+/** What cc() actually compiles: the same unit with the audit prelude and optional define. */
+export const compiledStatusBarSource = auditSource(statusBarSource);
 
 /** Pointer and void types, also used by the JS click trampoline's own signature. */
 export const PTR = FFIType.ptr;
@@ -35,17 +38,18 @@ const V = VOID;
 const CS = FFIType.cstring;
 
 function materialisedSource(): string {
-	const hash = createHash("sha256").update(statusBarSource).digest("hex").slice(0, 16);
+	const hash = createHash("sha256").update(compiledStatusBarSource).digest("hex").slice(0, 16);
 	const path = join(tmpdir(), `crust-status-bar-${hash}.c`);
-	if (!existsSync(path)) writeFileSync(path, statusBarSource);
+	if (!existsSync(path)) writeFileSync(path, compiledStatusBarSource);
 	return path;
 }
 
 function compile(): StatusBarShim {
 	return cc({
 		source: materialisedSource(),
-		flags: ["-framework", "AppKit", "-framework", "Foundation"],
+		flags: ["-framework", "AppKit", "-framework", "Foundation", ...auditFlags()],
 		symbols: {
+			...auditSymbols,
 			tray_abi: { args: [], returns: I32 },
 			tray_create: { args: [P], returns: P },
 			tray_set_title: { args: [P, P, I64], returns: I32 },

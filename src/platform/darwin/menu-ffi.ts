@@ -13,8 +13,9 @@ import { join } from "node:path";
 import apiSource from "./shim/98_menu_api.c" with { type: "text" };
 import readSource from "./shim/98_menu_read.c" with { type: "text" };
 import contextSource from "./shim/99_menu_context.c" with { type: "text" };
+import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
-const unitSource = [apiSource, readSource, contextSource].join("");
+const unitSource = auditSource([apiSource, readSource, contextSource].join(""));
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -68,8 +69,9 @@ function compile(): MenuUnit {
 
 	return cc({
 		source: file,
-		flags: ["-framework", "AppKit", "-framework", "Foundation"],
+		flags: ["-framework", "AppKit", "-framework", "Foundation", ...auditFlags()],
 		symbols: {
+			...auditSymbols,
 			menu_api_target: { args: [P], returns: I32 },
 			menu_api_begin: { args: [], returns: I32 },
 			menu_api_item: { args: [P, I64, P, I64, I32, I32], returns: I32 },

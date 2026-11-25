@@ -15,8 +15,11 @@ import { join } from "node:path";
 
 // A compiled binary has no readable `import.meta.dir`, so the C unit travels inside it as text.
 import pagePart from "./shim/106_accessibility_page.c" with { type: "text" };
+import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
 export const accessibilityPageSource = pagePart;
+/** What cc() compiles: the same page unit with the audit prelude prepended. */
+export const compiledAccessibilityPageSource = auditSource(pagePart);
 
 const I32 = FFIType.i32;
 const P = FFIType.ptr;
@@ -39,17 +42,18 @@ export interface AccessibilityPageUnit {
 
 /** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
 function sourcePath(): string {
-	const hash = createHash("sha256").update(accessibilityPageSource).digest("hex").slice(0, 16);
+	const hash = createHash("sha256").update(compiledAccessibilityPageSource).digest("hex").slice(0, 16);
 	const file = join(tmpdir(), `crust-accessibility-page-${hash}.c`);
-	if (!existsSync(file)) writeFileSync(file, accessibilityPageSource);
+	if (!existsSync(file)) writeFileSync(file, compiledAccessibilityPageSource);
 	return file;
 }
 
 function compile(): AccessibilityPageUnit {
 	return cc({
 		source: sourcePath(),
-		flags: ["-framework", "AppKit", "-framework", "ApplicationServices"],
+		flags: ["-framework", "AppKit", "-framework", "ApplicationServices", ...auditFlags()],
 		symbols: {
+			...auditSymbols,
 			crust_ax_announce: { args: [P, I32], returns: I32 },
 			crust_ax_title: { args: [P, P], returns: I32 },
 			crust_ax_focus: { args: [P], returns: I32 },

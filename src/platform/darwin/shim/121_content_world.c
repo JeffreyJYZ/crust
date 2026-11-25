@@ -19,8 +19,14 @@ obj_t shim_content_world(void) {
 	                                              sel_registerName("alloc")),
 	    sel_registerName("initWithBytes:length:encoding:"), "crust", (unsigned long)5, 4LL);
 	if (!name) return 0;
+	crust_own(name);
 	content_world = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(
 	    objc_getClass("WKContentWorld"), sel_registerName("worldWithName:"), name);
+	crust_release(name);
+	// A convenience factory is +0/autoreleased and the pump drains a pool on every tick
+	// (50_app.c), so a cached pointer with no owning reference can be freed underneath us.
+	// Pin it once; the process keeps this one world for its whole life.
+	if (content_world) crust_retain(content_world);
 	return content_world;
 }
 
@@ -58,19 +64,30 @@ int shim_webview_add_user_script(obj_t web, obj_t world, const char *source, int
 	    text, sel_registerName("initWithBytes:length:encoding:"), source,
 	    (unsigned long)shim_cstr_len(source), 4LL);
 	if (!text) return 0;
+	crust_own(text);
 
 	// `injectionTime` 0 is `WKUserScriptInjectionTimeAtDocumentStart`. The initializer is
 	// `initWithSource:injectionTime:forMainFrameOnly:inContentWorld:` (macOS 11+); the older
 	// four-argument overload has no world and would put the token back in the page.
 	obj_t allocd = ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("WKUserScript"),
 	                                                         sel_registerName("alloc"));
-	if (!allocd) return 0;
+	if (!allocd) {
+		crust_release(text);
+		return 0;
+	}
 	script = ((obj_t (*)(void *, void *, obj_t, long long, int, obj_t))objc_msgSend)(
 	    allocd, sel_registerName("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"),
 	    text, 0LL, main_frame_only ? 1 : 0, world);
-	if (!script) return 0;
+	if (!script) {
+		crust_release(text);
+		return 0;
+	}
+	crust_own(script);
 
 	((void (*)(void *, void *, obj_t))objc_msgSend)(
 	    controller, sel_registerName("addUserScript:"), script);
+	// The controller copies the script when the script is added; our own +1 ends here.
+	crust_release(script);
+	crust_release(text);
 	return 1;
 }

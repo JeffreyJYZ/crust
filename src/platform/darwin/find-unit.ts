@@ -17,8 +17,9 @@ import { join } from "node:path";
 // binary as text and is materialised before `cc()` sees it.
 import blockPart from "./shim/108_find.c" with { type: "text" };
 import idPart from "./shim/109_find_ids.c" with { type: "text" };
+import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
-const source = `${blockPart}\n${idPart}`;
+const source = auditSource(`${blockPart}\n${idPart}`);
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -73,8 +74,17 @@ function compile(): FindUnit {
 	if (!existsSync(file)) writeFileSync(file, source);
 	return cc({
 		source: file,
-		flags: ["-framework", "AppKit", "-framework", "Foundation", "-framework", "WebKit"],
+		flags: [
+			"-framework",
+			"AppKit",
+			"-framework",
+			"Foundation",
+			"-framework",
+			"WebKit",
+			...auditFlags(),
+		],
 		symbols: {
+			...auditSymbols,
 			crust_find_set_sink: { args: [P], returns: V },
 			crust_find_available: { args: [P], returns: I32 },
 			crust_find_search: { args: [P, P, I64, I32, I32, I32], returns: I32 },

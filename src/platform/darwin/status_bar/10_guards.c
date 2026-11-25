@@ -29,8 +29,10 @@ static obj_t tray_nsstring(const char *bytes, long long len) {
 	if (!tray_has_instance("NSPlaceholderString", "initWithBytes:length:encoding:")) return 0;
 	obj_t allocated = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("alloc"));
 	if (!allocated) return 0;
-	return ((obj_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
+	obj_t string = ((obj_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
 	    allocated, sel_registerName("initWithBytes:length:encoding:"), bytes, (unsigned long)len,
 	    4LL);
+	crust_own(string);
+	return string;
 }
 
