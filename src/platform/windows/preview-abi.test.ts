@@ -93,4 +93,10 @@ describe("the two returns a caller reads as a number", () => {
 		expect(BINDING).toContain("shim_preview_hwnd: { args: [], returns: P }");
 		expect(BINDING).toContain("shim_preview_hresult: { args: [], returns: I64 }");
 	});
+
+	test("hwnd clears a host the parent window destroyed with it", () => {
+		const c = readShimPart("54_preview.c");
+		expect(c).toMatch(/shim_preview_hwnd\(void\)[\s\S]{0,260}?IsWindow\(g_preview_host\)/);
+		expect(c).toMatch(/IsWindow\(g_preview_host\)[\s\S]{0,260}?g_preview_host = 0/);
+	});
 });

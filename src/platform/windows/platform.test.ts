@@ -68,6 +68,16 @@ describe("start", () => {
 		const platform = createPlatform(CONFIG, fakeBackend({ loadThrows: true }));
 		await expect(platform.start()).rejects.toThrow("cannot build the shim");
 	});
+
+	test("a failed start stays failed, and createWindow names the real cause", async () => {
+		const platform = createPlatform(CONFIG, fakeBackend({ loadThrows: true }));
+		await expect(platform.start()).rejects.toThrow("cannot build the shim");
+		expect(platform.started).toBe(false);
+		await expect(platform.start()).rejects.toThrow("cannot build the shim");
+		expect(() =>
+			platform.createWindow({ label: "main", url: "http://127.0.0.1:4321/" }),
+		).toThrow(/createWindow: start\(\) failed — .*cannot build the shim/);
+	});
 });
 
 describe("createWindow", () => {

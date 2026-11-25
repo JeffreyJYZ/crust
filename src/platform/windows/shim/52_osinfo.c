@@ -66,6 +66,7 @@ const char *shim_os_locale(void) {
 // Seconds since boot, from GetTickCount64 — the 64-bit counter, so no 49-day wrap. Windows does not
 // count time spent asleep in this counter, which is why the adapter documents it as awake time.
 double shim_os_uptime(void) {
-	if (!shim_win32_load() || !GetTickCount64) return 0.0;
+	// -1 is the refusal sentinel: 0.0 is a real reading in the first second after boot.
+	if (!shim_win32_load() || !GetTickCount64) return -1.0;
 	return (double)GetTickCount64() / 1000.0;
 }

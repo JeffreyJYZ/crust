@@ -76,7 +76,11 @@ export interface NavigationParts<S> {
  */
 export function decideNavigation<S>(parts: NavigationParts<S>, kind: number, web: number): number {
 	const surface = parts.find(web);
-	if (surface === undefined) return 1;
+	// An unmatched web pointer is a navigation from a surface the store does not know — a fast
+	// redirect during setup or a late event from a dying webview. Allowing it would bypass the
+	// origin decision entirely, so fail closed. `browser.open` registers the surface before it
+	// attaches the handlers, which keeps the normal first load from being cancelled by this rule.
+	if (surface === undefined) return 0;
 	const url = parts.urlOf(kind);
 	if (!navigationAllowed(parts.decide(parts.labelOf(surface)), url)) return 0;
 	if (kind === 0) parts.onPopup(surface, url);

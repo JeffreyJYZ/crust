@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { windowsScreenAdapter } from "./screen.ts";
+import { onceShim, windowsScreenAdapter } from "./screen.ts";
 
 /** A shim whose display answers are stated, so the arithmetic is the only variable. */
 function fakeShim(count: number, rows: Float64Array[]) {
@@ -46,6 +46,19 @@ describe("the windows screen adapter", () => {
 				workArea: { x: 1440, y: 0, width: 1920, height: 1040 },
 			},
 		]);
+	});
+
+	test("the fallback shim is compiled once, not once per list", () => {
+		let loads = 0;
+		const shim = onceShim(() => {
+			loads++;
+			return fakeShim(1, [PRIMARY]);
+		});
+		const adapter = windowsScreenAdapter(shim);
+
+		expect(adapter.list()).toHaveLength(1);
+		expect(adapter.list()).toHaveLength(1);
+		expect(loads).toBe(1);
 	});
 
 	test("a shim that cannot enumerate answers an empty list, never a fabricated display", () => {

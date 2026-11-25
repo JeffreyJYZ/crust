@@ -39,6 +39,25 @@ static void shim_opener_note(const char *text) {
 	g_opener_reason[i] = 0;
 }
 
+// The SE_ERR number is the diagnosis (2 not found, 5 denied, 31 no association). A fixed sentence
+// alone cannot tell them apart, so write the decimal digits into the reason as well.
+static void shim_opener_note_se(unsigned long long code) {
+	static const char PREFIX[] = "ShellExecuteW answered SE_ERR code ";
+	static const char TAIL[] = " at or below 32, which is not an HRESULT";
+	char text[256];
+	char digits[24];
+	int i = 0;
+	int n = 0;
+	while (PREFIX[i]) text[i] = PREFIX[i], i++;
+	if (code == 0) digits[n++] = '0';
+	while (code > 0) digits[n++] = (char)('0' + code % 10), code /= 10;
+	while (n > 0) text[i++] = digits[--n];
+	n = 0;
+	while (TAIL[n]) text[i++] = TAIL[n++];
+	text[i] = 0;
+	shim_opener_note(text);
+}
+
 // Why the last send ended as it did, naming the step that answered and the number it answered.
 const char *shim_opener_reason_text(void) { return g_opener_reason; }
 
@@ -56,7 +75,7 @@ static int shim_opener_send(const shim_wchar *verb, const shim_wchar *file,
 		return 1;
 	}
 	// 0-32 is SE_ERR_*, and printing it as a hex HRESULT would be a wrong diagnosis.
-	shim_opener_note("ShellExecuteW answered a SE_ERR_* code at or below 32, which is not an HRESULT");
+	shim_opener_note_se(code);
 	return 0;
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { cstring } from "./cstring.ts";
 import type { WindowsBackend, WindowsShim } from "./backend.ts";
 import { fakeShim } from "./fake-shim.ts";
 import { createPlatform } from "./platform.ts";
@@ -69,6 +70,11 @@ function expectCString(value: unknown, expected: string): void {
 const URL = "http://127.0.0.1:4123/";
 
 describe("FFI argument encoding", () => {
+	test("an embedded NUL is refused, not truncated at the Win32 boundary", () => {
+		expect(() => cstring("secret\0hidden")).toThrow(/contains an embedded NUL/);
+		expect(() => cstring("plain")).not.toThrow();
+	});
+
 	test("the class name is a NUL-terminated buffer, never a JavaScript string", async () => {
 		const { backend, args } = recordingBackend();
 		const platform = createPlatform({ appName: "crust-test" }, backend);

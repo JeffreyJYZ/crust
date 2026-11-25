@@ -10,7 +10,7 @@ import { unsupportedLifecycle } from "@/app-types.ts";
 import { type WindowsBackend, type WindowsShim, defaultBackend } from "./backend.ts";
 import { destroyWindow } from "./destroy.ts";
 import { type WindowsPlatformConfig } from "./platform-config.ts";
-import { startWindows } from "./startup.ts";
+import { runWindowsStart } from "./start.ts";
 import { pollTrayTick } from "./tray-tick.ts";
 import { openWindow } from "./window-open.ts";
 import { WindowsRegistry } from "./windows-registry.ts";
@@ -29,6 +29,8 @@ export class WindowsPlatform implements Platform {
 	#nativeMessages = 0;
 	#quit = false;
 	#unavailable: string | undefined;
+	/** Sticky so a retry rethrows instead of reporting a started platform with no shim. */
+	#startError: unknown;
 
 	constructor(config: WindowsPlatformConfig = {}, backend: WindowsBackend = defaultBackend()) {
 		this.#appName = config.appName ?? "crust";
@@ -68,15 +70,21 @@ export class WindowsPlatform implements Platform {
 	 */
 	async start(): Promise<void> {
 		if (this.#started) return;
+		if (this.#startError !== undefined) throw this.#startError;
+		const result = runWindowsStart(this.#backend, this.#appName);
+		if (result.thrown !== undefined) {
+			this.#startError = result.thrown;
+			this.#unavailable = result.unavailable;
+			throw result.thrown;
+		}
 		this.#started = true;
-		const started = startWindows(this.#backend, this.#appName);
-		if (!started.ok) {
-			this.#unavailable = started.unavailable;
-			console.log(started.unavailable);
+		if (!result.ok) {
+			this.#unavailable = result.unavailable;
+			console.log(this.#unavailable);
 			return;
 		}
-		this.#shim = started.shim;
-		this.#windows.attach(started.shim);
+		this.#shim = result.shim;
+		this.#windows.attach(result.shim);
 	}
 
 	/**
@@ -123,6 +131,8 @@ export class WindowsPlatform implements Platform {
 		if (!label) throw new Error("createWindow: label must not be empty");
 		const existing = this.#windows.get(label);
 		if (existing) return existing.handle;
+		if (this.#startError !== undefined)
+			throw new Error(`createWindow: start() failed — ${this.#unavailable}`);
 		if (this.#unavailable) throw new Error(this.#unavailable);
 		const shim = this.#shim;
 		if (!shim) throw new Error("createWindow: start() has not run");

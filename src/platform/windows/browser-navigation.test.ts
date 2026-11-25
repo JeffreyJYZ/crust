@@ -66,7 +66,10 @@ describe("the Windows committed-navigation gate", () => {
 
 	test("an allowed target goes through to WebView2", () => {
 		const { adapter, fake } = harness();
-		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({ ok: true, loaded: true });
+		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({
+			ok: true,
+			loaded: true,
+		});
 		expect(fake.calls.some((call) => call.startsWith("navigate:"))).toBe(true);
 	});
 
@@ -106,8 +109,25 @@ describe("the Windows committed-navigation gate", () => {
 		expect(popups).toEqual([]);
 	});
 
+	test("an unmatched web pointer cancels instead of committing past the gate", () => {
+		const parts: NavigationParts<Surface> = {
+			find: () => undefined,
+			labelOf: (entry) => entry.label,
+			urlOf: () => FOREIGN,
+			// An allow-everything decision: the only thing that can refuse here is the missing surface.
+			decide: () => () => true,
+			onPopup: () => {},
+			setSink: () => {},
+		};
+		expect(decideNavigation(parts, 1, 0xdead)).toBe(0);
+	});
+
 	test("a throwing decision refuses rather than slips past the gate", () => {
-		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
+		expect(
+			navigationAllowed(() => {
+				throw new Error("page bug");
+			}, TRUSTED),
+		).toBe(false);
 	});
 
 	test("the surface's first load is allowed, but its redirect and later commits are gated", () => {
