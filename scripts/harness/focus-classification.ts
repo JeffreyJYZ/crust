@@ -94,4 +94,8 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 		reason: "a unit test that drives a GUI child: its own `finally` restores that child's focus, and arming a process-wide exit handler inside the shared `bun test` runner would activate an app at the end of every run",
 		files: ["butter-sweep.test.ts"],
 	},
+	{
+		reason: "every window is off every display or alpha 0 with activate never, so no window can take the screen, and its own finally restores the frontmost app it captured",
+		files: ["probe-eval-visibility-fixture.ts", "probe-eval-visibility.ts"],
+	},
 ];
