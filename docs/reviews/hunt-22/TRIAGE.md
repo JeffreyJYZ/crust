@@ -72,8 +72,16 @@ Totals as reported: **9 high, 64 medium, 76 low.**
 | #75 | runtime | autostart argv, quit events reach the page, single-instance lock is atomic, stronghold commits not dropped, deep-link throws cannot leave a half-started app |
 | #76 | shim | `WKContentWorld` retained against the pump's drain (the only use-after-free), tray/menu/find/announce releases, AX focus checked, `menu.read` walks every level, `trusted` distinguishes no-grant from compile failure, testing eval slot cannot cross-talk |
 | #77 | tail | multi-cookie redaction, compiled apps stop serving `cwd/public`, gate tests assert the abort, CLI `$` substitution, Windows tray newline, cursor idempotency, templates, docs |
+| #78 | test | the eval budget is measured in pump progress, not wall clock — a stopped pump and a hung page stopped reading alike, which reddened four PRs |
+| #79 | leaks/logging | `runCommand` cancels its deadlines (512 ms → 24 ms hold), mirror line forgery (2 lines → 1), `seed`/`sid`/`keychain` redacted, one 2000-char page cap with a visible `…`, `__proto__` preserved. Overlay listener **argued down**: `destroy()` already calls the remover; a test counting add=1/remove=1 passes on unchanged source |
+| #80 | window | `invalid-title` gets its own code instead of overloading `invalid-label`, mapped to 400, documented in four places; the encoded-token item was already fixed by #68 and was not re-fixed |
+| #81 | compiled | framework cache moved to a private 0700 XDG dir with a content-hash marker and a planted-`runtime.ts` refusal, asset symlinks refused rather than silently skipped, stale `dist/single` output cleaned |
+| #82 | tests | six assertions that could not fail now fail when the bug is reintroduced — proven by disabling `reapChildren()` and finding 4 live children plus 4 leaked dirs, then zero |
 
-Every row above landed with a test that failed before it passed, except where the row says a source assertion — the Linux C paths and the sign argv have no runtime proof available on this machine and say so.
+Final counts: **10 of 10 highs closed**, every medium either fixed or argued down in a PR with a
+reason, and the low tail closed by #77, #79, #81 and #82. Two findings were refuted by test rather than
+fixed (`20` overlay listener, `15`/`22` partial), and `19`'s dev-Vite token selection was left as a
+deliberate grant-affecting decision rather than changed quietly.
 
 ## Counting rules
 
