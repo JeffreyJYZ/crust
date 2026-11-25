@@ -78,8 +78,13 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 			"e2e-detail.test.ts",
 			"e2e-harness.ts",
 			"e2e-parity-patterns.test.ts",
+			"probe-capture-png.ts",
 			"test-files.test.ts",
 		],
+	},
+	{
+		reason: "builds its window straight from the shim and never activates or orders it through LaunchServices, so the app it measures stays in the background; `guardFocus()` would activate one at exit, which is the focus theft this probe exists to avoid",
+		files: ["probe-capture-window-state.ts"],
 	},
 	{
 		reason: "enumerates test files and runs the suite with bun test: it never launches a GUI app",
