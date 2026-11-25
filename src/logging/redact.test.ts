@@ -7,13 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-	isSecretName,
-	REDACTED,
-	redactFields,
-	redactText,
-	redactValue,
-} from "@/logging/redact";
+import { isSecretName, REDACTED, redactFields, redactText, redactValue } from "@/logging/redact";
 
 describe("field names", () => {
 	test("token, secret, password and key names lose their value", () => {
@@ -59,14 +53,7 @@ describe("field names", () => {
 	});
 
 	test("a bare key, keys or a key-shaped count keeps its value", () => {
-		for (const name of [
-			"key",
-			"keys",
-			"publicKey",
-			"public_key",
-			"keyCount",
-			"shape",
-		]) {
+		for (const name of ["key", "keys", "publicKey", "public_key", "keyCount", "shape"]) {
 			expect(isSecretName(name)).toBe(false);
 		}
 	});
@@ -115,24 +102,18 @@ describe("message text", () => {
 		expect(redactText("GET /x?window=main&token=abc123&y=1")).toBe(
 			`GET /x?window=main&token=${REDACTED}&y=1`,
 		);
-		expect(redactText("http://h/p?api_key=zzz")).toBe(
-			`http://h/p?api_key=${REDACTED}`,
-		);
+		expect(redactText("http://h/p?api_key=zzz")).toBe(`http://h/p?api_key=${REDACTED}`);
 	});
 
 	test("a bearer header and a JSON pair are redacted", () => {
 		expect(redactText("authorization: Bearer abc.def-123")).toBe(
 			`authorization: Bearer ${REDACTED}`,
 		);
-		expect(redactText('{"token":"abc","ok":true}')).toBe(
-			`{"token":"${REDACTED}","ok":true}`,
-		);
+		expect(redactText('{"token":"abc","ok":true}')).toBe(`{"token":"${REDACTED}","ok":true}`);
 	});
 
 	test("a value under a url-shaped field is redacted even when the field name is not secret", () => {
-		expect(redactValue("https://h/p?token=abc", "url")).toBe(
-			`https://h/p?token=${REDACTED}`,
-		);
+		expect(redactValue("https://h/p?token=abc", "url")).toBe(`https://h/p?token=${REDACTED}`);
 	});
 
 	test("the common credential names are secret, while a bare key is not", () => {
@@ -160,7 +141,7 @@ describe("message text", () => {
 			`Authorization: Basic ${REDACTED}`,
 		);
 		expect(redactText("Cookie: session=sk-live-XYZ; theme=dark")).toBe(
-			`Cookie: ${REDACTED}; theme=dark`,
+			`Cookie: session=${REDACTED}; theme=${REDACTED}`,
 		);
 	});
 

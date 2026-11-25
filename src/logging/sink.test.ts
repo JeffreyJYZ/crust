@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createSink } from "@/logging/sink";
+import { buildRecord } from "@/logging/record";
 import { REDACTED } from "@/logging/redact";
 import type { LogRecord } from "@/logging/types";
 
@@ -46,6 +47,31 @@ describe("the log sink", () => {
 			expect("raw" in raw!).toBe(true);
 			expect(JSON.stringify(raw)).not.toContain("sk-live-RAWLEAK");
 			expect(JSON.stringify(raw)).toContain(REDACTED);
+		} finally {
+			await at.close();
+		}
+	});
+
+	test("every cookie pair is redacted in the line that reaches disk", async () => {
+		const at = await fixture();
+		try {
+			const sink = createSink({ file: at.file, errorsFile: at.errors });
+			const header = "Cookie: session=sk-live-XYZ; token=abc123; jwt=eyJx";
+			await sink.write(
+				buildRecord(
+					{ level: "info", source: "page", event: "fetch.failed", msg: header },
+					0,
+					1,
+					1,
+				),
+			);
+			await sink.flush();
+			const written = JSON.parse((await readFile(at.file, "utf8")).trim());
+			expect(written.msg).toBe(
+				`Cookie: session=${REDACTED}; token=${REDACTED}; jwt=${REDACTED}`,
+			);
+			for (const secret of ["sk-live-XYZ", "abc123", "eyJx"])
+				expect(written.msg).not.toContain(secret);
 		} finally {
 			await at.close();
 		}

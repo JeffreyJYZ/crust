@@ -62,8 +62,7 @@ export function isSecretName(name: string): boolean {
 	const parts = words(name);
 	if (parts.length === 0) return false;
 	const joined = parts.join("");
-	if (SECRET_COMPOUNDS.some((compound) => joined.endsWith(compound)))
-		return true;
+	if (SECRET_COMPOUNDS.some((compound) => joined.endsWith(compound))) return true;
 	return parts.some(isSecretWord);
 }
 
@@ -103,9 +102,25 @@ const QUERY_KEYS = [
 const QUERY = new RegExp(`([?&](?:${QUERY_KEYS.join("|")})=)[^&#\\s"']+`, "gi");
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const BASIC = /\b(Authorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]+/gi;
-const COOKIE = /\b(Cookie\s*:\s*)[^\r\n;]+/gi;
+const COOKIE = /\b(Cookie\s*:\s*)([^\r\n]+)/gi;
 const JSON_PAIR =
 	/("(?:token|secret|password|key|authorization|apiKey|api_key|privateKey|private_key|jwt|refreshToken|refresh_token)"\s*:\s*")[^"]*"/gi;
+
+/**
+ * A `Cookie:` header is a `;`-separated list of pairs. Stopping at the first `;` left every later
+ * `token=…` or `jwt=…` in clear text. Mask each pair's value in place, keeping the names so the line
+ * still says which cookies were sent.
+ */
+function redactCookiePairs(header: string, pairs: string): string {
+	const masked = pairs
+		.split(";")
+		.map((pair) => {
+			const eq = pair.indexOf("=");
+			return eq < 0 ? pair : `${pair.slice(0, eq + 1)}${REDACTED}`;
+		})
+		.join(";");
+	return `${header}${masked}`;
+}
 
 /** Replace every credential-looking substring with {@link REDACTED}. */
 export function redactText(text: string): string {
@@ -113,7 +128,9 @@ export function redactText(text: string): string {
 		.replace(QUERY, `$1${REDACTED}`)
 		.replace(BEARER, `Bearer ${REDACTED}`)
 		.replace(BASIC, `$1${REDACTED}`)
-		.replace(COOKIE, `$1${REDACTED}`)
+		.replace(COOKIE, (_match, header: string, pairs: string) =>
+			redactCookiePairs(header, pairs),
+		)
 		.replace(JSON_PAIR, `$1${REDACTED}"`);
 }
 
@@ -129,19 +146,11 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 	if (isSecretName(key)) return REDACTED;
 	if (typeof value === "string") {
 		const text = redactText(value);
-		return text.length > MAX_STRING
-			? `${text.slice(0, MAX_STRING)}…[truncated]`
-			: text;
+		return text.length > MAX_STRING ? `${text.slice(0, MAX_STRING)}…[truncated]` : text;
 	}
-	if (
-		typeof value === "number" ||
-		typeof value === "boolean" ||
-		value === null
-	)
-		return value;
+	if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
 	if (typeof value === "bigint") return value.toString();
-	if (typeof value === "undefined" || typeof value === "function")
-		return undefined;
+	if (typeof value === "undefined" || typeof value === "function") return undefined;
 	if (typeof value === "symbol") return String(value);
 	if (depth >= MAX_DEPTH) return "[depth]";
 	if (Array.isArray(value)) {
@@ -153,14 +162,15 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 			message: redactText(value.message),
 			// stack[0] is "Error: " + message: redacting the message alone leaks the same credential
 			// one line down. Every retained frame goes through the same text pass.
-			stack: value.stack?.split("\n").slice(0, 5).map((line) => redactText(line)),
+			stack: value.stack
+				?.split("\n")
+				.slice(0, 5)
+				.map((line) => redactText(line)),
 		};
 	}
 	if (value instanceof Uint8Array) return `[bytes ${value.byteLength}]`;
 	const out: Record<string, unknown> = {};
-	for (const [name, item] of Object.entries(
-		value as Record<string, unknown>,
-	)) {
+	for (const [name, item] of Object.entries(value as Record<string, unknown>)) {
 		const next = redactValue(item, name, depth + 1);
 		if (next !== undefined) out[name] = next;
 	}
@@ -168,9 +178,7 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 }
 
 /** Every field redacted, one level of keys. */
-export function redactFields(
-	fields: Record<string, unknown> = {},
-): Record<string, unknown> {
+export function redactFields(fields: Record<string, unknown> = {}): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(fields)) {
 		const next = redactValue(value, name);
