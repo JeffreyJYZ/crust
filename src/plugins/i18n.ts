@@ -5,8 +5,11 @@
  * `load` reads a directory of `*.json` files into the catalogue at runtime, so an app need not hand-write an import per locale; the on-disk reader lives in `i18n-load.ts` and is injectable for tests.
  */
 
+import { isAbsolute } from "node:path";
+
 import { CrustError } from "../bridge/errors";
 import { definePlugin, notImplemented, type NotImplemented } from "./define";
+import { canonical } from "./fs-scope-path.ts";
 import { loadCatalogue } from "./i18n-load";
 import { textDirection } from "./i18n-locale";
 import { messageFor, resolveCatalogue } from "./i18n-messages";
@@ -40,6 +43,22 @@ export type {
 
 const NO_CATALOGUE = "i18n: no message catalogue is loaded";
 const CATALOGUE_HINT = "createI18nPlugin({ messages })";
+
+/**
+ * The directory the page may ask the default loader to read. Canonicalised before the check, and
+ * the canonical path is the one loaded: a symlink inside a prefix cannot point the read outside it.
+ */
+async function scopedDirectory(directory: unknown, scope: NonNullable<I18nOptions["scope"]>) {
+	if (typeof directory !== "string" || directory.length === 0) {
+		throw new CrustError("bad-request", 'i18n.load: "directory" must be a non-empty string');
+	}
+	if (!isAbsolute(directory)) {
+		throw new CrustError("bad-request", `i18n.load: ${directory} must be an absolute path`);
+	}
+	const approved = await canonical(directory);
+	await scope.check(approved);
+	return approved;
+}
 
 export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 	const native = options.adapter;
@@ -118,7 +137,13 @@ export function createI18nPlugin(options: I18nOptions = {}): I18nPlugin {
 			},
 			/** Read `locales/*.json` from a directory into the catalogue, so no import is hand-written. */
 			load: async (args: { directory: string }): Promise<LoadResult> => {
-				Object.assign(catalogue, await loader(args?.directory));
+				// A host loader is host code, not a page path. The default disk loader is the read
+				// primitive a page can aim anywhere, so it inherits the configured fs boundary.
+				const directory =
+					options.loader === undefined && options.scope !== undefined
+						? await scopedDirectory(args?.directory, options.scope)
+						: args?.directory;
+				Object.assign(catalogue, await loader(directory));
 				const available = Object.keys(catalogue);
 				const chosen = preferred() ?? available[0] ?? options.locale ?? "en";
 				return { ok: true, locale: chosen, dir: textDirection(chosen), available };

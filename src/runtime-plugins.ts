@@ -6,7 +6,8 @@ import type { ShellConfig } from "@/config";
 import { crashRecordPath } from "@/platform/darwin/crash-record";
 // Static, not part of the darwin-only dynamic import below: `scoped` runs on the non-darwin arm
 // before that import is reached, and a `const` binding there would be in its temporal dead zone.
-import { createFsPlugin, createWindowPlugin, type PluginDefinition } from "@/plugins";
+import { createWindowPlugin, type PluginDefinition } from "@/plugins";
+import { darwinI18n, scopedPlugins } from "@/runtime-i18n-scope.ts";
 import { createSidecarPlugin } from "@/plugins/sidecar";
 import { defaultStateRoot } from "@/plugins/window-persist-store";
 import { dataPlugins } from "@/runtime-data-plugins.ts";
@@ -46,12 +47,8 @@ export async function nativePlugins(
 	const features = await featurePlugins({ pty, preview, browser });
 	// One data directory per app id; a static import, because the store is built before any platform.
 	const appRoot = defaultStateRoot(appId ?? "crust");
-	// `fs` carries the config's scope when one exists; with no scope the plugin
-	// behaves exactly as before, which is what keeps existing apps working.
-	const scoped = (plugin: PluginDefinition): PluginDefinition =>
-		plugin.name === "fs" && fs?.scope !== undefined
-			? (createFsPlugin({ allow: fs.scope }) as PluginDefinition)
-			: plugin;
+	// `fs` and `i18n.load` share the configured boundary; with none, both behave as before.
+	const { scope: fsScope, i18n, scoped } = scopedPlugins(fs);
 	const {
 		createDialogPlugin,
 		createNotificationPlugin,
@@ -79,6 +76,7 @@ export async function nativePlugins(
 		const other = await otherPlatformPlugins({
 			core,
 			scoped,
+			i18n,
 			app: appId,
 			root: appRoot,
 			power: powerPlugin,
@@ -129,7 +127,6 @@ export async function nativePlugins(
 		createAccessibilityPlugin,
 		createDownloadsPlugin,
 		createCrashReporterPlugin,
-		createI18nPlugin,
 		deepLink,
 	} = await import("@/plugins");
 	const deepLinkPlugin = deepLink.plugin;
@@ -186,7 +183,7 @@ export async function nativePlugins(
 		}),
 		darwinNetworkPlugin({ configuration: darwin.webviewConfiguration }),
 		createCrashReporterPlugin({ root: appRoot, guard, native: crashNative }),
-		createI18nPlugin({ adapter: locale.darwinLocaleAdapter() }),
+		darwinI18n(fsScope, locale.darwinLocaleAdapter()),
 		keychainPlugin,
 		deepLinkPlugin,
 		data.store,
