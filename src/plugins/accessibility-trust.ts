@@ -18,7 +18,7 @@ import { type NotImplemented, notImplemented } from "./define";
 /** A native refusal (e.g. the AX unit did not compile), converted from an adapter throw. */
 export interface PromptFailure {
 	ok: false;
-	code: "handler-error";
+	code: "handler-error" | "native-unavailable";
 	message: string;
 }
 
@@ -52,11 +52,16 @@ export interface TrustCommandResults {
 }
 
 /** One conversion for every adapter fault, so all three commands refuse in the same shape. */
-const adapterFault = (error: unknown): PromptFailure => ({
-	ok: false,
-	code: "handler-error",
-	message: error instanceof Error ? error.message : String(error),
-});
+const adapterFault = (error: unknown): PromptFailure => {
+	// An adapter can name its own refusal ("native-unavailable" on a compile failure) so a page can
+	// tell a missing native half from an AX permission answer that genuinely came back false.
+	const code = (error as { code?: unknown } | null)?.code;
+	return {
+		ok: false,
+		code: code === "native-unavailable" ? code : "handler-error",
+		message: error instanceof Error ? error.message : String(error),
+	};
+};
 
 export function trustCommands(
 	adapter: AccessibilityAdapter | undefined,

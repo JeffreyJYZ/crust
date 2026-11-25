@@ -44,6 +44,19 @@ describe("accessibility trust-read refusals", () => {
 		});
 	});
 
+	test("a named native-unavailable refusal keeps its code", async () => {
+		const plugin = createAccessibilityPlugin(
+			adapter(() => {
+				throw Object.assign(new Error(FAILURE), { code: "native-unavailable" });
+			}),
+		);
+		expect(await plugin.commands.trusted()).toEqual({
+			ok: false,
+			code: "native-unavailable",
+			message: FAILURE,
+		});
+	});
+
 	test("a throwing elementCount() becomes the same typed handler-error", async () => {
 		const plugin = createAccessibilityPlugin(
 			countAdapter(() => {

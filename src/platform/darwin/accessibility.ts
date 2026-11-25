@@ -106,7 +106,11 @@ export function darwinAccessibilityAdapter(): DarwinAccessibilityAdapter {
 	return {
 		trusted: () => {
 			const unit = compiled();
-			if (typeof unit === "string") return false;
+			// A native compile failure is not an AX refusal: keep `false` for the real
+			// AXIsProcessTrusted() answer only, so a page never sends someone to grant a
+			// permission they already granted when C could not be built.
+			if (typeof unit === "string")
+				throw Object.assign(new Error(unit), { code: "native-unavailable" });
 			return Number(unit.symbols.crust_ax_trusted() ?? 0) === 1;
 		},
 		prompt: () => {
@@ -146,8 +150,16 @@ export function darwinAccessibilityAdapter(): DarwinAccessibilityAdapter {
 			const unit = pageCompiled();
 			if (typeof unit === "string") return { focused: false, reason: unit };
 			const moved = Number(unit.symbols.crust_ax_focus(cstr(label ?? "")) ?? 0);
+			if (moved === 2)
+				return {
+					focused: false,
+					reason: "an AX window matched, but AppKit refused AXFocusedWindow or AXFocused; assistive focus did not move",
+				};
 			return moved === 1
-				? { focused: true, reason: "AXFocusedWindow and AXFocused were set and posted" }
+				? {
+						focused: true,
+						reason: "AXFocusedWindow and AXFocused were set and their change notifications were posted",
+					}
 				: {
 						focused: false,
 						reason: `no AX window matched ${JSON.stringify(label ?? "the key window")}`,

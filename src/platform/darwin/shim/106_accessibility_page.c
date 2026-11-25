@@ -23,7 +23,7 @@ extern int AXUIElementCopyAttributeValue(ax_t element, ax_t attribute, ax_t *val
 extern int AXUIElementSetAttributeValue(ax_t element, ax_t attribute, ax_t value);
 extern ax_t kCFBooleanTrue;
 extern void NSAccessibilityPostNotificationWithUserInfo(ax_t element, ax_t notification,
-                                                       ax_t user_info);
+                                                        ax_t user_info);
 extern int getpid(void);
 
 #define AX_OK 0
@@ -54,6 +54,10 @@ static obj_t ax_nsstring(const char *text) {
 	crust_own(string);
 	return string;
 }
+
+// Ownership follows 00_audit.c: crust_own when ax_nsstring builds the +1, crust_release after the
+// AppKit send that copies it; CF objects use crust_cf_own / crust_cf_release. Focus lives in the
+// adjacent 106_accessibility_focus.c part, concatenated after this one.
 
 static const char *ax_utf8(obj_t string) {
 	if (!string) return 0;
@@ -116,6 +120,8 @@ int crust_ax_announce(const char *text, int assertive) {
 	keys[1] = __CFStringMakeConstantString("AXPriority");
 	values[1] = priority;
 	ax_t info = CFDictionaryCreate(0, (const void **)keys, (const void **)values, 2, 0, 0);
+	// The dictionary retains its values; our +1 message ends here on both the success and the
+	// nil-dictionary path. priority is +0 from numberWithInteger: and stays with the pool.
 	crust_cf_own(info);
 	if (!info) {
 		crust_release(message);
@@ -147,53 +153,5 @@ int crust_ax_title(const char *text, const char *label) {
 	((void (*)(void *, void *, obj_t))objc_msgSend)(window,
 	                                                sel_registerName("setAccessibilityLabel:"), name);
 	crust_release(name);
-	return 1;
-}
-
-// Move assistive focus to that window: set AXFocusedWindow on the app and AXFocused on the matching AX
-// window element, then post both changes, which is what makes a screen reader actually move rather than
-// only record the intent. The AX element is matched by window number, the one identity an NSWindow and
-// its AXUIElement both carry.
-int crust_ax_focus(const char *label) {
-	obj_t window = ax_window(label);
-	if (!window) return 0;
-	ax_t app = AXUIElementCreateApplication(getpid());
-	if (!app) return 0;
-	ax_t list = 0;
-	if (AXUIElementCopyAttributeValue(app, __CFStringMakeConstantString("AXWindows"), &list) != AX_OK ||
-	    !list) {
-		CFRelease(app);
-		return 0;
-	}
-	long long wanted = ((long long (*)(void *, void *))objc_msgSend)(window,
-	                                                                sel_registerName("windowNumber"));
-	ax_t target = 0;
-	long n = CFArrayGetCount(list);
-	for (long i = 0; i < n && !target; i++) {
-		ax_t element = CFArrayGetValueAtIndex(list, i);
-		ax_t number_value = 0;
-		if (AXUIElementCopyAttributeValue(element, __CFStringMakeConstantString("AXWindowNumber"),
-		                                  &number_value) != AX_OK ||
-		    !number_value)
-			continue;
-		long long candidate = ((long long (*)(void *, void *))objc_msgSend)(
-		    number_value, sel_registerName("longLongValue"));
-		CFRelease(number_value);
-		if (candidate == wanted) target = element;
-	}
-	if (!target) {
-		CFRelease(list);
-		CFRelease(app);
-		return 0;
-	}
-	AXUIElementSetAttributeValue(app, __CFStringMakeConstantString("AXFocusedWindow"), target);
-	AXUIElementSetAttributeValue(target, __CFStringMakeConstantString("AXFocused"), kCFBooleanTrue);
-	AXUIElementSetAttributeValue(target, __CFStringMakeConstantString("AXMain"), kCFBooleanTrue);
-	NSAccessibilityPostNotificationWithUserInfo(
-	    app, __CFStringMakeConstantString("AXFocusedWindowChanged"), 0);
-	NSAccessibilityPostNotificationWithUserInfo(
-	    target, __CFStringMakeConstantString("AXFocusedUIElementChanged"), 0);
-	CFRelease(list);
-	CFRelease(app);
 	return 1;
 }

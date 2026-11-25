@@ -1,6 +1,7 @@
 /**
- * The page-facing half of the accessibility unit: `shim/106_accessibility_page.c`, compiled by `cc()`
- * with AppKit and ApplicationServices linked by name — no artifact, no header.
+ * The page-facing half of the accessibility unit: `shim/106_accessibility_page.c` and
+ * `shim/106_accessibility_focus.c`, concatenated into one unit and compiled by `cc()` with AppKit
+ * and ApplicationServices linked by name — no artifact, no header.
  * Split from `accessibility-ffi.ts` because these are the calls a page makes (speak, name a window,
  * move focus) while that one is the trust probe, and one bundle for both would put a page surface
  * behind a permission read it does not need.
@@ -14,12 +15,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // A compiled binary has no readable `import.meta.dir`, so the C unit travels inside it as text.
+import focusPart from "./shim/106_accessibility_focus.c" with { type: "text" };
 import pagePart from "./shim/106_accessibility_page.c" with { type: "text" };
 import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
-export const accessibilityPageSource = pagePart;
-/** What cc() compiles: the same page unit with the audit prelude prepended. */
-export const compiledAccessibilityPageSource = auditSource(pagePart);
+export const accessibilityPageSource = [pagePart, focusPart].join("");
+/** What cc() compiles: the same two parts with the audit prelude prepended. */
+export const compiledAccessibilityPageSource = auditSource(accessibilityPageSource);
 
 const I32 = FFIType.i32;
 const P = FFIType.ptr;
