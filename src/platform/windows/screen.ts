@@ -11,6 +11,7 @@
 import type { ScreenAdapter, ScreenBounds, ScreenRecord } from "@/plugins/screen";
 import type { FrameRect } from "@/plugins/window-frame";
 import { defaultBackend, type WindowsShim } from "./backend.ts";
+import { activeWindowsShim } from "./active-shim.ts";
 
 /** One display from ten doubles: frame, work area, scale, then the primary flag. */
 function record(index: number, out: Float64Array): ScreenRecord | undefined {
@@ -49,12 +50,24 @@ function record(index: number, out: Float64Array): ScreenRecord | undefined {
  * than guessing, and the plugin reports that honestly: nothing is connected is not the same as
  * nothing being possible.
  *
- * The shim compiles on the first `list()`, never at import: an app that never asks about displays
- * pays nothing, and the compile is the same one the window path already pays for.
+ * The shim is the platform's own if one is running; otherwise a single fallback compile happens on
+ * the first `list()`, never at import. A fresh `cc()` per call would grow the process and duplicate
+ * the native state the window path already owns.
  */
-export function windowsScreenAdapter(
-	native: () => WindowsShim = () => defaultBackend().load(),
-): ScreenAdapter {
+/** Compile at most once per process; `cc()` returns a fresh symbol table and loaded library each call. */
+export function onceShim(load: () => WindowsShim): () => WindowsShim {
+	let cached: WindowsShim | undefined;
+	return () => (cached ??= load());
+}
+
+const loadOnce = onceShim(() => defaultBackend().load());
+
+/** Prefer the platform's already-compiled shim; only compile our own when no platform started one. */
+function defaultScreenShim(): WindowsShim {
+	return activeWindowsShim() ?? loadOnce();
+}
+
+export function windowsScreenAdapter(native: () => WindowsShim = defaultScreenShim): ScreenAdapter {
 	return {
 		list() {
 			const shim = native();

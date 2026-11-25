@@ -51,8 +51,10 @@ export function windowsOsAdapter(
 		/** `GetTickCount64` in seconds. Windows excludes time asleep from this counter. */
 		uptime: () => {
 			const shim = requireWindowsShim(native);
-			const seconds = Number(shim.shim_os_uptime() ?? 0);
-			if (!(seconds > 0)) {
+			const seconds = Number(shim.shim_os_uptime() ?? -1);
+			// The shim names an unreadable counter with -1. A real 0 is the first second of an
+			// awake session and must be reported, not mistaken for the refused reading.
+			if (!(seconds >= 0)) {
 				throw new Error("crust: GetTickCount64 did not report a system uptime");
 			}
 			return seconds;

@@ -4,19 +4,25 @@
 
 import { ptr } from "bun:ffi";
 
-// A JS string cannot be passed into compiled C, so a `const char *` parameter
-// gets an encoded buffer whose bytes stay reachable for the process lifetime.
-const buffers = new Set<Uint8Array>();
-const cbufCache = new Map<string, { p: number; len: number }>();
+// A JS string cannot be passed into compiled C, so a `const char *` parameter gets an encoded
+// buffer. Every send is synchronous and C copies the bytes, so a buffer only has to stay alive for
+// the duration of one call. An unbounded cache turned distinct page labels into a process-lifetime
+// heap leak; keep only a small recent window, which is also enough for exact-repeat callers.
+/** How many encoded strings stay reachable at once. */
+export const CBUF_LIMIT = 64;
+const cbufCache = new Map<string, { p: number; len: number; bytes: Uint8Array }>();
 
 /** An encoded, NUL-terminated view of `s` and its byte length without the NUL. */
 export function cbuf(s: string): { p: number; len: number } {
 	let cached = cbufCache.get(s);
 	if (cached === undefined) {
 		const bytes = new TextEncoder().encode(`${s}\0`);
-		buffers.add(bytes);
-		cached = { p: ptr(bytes), len: bytes.length - 1 };
+		cached = { p: ptr(bytes), len: bytes.length - 1, bytes };
 		cbufCache.set(s, cached);
+		if (cbufCache.size > CBUF_LIMIT) {
+			const oldest = cbufCache.keys().next().value;
+			if (oldest !== undefined) cbufCache.delete(oldest);
+		}
 	}
 	return cached;
 }

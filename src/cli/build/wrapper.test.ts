@@ -45,6 +45,7 @@ describe("wrapperSource", () => {
 			"await startApp({",
 			"\tconfig: production,",
 			"\tassets,",
+			'\troot: "/crust-single/no-project",',
 			`\tentryModule: () => import(${JSON.stringify("/p/main.ts")}),`,
 			"});",
 			"",
@@ -54,6 +55,13 @@ describe("wrapperSource", () => {
 		expect(source).toBe(wrapperSource({ ...base, extensionFiles: [] }));
 		expect(source).not.toContain("extension");
 		expect(source).not.toContain("registry");
+	});
+
+	test("both generated entries deny a project root, so no cwd/public fallback exists", () => {
+		for (const files of [[], ["extensions/clock.ts"]]) {
+			const source = wrapperSource({ ...base, extensionFiles: files });
+			expect(source).toContain('\troot: "/crust-single/no-project",');
+		}
 	});
 
 	test("one extension loads lazily and registers at the registry line", () => {

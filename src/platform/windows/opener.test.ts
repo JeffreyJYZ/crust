@@ -7,6 +7,7 @@
  * machine running the suite, so `existsSync` is not being faked.
  */
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { createOpenerPlugin } from "@/plugins/opener";
 import { NO_WINDOWS_SHIM } from "./active-shim.ts";
 import type { FakeOptions } from "./fake-backend.ts";
@@ -19,6 +20,13 @@ function adapter(options: FakeOptions = {}) {
 }
 
 describe("opener on Windows", () => {
+	test("a refused ShellExecute records the SE_ERR number, not only a sentence", async () => {
+		const c = await Bun.file(join(import.meta.dir, "shim/51_opener.c")).text();
+		expect(c).toContain("shim_opener_note_se(code)");
+		expect(c).toContain("digits[n++] = (char)('0' + code % 10)");
+		expect(c).not.toContain('shim_opener_note("ShellExecuteW answered a SE_ERR_* code');
+	});
+
 	test("openPath hands an existing path to the shell", () => {
 		const native = adapter();
 		expect(native.openPath(import.meta.dir)).toEqual({

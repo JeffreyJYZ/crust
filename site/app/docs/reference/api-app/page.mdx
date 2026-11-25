@@ -47,6 +47,7 @@ Levels are `trace`, `debug`, `info`, `warn` or `error`; `info` is the default. E
 | `setLocale` | `{ locale }`     | `{ ok: true, locale }`            |
 | `messages`  | `{ locale? }`    | `{ ok: true, locale, messages }`  |
 | `translate` | `{ key, vars? }` | `{ ok: true, locale, key, text }` |
+| `load`      | `{ directory }`  | `{ ok: true, locale, available }` |
 
 The catalogue is plain data the app supplies: `locale → key → text`, with `{name}` placeholders. `translate` resolves `key`, then `key_one`/`key_other` from `vars.count`, then interpolates every `{name}` from `vars`. `messages` answers the whole table for one locale. `setLocale` is in-memory on purpose — macOS keeps the language list in System Settings, so an app cannot change it, and pretending otherwise would report a language the system does not use. The answer's `locale` is the one the lookup actually landed on.
 

@@ -39,8 +39,12 @@ describe("os.info's native half on Windows", () => {
 		expect(adapter({ osUptime: 4321.5 }).uptime()).toBe(4321.5);
 	});
 
-	test("a zero uptime is refused rather than reported as a fresh boot", () => {
-		expect(() => adapter({ osUptime: 0 }).uptime()).toThrow("GetTickCount64");
+	test("a zero uptime is a real reading in the first second after boot", () => {
+		expect(adapter({ osUptime: 0 }).uptime()).toBe(0);
+	});
+
+	test("the shim's negative sentinel is still a failure", () => {
+		expect(() => adapter({ osUptime: -1 }).uptime()).toThrow("GetTickCount64");
 	});
 
 	test("there is no bundle, so no app version is invented", () => {

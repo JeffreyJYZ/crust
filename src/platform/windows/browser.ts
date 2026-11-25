@@ -28,7 +28,8 @@ import type {
 import { asFailure } from "@/plugins/browser-failures";
 import { type Surface, SurfaceStore } from "@/plugins/browser-surfaces";
 import { type NotImplemented, notImplemented } from "@/plugins/define";
-import { firstLoadAware, NavigationDecisions, navigationAllowed, navigationChannel } from "./browser-navigation.ts";
+import { NavigationDecisions, navigationAllowed, navigationChannel } from "./browser-navigation.ts";
+import { registerWindowsSurface } from "./browser-surface.ts";
 import { realPorts, type WindowsBrowserPorts } from "./browser-ports";
 
 export type { WindowsBrowserPorts } from "./browser-ports";
@@ -91,29 +92,28 @@ export function windowsBrowserAdapter(ports?: WindowsBrowserPorts): BrowserAdapt
 						new Error(`browser.open: the surface could not load ${input.url}`),
 					);
 				}
-				// Both subscriptions are required: without them `state.loading` never clears, and a
-				// `target=_blank` would become a window WebView2 owns rather than an opener hand-off.
+				// Both subscriptions are required: no load state, and no popup WebView2 owns itself.
+				const undo = registerWindowsSurface(
+					store,
+					decisions,
+					input as NavigateInput,
+					{ handle, child },
+					owner.label,
+					() => p.release(child),
+				);
 				if (!p.watch(handle)) {
-					p.release(child);
+					undo();
 					return asFailure(
 						new Error("browser.open: WebView2 refused the navigation handlers"),
 					);
 				}
 				if (!p.refusePopups(handle)) {
-					p.release(child);
+					undo();
 					return asFailure(
 						new Error("browser.open: WebView2 refused the new-window handler"),
 					);
 				}
 				channel();
-				const decide = (input as NavigateInput).onNavigate;
-				if (decide !== undefined) decisions.set(input.label, firstLoadAware(input.url, decide));
-				store.set({
-					label: input.label,
-					web: { handle, child },
-					owner: owner.label,
-					onPopup: input.onPopup,
-				});
 				return { ok: true, label: input.label };
 			} catch (error) {
 				return asFailure(error);

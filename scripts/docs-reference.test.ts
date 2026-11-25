@@ -129,3 +129,64 @@ describe("namespace coverage", () => {
 		).toEqual(["database"]);
 	});
 });
+
+/** hunt-22/16: claims that contradicted the validator, the registry or the running code. */
+describe("reference claims match the code", () => {
+	const read = (path: string) => Bun.file(`site/app/docs/${path}`).text();
+
+	it("the CLI reference counts the five cac commands plus perf", async () => {
+		const cli = await read("reference/cli/page.mdx");
+		expect(cli).toContain("six commands");
+		expect(cli).not.toContain("five commands");
+		expect(cli).toContain("crust perf");
+	});
+
+	it("the API reference lists every registered command in the four truncated tables", async () => {
+		const desktop = await read("reference/api-desktop/page.mdx");
+		for (const command of ["announce", "title", "focus"])
+			expect(desktop, `accessibility.${command}`).toContain(`\`${command}\``);
+		const web = await read("reference/api-web/page.mdx");
+		for (const command of ["status", "onChange", "report", "configure"])
+			expect(web, `network/crash.${command}`).toContain(`\`${command}\``);
+		expect(await read("reference/api-app/page.mdx")).toContain("`load`");
+	});
+
+	it("the CSP pages resolve the effective directive, not just script-src", async () => {
+		expect(config).not.toContain("a policy with no `script-src` is fine");
+		expect(config).toContain("`script-src-elem`, then `script-src`, then **`default-src`**");
+		expect(await read("limits/page.mdx")).toContain(
+			"`script-src-elem`, then `script-src`, then `default-src`",
+		);
+	});
+
+	it("logging.console mirrors warn and error in a built app, every level in dev", async () => {
+		const guide = await read("guides/logging/page.mdx");
+		expect(guide).not.toContain("mirrors every written record");
+		expect(guide).toContain("mirrors `warn` and `error`");
+		expect(config).toContain("only `warn` and `error` are mirrored");
+	});
+
+	it("the Linux network refusal names the GIO monitor the code names", async () => {
+		const guide = await read("guides/network/page.mdx");
+		expect(guide).not.toContain("NetworkChangeNotifier from Gdk");
+		expect(guide).toContain(
+			"GNetworkMonitor in GIO (libgio-2.0.so.0, loaded through libgtk-3)",
+		);
+	});
+
+	it("the crash record shape includes type, message and stack", async () => {
+		const web = await read("reference/api-web/page.mdx");
+		expect(web).toContain(
+			"`{ type, signal, code, address, at, handler, exitCode, message?, stack? }`",
+		);
+		expect(web).not.toContain(
+			"A crash record is `{ signal, code, address, at, handler, exitCode }`",
+		);
+	});
+
+	it("the network body bound refuses 262144 bytes, not only more", async () => {
+		const web = await read("reference/api-web/page.mdx");
+		expect(web).toContain("a body of 262144 bytes or more");
+		expect(web).toContain("262143 bytes is the most the native buffer can deliver");
+	});
+});

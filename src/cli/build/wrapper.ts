@@ -65,6 +65,10 @@ export function wrapperSource(options: WrapperOptions): string {
 		"await startApp({",
 		"\tconfig: production,",
 		"\tassets,",
+		// A built app serves only what it embedded. Without this, `startApp` derives a project
+		// root from cwd and the bridge falls back to `<launch cwd>/public` for every path the
+		// asset table lacks, so behaviour changes with the directory the binary was launched in.
+		`\troot: ${JSON.stringify(NO_PROJECT_ROOT)},`,
 		...(files.length === 0 ? [] : ["\tregistry,"]),
 		`\tentryModule: () => import(${JSON.stringify(options.entryPath)}),`,
 		"});",

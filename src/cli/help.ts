@@ -18,7 +18,10 @@ export const BASIC_EXAMPLES =
 	`${TAGLINE}\n\n` +
 	"  $ crust init my-app    # usage: crust init <dir>\n" +
 	"  $ crust dev            # usage: crust dev [file]\n" +
-	"  $ crust build          # usage: crust build [file]";
+	"  $ crust build          # usage: crust build [file]\n" +
+	// `perf` owns its argv and help, so it is not a cac command. It still belongs in the
+	// global example list — otherwise a reader cannot discover the profiler from `--help`.
+	"  $ crust perf record --app . --seconds 10 --out perf.json  # profile the app";
 
 /** The one-line descriptions registered with cac, keyed by the command table. */
 export const COMMAND_DESCRIPTIONS: Record<CommandName, string> = {

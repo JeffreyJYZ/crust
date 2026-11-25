@@ -59,6 +59,8 @@ Failure codes: `bad-request` (an empty `url`, a `url` with no scheme, an unknown
 
 | command    | arguments   | answer                                      |
 | ---------- | ----------- | ------------------------------------------- |
+| `status`   | none        | `{ ok: true, online, interfaceKinds }`      |
+| `onChange` | none        | `{ ok: true, event: "network:change" }`     |
 | `rules`    | none        | `{ ok, scheme, rules, registered, reason }` |
 | `setRules` | `{ rules }` | `{ ok, scheme, rules, registered, reason }` |
 | `log`      | none        | `{ ok: true, entries }`                     |
@@ -66,7 +68,7 @@ Failure codes: `bad-request` (an empty `url`, a `url` with no scheme, an unknown
 
 A rule is `{ pattern, action, body?, type? }`: `pattern` is a URL, or a URL with `*` standing for any run of characters; `action` is `"allow"` or `"block"`. The first matching rule wins and no match allows an empty body. An `allow` rule serves the bytes it carries — it is never a pass-through and never a fetch — with `type` defaulting to `text/plain; charset=utf-8`. A `block` rule that carries `body` or `type` is refused, because nothing would ever serve it.
 
-`scheme` is `crust-net`, and `registered` says whether the handler landed at all. Only requests under that scheme are intercepted. `setRules` validates the whole set before storing any of it, so a refused rule leaves the rules in force untouched. A pattern over 2048 characters, more than 32 wildcards, a body over 262144 bytes or a content type over 127 bytes is refused by name. A URL at the native buffer's 2047-byte bound is answered `block` rather than matched, because a truncated prefix would let a tail-anchored rule be dodged.
+`scheme` is `crust-net`, and `registered` says whether the handler landed at all. Only requests under that scheme are intercepted. `setRules` validates the whole set before storing any of it, so a refused rule leaves the rules in force untouched. A pattern over 2048 characters, more than 32 wildcards, a body of 262144 bytes or more or a content type over 127 bytes is refused by name (262143 bytes is the most the native buffer can deliver). A URL at the native buffer's 2047-byte bound is answered `block` rather than matched, because a truncated prefix would let a tail-anchored rule be dodged.
 
 `log` answers at most the last 100 entries, oldest first, each `{ url, action, status, bytes?, reason? }`. `clearLog` answers how many it dropped. Each decision also pushes `network:request` with the entry.
 
@@ -78,10 +80,12 @@ Failure codes: `bad-request` (a rule set that is not an array, a rule with no `p
 | ----------- | ------------ | --------------------------------------------------------- |
 | `last`      | none         | `{ crash, root }`                                         |
 | `list`      | `{ limit? }` | `{ crashes, root }`                                       |
+| `report`    | `{ message, stack? }` | `{ ok: true, crash, root }`                      |
+| `configure` | `{ dir? }`   | `{ ok: true, dir, root }`, or `{ ok: false, code: "outside-data-root" }` |
 | `clear`     | none         | `{ ok: false, code: "page-cannot-clear", message, root }` |
 | `install`   | none         | `{ armed, reason, record, root }`                         |
 | `uninstall` | none         | `{ armed: false, reason }`                                |
 
-A crash record is `{ signal, code, address, at, handler, exitCode }`: `signal` is e.g. `SIGSEGV`, `code` is `si_code`, `address` is hex, `at` is when the guard observed it, and `exitCode` is 70 for a recorded fault. `last` answers `crash: null` when the guard is running and nothing has crashed. `list` answers oldest first, `limit` keeping the newest. `install` arms the handlers so the next fault writes a record, and `uninstall` restores the default disposition.
+A crash record is `{ type, signal, code, address, at, handler, exitCode, message?, stack? }`: `type` is `"signal"` for a fault the guard watched die or `"webview"` for an error the page caught and reported, and it is how the two halves are told apart. `signal` is e.g. `SIGSEGV` (`null` on a webview record), `code` is `si_code`, `address` is hex, `at` is when the guard observed it, `exitCode` is 70 for a recorded fault (`null` on a webview record), and a webview record carries `message` and an optional `stack` instead. `last` answers `crash: null` when the guard is running and nothing has crashed. `list` answers oldest first, `limit` keeping the newest. `install` arms the handlers so the next fault writes a record, and `uninstall` restores the default disposition.
 
 **`clear` always refuses from a page.** The page is the process whose bug produced the crash, so it is the last caller that may delete the record of it: the answer is `{ ok: false, code: "page-cannot-clear" }`, and the runtime is the only caller allowed to clear. Every command answers `not-implemented` with `requires: "startCrashGuard()"` when the guard process is not running — an empty list would read as "no crashes" — and `install`/`uninstall` also need the darwin signal unit, answering `requires: "armCrashHandlers()"` without it.

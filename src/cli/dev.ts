@@ -10,6 +10,7 @@ import { publishReload, RELOAD_ENV, RELOAD_FILE, watchPublic } from "./dev/reloa
 import { extensionErrorLines, loadProjectExtensions } from "@/extensions/project.ts";
 import { detectSingle } from "@/single";
 import { bridgeEnv, waitForDevServer } from "./dev/frontend.ts";
+import { devTimeoutMessage } from "./dev/timeout.ts";
 import { watchRuntime } from "./dev/runtime.ts";
 import { devSingle } from "./dev/single.ts";
 import { exists, fail, line, missingInstall, type CliOptions } from "./util.ts";
@@ -160,11 +161,7 @@ export async function dev(options: CliOptions): Promise<number> {
 		const ready = await waitForDevServer(devUrl, 30_000);
 		if (!ready) {
 			frontend?.kill();
-			return fail(
-				"dev",
-				`${devUrl} did not accept a connection within 30 s — the window loads it once and ` +
-					"cannot retry, so nothing would render. Check the beforeDevCommand output above",
-			);
+			return fail("dev", devTimeoutMessage(devUrl, beforeDevCommand));
 		}
 		line("frontend", `${devUrl} answered`);
 	}

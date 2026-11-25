@@ -176,11 +176,17 @@ export function crustDep(root: string, isCheckout: boolean, version: string): st
 		: "github:JeffreyJYZ/crust";
 }
 
-/** Replace the template tokens in a UTF-8 file. Binary files never reach this. */
+/**
+ * Replace the template tokens in a UTF-8 file. Binary files never reach this.
+ *
+ * One pass, and a function replacer: a string replacement interprets `$&`, `$'`, `` $` `` and `$1`
+ * inside a directory name, so `my$&app` put the token back in the scaffold and `a$'b` spliced the
+ * rest of the template file into it. One pass also stops a substituted name that happens to look
+ * like another token from being rewritten again.
+ */
 function applyTokens(bytes: Uint8Array, tokens: Record<string, string>): string {
-	let text = Buffer.from(bytes).toString("utf8");
-	for (const [token, value] of Object.entries(tokens)) {
-		text = text.replaceAll(token, value);
-	}
-	return text;
+	const text = Buffer.from(bytes).toString("utf8");
+	const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const pattern = new RegExp(Object.keys(tokens).map(escape).join("|"), "g");
+	return text.replace(pattern, (token) => tokens[token] ?? token);
 }

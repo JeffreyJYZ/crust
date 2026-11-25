@@ -27,6 +27,7 @@ const TEMPLATES = [
 	{ name: "next", flag: "--next", page: ["app/page.tsx", "main.ts"] },
 	{ name: "svelte", flag: "--svelte", page: ["src/App.svelte", "main.ts"] },
 	{ name: "vue", flag: "--vue", page: ["src/App.vue", "main.ts"] },
+	{ name: "solid", flag: "--solid", page: ["src/App.tsx", "main.ts"] },
 ] as const;
 
 const read = (dir: string, path: string): Promise<string> => Bun.file(join(dir, path)).text();
@@ -49,7 +50,12 @@ function configObject(source: string): unknown {
  */
 function actionsIn(source: string): string[] {
 	const found = new Set<string>();
-	for (const match of source.matchAll(/\.invoke\(\s*"([^"]+)"\s*(?:,\s*"([^"]+)")?/g)) {
+	// Solid calls `invoke<string>("greet", …)`. A parser that requires `(` right after
+	// `invoke` sees no calls there and the row passes vacuously, so an optional type
+	// argument is part of the grammar, not a special case in the template list.
+	for (const match of source.matchAll(
+		/\.invoke(?:<[^>]*>)?\s*\(\s*"([^"]+)"\s*(?:,\s*"([^"]+)")?/g,
+	)) {
 		const [, first, second] = match;
 		if (first === undefined) continue;
 		found.add(second === undefined ? `app:${first}` : `${first}:${second}`);
@@ -58,6 +64,12 @@ function actionsIn(source: string): string[] {
 }
 
 describe("a template grants what its own page calls", () => {
+	test("the invoke parser reads a typed generic call", () => {
+		expect(actionsIn('window.crust.invoke<string>("greet", { name: "solid" })')).toEqual([
+			"app:greet",
+		]);
+	});
+
 	for (const row of TEMPLATES) {
 		test(`templates/${row.name}`, async () => {
 			const dir = join(ROOT, "templates", row.name);
@@ -87,7 +99,7 @@ describe("a template grants what its own page calls", () => {
 });
 
 describe("crust init writes a config that validates", () => {
-	test("all five scaffolds", async () => {
+	test("all six scaffolds", async () => {
 		const workspace = await mkdtemp(join(tmpdir(), "crust-template-security-"));
 		try {
 			const { init } = await import("../../src/cli/init.ts");

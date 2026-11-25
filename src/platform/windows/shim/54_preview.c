@@ -127,8 +127,19 @@ int shim_preview_hide(void) {
 	return 1;
 }
 
-/** The host window, 0 when nothing is shown. Its liveness after `hide` is `IsWindow`, as a window is. */
-shim_h shim_preview_hwnd(void) { return g_preview_host; }
+/** The host window, 0 when nothing is shown. A parent close destroys the WS_CHILD host with it; do
+ * not return that recycled number as proof a preview is still shown. */
+shim_h shim_preview_hwnd(void) {
+	if (g_preview_host && !IsWindow(g_preview_host)) {
+		if (g_preview_handler) {
+			preview_unload(g_preview_handler);
+			preview_release(g_preview_handler);
+			g_preview_handler = 0;
+		}
+		g_preview_host = 0;
+	}
+	return g_preview_host;
+}
 
 /** The step the last `show` reached; the names live in `preview.ts`, in this order. */
 int shim_preview_step(void) { return g_preview_step; }
