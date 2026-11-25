@@ -63,6 +63,7 @@ export interface WindowNative extends WindowStateNative, WindowChromeNative, Win
 export type WindowErrorCode =
 	| "unknown-window"
 	| "invalid-label"
+	| "invalid-title"
 	| "invalid-size"
 	| "invalid-position"
 	| "invalid-value"

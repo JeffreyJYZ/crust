@@ -63,6 +63,7 @@ describe("a plugin failure value reaches the transport status", () => {
 		expect(resultStatus(undefined)).toBe(200);
 		expect(resultStatus({ ok: false, code: "unknown-window" })).toBe(404);
 		expect(resultStatus({ ok: false, code: "invalid-size" })).toBe(400);
+		expect(resultStatus({ ok: false, code: "invalid-title" })).toBe(400);
 		expect(resultStatus({ ok: false, code: "unknown-adapter" })).toBe(501);
 		expect(resultStatus({ ok: false, code: "handler-error" })).toBe(500);
 		expect(resultStatus({ ok: false, code: "a-third-party-code" })).toBe(400);

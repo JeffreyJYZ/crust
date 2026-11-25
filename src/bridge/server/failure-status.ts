@@ -12,6 +12,7 @@ import { type CrustErrorCode, statusForCode } from "../errors";
 /** Plugin failure codes that name a bridge-level condition, mapped to the CrustError table. */
 const CONDITION: Record<string, CrustErrorCode> = {
 	"invalid-label": "bad-request",
+	"invalid-title": "bad-request",
 	"invalid-size": "bad-request",
 	"invalid-position": "bad-request",
 	"invalid-value": "bad-request",
