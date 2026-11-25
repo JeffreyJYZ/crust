@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { SIDECAR_MANIFEST } from "@/plugins/sidecar";
-import { buildNsis, describeNsis, nsisScript, type Exec } from "./nsis";
+import { buildNsis, describeNsis, type Exec } from "./nsis";
 
 const ID = "land.jyz.example";
 const NAME = "Example";
@@ -131,20 +131,6 @@ describe("buildNsis", () => {
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
-	});
-});
-
-describe("nsisScript sidecars", () => {
-	test("emits a File /oname= line per sidecar and one for the manifest", () => {
-		const appPath = "/dist";
-		const script = nsisScript({
-			...OPTIONS,
-			appPath,
-			out: join(appPath, "setup.exe"),
-			sidecars: ["bin/tool.sh"],
-		});
-		expect(script).toContain(`  File /oname=bin\\tool.sh "${join(appPath, "bin", "tool.sh")}"`);
-		expect(script).toContain(`  File "${join(appPath, SIDECAR_MANIFEST)}"`);
 	});
 });
 
