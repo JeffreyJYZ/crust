@@ -4,6 +4,12 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.18] — 2026-11-25
+
+### Fixed
+
+- **A recording taken while the window was covered reported the app as idle.** WebKit suspends a fully occluded window's rendering — correct for battery, and it means a run during which the recorder's window was covered produced `fps 0` for every window after it, indistinguishable from an app that genuinely idles. Re-applying the occlusion selector on each tick does not revive a renderer WebKit has already suspended, so the honest answer is to record the fact: samples now carry `occlusionStates`, `occludedWindows` and `occlusionTransitions`, `diff` marks the field informational, and those windows are no longer scored as idle. Measured on a 10 s animated run: occluded at 4 s gave `framesDrawn` frozen at 215 with occlusion `8192`; with the window left alone, `framesDrawn` grew 120 → 450 with occlusion `8194` throughout. A static page still reports `fps 0` with `idleWindows 9`, so "idle" and "covered" are now different facts in the file.
+
 ## [0.2.17] — 2026-11-25
 
 ### Fixed
