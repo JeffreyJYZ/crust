@@ -4,6 +4,20 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.15] — 2026-11-25
+
+### Fixed
+
+- **`0.2.14` shipped a CLI that could not start from an installed package.** Three files under `src/cli/perf/` imported across into `scripts/` (`perf-native.ts`, `conditions.ts`, the command runner), and the published package ships only `src`, `templates` and `docs`. So `brew install JeffreyJYZ/tap/crust` then `crust --version` died with `Cannot find module '../../../scripts/perf/perf-native.ts'` — every command, not only `crust perf`, because the specifier is resolved when the CLI loads. The helpers now live under `src/cli/perf/`, and `scripts/perf/*` re-exports them, so there is one implementation and the shipped set is self-contained. Installs from the git tag (`bunx github:JeffreyJYZ/crust#v0.2.14`, `bun add -g …`) were unaffected because they carry the whole repository.
+
+### Changed
+
+- **`verify:package` is now a release gate.** It packs the tarball, installs it into a temp consumer and runs `crust --help` — the surface a user actually receives. `0.2.14` passed `check`, `test` and `skill:check` and still shipped a broken package; the check existed but nothing tagging a release ran it. `scripts/release/gate.ts` now aborts before any bump, tag or push when it fails, proven by a sabotage run that exited 1 with no tag and no version change.
+
+### Added
+
+- A guard test in `src/cli/build/shipped-imports.test.ts` fails when any shipped module under `src/` imports a path that leaves `src/`, so this class cannot return silently. It failed on the pre-fix tree with the three offending lines and passes after.
+
 ## [0.2.14] — 2026-11-25
 
 ### Added

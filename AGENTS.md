@@ -55,6 +55,7 @@ A green gate is the only proof a landing is safe.
 - **Interleave A/B perf arms and keep a same-flag-vs-itself control row** — sequential-then-sequential under drifting load invents a winner, and a delta smaller than that control row's spread is not a win.
 - **An inactive probe window is occluded, so WebKit renders 0 fps** — `testing.activation: "none"` is the right way to avoid focus theft and the wrong way to measure frames; disable window occlusion detection in the probe scaffold (dev-only, never a shipped default), and fail the run when the drawn frame count is zero.
 - **No shippable WKWebView flag moves crust frame time** — measured 21-24 ms p50 / 26 ms p95 with `drawsBackground`, `wantsLayer`, `layerContentsRedrawPolicy`, `suppressesIncrementalRendering` and a fresh process pool each varied, so attack work on the main thread, not webview configuration.
+- **The published package ships `src`, `templates` and `docs` only, so a `src/` import must never escape `src/`** — `src/cli/perf` imported `scripts/perf/**` and the red was `Cannot find module '../../../scripts/perf/conditions.ts'` from an installed consumer; run `bun run verify:package` after adding CLI code, because typecheck and the suite both stayed green while the artefact was broken.
 - **When a formatting sweep lands, keep the formatting edits — never revert** — reverting wiped two
   lanes' first passes at 15:39 on 2026-11-16, while a formatting-only diff costs nothing; a revert
   destroys real work, so keep it and carry on (user, 2026-11-16).
