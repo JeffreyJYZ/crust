@@ -110,6 +110,15 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 		code: "no-document",
 		message: `a11y.${command}: this page has no document to read or focus`,
 	});
+	// `querySelector` throws SyntaxError for a selector the browser cannot parse. That is a bad
+	// request, not an uncaught DOMException escaping the page API.
+	const badSelector = (command: string, selector: string, error: unknown): PageA11yRefusal => ({
+		ok: false,
+		code: "bad-request",
+		message: `a11y.${command}: invalid selector ${JSON.stringify(selector)}: ${
+			error instanceof Error ? error.message : String(error)
+		}`,
+	});
 
 	return {
 		pageTree(selector?: string): PageTreeAnswer {
@@ -117,10 +126,15 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 			if (!d || typeof d.querySelector !== "function") return noDocument("pageTree");
 			const rootSelector =
 				typeof selector === "string" && selector.trim() ? selector.trim() : "body";
-			const root =
-				rootSelector === "body"
-					? (d.body ?? d.querySelector("body"))
-					: d.querySelector(rootSelector);
+			let root: any;
+			try {
+				root =
+					rootSelector === "body"
+						? (d.body ?? d.querySelector("body"))
+						: d.querySelector(rootSelector);
+			} catch (error) {
+				return badSelector("pageTree", rootSelector, error);
+			}
 			if (!root) {
 				return {
 					ok: false,
@@ -153,7 +167,12 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 					message: "a11y.focusElement needs a non-empty selector",
 				};
 			}
-			const el = d.querySelector(sel);
+			let el: any;
+			try {
+				el = d.querySelector(sel);
+			} catch (error) {
+				return badSelector("focusElement", sel, error);
+			}
 			if (!el) {
 				return {
 					ok: false,
