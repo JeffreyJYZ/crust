@@ -44,6 +44,14 @@ export function createQuitter(): Quitter {
 	let lifecycleCheck: ReturnType<typeof setInterval> | undefined;
 	return {
 		timers(window, lifecycle) {
+			if (quitting) {
+				// A `ready` listener may call `app.quit()` before `run()` reaches this line. The
+				// quitter already cleared its handles, so accepting these new ones would leave the
+				// watches running forever: a later quit sees `quitting` and returns early.
+				clearInterval(window);
+				clearInterval(lifecycle);
+				return;
+			}
 			windowCheck = window;
 			lifecycleCheck = lifecycle;
 		},
