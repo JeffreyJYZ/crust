@@ -5,7 +5,7 @@
  * is testable with the picture replaced by a double.
  */
 
-import type { WindowCaptureNative } from "@/plugins/window";
+import type { WindowCaptureNative, WindowCaptureOptions } from "@/plugins/window";
 import { type SnapshotShim, takeSnapshot } from "./snapshot.ts";
 
 export function windowCaptureAdapter(
@@ -15,6 +15,7 @@ export function windowCaptureAdapter(
 	shim?: SnapshotShim,
 ): WindowCaptureNative {
 	return {
-		capture: (label) => takeSnapshot(require(label), shim),
+		capture: (label, options?: WindowCaptureOptions) =>
+			takeSnapshot(require(label), shim, undefined, options),
 	};
 }
