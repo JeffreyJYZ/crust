@@ -23,7 +23,13 @@ describe("106_accessibility_page.c", () => {
 		const compiled = accessibilityPageUnit();
 		expect(accessibilityPageUnitStatus()).toEqual({ available: true, reason: "compiled" });
 		expect(Object.keys(compiled.symbols).sort()).toEqual(
-			[...ACCESSIBILITY_PAGE_SYMBOL_NAMES].sort(),
+			[
+				...ACCESSIBILITY_PAGE_SYMBOL_NAMES,
+				"shim_audit_balance",
+				"shim_audit_bump",
+				"shim_audit_events",
+				"shim_audit_reset",
+			].sort(),
 		);
 		for (const name of ACCESSIBILITY_PAGE_SYMBOL_NAMES) {
 			expect(typeof (compiled.symbols as unknown as Record<string, unknown>)[name]).toBe(
