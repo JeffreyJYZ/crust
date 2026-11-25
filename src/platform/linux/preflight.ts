@@ -53,6 +53,12 @@ export const PREFLIGHT: readonly PreflightEntry[] = [
 	{ library: GTK, symbol: "gtk_widget_set_margin_start", pkg: GTK_PKG },
 	{ library: GTK, symbol: "gtk_widget_set_margin_top", pkg: GTK_PKG },
 	{ library: GTK, symbol: "gtk_widget_get_parent", pkg: GTK_PKG },
+	// The surface wrapper and the two expand flags are resolved mandatorily by
+	// `shim_container_resolve`; omitting them let a partial GTK pass preflight and fail in
+	// `shim_lib_open` with a bare "missing symbol" instead of the install line.
+	{ library: GTK, symbol: "gtk_fixed_new", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_hexpand", pkg: GTK_PKG },
+	{ library: GTK, symbol: "gtk_widget_set_vexpand", pkg: GTK_PKG },
 	{ library: WEBKIT, symbol: "webkit_web_view_load_uri", pkg: WEBKIT_PKG },
 	// The three namespaces a normal app reaches first. All of these are GLib/GIO/GTK, which
 	// libgtk-3.so.0 already depends on — so a machine that has GTK at all has them, and a machine
