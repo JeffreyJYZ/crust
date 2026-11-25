@@ -464,6 +464,10 @@ OS input**, so nothing moves a cursor and no Accessibility grant is involved; a 
 one `KeyboardEvent` the page sees and no browser default follows it, so `key: "Enter"` submits
 nothing.
 
+Native `testing` evals time out on pump progress (4000 ms of pump ticks), not wall time. A
+`crust: eval timeout id=… waited=[…] progress=…->… frames=…->…` line under load means the runner was
+starved, not that the page stalled for four seconds; `waitFor`'s own `timeoutMs` is wall-clock.
+
 Those commands never need the app active, but the launch does by default. Set `testing.activation`
 in `crust.config.ts` to `"none"` (never activates; an AX read answers `needs-activation`) or
 `"on-demand"` (activates once for the first AX read that needs it), and open any window a probe makes

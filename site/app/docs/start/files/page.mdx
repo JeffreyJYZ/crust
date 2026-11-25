@@ -73,4 +73,6 @@ Every key is validated at startup and extra keys are rejected, so a typo is a st
 | `.crust/single/`  | the bundle for `crust dev app.tsx`                                 |
 | `dist/`           | build output: `<name>.app`, and `dist/single/` for one-file builds |
 
+`dist/single/` is cleaned before a successful write, so switching a one-file app from a bundled `.tsx` entry to plain `.html` cannot leave an old `page.js` embedded in the binary. A failed build leaves the last good page in place.
+
 None of them belong in git.

@@ -43,7 +43,7 @@ A global install is the one that looks like those and is not. `bun add -g crust`
 
 ```sh
 brew install JeffreyJYZ/tap/crust
-crust --version                 # 0.2.16
+crust --version                 # 0.2.18
 ```
 
 macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or Windows use a [release binary](#download-a-binary) instead. It is a source install for darwin: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
@@ -53,7 +53,7 @@ macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or
 
 ```sh
 bun add -g github:JeffreyJYZ/crust#v0.2.18
-crust --version                 # 0.2.16
+crust --version                 # 0.2.18
 ```
 
 The same tag `bunx` resolves, installed once instead of cached per run: `~/.bun/bin/crust` is a symlink into `~/.bun/install/global/node_modules/crust`, so `crust` answers anywhere — inside a scaffolded app or outside one. Upgrade by naming a newer tag (`bun add -g github:JeffreyJYZ/crust#v0.2.18` replaces that symlink); a non-default `BUN_INSTALL` prefix moves both `bin/` and `install/global/` under it.
