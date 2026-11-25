@@ -21,6 +21,8 @@ One binary, six commands. From a checkout `bun run src/cli/index.ts` is the same
 
 `crust perf` owns its argv and its own `crust perf --help`, so it is not one of the five cac commands — but it is the sixth thing the binary can do.
 
+`crust perf diff` writes its failures — a bad `--tolerance`, an unreadable record, or a record with no frame block — to stderr with exit 1; the comparison table and its `REGRESS` rows stay on stdout. `crust perf record` detaches its trap and re-raises SIGINT, SIGTERM and SIGHUP, and a failed run removes its `--out` file, so a later `diff` cannot read the previous run's result as this run's.
+
 `crust sign`, `crust dmg` and `crust notarize` are gone. Each now prints `crust: unknown command "<verb>"` and exits 1. Their work is done by stages of `crust build`, run in one invocation after the plain build in this order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--sign` replaces the ad-hoc signature with a Developer ID; `--notarize` submits the signed app, then staples and validates its ticket; `--dmg` builds the image from the already-stapled app. The disk image itself is **not** notarized — the app's ticket travels inside it.
 
 `init` refuses a non-empty directory, naming the entries it found, rather than merging into it.
@@ -85,5 +87,9 @@ The `extensions` block reports `zig`, `rustc` and `clang` as found with their ve
 | `CRUST_NOTARY_TEAM_ID`   | `crust build --notarize`                       | the team the Apple ID belongs to                                                                                    |
 | `CRUST_DEV_FILE`         | `crust/vite`                                   | the bridge handshake path, default `devHandshakePath()` in the OS temp dir                                          |
 | `CRUST_LOG`              | `crust dev`, every crust runtime                | minimum log level: `trace`, `debug`, `info`, `warn` or `error`; beats `logging.level`, loses to `--log-level`        |
+| `CRUST_SHIM_AUDIT`       | darwin shim in `crust dev` / e2e harness        | `1` adds ownership counters to the macOS C shim; a source checkout only — see below                                |
+| `XDG_CACHE_HOME`         | compiled crust CLI                              | base for the private `crust/framework/<version>` cache, default `~/.cache`; a tampered tree is refused by name      |
+
+`CRUST_SHIM_AUDIT=1` is a framework switch, not an app setting. It adds `-DCRUST_SHIM_AUDIT` when the macOS shim is compiled, so each audited unit counts acquisitions and drops and the harness can assert a zero balance; `requestShimAudit()` is the programmatic form the in-repo harness uses. Both go through the same availability check, which turns the switch into a no-op when `NODE_ENV` is `production` or the `shim/*.c` sources are not on disk — the case in a compiled binary. Use it from a source checkout in `crust dev` or an e2e run; a shipped app cannot be audited this way.
 
 An uncaught command failure prints `crust <command>: <message>` and exits 1. Nothing prints a stack trace and nothing exits 0 on a refusal.

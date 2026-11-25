@@ -55,7 +55,7 @@ CRUST_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" crust build --s
 
 Reads the identity from the environment and fails naming it when unset. Signs with
 `--options runtime`, seals the entitlements below, verifies with `codesign --verify --strict`, and
-prints what `spctl` says. It replaces the ad-hoc signature `crust build` just applied.
+prints what `spctl` says. It replaces the ad-hoc signature `crust build` just applied. Declared `build.sidecars` are re-signed first, deepest path first, with the same identity, hardened-runtime options and entitlements; an ad-hoc sidecar left inside a Developer ID bundle is a notarization rejection. Developer ID signatures carry a secure `--timestamp`, while ad-hoc builds keep `--timestamp=none`. Local verification uses `codesign --verify --strict --deep`, so nested code is checked instead of reading as clean under a shallow verify. On Windows `crust package --format nsis` creates each sidecar's parent directory before installing the file.
 
 It does **not** notarise: that needs `notarytool` credentials and a `stapler staple` afterwards,
 and until the ticket is stapled `spctl` still refuses the bundle. Add `--notarize` for that; it
