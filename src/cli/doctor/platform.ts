@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { cc, FFIType } from "bun:ffi";
 import { readAsset } from "../assets.ts";
 import { SHIM_PART_NAMES } from "../../platform/darwin/shim-source.ts";
+import { auditSource } from "../../platform/darwin/shim-audit.ts";
 import { inExecutable } from "../framework.ts";
 import { crustRoot, exists } from "../util.ts";
 import { type Check, inline } from "./check.ts";
@@ -53,7 +54,7 @@ export async function checkShim(): Promise<Check> {
 	// `cc()` takes a path, not a source string, so the composed unit is written out —
 	// the same materialise-then-compile step the embedded branch always needed.
 	const temporary = join(tmpdir(), `crust-doctor-${process.pid}-shim.c`);
-	await Bun.write(temporary, text);
+	await Bun.write(temporary, auditSource(text));
 
 	try {
 		cc({
