@@ -2,12 +2,10 @@
  * The pieces of an app run that need no `App` instance: the URL a window loads, the platform a bare `run()` imports, event fan-out, and the every-window-closed watch. Split out of `app.ts` so the class stays the lifecycle; every rule here was measured, so they travel with the code.
  */
 
-import { CrustError } from "@/bridge/errors";
 import type { CrustConfig } from "@/config";
 import type { DarwinPlatform } from "@/platform/darwin";
 import { attachDeepLinkDelivery, configureDeepLink, queueDeepLink } from "./app-deep-link.ts";
 import {
-	APP_NAMESPACE,
 	type AppEvent,
 	type AppListener,
 	type LifecycleSource,
@@ -19,31 +17,11 @@ import {
 	setActivationRaise,
 	setTestingActivation,
 } from "./plugins/activation-policy.ts";
-import { definePlugin, type PluginDefinition } from "./plugins/define.ts";
-import { corePlugins, windowPlugin } from "./plugins/index.ts";
 import { defaultStateRoot } from "./plugins/window-persist-store.ts";
 
 /** How often `run` checks whether every window has closed, when someone listens. */
 const WINDOW_CHECK_INTERVAL_MS = 250;
 
-/**
- * Names a project plugin may not claim. The core four are `corePlugins`; `window` is appended by `startApp` and is not in that list; `app` is the runtime's namespace. A name is a namespace, so a duplicate overlaps the handler table rather than overriding — refused, never silently shadowed.
- */
-export const RESERVED_PLUGIN_NAMES: ReadonlySet<string> = new Set([
-	APP_NAMESPACE,
-	windowPlugin.name,
-	...corePlugins.map((plugin) => plugin.name),
-	// Built by the runtime with this app's data root rather than kept in `corePlugins`, but still a
-	// built-in namespace: a project plugin with this name would collide at registry time.
-	"stronghold",
-]);
-
-/**
- * The only dynamic import of the native layer. Keeping it lazy is what lets
- * `bun check` and the bridge tests load `app.ts` on any machine, and why a
- * process that never calls `run()` never compiles the shim.
- * One arm per OS, each importing its own barrel, so a Linux launch never loads AppKit and a macOS launch never loads GTK.
- */
 export async function loadPlatform(config: CrustConfig): Promise<Platform> {
 	// Before the platform exists: a probe's activation policy is what the first window create
 	// reads, and `testing.activation` is honoured on every OS even though only macOS acts on it.
@@ -135,41 +113,20 @@ export async function installLaunchDeepLink(): Promise<void> {
 	const pending = link.darwinDeepLinkAdapter();
 	const drain = setInterval(() => {
 		const url = pending.takePendingUrl();
-		if (url) queueDeepLink(url);
+		if (!url) return;
+		// `queueDeepLink` refuses malformed and foreign URLs itself; this catch is for a custom
+		// link implementation that still throws, so one bad URL cannot kill the pump timer.
+		try {
+			queueDeepLink(url);
+		} catch (error) {
+			const text = error instanceof Error ? error.message : String(error);
+			console.warn(`  deep-link refused ${JSON.stringify(url)}: ${text}`);
+		}
 	}, PUMP_INTERVAL_MS);
 	drain.unref?.();
 }
 
-/**
- * Check that a project plugin may be mounted, and freeze it the way `definePlugin` would. `definePlugin` already checks the shape, so this adds the two rules a mount needs: the name is a namespace and must be unused (a duplicate, a built-in or the reserved `app` is refused, never shadowed), and the mount happens before `run()`, which the caller checks because it owns the started flag.
- */
-export function mountable(
-	plugin: PluginDefinition,
-	mounted: ReadonlyMap<string, PluginDefinition>,
-): PluginDefinition {
-	if (typeof plugin !== "object" || plugin === null)
-		throw new CrustError(
-			"bad-request",
-			"app.use: not a plugin definition (expected { name, commands })",
-		);
-
-	const definition = definePlugin(plugin);
-	const name = definition.name;
-	if (name === APP_NAMESPACE) {
-		throw new CrustError("bad-request", `app.use: "${name}" is the reserved app namespace`);
-	}
-	if (RESERVED_PLUGIN_NAMES.has(name)) {
-		throw new CrustError(
-			"bad-request",
-			`app.use: "${name}" is a built-in plugin — a name is a namespace, so pick another`,
-		);
-	}
-	if (mounted.has(name)) {
-		throw new CrustError("bad-request", `app.use: plugin "${name}" is already mounted`);
-	}
-	return definition;
-}
-
+export { RESERVED_PLUGIN_NAMES, mountable } from "./plugins/mountable.ts";
 export { LIFECYCLE_CHECK_INTERVAL_MS, watchLifecycle, watchWindows } from "./app-watch.ts";
 /**
  * `windowUrl` and `openWindows` moved to `app-windows.ts` when the frame restore pushed this file
