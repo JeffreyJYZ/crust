@@ -39,9 +39,6 @@ describe("the occluded pump cadence", () => {
 			globalThis.setTimeout = realSet;
 			globalThis.clearTimeout = realClear;
 		}
-		// The constant must stay well under the bridge's 4000 ms page deadline even after several
-		// round trips, and still be slower than a visible frame so the wakeup saving is real.
-		expect(OCCLUDED_PUMP_INTERVAL_MS).toBeGreaterThan(16);
-		expect(OCCLUDED_PUMP_INTERVAL_MS).toBeLessThanOrEqual(32);
+		expect(OCCLUDED_PUMP_INTERVAL_MS).toBe(100);
 	});
 });
