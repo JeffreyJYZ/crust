@@ -75,9 +75,42 @@ the approved temp dir; no GUI launch, no cursor movement.
   document; `bun test src/bridge/dev-label-token.test.ts` → 2 pass, 0 fail. The test treats the
   escalation as the intended fix for hunt-20's dev mint, but it also proves the label is
   page-controlled.
-- Smallest fix: stop selecting credentials from a page-supplied query. Tie the injected token to a
-  server-side fact about the window that requested the document (or mint one token per dev origin
-  with identical grants), and refuse a `?window=` that claims a label the dev server did not bind.
+- Smallest fix proposed by the hunting lane: stop selecting credentials from a page-supplied query.
+  Tie the injected token to a server-side fact about the window that requested the document (or mint
+  one token per dev origin with identical grants), and refuse a `?window=` that claims a label the dev
+  server did not bind.
+
+### Decision (2026-11-25): documented non-fix, no source change
+
+Read the whole dev path before choosing; neither fix can be built on a server-side fact here, and the
+only credential-free constraint would widen grants or delete a working dev feature.
+
+- `src/app-windows.ts:35` navigates a dev window straight to `withWindowLabel(devUrl, window.label)` —
+  a `?window=` on the Vite origin with no `?token=`, no header and no per-window cookie. Everything
+  after load is page-controlled: `history.replaceState` rewrites `location.search`, and a same-origin
+  iframe of `?window=admin` hands its `window.__CRUST__.token` to the low-grant page.
+- `src/runtime.ts:152-154` records no bridge token under `dev.url` — publishing one into a Vite-served
+  URL would only put it in the dev server log — so the dev navigation carries no credential to bind.
+- Vite's `IndexHtmlTransformContext` exposes only `path`, `filename`, `server`, `bundle`, `chunk` and
+  `originalUrl` (`node_modules/vite/dist/node/index.d.ts:1923-1936`): no request, no headers, no
+  client identity. A `configureServer` middleware could read `Referer`, but a page can suppress or
+  rewrite it, so that is not a server-side fact either.
+- `src/runtime-host.ts:81-98` writes `{url, token, tokens}` only: no per-label grant sets and no
+  requesting-window identity. A subset rule needs both, so the plugin cannot compute it.
+- The one credential-free constraint left is a fixed token. Injecting `main`'s token into a `worker`
+  window **widens** that window's dev grants, which the task forbids; injecting a lowest-common-
+  denominator token removes per-label dev testing, the workflow the per-label handshake exists for
+  (`src/runtime-host.ts:81-83`).
+- The built-app path is already hardened by #68 (`src/bridge/server/handler.ts:56-74`): only a seed
+  mints, and a bound token only re-serves its own document. Capabilities are open by default
+  (`src/bridge/server/capabilities.ts:80-81`), so this matters only to an app that configures
+  `security` in dev.
+
+Consequence written for app authors in [Dev server](/docs/guides/dev#dev-tokens-and-window-labels)
+and [Permissions](/docs/guides/permissions#dev-is-not-a-boundary). What protects an app: a built
+document's token is bound to its window when served, and dev is not a security boundary. What it does
+not protect: a page on the `crust dev` origin can select any configured label's token via `?window=`.
+An app that needs the distinction to hold must test the built app.
 
 ## F4 (MEDIUM) — `i18n.load` reads arbitrary directories and returns their JSON, bypassing `fs.scope` and the `fs` capability
 

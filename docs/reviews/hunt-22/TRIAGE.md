@@ -80,8 +80,13 @@ Totals as reported: **9 high, 64 medium, 76 low.**
 
 Final counts: **10 of 10 highs closed**, every medium either fixed or argued down in a PR with a
 reason, and the low tail closed by #77, #79, #81 and #82. Two findings were refuted by test rather than
-fixed (`20` overlay listener, `15`/`22` partial), and `19`'s dev-Vite token selection was left as a
-deliberate grant-affecting decision rather than changed quietly.
+fixed (`20` overlay listener, `15`/`22` partial), and `19`'s dev-Vite token selection was settled on
+2026-11-25 as a documented non-fix: the dev navigation carries no server-side window identity, so
+neither binding nor a subset rule can be built, and the only credential-free constraint would widen
+grants or remove per-label dev testing. The consequence is written in
+[Dev server](/docs/guides/dev#dev-tokens-and-window-labels) and
+[Permissions](/docs/guides/permissions#dev-is-not-a-boundary); the evidence is in
+`docs/reviews/hunt-22/19-security.md`.
 
 ## Counting rules
 
