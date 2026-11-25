@@ -9,7 +9,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const ROOT = join(import.meta.dir, "..");
+const ROOT = join(import.meta.dir, "../..");
 
 /** A stub `osascript`: frontmost is a plain app, the AXFullScreen query answers nothing. */
 async function runWithoutFullscreen() {
