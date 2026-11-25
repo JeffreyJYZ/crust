@@ -74,6 +74,7 @@ describe("a live page", () => {
 			const platform = new DarwinPlatform({ appName: "crust-testing", activate: "never" });
 			let win = 0;
 			let web = 0;
+			let primeHolder: symbol | undefined;
 			try {
 				await platform.start();
 				platform.pump(16);
@@ -101,6 +102,20 @@ describe("a live page", () => {
 				);
 				expect(win).toBeGreaterThan(0);
 				S.v1(win, "setContentView:", web);
+				// A view WebKit never composited never calls the eval completion handler — the same
+				// mechanism that makes window.capture answer no-completion. Hold the composited bit for
+				// this test's whole lifetime through the same ref-counted owner capture uses; an absent
+				// selector is a hard failure here, never a skip.
+				const { darwinSnapshotShim } = await import("../platform/darwin/snapshot.ts");
+				const { primeOwner } = await import("../platform/darwin/occlusion.ts");
+				const primeShim = darwinSnapshotShim();
+				expect(primeShim.primeAvailable?.(web)).toBe(true);
+				primeHolder = Symbol("testing-live composited bit");
+				expect(
+					primeOwner.acquire(web, primeHolder, (target, enabled) =>
+						Boolean(primeShim.prime?.(target, !enabled)),
+					),
+				).toBe(true);
 				// Trap: WebKit suspends rendering for a window it considers occluded, and a suspended
 				// webview never services the evaluate callback — "the page did not answer". This window
 				// is off every display, so the page boots `visibilityState=hidden` with zero frames
@@ -160,6 +175,11 @@ describe("a live page", () => {
 				const after = await plugin.commands.query({ selector: "#state" });
 				expect(after).toMatchObject({ ok: true, text: "hello" });
 
+				// The completion is the regression, not a boolean on whatever the page said: a page
+				// that never answers times out here, so this still fails for a genuinely dead page.
+				const trivial = await darwinTestingAdapter(() => web).evaluate(undefined, "2 + 2");
+				expect(trivial).toBe("4");
+
 				const captured = await plugin.commands.console({});
 				expect("hooked" in captured && captured.hooked).toBe(true);
 				const lines =
@@ -170,13 +190,20 @@ describe("a live page", () => {
 			} finally {
 				releaseOcclusion(web);
 				expect(occlusionHolds(web)).toBe(0);
+				if (primeHolder !== undefined) {
+					const { primeOwner } = await import("../platform/darwin/occlusion.ts");
+					primeOwner.release(web, primeHolder);
+					expect(primeOwner.holds(web)).toBe(0);
+				}
 				if (win) S.v0(win, "close");
 				platform.stopPump();
 				server.stop(true);
 			}
 			// Must exceed the product's 30 s liveness budget plus the remaining commands. This is not
 			// a way to hide a failure: a page that never answers still fails at the eval deadline, and
-			// that case is asserted without a webview in testing-eval-deadline.test.ts.
+			// that case is asserted without a webview in testing-eval-deadline.test.ts. With the view
+			// composited, eval settles in tens of ms, so the 30 s budget could go back to the honest
+			// pre-workaround value once that lane owns the change; this test's timeout stays as it was.
 		},
 		90_000,
 	);
