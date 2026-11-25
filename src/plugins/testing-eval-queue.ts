@@ -9,6 +9,12 @@ export interface EvalQueueOptions {
 	/** Start one evaluation. `id` is echoed by the native sink when the answer arrives. */
 	send: (id: number, target: number, bytes: Uint8Array) => number;
 	timeoutMs?: number;
+	/**
+	 * Optional monotonic progress clock. When present, the deadline counts its advance instead of
+	 * wall time: a runner starved enough to delay the completion also stops the clock that drives
+	 * it, so the answer is not declared lost before the loop had a chance to deliver it.
+	 */
+	progress?: () => number;
 }
 
 interface Waiter {
@@ -23,6 +29,9 @@ export interface EvalQueue {
 	pending(): number;
 }
 
+/** How often the deadline is checked; the budget itself is measured by `progress`. */
+const CHECK_MS = 16;
+
 /**
  * Correlate completions by a monotonic id. The buffer is copied for the send and dropped after it:
  * the C side's `te_nsstring` copies the bytes into an NSString synchronously, so retaining one entry
@@ -30,6 +39,7 @@ export interface EvalQueue {
  */
 export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 	const timeoutMs = options.timeoutMs ?? 4000;
+	const progress = options.progress;
 	const waiters = new Map<number, Waiter>();
 	let nextId = 0;
 
@@ -53,9 +63,10 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 		run(target, script) {
 			const id = ++nextId;
 			return new Promise<string>((resolve, reject) => {
-				let timer: ReturnType<typeof setTimeout> | undefined;
+				const started = progress?.() ?? performance.now();
+				let timer: ReturnType<typeof setInterval> | undefined;
 				const done = (): void => {
-					if (timer !== undefined) clearTimeout(timer);
+					if (timer !== undefined) clearInterval(timer);
 					timer = undefined;
 				};
 				// Installed before the send: a completion that arrives during the send is not lost.
@@ -76,10 +87,12 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 					reject(new Error(`crust: evaluateJavaScript did not start (status ${status})`));
 					return;
 				}
-				timer = setTimeout(() => {
+				timer = setInterval(() => {
+					if ((progress?.() ?? performance.now()) - started < timeoutMs) return;
+					done();
 					if (forget(id) === undefined) return;
 					reject(new Error(`crust: the page did not answer within ${timeoutMs} ms`));
-				}, timeoutMs);
+				}, CHECK_MS);
 				// An unanswered promise must not keep a quitting process alive.
 				if (typeof timer === "object" && timer !== null && "unref" in timer) timer.unref();
 			});

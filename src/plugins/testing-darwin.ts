@@ -17,6 +17,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { pumpProgressMs } from "@/platform/darwin/pump.ts";
 import type { WebviewFor } from "@/platform/darwin/webview-target";
 import { CrustError } from "../bridge/errors";
 import { createEvalQueue, createLabeledQueue, type EvalQueue } from "./testing-eval-queue.ts";
@@ -93,6 +94,9 @@ function queueFor(table: TestingNative): EvalQueue {
 			send: (id, target, bytes) =>
 				table.crust_testing_eval(target, ptr(bytes), BigInt(bytes.length), BigInt(id)),
 			timeoutMs: EVAL_TIMEOUT_MS,
+			// The completion is delivered by the pump. On a starved runner the pump stops and the
+			// wall clock does not, so a wall-clock deadline would report a page it never gave a turn.
+			progress: pumpProgressMs,
 		});
 	}
 	return evaluations;
