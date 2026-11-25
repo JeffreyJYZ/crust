@@ -23,8 +23,7 @@ const notDarwin = process.platform !== "darwin";
 
 /** A PNG signature, so a base64 answer is provably a PNG file rather than a string. */
 const PNG_BYTES = new Uint8Array([
-	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
-	0x52,
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ]);
 
 const PICTURE: SnapshotBytes = { width: 2200, height: 1520, scale: 2, png: PNG_BYTES };
@@ -34,12 +33,14 @@ const PICTURE: SnapshotBytes = { width: 2200, height: 1520, scale: 2, png: PNG_B
  * `when: "during"` fires it inside `take`, which is the ordering a cached page produces and the one
  * the pending slot exists to survive.
  */
-function shim(options: {
-	answer?: boolean;
-	bytes?: SnapshotBytes;
-	status?: number;
-	when?: "after" | "during" | "never";
-} = {}): SnapshotShim & { listened: number } {
+function shim(
+	options: {
+		answer?: boolean;
+		bytes?: SnapshotBytes;
+		status?: number;
+		when?: "after" | "during" | "never";
+	} = {},
+): SnapshotShim & { listened: number } {
 	const answer = options.answer ?? true;
 	const bytes = options.bytes ?? PICTURE;
 	const status = options.status ?? SNAPSHOT_STATUS.started;
@@ -99,13 +100,32 @@ describe("the capture promise", () => {
 
 	test("a refused render rejects by name instead of answering a blank picture", async () => {
 		const failing = takeSnapshot(1, shim({ answer: false }));
-		await expect(failing).rejects.toThrow("took no snapshot");
+		await expect(failing).rejects.toThrow(snapshotStartReason(SNAPSHOT_STATUS.noPicture));
+	});
+
+	/**
+	 * The state measured on macOS 27: `takeSnapshot` starts, the page keeps running, and WebKit
+	 * never calls the completion handler — a window that has never been composited at -4000,-4000
+	 * does exactly this. A stall at the seam reproduces the state without depending on which app
+	 * owns the fullscreen Space, and must answer a named failure rather than a blank png.
+	 */
+	test("a completion that never fires is named, never an empty picture", async () => {
+		const failing = takeSnapshot(1, shim({ when: "never" }), 40);
+		await expect(failing).rejects.toThrow(snapshotStartReason(SNAPSHOT_STATUS.noCompletion));
+		await expect(failing).rejects.not.toThrow("empty PNG");
+	});
+
+	test("every failure status names its reason", () => {
+		for (const status of Object.values(SNAPSHOT_STATUS)) {
+			if (status === SNAPSHOT_STATUS.started) continue;
+			expect(snapshotStartReason(status)).not.toMatch(/^unknown status/);
+		}
 	});
 
 	test("a capture that never starts rejects with the reason C gave", async () => {
-		await expect(takeSnapshot(1, shim({ status: SNAPSHOT_STATUS.unavailable }))).rejects.toThrow(
-			snapshotStartReason(SNAPSHOT_STATUS.unavailable),
-		);
+		await expect(
+			takeSnapshot(1, shim({ status: SNAPSHOT_STATUS.unavailable })),
+		).rejects.toThrow(snapshotStartReason(SNAPSHOT_STATUS.unavailable));
 	});
 
 	test("a picture with no bytes or no size is refused, never base64 of nothing", () => {
@@ -117,7 +137,7 @@ describe("the capture promise", () => {
 	test("a handler that never answers is reported after the timeout", async () => {
 		const started = Date.now();
 		await expect(takeSnapshot(1, shim({ when: "never" }), 60)).rejects.toThrow(
-			"did not answer within 60 ms",
+			snapshotStartReason(SNAPSHOT_STATUS.noCompletion),
 		);
 		expect(Date.now() - started).toBeGreaterThanOrEqual(40);
 		// The default a page gets is the real one, so the short one above is only this suite's.

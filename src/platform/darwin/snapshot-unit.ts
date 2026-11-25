@@ -34,6 +34,15 @@ export const SNAPSHOT_STATUS = {
 	unavailable: 1,
 	noConfig: 2,
 	noBlock: 3,
+	/**
+	 * The render was sent but WebKit never called the completion handler. Measured on macOS 27 for
+	 * a window ordered front at -4000,-4000 that had never been composited: the page keeps running,
+	 * `takeSnapshot` starts, and no answer ever arrives. `createPDFWithConfiguration:` stalls in the
+	 * same state, so there is no picture to fall back to — the caller needs this name, not a wait.
+	 */
+	noCompletion: 4,
+	/** WebKit called back with no image: the view rendered nothing. */
+	noPicture: 5,
 } as const;
 
 const REASONS: Record<number, string> = {
@@ -41,6 +50,10 @@ const REASONS: Record<number, string> = {
 		"the webview is missing, or has no takeSnapshotWithConfiguration:completionHandler:",
 	[SNAPSHOT_STATUS.noConfig]: "WKSnapshotConfiguration did not build",
 	[SNAPSHOT_STATUS.noBlock]: "the completion block could not be built",
+	[SNAPSHOT_STATUS.noCompletion]:
+		"WebKit never called the snapshot completion handler: this view has no composited picture (an offscreen window that has never been shown), so window.capture cannot produce a PNG; show the window so WebKit composites it, then retry",
+	[SNAPSHOT_STATUS.noPicture]:
+		"WebKit answered the snapshot with no image: the view rendered nothing",
 };
 
 /** Why a capture answered what it did, including a status this build does not know. */
