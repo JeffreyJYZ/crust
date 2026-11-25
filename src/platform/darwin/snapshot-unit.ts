@@ -67,6 +67,8 @@ export interface SnapshotUnit {
 		crust_shot_set_sink: (sink: number) => void;
 		crust_shot_available: (web: number) => number;
 		crust_shot_take: (web: number, id: number) => number;
+		/** Unsupported WebKit SPI: 1 when the occlusion-toggle selector existed, else 0. */
+		crust_shot_occlusion: (web: number, enabled: number) => number;
 		crust_shot_width: () => number;
 		crust_shot_height: () => number;
 		crust_shot_scale: () => number;
@@ -90,6 +92,7 @@ function compile(): SnapshotUnit {
 			crust_shot_set_sink: { args: [P], returns: V },
 			crust_shot_available: { args: [P], returns: I32 },
 			crust_shot_take: { args: [P, I32], returns: I32 },
+			crust_shot_occlusion: { args: [P, I32], returns: I32 },
 			crust_shot_width: { args: [], returns: I64 },
 			crust_shot_height: { args: [], returns: I64 },
 			crust_shot_scale: { args: [], returns: F64 },
