@@ -7,6 +7,11 @@ export interface RecordMeta {
 	seconds: number;
 	/** False only in the recorder's private launch path; a shipped app keeps detection on. */
 	occlusionDetectionEnabled: boolean;
+	/** Occlusion state read at each sample window; bit 2 means the window was composited. */
+	occlusionStates: number[];
+	/** Window indices where AppKit reported the probe window occluded, not idle. */
+	occludedWindows: number[];
+	occlusionTransitions: number;
 	occlusionState: number;
 	keepAwake: boolean;
 	activation: "none";
@@ -24,6 +29,8 @@ export interface SummaryFrame {
 	longTasks: number;
 	/** One-second windows with no new frames. Idle after a paint, not a fast or a slow app. */
 	idleWindows: number;
+	/** Windows where the renderer was suspended by occlusion; never scored as idleness. */
+	occludedWindows: number;
 }
 
 export interface Summary {

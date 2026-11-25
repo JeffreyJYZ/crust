@@ -8,7 +8,8 @@ import { readFile } from "node:fs/promises";
 import { summaryOf } from "./format.ts";
 import type { PerfRecordFile, Summary } from "./types.ts";
 
-type Direction = "lower" | "higher";
+/** `neutral` fields travel with the file for a reader, but cannot be scored as a regression. */
+type Direction = "lower" | "higher" | "neutral";
 
 interface Metric {
 	field: string;
@@ -40,6 +41,8 @@ function metrics(before: Summary, after: Summary): Metric[] {
 		// Not a blanket "after > before is bad": a jump in idle windows means the renderer
 		// stopped painting where it used to keep going, so fewer is the better direction.
 		["frame.idleWindows", "idleWindows", "lower"],
+		// Someone covering the probe window is not a performance change. Information only.
+		["frame.occludedWindows", "occludedWindows", "neutral"],
 	];
 	const rows: Metric[] = fields.map(([field, key, better]) => ({
 		field,
@@ -70,7 +73,8 @@ function delta(before: number, after: number, better: Direction, tolerance: numb
 		return { pct: bad ? Infinity : -Infinity, bad, text: after > 0 ? "+inf" : "-inf" };
 	}
 	const pct = ((after - before) / Math.abs(before)) * 100;
-	const bad = better === "lower" ? pct > tolerance : pct < -tolerance;
+	const bad =
+		better === "neutral" ? false : better === "lower" ? pct > tolerance : pct < -tolerance;
 	return { pct, bad, text: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` };
 }
 
@@ -88,7 +92,12 @@ export function diffRecords(
 	const regressions: string[] = [];
 	for (const row of metrics(before, after)) {
 		const change = delta(row.before, row.after, row.better, tolerance);
-		const rule = row.better === "lower" ? "lower is better" : "higher is better";
+		const rule =
+			row.better === "lower"
+				? "lower is better"
+				: row.better === "higher"
+					? "higher is better"
+					: "informational";
 		lines.push(
 			`${row.field.padEnd(26)}${row.before.toFixed(2).padStart(10)}` +
 				`${row.after.toFixed(2).padStart(12)}  ${change.text.padStart(8)}  ` +

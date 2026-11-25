@@ -26,6 +26,9 @@ function fileOf(samples: PerfSample[]): PerfRecordFile {
 			app: "fixture",
 			seconds: samples.length,
 			occlusionDetectionEnabled: false,
+			occlusionStates: samples.map(() => 2),
+			occludedWindows: [],
+			occlusionTransitions: 0,
 			occlusionState: 2,
 			keepAwake: true,
 			activation: "none",
@@ -70,6 +73,28 @@ describe("perf record verdict", () => {
 		expect(summary.frame.framesDrawn).toBeGreaterThan(samples[0]?.frame?.framesDrawn ?? 0);
 		expect(summary.frame.fps).toBeGreaterThan(0);
 		expect(summary.frame.idleWindows).toBe(0);
+	});
+
+	test("an occluded window is neither idle nor a regression", () => {
+		// Frame 1 painted, frame 2 was covered, frame 3 resumed with more frames than frame 1.
+		const samples = [stub(60, 60, 1000), stub(60, 0, 2000), stub(120, 60, 3000)];
+		const occluded = [1];
+		expect(verdict(samples).ok).toBe(true);
+		const summary = summaryOf(samples, occluded);
+		if (summary === undefined) throw new Error("occluded run has no summary");
+		expect(summary.frame.idleWindows).toBe(0);
+		expect(summary.frame.occludedWindows).toBe(1);
+
+		const before = fileOf([stub(60, 60, 1000), stub(120, 60, 2000)]);
+		const after = structuredClone(before);
+		after.summary.frame.occludedWindows = 3;
+		const result = diffRecords(before, after, 5);
+		expect(typeof result).not.toBe("string");
+		if (typeof result === "string") return;
+		expect(result.regressions).toEqual([]);
+		expect(result.lines.find((line) => line.includes("occludedWindows"))).toContain(
+			"informational",
+		);
 	});
 
 	test("diff shows idle windows with a per-field direction", () => {
