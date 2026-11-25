@@ -92,6 +92,13 @@ report rarely records.
 Nothing in this set rests on "looks right": where runtime evidence was impossible — Linux GTK paths, the
 signing argv without a certificate — the report says so instead of implying a run that did not happen.
 
+**Not closed: `main` `ad64d56` is red.** The macOS gate fails `a live page > click, type and console work
+in a real WKWebView` with `crust: the page did not answer within 4000 ms` (run 45558100308). The selector
+was available, so `#85`'s skip did not fire, and `testing-darwin.ts:99` passes `pumpProgressMs`, so that
+deadline counted pump progress — the loop was ticking and one evaluation's completion never arrived. That
+is a defect in the testing plugin's id correlation, which `crust dev` testing commands share, and it is
+being fixed rather than skipped. Until it is, this file describes the intended end state, not a green one.
+
 
 Final counts: **10 of 10 highs closed**, every medium either fixed or argued down in a PR with a
 reason, and the low tail closed by #77, #79, #81 and #82. Two findings were refuted by test rather than
