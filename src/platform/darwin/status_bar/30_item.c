@@ -37,12 +37,20 @@ int tray_set_title(obj_t item, const char *bytes, long long len) {
 	if (tray_has_instance("NSStatusItem", "setTitle:")) {
 		((void (*)(void *, void *, obj_t))objc_msgSend)(item, sel_registerName("setTitle:"),
 		                                                title);
+		crust_release(title);
 		return 1;
 	}
-	if (!tray_has_instance("NSStatusItem", "button")) return 0;
+	if (!tray_has_instance("NSStatusItem", "button")) {
+		crust_release(title);
+		return 0;
+	}
 	obj_t button = ((obj_t (*)(void *, void *))objc_msgSend)(item, sel_registerName("button"));
-	if (!button || !tray_responds(button, "setTitle:")) return 0;
+	if (!button || !tray_responds(button, "setTitle:")) {
+		crust_release(title);
+		return 0;
+	}
 	((void (*)(void *, void *, obj_t))objc_msgSend)(button, sel_registerName("setTitle:"), title);
+	crust_release(title);
 	return 1;
 }
 
@@ -104,12 +112,20 @@ int tray_set_tooltip(obj_t item, const char *bytes, long long len) {
 	if (tray_responds(item, "setToolTip:")) {
 		((void (*)(void *, void *, obj_t))objc_msgSend)(item, sel_registerName("setToolTip:"),
 		                                                text);
+		crust_release(text);
 		return 1;
 	}
-	if (!tray_responds(item, "button")) return 0;
+	if (!tray_responds(item, "button")) {
+		crust_release(text);
+		return 0;
+	}
 	obj_t button = ((obj_t (*)(void *, void *))objc_msgSend)(item, sel_registerName("button"));
-	if (!button || !tray_responds(button, "setToolTip:")) return 0;
+	if (!button || !tray_responds(button, "setToolTip:")) {
+		crust_release(text);
+		return 0;
+	}
 	((void (*)(void *, void *, obj_t))objc_msgSend)(button, sel_registerName("setToolTip:"), text);
+	crust_release(text);
 	return 1;
 }
 
