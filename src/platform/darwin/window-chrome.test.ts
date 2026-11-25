@@ -158,4 +158,14 @@ describe("opacity and the pointer", () => {
 
 		expect(calls).toEqual(["cursor:grab", "cursorVisible:false", "cursorVisible:true"]);
 	});
+
+	test("a repeated setCursorVisible sends nothing, keeping the hide counter balanced", () => {
+		const { adapter, calls } = double();
+
+		adapter.setCursorVisible?.(false);
+		adapter.setCursorVisible?.(false);
+		adapter.setCursorVisible?.(true);
+
+		expect(calls).toEqual(["cursorVisible:false", "cursorVisible:true"]);
+	});
 });

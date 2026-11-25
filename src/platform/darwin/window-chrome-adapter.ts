@@ -19,6 +19,10 @@ export function windowChromeAdapter(
 	require: (label: string) => number,
 	sends: WindowChromeSends = windowChromeSends,
 ): WindowChromeNative {
+	// AppKit's +hide/+unhide is a counter, not a flag: two hides need two unhides. The
+	// command is a setter, so a repeat must be a no-op and two false then one true must
+	// leave the pointer visible. Remember the requested side and send only transitions.
+	let cursorVisible = true;
 	return {
 		setDecorations(label, value) {
 			const win = require(label);
@@ -64,7 +68,11 @@ export function windowChromeAdapter(
 		},
 		opacity: (label) => sends.opacity(require(label)),
 		setCursor: (cursor) => sends.cursor(cursor),
-		setCursorVisible: (visible) => sends.cursorVisible(visible),
+		setCursorVisible: (visible) => {
+			if (visible === cursorVisible) return;
+			sends.cursorVisible(visible);
+			cursorVisible = visible;
+		},
 	};
 }
 
