@@ -5,6 +5,7 @@
  */
 
 import type { NotImplemented, PluginDefinition } from "./define";
+import type { ScopeCheck } from "./fs-scope-in-force.ts";
 
 /** One locale's messages: key → text, with `{name}` placeholders. */
 export type MessageTable = Record<string, string>;
@@ -31,6 +32,11 @@ export interface I18nOptions {
 	adapter?: I18nAdapter;
 	/** Loader behind the `load` command. Defaults to the on-disk `loadCatalogue`. */
 	loader?: CatalogueLoader;
+	/**
+	 * Boundary for the default disk loader's page-callable `load` command. The runtime hands the app's
+	 * `fs.scope` here; a host-supplied loader owns its own paths and is not checked.
+	 */
+	scope?: ScopeCheck;
 }
 
 export interface LocaleResult {

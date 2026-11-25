@@ -39,6 +39,8 @@ export interface OtherPlatformParts {
 	core: readonly PluginDefinition[];
 	/** `fs` carries the config's scope, so the core four are rebuilt through this. */
 	scoped: (plugin: PluginDefinition) => PluginDefinition;
+	/** `i18n.load` reads a directory; this instance inherits the same boundary. */
+	i18n: PluginDefinition;
 	power: PluginDefinition;
 	shell: PluginDefinition;
 	sidecar: PluginDefinition;
@@ -95,8 +97,11 @@ export async function otherPlatformPlugins(parts: OtherPlatformParts): Promise<P
 		nonDarwinScreenPlugin(os),
 		...nonDarwinPlugins.filter(
 			(plugin) =>
-				!window.replaced.has(plugin.name) && !replacesCoreNamespace(plugin.name, os),
+				plugin.name !== "i18n" &&
+				!window.replaced.has(plugin.name) &&
+				!replacesCoreNamespace(plugin.name, os),
 		),
+		parts.i18n,
 		// `clipboard`, `opener`, `os.info`, `notification` and `tray` with the platform's own adapter
 		// where one exists; `runtime-adapters-other.ts` owns that choice, so a reconciliation touches
 		// these two lines.

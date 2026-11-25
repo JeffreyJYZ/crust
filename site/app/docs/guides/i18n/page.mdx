@@ -31,6 +31,11 @@ const plugin = createI18nPlugin({
 
 A catalogue is `locale → key → text`. The runtime registers the plugin with `darwinLocaleAdapter()` and no catalogue, so a page reads the system language out of the box and the messages are the app's to supply. `invoke("i18n", "load", { directory })` reads every `*.json` in a directory as a locale named for its basename, so no import per locale is hand-written.
 
+`load` is a filesystem read, so when the app declares `fs.scope` the runtime gives `i18n` that same
+boundary: `directory` must be absolute, is canonicalised, and resolves inside a configured prefix or
+the call answers `outside-scope`. A host-supplied `loader` owns its own paths and is not checked;
+that is the supported way to bundle a catalogue that lives outside the scope.
+
 ## Which locale answers
 
 The order is: the page's `setLocale` choice, then the configured `locale`, then the system's preferred language, then the first catalogue entry.

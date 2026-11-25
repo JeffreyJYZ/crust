@@ -24,7 +24,7 @@ export function unknownHandle(handle: string): SqlFailure {
 	};
 }
 
-interface Sql {
+export interface Sql {
 	sql: string;
 	bound: unknown[];
 }
