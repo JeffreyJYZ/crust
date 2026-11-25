@@ -13,6 +13,7 @@ import { startBridge } from "../../src/bridge/server.ts";
 import { setTestingActivation } from "../../src/plugins/activation-policy.ts";
 import { definePlugin } from "../../src/plugins/define.ts";
 import { createWindowPlugin } from "../../src/plugins/window.ts";
+import { occlusionOwner, type OcclusionSender } from "../../src/platform/darwin/occlusion.ts";
 import { darwinWindowAdapter } from "../../src/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "../../src/platform/darwin/platform.ts";
 import { runConditions, snapshot } from "./conditions.ts";
@@ -44,6 +45,17 @@ export async function runInteraction(label: string, mode: string, out: string): 
 	let platform: DarwinPlatform | undefined;
 	let bridge: Awaited<ReturnType<typeof startBridge>> | undefined;
 	let occlusion: Occlusion = { disabled: false, keepAwake: false, state: -1, occluded: null };
+	// The page creates windows during the run, and every one needs the same dev-only override.
+	// Each view is a separate holder so a `window.capture` on it cannot restore detection early.
+	const occlusionHolder = Symbol("crust perf interaction");
+	const heldWebs = new Set<number>();
+	const send: OcclusionSender = (target, enabled) =>
+		native.perf_occlusion(target, enabled ? 1 : 0) === 1;
+	const disableOcclusion = (web: number): boolean => {
+		if (!occlusionOwner.acquire(web, occlusionHolder, send)) return false;
+		heldWebs.add(web);
+		return true;
+	};
 
 	const cleanup = (): void => {
 		try {
@@ -91,7 +103,7 @@ export async function runInteraction(label: string, mode: string, out: string): 
 				const win = platform?.nativeWindow(options.label);
 				if (web !== undefined && win !== undefined) {
 					objc.vq1(win as number, "setCollectionBehavior:", 1);
-					native.perf_occlusion(web as number, 0);
+					disableOcclusion(web as number);
 				}
 				return result;
 			},
@@ -112,7 +124,7 @@ export async function runInteraction(label: string, mode: string, out: string): 
 		const win = platform.nativeWindow("main");
 		if (web === undefined || win === undefined) throw new Error("probe window has no webview");
 		objc.vq1(win as number, "setCollectionBehavior:", 1);
-		const disabled = native.perf_occlusion(web as number, 0) === 1;
+		const disabled = disableOcclusion(web as number);
 		const keepAwake = native.perf_keep_awake() === 1;
 		const state = Number(native.perf_occlusion_state(win as number));
 		if (!disabled) throw new Error("private occlusion selector absent: rAF suspended");
@@ -131,6 +143,8 @@ export async function runInteraction(label: string, mode: string, out: string): 
 		while (!done && performance.now() < deadline) await sleep(50);
 		if (!done) throw new Error(`no report within ${timeout} ms in mode ${mode}`);
 	} finally {
+		for (const held of heldWebs) occlusionOwner.release(held, occlusionHolder);
+		heldWebs.clear();
 		cleanup();
 		process.removeListener("exit", cleanup);
 		await bridge?.stop();

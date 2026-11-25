@@ -118,33 +118,45 @@ describe("window.capture ignoreOcclusion", () => {
 	});
 
 	/**
-	 * The cross-feature proof: a perf run already holds the override on this webview. The capture
-	 * must not turn detection back on when it finishes, or every frame after it is scored against a
-	 * suspended renderer. The perf sender is the only one that sees an `on`, and only at its release.
+	 * The cross-feature proof: a perf run holds the override on this webview, and the live testing
+	 * proof takes a second holder before first visibility. A capture between them must not turn
+	 * detection back on, or every frame after it is scored against a suspended renderer. The perf
+	 * sender is the only one that sees an `on`, and only when the last holder releases.
 	 */
 	test("a capture inside a perf-style override leaves detection disabled afterwards", async () => {
 		const perfHolder = Symbol("perf-style holder");
+		const liveHolder = Symbol("live testing holder");
 		const perfSends: string[] = [];
 		const view = 4242;
-		expect(
-			occlusionOwner.acquire(view, perfHolder, (target, enabled) => {
-				perfSends.push(enabled ? "on" : "off");
-				expect(target).toBe(view);
-				return true;
-			}),
-		).toBe(true);
+		const send = (target: number, enabled: boolean): boolean => {
+			perfSends.push(enabled ? "on" : "off");
+			expect(target).toBe(view);
+			return true;
+		};
+		expect(occlusionOwner.acquire(view, perfHolder, send)).toBe(true);
 		try {
-			const seam = recording();
-			const shot = await takeSnapshot(view, seam, 1000, { ignoreOcclusion: true });
-			expect(shot.scale).toBe(2);
-			// Detection was already off, so the capture sends nothing at all, not even a restore.
-			expect(seam.calls).toEqual(["take"]);
-			expect(perfSends).toEqual(["off"]);
+			expect(occlusionOwner.acquire(view, liveHolder, send)).toBe(true);
+			try {
+				// The live proof re-asserts at first visibility: the disable is sent again, but the
+				// holder count does not change.
+				occlusionOwner.reassert(view);
+				expect(perfSends).toEqual(["off", "off"]);
+				const seam = recording();
+				const shot = await takeSnapshot(view, seam, 1000, { ignoreOcclusion: true });
+				expect(shot.scale).toBe(2);
+				// Detection was already off, so the capture sends nothing at all, not even a restore.
+				expect(seam.calls).toEqual(["take"]);
+				expect(perfSends).toEqual(["off", "off"]);
+				expect(occlusionOwner.holds(view)).toBe(2);
+			} finally {
+				occlusionOwner.release(view, liveHolder);
+			}
+			expect(perfSends).toEqual(["off", "off"]);
 			expect(occlusionOwner.holds(view)).toBe(1);
 		} finally {
 			occlusionOwner.release(view, perfHolder);
 		}
-		expect(perfSends).toEqual(["off", "on"]);
+		expect(perfSends).toEqual(["off", "off", "on"]);
 		expect(occlusionOwner.holds(view)).toBe(0);
 	});
 

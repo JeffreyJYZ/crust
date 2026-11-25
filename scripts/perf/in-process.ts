@@ -11,6 +11,7 @@ import { startBridge } from "../../src/bridge/server.ts";
 import { setTestingActivation } from "../../src/plugins/activation-policy.ts";
 import { definePlugin, type PluginContext } from "../../src/plugins/define.ts";
 import { createWindowPlugin } from "../../src/plugins/window.ts";
+import { occlusionOwner, type OcclusionSender } from "../../src/platform/darwin/occlusion.ts";
 import { darwinWindowAdapter } from "../../src/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "../../src/platform/darwin/platform.ts";
 import { runConditions, snapshot } from "./conditions.ts";
@@ -33,6 +34,8 @@ export async function runInProcess(label: string, root: string, out: string): Pr
 	let done = false;
 	let platform: DarwinPlatform | undefined;
 	let bridge: Awaited<ReturnType<typeof startBridge>> | undefined;
+	const perfHolder = Symbol("crust perf in-process");
+	let heldWeb: number | undefined;
 	let occlusionDisabled = false;
 	let keepAwake = false;
 	let occlusionState = -1;
@@ -125,7 +128,10 @@ export async function runInProcess(label: string, root: string, out: string): Pr
 		if (web === undefined || win === undefined) throw new Error("probe window has no webview");
 		// Apply BEFORE the first page evaluate; WebKit caches occlusion at first visibility.
 		(await import("../../src/platform/darwin/objc.ts")).S.vq1(win, "setCollectionBehavior:", 1);
-		occlusionDisabled = native.perf_occlusion(web, 0) === 1;
+		const send: OcclusionSender = (target, enabled) =>
+			native.perf_occlusion(target, enabled ? 1 : 0) === 1;
+		occlusionDisabled = occlusionOwner.acquire(web, perfHolder, send);
+		heldWeb = web;
 		keepAwake = native.perf_keep_awake() === 1;
 		occlusionState = Number(native.perf_occlusion_state(win));
 		if (!occlusionDisabled) throw new Error("private occlusion selector absent: rAF suspended");
@@ -138,6 +144,7 @@ export async function runInProcess(label: string, root: string, out: string): Pr
 		while (!done && performance.now() < deadline) await sleep(50);
 		if (!done) throw new Error(`no report within ${RUN_MS} ms`);
 	} finally {
+		if (heldWeb !== undefined) occlusionOwner.release(heldWeb, perfHolder);
 		cleanup();
 		process.removeListener("exit", onExit);
 		await bridge?.stop();

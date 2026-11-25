@@ -15,31 +15,15 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { captureFrontmost, restoreFocus } from "../../scripts/harness/focus";
 import { CrustError } from "../bridge/errors";
 import { cstr, S } from "../platform/darwin/objc";
+import {
+	disableOcclusion,
+	keepAwake,
+	occlusionHolds,
+	occlusionSelectorAvailable,
+	reassertOcclusion,
+	releaseOcclusion,
+} from "./testing-live-occlusion.ts";
 import { LIVE_PAGE } from "./testing-live-page.ts";
-
-/**
- * The occlusion selector is private WebKit SPI, so its presence varies by macOS version. `skipIf`
- * needs the answer before the test is registered, hence a throwaway webview here. Its value is
- * class-level: measured 1 before a window, after setContentView and after orderFront alike, so
- * ordering cannot make an absent selector appear.
- */
-async function occlusionSelectorAvailable(): Promise<boolean> {
-	if (process.platform !== "darwin") return true;
-	try {
-		const { shim } = await import("../platform/darwin/index.ts");
-		const { S: ObjC } = await import("../platform/darwin/objc.ts");
-		const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
-		const native = perfNative();
-		const configuration = Number(shim().symbols.shim_webview_configuration() ?? 0);
-		const web = Number(shim().symbols.shim_webview_new(configuration, 10, 10) ?? 0);
-		if (web === 0) return false;
-		const available = native.perf_occlusion(web, 0) === 1;
-		ObjC.v0(web, "release");
-		return available;
-	} catch {
-		return false;
-	}
-}
 
 const LIVE_NAME = "click, type and console work in a real WKWebView";
 const SKIP_NAME = `${LIVE_NAME} — skipped: private WebKit _setWindowOcclusionDetectionEnabled: is unavailable on this macOS, so the occluded page draws no frames and no evaluate can be trusted`;
@@ -89,6 +73,7 @@ describe("a live page", () => {
 			});
 			const platform = new DarwinPlatform({ appName: "crust-testing", activate: "never" });
 			let win = 0;
+			let web = 0;
 			try {
 				await platform.start();
 				platform.pump(16);
@@ -96,7 +81,7 @@ describe("a live page", () => {
 				// installing on it would leave every later test in this process believing its bridge is
 				// already there (measured: content-world's "refuses a URL with no token" then saw 2 scripts).
 				const configuration = Number(shim().symbols.shim_webview_configuration() ?? 0);
-				const web = Number(shim().symbols.shim_webview_new(configuration, 480, 320) ?? 0);
+				web = Number(shim().symbols.shim_webview_new(configuration, 480, 320) ?? 0);
 				expect(web).toBeGreaterThan(0);
 				// The same page-world script the bridge installs: the console tap plus `crustInvoke`.
 				const page = Number(shim().symbols.shim_content_world_named(0) ?? 0);
@@ -122,18 +107,20 @@ describe("a live page", () => {
 				// unless this private selector is applied. Before orderFrontRegardless: WebKit caches
 				// occlusion at first visibility. Dev-only scaffold, never a shipped default;
 				// scripts/perf/in-process.ts applies the same remedy for the same reason.
-				const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
-				const native = perfNative();
 				// macOS may nap the WebContent process while our own pump keeps ticking; hold the same
 				// NSProcessInfo activity the perf recorder uses, for the whole test.
-				expect(native.perf_keep_awake()).toBe(1);
-				expect(native.perf_occlusion(web, 0)).toBe(1);
+				expect(keepAwake()).toBe(1);
+				// The owner records this override, so a capture that opts in shares the count instead of
+				// re-enabling detection under this running page.
+				expect(disableOcclusion(web)).toBe(true);
+				expect(occlusionHolds(web)).toBe(1);
 				// Public counterpart from scripts/perf/in-process.ts: join the active Space without
 				// activating the app, or WebKit still keeps the display link idle.
 				S.vq1(win, "setCollectionBehavior:", 1);
 				S.v0(win, "orderFrontRegardless");
 				// Re-assert at first visibility; WebKit caches occlusion there (perf/launch.ts does this).
-				expect(native.perf_occlusion(web, 0)).toBe(1);
+				reassertOcclusion(web);
+				expect(occlusionHolds(web)).toBe(1);
 				expect(Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0)).toBe(1);
 
 				const plugin = createTestingPlugin(
@@ -181,6 +168,8 @@ describe("a live page", () => {
 						: [];
 				expect(lines).toContain("page ready");
 			} finally {
+				releaseOcclusion(web);
+				expect(occlusionHolds(web)).toBe(0);
 				if (win) S.v0(win, "close");
 				platform.stopPump();
 				server.stop(true);
