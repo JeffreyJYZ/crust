@@ -77,6 +77,21 @@ Totals as reported: **9 high, 64 medium, 76 low.**
 | #80 | window | `invalid-title` gets its own code instead of overloading `invalid-label`, mapped to 400, documented in four places; the encoded-token item was already fixed by #68 and was not re-fixed |
 | #81 | compiled | framework cache moved to a private 0700 XDG dir with a content-hash marker and a planted-`runtime.ts` refusal, asset symlinks refused rather than silently skipped, stale `dist/single` output cleaned |
 | #82 | tests | six assertions that could not fail now fail when the bug is reintroduced — proven by disabling `reapChildren()` and finding 4 live children plus 4 leaked dirs, then zero |
+| #83 | dev tokens | `19` F3 settled as a **documented non-fix**: the dev path has no server-side identity to bind a label to (navigation carries only `?window=`, Vite's transform context exposes no request, the handshake has `{url, token, tokens}` with no grant sets), so "Dev is not a boundary" is now stated in the dev and permissions guides |
+| #84 | shim | the four `class_addMethod` units dispose their class pair on every failure path, naming the selector — 13 branches proven against a fake ObjC runtime that refuses a reallocation while a pair is live, so the wedge's own symptom is the assertion |
+| #85 | test | the live-page test skips with a stated reason when `_setWindowOcclusionDetectionEnabled:` is absent, instead of asserting a private selector exists on every runner; the skip is allowlisted in `scripts/check-skips.ts` with the reason in `docs/agents/check-skips.md`, and a forced-absent run shows `<skipped />` rather than a pass |
+
+## Final state
+
+**19 PRs merged, 0 open.** Every high is closed. Of the mediums and lows: fixed with a red-then-green
+test, argued down with a quoted reason, or — in one case — settled as a documented limit with its
+consequence stated where a user reads it (`#83`). Two findings were refuted by a test that passes on
+unchanged source (`20` overlay listener, part of `15`/`22`), which is the outcome a hunt wants and a
+report rarely records.
+
+Nothing in this set rests on "looks right": where runtime evidence was impossible — Linux GTK paths, the
+signing argv without a certificate — the report says so instead of implying a run that did not happen.
+
 
 Final counts: **10 of 10 highs closed**, every medium either fixed or argued down in a PR with a
 reason, and the low tail closed by #77, #79, #81 and #82. Two findings were refuted by test rather than
