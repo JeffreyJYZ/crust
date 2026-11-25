@@ -57,6 +57,24 @@ Totals as reported: **9 high, 64 medium, 76 low.**
    which means published frame numbers over ten seconds are wrong.
 10. **17** the single-instance lock compares then unlinks in two syscalls; 1 double-acquire in 100 pairs.
 
+## Outcomes
+
+| PR | area | closed |
+| --- | --- | --- |
+| #67 | packaging | sidecars Developer-ID signed before the app, `--timestamp` on that path only, `codesign --verify --deep`, staple reason surfaced, NSIS `CreateDirectory` before nested `File /oname=` |
+| #68 | authority | `window.create` binds the mint to the native label (escalation now `403`), bridge `Location` is absolute so a token cannot travel off-origin, `withToken` compares decoded keys so `%74oken=` cannot shadow the seed |
+| #69 | perf | sampler window actually prunes, one clock per sample, recorder exits on a signal; published frame numbers re-checked and unaffected |
+| #70 | linux | 0700 per-user native source dir with `lstat` refusals, preflight list derived from the shipped C, 33rd window refused, policy handlers before first load, GTK leak and slot release, dead ternary |
+| #71 | scope | `ATTACH`/`VACUUM INTO`/`load_extension` refused outside the root, `fs` operates on the path it validated, `i18n.load` respects scope |
+| #72 | bridge/types | inherited `Object.prototype` names are unknown commands and 4xx refusals, server faults are 5xx, `typedHost` ctx stops lying, crash records validated at the disk boundary |
+| #73 | audit | retain/release audit build: `CRUST_SHIM_AUDIT=1` in dev/e2e only, per-unit balance, gate fails on imbalance |
+| #74 | perf tail | overlay validates the sample shape and cannot throw unhandled, `longTasks` is `n/a` not `0` when unsupported, `perf diff` writes failures to stderr |
+| #75 | runtime | autostart argv, quit events reach the page, single-instance lock is atomic, stronghold commits not dropped, deep-link throws cannot leave a half-started app |
+| #76 | shim | `WKContentWorld` retained against the pump's drain (the only use-after-free), tray/menu/find/announce releases, AX focus checked, `menu.read` walks every level, `trusted` distinguishes no-grant from compile failure, testing eval slot cannot cross-talk |
+| #77 | tail | multi-cookie redaction, compiled apps stop serving `cwd/public`, gate tests assert the abort, CLI `$` substitution, Windows tray newline, cursor idempotency, templates, docs |
+
+Every row above landed with a test that failed before it passed, except where the row says a source assertion — the Linux C paths and the sign argv have no runtime proof available on this machine and say so.
+
 ## Counting rules
 
 - `fixed` needs a test that failed before the change and passes after, named in the PR.
