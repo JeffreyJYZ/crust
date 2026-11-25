@@ -18,6 +18,11 @@ extern te_t objc_msgSend(void *self, void *sel, ...);
 extern te_t objc_getClass(const char *name);
 extern te_t sel_registerName(const char *name);
 extern void _NSConcreteStackBlock;
+// WebKit invokes completion handlers on the main thread. Count any that do not, so a lost answer
+// can be attributed to thread affinity instead of guessed at from a timeout.
+extern int pthread_main_np(void);
+static int te_sink_main = -1;
+static int te_off_main;
 
 // The block ABI's descriptor is reserved, size, copy, dispose. `_Block_copy` reads `copy` even when
 // it is null, so the descriptor must have all four fields — a two-field one reads past its end.
@@ -83,6 +88,7 @@ static long long te_utf8_len(const char *bytes) {
 // Hand one string to the sink, when the object really is a string.
 static void te_emit(int kind, te_t object, long long id) {
 	const char *bytes;
+	if (pthread_main_np() != te_sink_main) te_off_main++;
 	if (!object || !te_has(object, "UTF8String")) {
 		if (te_sink) te_sink(2, "", 0, id);
 		return;
@@ -115,6 +121,12 @@ int crust_testing_available(void *web) {
 
 void crust_testing_set_sink(void *sink) {
 	te_sink = (void (*)(int, const char *, long long, long long))sink;
+	te_sink_main = pthread_main_np();
+}
+
+/** Completions that arrived off the sink thread; zero means thread affinity is not the failure. */
+int crust_testing_off_main(void) {
+	return te_off_main;
 }
 
 // 0 started, 1 no webview or no evaluate selector, 2 the script string did not build.
