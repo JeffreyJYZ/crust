@@ -4,6 +4,16 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.16] — 2026-11-25
+
+### Fixed
+
+- **`createPerfPlugin` was not exported, so no published app could mount the profiler's runtime half.** The plugin, the collector, the overlay and the CLI all shipped — and `crust/plugin` answered `createPerfPlugin: undefined`, because `src/plugins/barrel-system.ts` never re-exported it. Measured against an installed `0.2.15`, not inferred: `import("crust/plugin").createPerfPlugin` is `undefined` and the module exports no `perf` name at all, so every `perf.sample` call refused with `requires: "perf plugin mounted"` and the overlay had no runtime half to read. The barrel re-exports `createPerfPlugin`, `OverlayArgs`, `OverlayResult` and `PERF_REQUIRES` now. This is the same class as the `0.2.14` packaging break: the tree was green because tests import `./perf` directly and never go through the entry an app uses.
+
+### Added
+
+- **Three guards, each observed failing before the fix.** A unit test mounts the plugin over a fresh collector and requires `perf.sample` to answer with `frame: null` instead of refusing; a name check fails when `crust/plugin` is missing a plugin an app mounts; and `verify:package` now packs, installs and *mounts* from the tarball — it reports `FAIL … not exported: createPerfPlugin` without the export and `PASS createPerfPlugin mounts from the installed package and perf.sample answers` with it. The same phase also asserts `crust/perf/overlay` exports `mountOverlay` and `MARKER` from the installed copy, taking the check count to 45.
+
 ## [0.2.15] — 2026-11-25
 
 ### Fixed
