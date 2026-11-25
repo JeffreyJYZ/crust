@@ -5,18 +5,12 @@
  */
 import { installHotkey, type KeyHost } from "./hotkey.ts";
 import { createPanel, bridgeStore, type DocumentLike, type Panel } from "./panel.ts";
+import { isPerfSample, type PerfSampleLike } from "./sample-shape.ts";
 import { createSampler, type FrameStats, type Sampler } from "./sampler.ts";
 
-export const MARKER = "crust-perf-overlay/v1";
+export type { PerfSampleLike } from "./sample-shape.ts";
 
-export interface PerfSampleLike {
-	at: number;
-	frame: FrameStats | null;
-	runtime: { eventLoopDelayP95: number; heapUsed: number; heapTotal: number };
-	invoke: Record<string, { count: number; p50: number; p95: number; errors: number }>;
-	events: { emitted: number; delivered: number; dropped: number; p95: number };
-	log: { records: number; ms: number };
-}
+export const MARKER = "crust-perf-overlay/v1";
 
 export interface PerfApi {
 	sample(): unknown;
@@ -129,14 +123,21 @@ export function mountOverlay(options: OverlayOptions = {}) {
 		try {
 			void Promise.resolve(perf.sample())
 				.then((answer) => {
-					runtimeMounted = !refusal(answer);
-					sampled = runtimeMounted ? (answer as PerfSampleLike) : undefined;
+					const valid = !refusal(answer) && isPerfSample(answer);
+					runtimeMounted = valid;
+					sampled = valid ? answer : undefined;
 				})
 				.catch(() => {
 					runtimeMounted = false;
 					sampled = undefined;
 				})
-				.finally(() => panel.update(lines(frame), frame.p95, now()));
+				.finally(() => {
+					try {
+						panel.update(lines(frame), frame.p95, now());
+					} catch {
+						// Repaint is best-effort: a failed panel must not reject into the page.
+					}
+				});
 		} catch {
 			runtimeMounted = false;
 			sampled = undefined;

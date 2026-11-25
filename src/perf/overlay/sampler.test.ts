@@ -107,6 +107,40 @@ describe("rAF sampler", () => {
 		s.stop();
 	});
 
+	test("an observer that cannot be constructed reports longtask n/a", () => {
+		class LiarLongTask {
+			static supportedEntryTypes = ["longtask"];
+		}
+		class ThrowingLongTask {
+			static supportedEntryTypes = ["longtask"];
+			constructor() {
+				throw new Error("no observer");
+			}
+			observe(): void {}
+			disconnect(): void {}
+		}
+		const d = driver();
+		const liar = createSampler({
+			raf: d.raf,
+			cancelRaf: d.cancelRaf,
+			now: d.now,
+			performanceObserver: LiarLongTask,
+		});
+		const throwing = createSampler({
+			raf: d.raf,
+			cancelRaf: d.cancelRaf,
+			now: d.now,
+			performanceObserver: ThrowingLongTask,
+		});
+		liar.start();
+		throwing.start();
+		d.step();
+		expect(liar.frame().longTasks).toBeNull();
+		expect(throwing.frame().longTasks).toBeNull();
+		liar.stop();
+		throwing.stop();
+	});
+
 	test("no advancing frames is framesDrawn staying still, not a slow app", () => {
 		const d = driver();
 		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });

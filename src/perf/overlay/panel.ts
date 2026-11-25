@@ -5,7 +5,8 @@
  * and a missing or refusing store degrades to an in-memory corner.
  */
 
-import { createSparkline, type CanvasLike, type Sparkline } from "./sparkline.ts";
+import { canvasOf, documentOf } from "./dom-guards.ts";
+import { createSparkline, type Sparkline } from "./sparkline.ts";
 
 export interface ElementLike {
 	style: Record<string, string>;
@@ -81,7 +82,10 @@ function cornerOf(value: unknown): { x: number; y: number } | undefined {
 }
 
 export function createPanel(options: PanelOptions = {}) {
-	const doc: DocumentLike = options.doc ?? (globalThis as { document?: DocumentLike }).document!;
+	const doc = options.doc ?? documentOf((globalThis as { document?: unknown }).document);
+	if (doc === undefined) {
+		throw new Error("crust perf overlay: no document — pass `doc` when there is no DOM");
+	}
 	const store = options.store;
 	const root = doc.createElement("div");
 	Object.assign(root.style, {
@@ -107,14 +111,17 @@ export function createPanel(options: PanelOptions = {}) {
 	Object.assign(header.style, { cursor: "move", userSelect: "none", color: "#8a8a8a" });
 	const text = doc.createElement("pre");
 	Object.assign(text.style, { margin: "6px 0", whiteSpace: "pre-wrap", minHeight: "1em" });
-	const canvas = doc.createElement("canvas") as ElementLike & CanvasLike;
-	canvas.width = 260;
-	canvas.height = 48;
-	Object.assign(canvas.style, { display: "block", width: "260px", height: "48px" });
+	const canvasNode = doc.createElement("canvas");
+	const canvas = canvasOf(canvasNode);
+	if (canvas !== null) {
+		canvas.width = 260;
+		canvas.height = 48;
+	}
+	Object.assign(canvasNode.style, { display: "block", width: "260px", height: "48px" });
 	const spark: Sparkline = createSparkline(canvas);
 	root.appendChild(header);
 	root.appendChild(text);
-	root.appendChild(canvas);
+	root.appendChild(canvasNode);
 	doc.body.appendChild(root);
 
 	let x = 8;

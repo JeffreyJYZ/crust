@@ -137,6 +137,26 @@ describe("fixed overlay panel", () => {
 		panel.destroy();
 	});
 
+	test("no document gives a named refusal, not an opaque TypeError", () => {
+		expect(() => createPanel()).toThrow("no document");
+	});
+
+	test("a canvas without a drawing context degrades instead of being asserted", () => {
+		const d = fakeDom();
+		const doc: DocumentLike = {
+			body: d.doc.body,
+			createElement(tag: string) {
+				const el = d.doc.createElement(tag);
+				return tag === "canvas" ? Object.freeze(el) : el;
+			},
+		};
+		const panel = createPanel({ doc });
+		panel.update(["fps 55", "p95 26"], 26, 1000);
+		expect(panel.spark.count).toBe(1);
+		expect(d.root().style.position).toBe("fixed");
+		panel.destroy();
+	});
+
 	test("bridgeStore degrades when there is no bridge", async () => {
 		expect(bridgeStore(undefined)).toBeUndefined();
 		const calls: string[] = [];
