@@ -4,7 +4,7 @@
  * these are the invariants a fake shim can prove without AppKit.
  */
 import { describe, expect, test } from "bun:test";
-import { cbuf, checked, ptrValue } from "./status-bar-args.ts";
+import { CBUF_LIMIT, cbuf, checked, ptrValue } from "./status-bar-args.ts";
 import { readbackFrom } from "./status-bar-readback.ts";
 import {
 	STATUS_BAR_SYMBOL_NAMES,
@@ -21,6 +21,12 @@ describe("status-bar marshalling", () => {
 		// UTF-8 bytes, not UTF-16 code units.
 		expect(cbuf("é").len).toBe(2);
 		expect(cbuf("").len).toBe(0);
+	});
+
+	test("cbuf stops retaining distinct strings after its bounded window", () => {
+		const first = cbuf("cbuf-leak-probe-0");
+		for (let i = 1; i <= CBUF_LIMIT + 1; i++) cbuf(`cbuf-leak-probe-${i}`);
+		expect(cbuf("cbuf-leak-probe-0")).not.toBe(first);
 	});
 
 	test("ptrValue refuses coercion of a mangled pointer", () => {
