@@ -1,0 +1,26 @@
+:root {
+	color-scheme: dark;
+}
+body {
+	margin: 0;
+	padding: 16px;
+	font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+	background: #101014;
+	color: #ddd;
+}
+h1 {
+	font-size: 13px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: #888;
+}
+#work {
+	display: block;
+	margin: 12px 0;
+	background: #16161c;
+}
+#out {
+	margin: 0;
+	font: 12px/1.5 ui-monospace, monospace;
+	color: #7ee787;
+}

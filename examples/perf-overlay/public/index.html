@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Perf overlay probe</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<h1>Perf overlay probe</h1>
+		<p id="sentinel">fixed layout sentinel</p>
+		<canvas id="work" width="600" height="340"></canvas>
+		<pre id="out" role="status">starting…</pre>
+		<!-- app.js owns the workload and the independent counter. The dev harness injects the
+		overlay module separately; a production build never sees it. -->
+		<script type="module" src="/app.js"></script>
+	</body>
+</html>
