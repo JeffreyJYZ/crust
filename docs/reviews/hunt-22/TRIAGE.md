@@ -79,9 +79,9 @@ Totals as reported: **9 high, 64 medium, 76 low.**
 | #82 | tests | six assertions that could not fail now fail when the bug is reintroduced — proven by disabling `reapChildren()` and finding 4 live children plus 4 leaked dirs, then zero |
 | #83 | dev tokens | `19` F3 settled as a **documented non-fix**: the dev path has no server-side identity to bind a label to (navigation carries only `?window=`, Vite's transform context exposes no request, the handshake has `{url, token, tokens}` with no grant sets), so "Dev is not a boundary" is now stated in the dev and permissions guides |
 | #84 | shim | the four `class_addMethod` units dispose their class pair on every failure path, naming the selector — 13 branches proven against a fake ObjC runtime that refuses a reallocation while a pair is live, so the wedge's own symptom is the assertion |
+| #85 | test | the live-page test skips with a stated reason when `_setWindowOcclusionDetectionEnabled:` is absent, instead of asserting a private selector exists on every runner; the skip is allowlisted in `scripts/check-skips.ts` with the reason in `docs/agents/check-skips.md`, and a forced-absent run shows `<skipped />` rather than a pass |
 | #86 | testing | a completion with no waiter is counted and reported instead of collapsing into the timeout line, so a mismatched id stops being invisible (`src/plugins/testing-eval-queue.ts:57` returned silently before) |
 | #87 | testing | counts completions delivered off the sink thread and prints `offMain=` in the timeout line — which then refuted thread affinity with 110/110 on-thread completions instead of leaving it as the leading guess |
-| #85 | test | the live-page test skips with a stated reason when `_setWindowOcclusionDetectionEnabled:` is absent, instead of asserting a private selector exists on every runner; the skip is allowlisted in `scripts/check-skips.ts` with the reason in `docs/agents/check-skips.md`, and a forced-absent run shows `<skipped />` rather than a pass |
 
 ## Final state
 
