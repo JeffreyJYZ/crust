@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import {
 	assessGatekeeper,
 	describeSignature,
@@ -20,24 +21,46 @@ export function signVerdict(result: SignResult): string[] {
 }
 
 /**
+ * Resolve declared sidecar names to the paths codesign must re-sign, deepest first: a nested
+ * artefact is sealed before the directory that holds it, and every one is sealed before the
+ * `.app`. Pure so the ordering is provable without a certificate.
+ */
+export function signSidecarPaths(bundle: string, names: readonly string[]): string[] {
+	const macos = join(bundle, "Contents", "MacOS");
+	return names
+		.map((name) => resolve(macos, ...name.split(/[\\/]/)))
+		.sort((a, b) => b.split(/[\\/]/).length - a.split(/[\\/]/).length);
+}
+
+/**
  * The Developer ID stage inside `crust build --sign`: hardened runtime and the
- * JIT entitlement replace the ad-hoc signature the build applied. No identity
- * ever reaches here — `stageRefusal` refuses the invocation before any work.
+ * JIT entitlement replace the ad-hoc signature the build applied. Every declared sidecar is
+ * re-signed with the same identity first — codesign never re-signs already-signed nested code.
+ * No identity ever reaches here on an uncredentialed machine — `stageRefusal` refuses first.
  */
 export async function signStage(
 	bundle: string,
 	identity: string,
 	microphone = false,
+	sidecars: readonly string[] = [],
 ): Promise<number> {
 	line("identity", identity);
 	line("bundle", bundle);
 
+	const sidecarPaths = signSidecarPaths(bundle, sidecars);
+	if (sidecarPaths.length > 0) {
+		line(
+			"sidecars",
+			`${sidecarPaths.length} re-signed with the Developer ID before the bundle`,
+		);
+	}
 	const result = await signApp({
 		appPath: bundle,
 		mode: "developer-id",
 		identity,
 		hardenedRuntime: true,
 		microphone,
+		sidecars: sidecarPaths,
 	});
 	for (const text of signVerdict(result)) line("sign", text);
 
@@ -45,10 +68,10 @@ export async function signStage(
 	if (!verified.valid) {
 		return fail(
 			"build",
-			`codesign --verify --strict failed (${verified.exitCode}): ${verified.output}`,
+			`codesign --verify --strict --deep failed (${verified.exitCode}): ${verified.output}`,
 		);
 	}
-	line("verify", "codesign --verify --strict passed");
+	line("verify", "codesign --verify --strict --deep passed");
 
 	const gatekeeper = await assessGatekeeper(bundle);
 	line(
