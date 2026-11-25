@@ -82,10 +82,12 @@ Totals as reported: **9 high, 64 medium, 76 low.**
 | #85 | test | the live-page test skips with a stated reason when `_setWindowOcclusionDetectionEnabled:` is absent, instead of asserting a private selector exists on every runner; the skip is allowlisted in `scripts/check-skips.ts` with the reason in `docs/agents/check-skips.md`, and a forced-absent run shows `<skipped />` rather than a pass |
 | #86 | testing | a completion with no waiter is counted and reported instead of collapsing into the timeout line, so a mismatched id stops being invisible (`src/plugins/testing-eval-queue.ts:57` returned silently before) |
 | #87 | testing | counts completions delivered off the sink thread and prints `offMain=` in the timeout line — which then refuted thread affinity with 110/110 on-thread completions instead of leaving it as the leading guess |
+| #88 | docs | release review found five undocumented behaviours — the `CRUST_SHIM_AUDIT=1` switch with its reachability limit, the pump-progress deadline, packaging re-signing, `perf diff` failures on stderr, and the single-file output clean-up — plus a stale `# 0.2.16` echo on the install page |
+| #89 | testing | the eval deadline is wall time with a pump gate (30 s default instead of 4000 ms), so a starved runner pauses it and a live page answering 22 s late resolves while a hung page still fails naming its id; `frames` is labelled visibility-only and `visibility` plus a non-rAF heartbeat distinguish hidden from dead |
 
 ## Final state
 
-**19 PRs merged, 0 open.** Every high is closed. Of the mediums and lows: fixed with a red-then-green
+**23 PRs merged, 0 open.** Every high is closed. Of the mediums and lows: fixed with a red-then-green
 test, argued down with a quoted reason, or — in one case — settled as a documented limit with its
 consequence stated where a user reads it (`#83`). Two findings were refuted by a test that passes on
 unchanged source (`20` overlay listener, part of `15`/`22`), which is the outcome a hunt wants and a
@@ -98,23 +100,27 @@ signing argv without a certificate — the report says so instead of implying a 
 `brew`, `bun add -g` and `skills update crust` all answering `0.2.19`. The install-page pins moved after
 `bunx github:JeffreyJYZ/crust#v0.2.19 --version` answered `0.2.19` and `init` pinned that tag — not before.
 
-**Still not closed: `main` `58fe0bd` is red on the same live-page test** (run 45563816639, macOS gate), and
-the instrument from `#86`/`#87` now says what it is, which is not what four rounds of fixing assumed:
+**Closed: the live-page defect, in `0.2.20`** (tag `v0.2.20`, main `acd1b80` green at run 45566252030). It took
+four wrong diagnoses to get the evidence that named it, so the trail is worth keeping:
 
 ```
 crust: eval timeout id=11 waited=[] progress=1920->5920 frames=0->0 offMain=0
 crust: dropped completion id=11 ...        22 s later, payload {"ok":true,"hooked":true,...}
 ```
 
-The completion is **late, not lost**. `offMain=0` refutes thread affinity (110/110 completions measured on
-the sink thread). `frames=0` was my own diagnostic misleading: rAF does not fire for a page WebKit considers
-hidden, so it measured visibility, not liveness. The pump advanced 4 s of steady progress while the page
-took ≥20 s to answer, and `perf_keep_awake` already held the full latency-critical activity mask — so the
-WebContent process was starved at low QoS because WebKit treats the page as not visible, and a 4000 ms
-budget against that is a spurious timeout. `window.crust.hide()` is a supported state, so a `crust dev` user
-hits the same deadline; the fix belongs in the deadline and in the diagnostic, not in the test setup. Not
-proven, so not claimed: that is the best-supported cause, and it ships with a test where a late answer
-passes and a hung page still fails.
+The completion was **late, not lost**. `offMain=0` refuted thread affinity, which had been the leading
+theory (110/110 completions measured on the sink thread). `frames=0` was this file's own diagnostic
+misleading its reader: rAF never fires for a page WebKit considers hidden, so it measured visibility while
+being read as liveness. And `waited=[]` printed while a waiter was live, because the timeout path forgot the
+id before listing the survivors. What was actually wrong: a 4000 ms budget against a WebContent process
+starved at low QoS because WebKit treats the page as not visible — a spurious timeout that a `crust dev` user
+with `window.crust.hide()` also hits, not only the CI runner.
+
+`#89` fixes it where it lives: the deadline is wall time with a pump gate (30 s default, so a starved runner
+pauses it and a live page's late answer resolves, while a page that never answers still fails naming its id),
+`frames` is labelled a visibility signal, and `visibility` plus a non-rAF heartbeat now distinguish hidden
+from dead. The tests pin the number and the behaviour: budget > 22 s, an answer 22 s late resolves, a hung
+page rejects, and a completion arriving after a timeout reports `elapsed: 22_100`.
 
 
 Final counts: **10 of 10 highs closed**, every medium either fixed or argued down in a PR with a
