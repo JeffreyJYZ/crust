@@ -88,6 +88,33 @@ describe("window.capture", () => {
 		});
 	});
 
+	test("both probe options reach the adapter without coercion", async () => {
+		const adapter = fakeAdapter(["main"]);
+		let seen: unknown;
+		const plugin = createWindowPlugin({
+			...adapter,
+			capture: async (label, options) => {
+				seen = options;
+				return adapter.capture!(label);
+			},
+		});
+
+		expect(
+			await plugin.commands.capture({ label: "main", ignoreOcclusion: true, prime: false }),
+		).toMatchObject({ ok: true, label: "main" });
+		expect(seen).toEqual({ ignoreOcclusion: true, prime: false });
+	});
+
+	test("a non-boolean prime is invalid-value, never coerced into an opt-in", async () => {
+		const plugin = createWindowPlugin(fakeAdapter(["main"]));
+
+		expect(await plugin.commands.capture({ label: "main", prime: "true" } as never)).toMatchObject({
+			ok: false,
+			code: "invalid-value",
+			message: expect.stringContaining("window.capture prime must be a boolean"),
+		});
+	});
+
 	test("an adapter that answers no png is a handler-error, not a broken picture", async () => {
 		const adapter = fakeAdapter();
 		const plugin = createWindowPlugin({

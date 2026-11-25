@@ -19,8 +19,9 @@ import { join } from "node:path";
 import blockPart from "./shim/123_snapshot.c" with { type: "text" };
 import idPart from "./shim/125_snapshot_ids.c" with { type: "text" };
 import readPart from "./shim/124_snapshot_read.c" with { type: "text" };
+import primePart from "./shim/126_snapshot_prime.c" with { type: "text" };
 
-export const snapshotSource = `${blockPart}\n${idPart}\n${readPart}`;
+export const snapshotSource = `${blockPart}\n${idPart}\n${readPart}\n${primePart}`;
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -69,6 +70,12 @@ export interface SnapshotUnit {
 		crust_shot_take: (web: number, id: number) => number;
 		/** Unsupported WebKit SPI: 1 when the occlusion-toggle selector existed, else 0. */
 		crust_shot_occlusion: (web: number, enabled: number) => number;
+		/** Private, harness-only NSWindow SPI: 1 when `_setOcclusionStateIsVisible:` exists. */
+		crust_shot_prime_available: (web: number) => number;
+		/** Set or clear the composited bit; 1 only when the private selector existed. */
+		crust_shot_prime: (web: number, enabled: number) => number;
+		/** Public `occlusionState` bit 2, so a test can prove the bit was restored. */
+		crust_shot_composited: (web: number) => number;
 		crust_shot_width: () => number;
 		crust_shot_height: () => number;
 		crust_shot_scale: () => number;
@@ -93,6 +100,9 @@ function compile(): SnapshotUnit {
 			crust_shot_available: { args: [P], returns: I32 },
 			crust_shot_take: { args: [P, I32], returns: I32 },
 			crust_shot_occlusion: { args: [P, I32], returns: I32 },
+			crust_shot_prime_available: { args: [P], returns: I32 },
+			crust_shot_prime: { args: [P, I32], returns: I32 },
+			crust_shot_composited: { args: [P], returns: I32 },
 			crust_shot_width: { args: [], returns: I64 },
 			crust_shot_height: { args: [], returns: I64 },
 			crust_shot_scale: { args: [], returns: F64 },

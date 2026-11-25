@@ -27,7 +27,11 @@ export const LAUNCHERS = [
 	"e2e-window.ts",
 	"e2e.ts",
 	"capture-occlusion-probe.ts",
+	"capture-prime-probe.ts",
 	"first-run.ts",
+	"probe-capture-detach.ts",
+	"probe-capture-hold.ts",
+	"probe-capture-prime.ts",
 	"probe-focus-control.ts",
 	"probe-tray.ts",
 ];
