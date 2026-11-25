@@ -74,6 +74,7 @@ describe("a live page", () => {
 			const platform = new DarwinPlatform({ appName: "crust-testing", activate: "never" });
 			let win = 0;
 			let web = 0;
+			let releasePrime: (() => void) | undefined;
 			try {
 				await platform.start();
 				platform.pump(16);
@@ -101,6 +102,12 @@ describe("a live page", () => {
 				);
 				expect(win).toBeGreaterThan(0);
 				S.v1(win, "setContentView:", web);
+				// A never-composited view never calls back; hold the bit for this test's lifetime.
+				const { compositedAvailable, holdComposited } = await import(
+					"./testing-live-prime.ts"
+				);
+				expect(compositedAvailable(web)).toBe(true);
+				releasePrime = holdComposited(web).release;
 				// Trap: WebKit suspends rendering for a window it considers occluded, and a suspended
 				// webview never services the evaluate callback — "the page did not answer". This window
 				// is off every display, so the page boots `visibilityState=hidden` with zero frames
@@ -160,6 +167,11 @@ describe("a live page", () => {
 				const after = await plugin.commands.query({ selector: "#state" });
 				expect(after).toMatchObject({ ok: true, text: "hello" });
 
+				// The completion is the regression, not a boolean on whatever the page said: a page
+				// that never answers times out here, so this still fails for a genuinely dead page.
+				const trivial = await darwinTestingAdapter(() => web).evaluate(undefined, "String(2 + 2)");
+				expect(trivial).toBe("4");
+
 				const captured = await plugin.commands.console({});
 				expect("hooked" in captured && captured.hooked).toBe(true);
 				const lines =
@@ -170,6 +182,7 @@ describe("a live page", () => {
 			} finally {
 				releaseOcclusion(web);
 				expect(occlusionHolds(web)).toBe(0);
+				releasePrime?.();
 				if (win) S.v0(win, "close");
 				platform.stopPump();
 				server.stop(true);
