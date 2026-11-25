@@ -67,7 +67,8 @@ export class CrustError extends Error {
 }
 
 export function statusForCode(code: CrustErrorCode): number {
-	return STATUS[code];
+	// An untrusted code must never hand the HTTP writer `undefined`, which it would default to 200.
+	return Object.hasOwn(STATUS, code) ? STATUS[code] : 500;
 }
 
 export function isCrustError(value: unknown): value is CrustError {

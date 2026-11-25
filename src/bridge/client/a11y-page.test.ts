@@ -94,4 +94,19 @@ describe("crust.a11y.focusElement", () => {
 		expect(a11y.focusElement("  ")).toMatchObject({ ok: false, code: "bad-request" });
 		expect(a11y.focusElement("#missing")).toMatchObject({ ok: false, code: "not-found" });
 	});
+
+	test("a selector the browser refuses to parse is bad-request, not a thrown DOMException", () => {
+		const doc = pageDocument();
+		(doc as any).querySelector = () => {
+			throw new DOMException("Invalid selector", "SyntaxError");
+		};
+		const a11y = install("served", doc).a11y!;
+		for (const answer of [a11y.pageTree("["), a11y.focusElement("[")]) {
+			expect(answer).toMatchObject({
+				ok: false,
+				code: "bad-request",
+				message: expect.stringContaining("Invalid selector"),
+			});
+		}
+	});
 });

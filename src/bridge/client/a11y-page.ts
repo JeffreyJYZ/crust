@@ -9,107 +9,17 @@
  * not evidence that a screen reader can reach the page.
  *
  * Serialised with `Function.prototype.toString()` beside `installInvoke`, so everything it needs
- * lives inside this function. Types are erased before the page sees the source; no runtime value
- * may come from module scope.
+ * lives inside this function or in the helper factory passed in; types are erased before the page
+ * sees the source, and no runtime value may come from module scope.
  */
-import type {
-	A11yNode,
-	PageA11y,
-	PageA11yRefusal,
-	PageFocusAnswer,
-	PageTreeAnswer,
-} from "./a11y-page-types.ts";
+import type { A11yNode, PageA11y, PageFocusAnswer, PageTreeAnswer } from "./a11y-page-types.ts";
+import type { A11yHelpers } from "./a11y-helpers.ts";
 
-export function installPageA11y(scope: Record<string, any>): PageA11y {
-	// Kept inside the function because its source is injected: no module-scope value survives.
+export function installPageA11y(scope: Record<string, any>, helpers: A11yHelpers): PageA11y {
+	const { doc, tagOf, roleOf, labelOf, describe, noDocument, badSelector } = helpers;
 	const domNote =
 		"This is the page's own view of its DOM, not the operating system's accessibility tree; " +
 		"it does not prove a screen reader can reach the page.";
-	const doc = (): any => scope.document;
-	const attr = (el: any, name: string): string => {
-		const get = el?.getAttribute;
-		const value = typeof get === "function" ? get.call(el, name) : null;
-		return typeof value === "string" ? value : "";
-	};
-	const text = (el: any): string => {
-		const value = el?.textContent;
-		return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-	};
-	const tagOf = (el: any): string => String(el?.tagName ?? el?.nodeName ?? "").toLowerCase();
-	const roleOf = (el: any): string => {
-		const explicit = attr(el, "role");
-		if (explicit) return explicit;
-		const tag = tagOf(el);
-		if (tag === "a") return attr(el, "href") ? "link" : "generic";
-		if (tag === "button") return "button";
-		if (tag === "input") {
-			const type = attr(el, "type").toLowerCase();
-			if (type === "checkbox") return "checkbox";
-			if (type === "radio") return "radio";
-			if (type === "button" || type === "submit" || type === "reset") return "button";
-			return "textbox";
-		}
-		if (tag === "select") return "combobox";
-		if (tag === "textarea") return "textbox";
-		if (tag === "img") return "img";
-		if (/^h[1-6]$/.test(tag)) return "heading";
-		if (tag === "nav") return "navigation";
-		if (tag === "main") return "main";
-		if (tag === "ul" || tag === "ol") return "list";
-		if (tag === "li") return "listitem";
-		if (tag === "table") return "table";
-		if (tag === "dialog") return "dialog";
-		if (tag === "div" || tag === "span") return "generic";
-		return tag || "generic";
-	};
-	const labelOf = (el: any): string => {
-		const aria = attr(el, "aria-label");
-		if (aria) return aria;
-		const by = attr(el, "aria-labelledby");
-		if (by) {
-			const parts: string[] = [];
-			for (const id of by.split(/\s+/)) {
-				const d = doc();
-				const ref =
-					id && typeof d?.getElementById === "function" ? d.getElementById(id) : null;
-				if (ref) parts.push(text(ref));
-			}
-			const joined = parts.filter(Boolean).join(" ");
-			if (joined) return joined;
-		}
-		const alt = attr(el, "alt");
-		if (alt) return alt;
-		const title = attr(el, "title");
-		if (title) return title;
-		return text(el).slice(0, 120);
-	};
-	const focusableOf = (el: any): boolean => {
-		const ti = attr(el, "tabindex");
-		if (ti !== "") {
-			const n = Number(ti);
-			return Number.isFinite(n) && n >= 0;
-		}
-		const tag = tagOf(el);
-		if (tag === "a") return attr(el, "href") !== "";
-		return (
-			tag === "button" ||
-			tag === "input" ||
-			tag === "select" ||
-			tag === "textarea" ||
-			attr(el, "contenteditable") === "true"
-		);
-	};
-	const describe = (el: any, order: number): A11yNode => ({
-		role: roleOf(el),
-		label: labelOf(el),
-		focusable: focusableOf(el),
-		readingOrder: order,
-	});
-	const noDocument = (command: string): PageA11yRefusal => ({
-		ok: false,
-		code: "no-document",
-		message: `a11y.${command}: this page has no document to read or focus`,
-	});
 
 	return {
 		pageTree(selector?: string): PageTreeAnswer {
@@ -117,10 +27,15 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 			if (!d || typeof d.querySelector !== "function") return noDocument("pageTree");
 			const rootSelector =
 				typeof selector === "string" && selector.trim() ? selector.trim() : "body";
-			const root =
-				rootSelector === "body"
-					? (d.body ?? d.querySelector("body"))
-					: d.querySelector(rootSelector);
+			let root: any;
+			try {
+				root =
+					rootSelector === "body"
+						? (d.body ?? d.querySelector("body"))
+						: d.querySelector(rootSelector);
+			} catch (error) {
+				return badSelector("pageTree", rootSelector, error);
+			}
 			if (!root) {
 				return {
 					ok: false,
@@ -153,7 +68,12 @@ export function installPageA11y(scope: Record<string, any>): PageA11y {
 					message: "a11y.focusElement needs a non-empty selector",
 				};
 			}
-			const el = d.querySelector(sel);
+			let el: any;
+			try {
+				el = d.querySelector(sel);
+			} catch (error) {
+				return badSelector("focusElement", sel, error);
+			}
 			if (!el) {
 				return {
 					ok: false,

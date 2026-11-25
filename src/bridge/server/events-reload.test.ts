@@ -51,6 +51,18 @@ describe("dev reload signal", () => {
 		}
 	});
 
+	test("a missing parent directory disables reload instead of throwing ENOENT", () => {
+		const dir = mkdtempSync(join(tmpdir(), "crust-reload-"));
+		try {
+			const file = join(dir, "deleted", "dev-reload");
+			const events = new Events(file);
+			expect(events.retainedCleanups).toBe(0);
+			expect(() => events.stop()).not.toThrow();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	test("an empty token never emits", async () => {
 		const { dir, file } = scratch();
 		try {

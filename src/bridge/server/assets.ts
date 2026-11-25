@@ -32,7 +32,14 @@ export async function assetBody(
 	pathname: string,
 	options: StartBridgeOptions,
 ): Promise<string | Uint8Array | ArrayBuffer | Blob | null> {
-	const key = decodeURIComponent(pathname);
+	let key: string;
+	try {
+		key = decodeURIComponent(pathname);
+	} catch {
+		// A malformed escape is the caller's bad path, not a handler failure: without this the
+		// URIError reaches the top-level catch and answers 500.
+		throw new CrustError("bad-request", `bad percent escape in asset path: ${pathname}`);
+	}
 	// Both separators, because `join` on Windows treats `\` as one: a `%5c` segment decodes
 	// after the URL parser has run, so splitting on `/` alone lets `..\..\secret` through.
 	if (key.includes("\0") || key.split(/[\\/]/).some((part) => part === "..")) {

@@ -6,6 +6,7 @@
  */
 
 import type { DocumentLike, InvokeHalf } from "./invoke-half.ts";
+import type { Revive } from "./reviver.ts";
 import type * as T from "./types";
 
 export type { DocumentLike, InvokeHalf } from "./invoke-half.ts";
@@ -28,7 +29,9 @@ export function installInvoke(
 	label: string | undefined,
 	onAnswer: (status: number, reason?: string) => void,
 	onEvent: (event: string, payload: unknown) => void,
+	reviveFactory: (scope: Record<string, any>) => Revive,
 ): InvokeHalf {
+	const revive = reviveFactory(scope);
 	class InvokeFailure extends Error implements T.CrustInvokeError {
 		readonly code: string;
 		readonly status: number;
@@ -48,41 +51,6 @@ export function installInvoke(
 	const asked: Record<string, boolean> = Object.create(null);
 	let stream: any = null;
 	let relayed = false;
-
-	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep; a data
-	// object that carried a tag key arrives as `{ __crustLiteral: … }` and is handed back whole.
-	// `Object.defineProperty` for every key, because one literally named `__proto__` would
-	// otherwise set the prototype instead of surviving as a field.
-	const put = (out: any, key: string, value: any) => {
-		Object.defineProperty(out, key, {
-			value,
-			enumerable: true,
-			writable: true,
-			configurable: true,
-		});
-	};
-
-	const revive = (value: any, depth: number): any => {
-		if (depth > 1 || value === null || typeof value !== "object") return value;
-		if (
-			typeof value.__crustLiteral === "object" &&
-			value.__crustLiteral !== null &&
-			!Array.isArray(value.__crustLiteral)
-		) {
-			// Real data that merely carried a tag key. Walk its *values* one level down, so the
-			// object itself is never read as a tag while a genuine binary inside it still revives.
-			const literal = value.__crustLiteral;
-			const out: any = {};
-			for (const key of Object.keys(literal)) put(out, key, revive(literal[key], depth + 1));
-			return out;
-		}
-		if (typeof value.__crustBytes === "string") {
-			return Uint8Array.from(atob(value.__crustBytes), (char) => char.charCodeAt(0));
-		}
-		const out: any = Array.isArray(value) ? [] : {};
-		for (const key of Object.keys(value)) put(out, key, revive(value[key], depth + 1));
-		return out;
-	};
 
 	/** Rebuild the error an envelope names, so both transports throw the same class. */
 	const fail = (error: any, status: number): InvokeFailure =>
@@ -119,11 +87,17 @@ export function installInvoke(
 	const half = (async (plugin: string, command: string, args?: unknown) => {
 		if (hasRealm) {
 			const reply = await realmCall(plugin, command, args === undefined ? null : args);
-			const status =
-				reply && reply.ok === true ? 200 : (reply?.error?.status as number) || 500;
-			onAnswer(status, reply?.error?.message);
-			if (reply && reply.ok === true) return revive(reply.result, 0);
-			throw fail(reply?.error, 0);
+			if (reply?.ok === true) {
+				onAnswer(200);
+				return revive(reply.result, 0);
+			}
+			// `error.status` is wire data: a string "200" must not coerce into a successful
+			// handshake. An invalid status is a refusal, and status 0 means no transport answered,
+			// so neither is allowed to settle `ready`.
+			const raw = reply?.error?.status;
+			const status = typeof raw === "number" ? raw : 400;
+			if (status !== 0) onAnswer(status, reply?.error?.message);
+			throw fail(reply?.error, status);
 		}
 		const fetchImpl = scope.fetch ?? (globalThis as any).fetch;
 		if (typeof fetchImpl !== "function") {
@@ -147,8 +121,10 @@ export function installInvoke(
 		} catch {
 			body = undefined;
 		}
-		// 2xx and handler throws prove reachability; a 4xx rejects `ready` with its status/reason.
-		onAnswer(status, body?.error?.message ?? body?.error?.code);
+		// A parsed `ok:true` envelope proves reachability even when a typed failure chose a 4xx:
+		// the command failed, the bridge did not. Only a refusal body (`ok !== true`) may reject
+		// `ready`, with that body's status and reason.
+		onAnswer(body?.ok === true ? 200 : status, body?.error?.message ?? body?.error?.code);
 		if (body === undefined) {
 			throw new InvokeFailure(
 				"bad-response",

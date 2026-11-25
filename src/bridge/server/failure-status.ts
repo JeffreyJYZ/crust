@@ -26,6 +26,17 @@ const CONDITION: Record<string, CrustErrorCode> = {
 	"unknown-adapter": "not-implemented",
 	"unsupported-platform": "not-implemented",
 	"handler-error": "handler-error",
+	// A command that ran and failed on the server is never a caller mistake: these codes must not
+	// answer 400, or a caller that branches on the transport reads a failed integrity check as a
+	// malformed request.
+	"signature-mismatch": "handler-error",
+	"hash-mismatch": "handler-error",
+	"unverified-artifact": "handler-error",
+	"relaunch-failed": "handler-error",
+	"io-error": "handler-error",
+	corrupt: "handler-error",
+	"sql-error": "handler-error",
+	"contract-violation": "handler-error",
 };
 
 /**
@@ -36,6 +47,9 @@ export function resultStatus(result: unknown): number {
 	if (result === null || typeof result !== "object") return 200;
 	const answer = result as { ok?: unknown; code?: unknown };
 	if (answer.ok !== false || typeof answer.code !== "string") return 200;
-	const condition = CONDITION[answer.code];
+	// `Object.hasOwn`, not a bare index: `code` is untrusted, and an inherited name such as
+	// `__proto__`, `constructor` or `toString` would otherwise skip the 400 default and hand
+	// `jsonResponse` an `undefined` status — which it turns into a 200 success.
+	const condition = Object.hasOwn(CONDITION, answer.code) ? CONDITION[answer.code] : undefined;
 	return condition === undefined ? 400 : statusForCode(condition);
 }

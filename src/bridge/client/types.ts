@@ -63,9 +63,11 @@ export interface CrustApi<Schema extends CommandSchema = CommandSchema> {
 	readonly baseUrl: string;
 	readonly token?: string;
 	/**
-	 * Resolves after the first successful handshake (the SSE stream opened, or a 2xx invoke
-	 * answered). Rejects with a `CrustInvokeError` carrying `code: "bridge-refused"` and the HTTP
-	 * status if the first exchange is a 4xx — a stale token, a bad origin, or no bridge route.
+	 * Resolves after the first exchange that proves the bridge answered: the SSE stream opened, an
+	 * invoke with a 2xx, or an `ok:true` envelope carrying a typed command failure. A typed failure
+	 * resolves as a value with a 4xx/5xx transport and does not reject `ready`. Rejects with a
+	 * `CrustInvokeError` (`code: "bridge-refused"`) only for a refusal body with a 4xx — a stale
+	 * token, a bad origin, or no bridge route. A transport failure with status 0 leaves it pending.
 	 */
 	readonly ready: Promise<void>;
 	invoke: TypedInvoke<Schema> & LooseInvoke;

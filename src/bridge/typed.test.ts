@@ -46,6 +46,25 @@ describe("typedHost", () => {
 		expect(answer).toEqual({ id: "a" });
 	});
 
+	test("ctx is optional in the type, matching the one-argument app.invoke call", async () => {
+		const application = new App();
+		const host = typedHost<NotesMap>(application);
+		let seen: unknown = "not-called";
+		// Compile-only proof: the directive is unused (and `bun check` red) while `ctx` is typed
+		// as always present. It is never invoked, because this path really passes no context.
+		const unguarded = (ctx?: { emit: (event: string, data: unknown) => void }) => {
+			// @ts-expect-error ctx is undefined on app.invoke and must be narrowed before use
+			ctx.emit("note", "x");
+		};
+		expect(typeof unguarded).toBe("function");
+		host.command("notes.create", (input, ctx) => {
+			seen = ctx;
+			return { id: input.title };
+		});
+		await application.invoke("notes.create", { title: "a" });
+		expect(seen).toBeUndefined();
+	});
+
 	test("the wrong answer shape is a type error, on the registration site", () => {
 		const host = typedHost<NotesMap>(new App());
 		// @ts-expect-error the map says `output` is `{ id: string }`, not a number
