@@ -14,17 +14,20 @@ await window.crust.invoke("database", "exec", {
 	sql: "INSERT INTO note (body) VALUES (?)",
 	args: ["hello"],
 });
-const { rows } = await window.crust.invoke("database", "query", { handle, sql: "SELECT * FROM note" });
+const { rows } = await window.crust.invoke("database", "query", {
+	handle,
+	sql: "SELECT * FROM note",
+});
 await window.crust.invoke("database", "close", { handle });
 ```
 
-| command  | arguments                            | answers                                          |
-| -------- | ------------------------------------ | ------------------------------------------------ |
-| `open`   | `{ name, readonly? }`                | `{ ok: true, handle, path, readonly }`           |
-| `close`  | `{ handle }`                         | `{ ok: true, handle }`                           |
-| `exec`   | `{ handle, sql, args? }`             | `{ ok: true, changes, lastInsertRowid }`         |
-| `query`  | `{ handle, sql, args? }`             | `{ ok: true, rows }`                             |
-| `get`    | `{ handle, sql, args? }`             | `{ ok: true, row }` — the first row, or `null`   |
+| command | arguments                | answers                                        |
+| ------- | ------------------------ | ---------------------------------------------- |
+| `open`  | `{ name, readonly? }`    | `{ ok: true, handle, path, readonly }`         |
+| `close` | `{ handle }`             | `{ ok: true, handle }`                         |
+| `exec`  | `{ handle, sql, args? }` | `{ ok: true, changes, lastInsertRowid }`       |
+| `query` | `{ handle, sql, args? }` | `{ ok: true, rows }`                           |
+| `get`   | `{ handle, sql, args? }` | `{ ok: true, row }` — the first row, or `null` |
 
 ## A name is a name, never a path
 
@@ -42,6 +45,16 @@ scope path, from `fs-scope-path.ts`.
 `args` is an array, handed to the statement in `?` order. Nothing is interpolated into the SQL, so a
 value containing a quote is data and never syntax; there is no command that takes a name or a string
 and pastes it into a statement.
+
+## Statements that open files
+
+SQLite can open files from SQL, not just from `open`. `ATTACH DATABASE ? AS side` accepts a bound
+name and resolves it through the same name and containment rule as `open`: the value is replaced by
+a file inside the data root before SQLite sees it, so an absolute path, a `..` walk, a symlink out of
+the root and a literal path are refused with `sql-error`. `ATTACH` on a read-only handle, a literal
+or numbered binding, a multi-statement attach, `VACUUM INTO`, `load_extension` and directory
+`PRAGMA`s are refused too. `DETACH` only names an alias and stays available. A readonly handle is
+therefore a real read boundary for every file this plugin opens.
 
 ## `readonly` is a real open
 
