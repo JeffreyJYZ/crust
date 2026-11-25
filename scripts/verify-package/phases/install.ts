@@ -55,6 +55,33 @@ export async function checkInstall(
 		);
 	}
 
+	// Resolving is not the same as being usable: `perf` shipped in 0.2.14 with a working plugin that
+	// `crust/plugin` did not re-export, so every plugin an app mounts is imported *and mounted* here, and
+	// one command is called. A barrel that forgets an export fails this, and a plugin whose mount throws
+	// fails it too.
+	const mounted = await run(
+		[
+			"bun",
+			"-e",
+			[
+				`const p = await import("crust/plugin");`,
+				`const missing = ["createPerfPlugin"].filter((n) => typeof p[n] !== "function");`,
+				`if (missing.length) { console.error("not exported: " + missing.join(",")); process.exit(1); }`,
+				`const plugin = p.createPerfPlugin();`,
+				`const answer = plugin.commands.sample();`,
+				`if ("requires" in answer) { console.error("refused: " + answer.requires); process.exit(1); }`,
+				`if (!("frame" in answer) || answer.frame !== null) { console.error("no null frame on a fresh mount"); process.exit(1); }`,
+				`console.log("mounted");`,
+			].join("\n"),
+		],
+		{ cwd: consumer },
+	);
+	check(
+		"createPerfPlugin mounts from the installed package and perf.sample answers",
+		mounted.code === 0 && /mounted/.test(mounted.stdout),
+		(mounted.stderr.trim() || mounted.stdout.trim()).split("\n")[0] ?? `exit ${mounted.code}`,
+	);
+
 	// `crust init` is the first command a user runs, and it reads the
 	// templates through `crustRoot` — so this proves the templates were
 	// found at their installed path, not only that they exist in a tarball.

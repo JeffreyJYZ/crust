@@ -314,10 +314,16 @@ Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. Th
 
 ## Performance
 
-`perf` is an **opt-in plugin**, so it is absent from the namespace table above: an app adds
-`createPerfPlugin()` to its plugins, then the page can call `perf.sample`, `perf.frameReport`,
-`perf.overlay({ enabled })`, `perf.sinks` and `perf.reset`. Without it every call answers
-`not-implemented` with `requires: "perf plugin mounted"`.
+`perf` is an **opt-in plugin**, so it is absent from the namespace table above: an app adds it to its
+plugins, then the page can call `perf.sample`, `perf.frameReport`, `perf.overlay({ enabled })`,
+`perf.sinks` and `perf.reset`. Without it every call answers `not-implemented` with
+`requires: "perf plugin mounted"`.
+
+```ts
+import { createPerfPlugin } from "crust/plugin";
+
+app.plugin(createPerfPlugin()); // mounts the runtime half; perf.sample answers from here
+```
 
 - `perf.sample()` returns `{ frame, runtime, invoke, events }`; `frame` is `null` until a page has called
   `perf.frameReport({ fps, p50, p95, worst, longTasks, framesDrawn })`, because only the page can see its

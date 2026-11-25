@@ -96,6 +96,12 @@ export {
 	singleInstancePlugin,
 } from "./single-instance";
 export {
+	createPerfPlugin,
+	type OverlayArgs,
+	type OverlayResult,
+	PERF_REQUIRES,
+} from "./perf";
+export {
 	createI18nPlugin,
 	type I18nAdapter,
 	type I18nOptions,
