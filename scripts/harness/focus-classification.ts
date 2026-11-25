@@ -85,7 +85,7 @@ export const EXEMPT: { reason: string; files: string[] }[] = [
 	},
 	{
 		reason: "builds its window straight from the shim and never activates or orders it through LaunchServices, so the app it measures stays in the background; `guardFocus()` would activate one at exit, which is the focus theft this probe exists to avoid",
-		files: ["probe-capture-window-state.ts"],
+		files: ["probe-capture-window-state.ts", "probe-capture-fullscreen.ts"],
 	},
 	{
 		reason: "enumerates test files and runs the suite with bun test: it never launches a GUI app",
