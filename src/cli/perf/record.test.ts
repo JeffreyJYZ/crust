@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { record } from "./record.ts";
 import { diffFiles } from "./diff.ts";
+import { idleWindowCount } from "./format.ts";
 import type { PerfRecordFile } from "./types.ts";
 
 const ENTRY = resolve(import.meta.dir, "../index.ts");
@@ -33,9 +34,19 @@ describe("perf record", () => {
 	test("honest failure: a path that is not an app exits 2 with no file", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "crust-perf-honest-"));
 		const out = join(dir, "perf.json");
-		expect(await record({ app: join(dir, "missing"), seconds: 1, out, format: "text" })).toBe(2);
+		expect(await record({ app: join(dir, "missing"), seconds: 1, out, format: "text" })).toBe(
+			2,
+		);
 		expect(await exists(out)).toBe(false);
-		const run = await cli(["record", "--app", join(dir, "missing"), "--seconds", "1", "--out", out]);
+		const run = await cli([
+			"record",
+			"--app",
+			join(dir, "missing"),
+			"--seconds",
+			"1",
+			"--out",
+			out,
+		]);
 		expect(run.code).toBe(2);
 		expect(run.err).toContain("not an app");
 		expect(await exists(out)).toBe(false);
@@ -43,8 +54,10 @@ describe("perf record", () => {
 
 	// Launching a real app, waiting for a paint and writing a sample cannot fit bun's 5 s default on a
 	// loaded CI runner: measured timing out at exactly 5000 ms in CI while passing locally in 3.2 s.
-	// `record` keeps its own internal deadline; this is only the test's own budget.
-	test("round-trip: a real run, when it paints, diffs to zero; a stall is exit 2", async () => {
+	// `record` keeps its own internal deadline; this is only the test's own budget. A host that cannot
+	// paint still has to fail honestly (exit 2, no file) — the never-painted path is forced without
+	// WebKit in the verdict fixture above.
+	test("round-trip: a real run diffs to zero, including the second sample window", async () => {
 		if (process.platform !== "darwin") {
 			// No WebKit here: the same command must still refuse instead of writing a fake sample.
 			const dir = await mkdtemp(join(tmpdir(), "crust-perf-nonmac-"));
@@ -61,11 +74,22 @@ describe("perf record", () => {
 			return;
 		}
 		expect(code).toBe(0);
-		const file = JSON.parse(await readFile(out, "utf8")) as PerfRecordFile;
-		expect(file.meta.occlusionDetectionEnabled).toBe(false);
-		expect(file.summary.frame.framesDrawn).toBeGreaterThan(0);
-		expect(file.summary.frame.fps).toBeGreaterThan(0);
+		const one = JSON.parse(await readFile(out, "utf8")) as PerfRecordFile;
+		expect(one.meta.occlusionDetectionEnabled).toBe(false);
+		expect(one.summary.frame.framesDrawn).toBeGreaterThan(0);
+		expect(typeof one.summary.frame.idleWindows).toBe("number");
 		expect(await diffFiles(out, out, 5)).toBe(0);
+
+		// The bug this fixes: a second window with no new frames used to exit 2 with no file.
+		// A fresh CLI process, not a second launch inside this one: two in-process WebKit launches
+		// collide on the platform's global state and fail at page wait before any guard runs.
+		const out2 = join(dir, "two.json");
+		const run2 = await cli(["record", "--app", PROBE, "--seconds", "2", "--out", out2]);
+		expect(run2.code).toBe(0);
+		const two = JSON.parse(await readFile(out2, "utf8")) as PerfRecordFile;
+		expect(two.summary.frame.framesDrawn).toBeGreaterThan(0);
+		expect(two.samples.length).toBe(2);
+		expect(two.summary.frame.idleWindows).toBe(idleWindowCount(two.samples));
 	}, 60_000);
 
 	test("diff routes through the CLI entry point", async () => {
