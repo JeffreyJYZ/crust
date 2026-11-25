@@ -42,6 +42,8 @@ test("no fullscreen app: condition NO, exit 2, never a pass", async () => {
 	expect(out).not.toContain("condition: YES");
 	expect(out).toContain("verdict: REFUSED");
 	expect(out).not.toContain("verdict: PASS");
+	for (const mode of ["bare", "ignoreOcclusion=true", "prime=true"])
+		expect(out).toContain(`capture ${mode}:`);
 	expect(child.exitCode).toBe(2);
 	expect(out.trim().split("\n").length).toBeLessThanOrEqual(10);
 });

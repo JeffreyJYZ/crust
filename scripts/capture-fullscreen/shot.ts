@@ -3,7 +3,12 @@
  * short code, and decode the bytes so a blank or 1x1 answer is never reported as a picture. Split out
  * of the probe so both files stay under the 200-line cap.
  */
-import { darwinSnapshotShim, type SnapshotShim, takeSnapshot } from "@/platform/darwin/snapshot.ts";
+import {
+	darwinSnapshotShim,
+	type SnapshotOptions,
+	type SnapshotShim,
+	takeSnapshot,
+} from "@/platform/darwin/snapshot.ts";
 import type { WindowSnapshot } from "@/plugins/window-types.ts";
 import { decodePng, type Measured } from "../probe-capture-png.ts";
 
@@ -24,6 +29,8 @@ export function code(message: string): string {
 export interface Shot {
 	ms: number;
 	answer: string;
+	/** The full refusal behind `answer`, so a verdict can name both the gate code and its cause. */
+	message?: string;
 	picture: "real" | "blank" | "1x1" | "no-png" | "decode-error";
 	width: number;
 	height: number;
@@ -32,17 +39,17 @@ export interface Shot {
 	measured?: Measured;
 }
 
-/** Baseline first: the with-override render must not inherit a composite from the first capture. */
-export async function capture(web: number, ignoreOcclusion: boolean): Promise<Shot> {
+/** One capture with the caller's opt-ins; the three probe modes share this byte and decode seam. */
+export async function capture(web: number, options: SnapshotOptions = {}): Promise<Shot> {
 	const started = Date.now();
 	let shot: WindowSnapshot | undefined;
 	let answer = "ok";
+	let message: string | undefined;
 	try {
-		shot = await takeSnapshot(web, darwinSnapshotShim() as SnapshotShim, TIMEOUT_MS, {
-			ignoreOcclusion,
-		});
+		shot = await takeSnapshot(web, darwinSnapshotShim() as SnapshotShim, TIMEOUT_MS, options);
 	} catch (thrown) {
-		answer = code(thrown instanceof Error ? thrown.message : String(thrown));
+		message = thrown instanceof Error ? thrown.message : String(thrown);
+		answer = code(message);
 	}
 	const bytes = shot ? Buffer.from(shot.png, "base64").length : 0;
 	let measured: Measured | undefined;
@@ -73,6 +80,7 @@ export async function capture(web: number, ignoreOcclusion: boolean): Promise<Sh
 	return {
 		ms: Date.now() - started,
 		answer,
+		message,
 		picture,
 		width: measured?.width ?? 0,
 		height: measured?.height ?? 0,

@@ -4,10 +4,13 @@
  *
  *     bun run scripts/probe-capture-fullscreen.ts
  *
- * One process, no arguments, at most nine short lines. It detects the condition instead of assuming
+ * One process, no arguments, at most eight short lines. It detects the condition instead of assuming
  * it: the frontmost app and its fullscreen windows come from read-only System Events, and the probe
  * window's Space and occlusion come from AppKit. `condition: YES` needs BOTH a fullscreen app owning
  * the active Space and this probe window off it. A normal desktop is a refusal, never a pass.
+ *
+ * Three captures on that same never-composited window, in order: bare, `ignoreOcclusion: true` (not
+ * enough on its own), and `prime: true` (the fix). Only the prime capture decides the verdict.
  *
  * No activation, no window movement, no cursor, no other app's Space. `activate: "never"` and the
  * accessory policy keep the process off screen and out of the Dock, and no exit focus guard is armed
@@ -132,22 +135,25 @@ async function main(): Promise<number> {
 		);
 		console.log(`condition: ${condition ? "YES" : "NO"} (${reason})`);
 
-		const baseline = await capture(web, false);
-		const fixed = await capture(web, true);
-		console.log(describe("ignoreOcclusion=false", baseline));
-		console.log(describe("ignoreOcclusion=true", fixed));
+		const bare = await capture(web);
+		console.log(describe("bare", bare));
+		const ignored = await capture(web, { ignoreOcclusion: true });
+		console.log(describe("ignoreOcclusion=true", ignored));
+		const primed = await capture(web, { prime: true });
+		console.log(describe("prime=true", primed));
 
 		if (!condition) {
 			console.log(`verdict: REFUSED (condition absent: ${reason})`);
 			return 2;
 		}
-		if (fixed.picture !== "real") {
+		if (primed.picture !== "real") {
 			console.log(
-				"verdict: FAIL (fullscreen present, ignoreOcclusion produced no real pixels)",
+				`verdict: FAIL (fullscreen present, prime produced no real pixels: ` +
+					`code=${primed.answer} message=${primed.message ?? primed.answer})`,
 			);
 			return 1;
 		}
-		console.log("verdict: PASS (fullscreen present, ignoreOcclusion produced real pixels)");
+		console.log("verdict: PASS (fullscreen present, prime produced real pixels)");
 		return 0;
 	} finally {
 		if (win) S.v0(win, "close");
