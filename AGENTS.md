@@ -22,9 +22,9 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 
 ## The gate
 
-`bun check` && `bun run test` && `bun run e2e` && `bun run check:lines`, plus `bun run site:build` and
-`bun run check:links` when you touch `site/`, and whichever e2e owns the
-path you touched:
+`bun check` && `bun run test` && `bun run verify:package` && `bun run e2e` && `bun run check:lines`,
+plus `bun run site:build` and `bun run check:links` when you touch `site/`, and whichever e2e owns
+the path you touched:
 
 - `bun run e2e:notes` — multi-file apps, `fs` against a real folder, the window title
 - `bun run e2e:fullscreen` — the window's collection behaviour and a real fullscreen transition
@@ -39,6 +39,9 @@ path you touched:
 
 A green gate is the only proof a landing is safe.
 
+- **`verify:package` is a release gate** — it packs, installs and runs `crust --help`; 0.2.14 passed
+  `check`, `test` and `skill:check`, shipped a CLI that could not load, and was caught by CI only
+  after the tag. `scripts/release/gate.ts` runs it before bump, tag or push.
 - **Every file stays at or under 200 lines, tests and examples included** — `bun run check:lines` is
   the measurement, so an oversized file fails the gate instead of relying on memory. Split by
   responsibility; never trim a comment that records a measured reason to reach the number.

@@ -29,6 +29,14 @@ const SUMMARIES = [
 		},
 	],
 	[
+		// The installed tarball is the only surface a user receives. `crust --help` imports every
+		// CLI module, so a specifier that resolves only in this checkout fails here — before a
+		// version bump or tag turns the broken package into a release.
+		"verify:package",
+		["bun", "run", "verify:package"],
+		(out: string) => out.split("\n").find((row) => row.includes("verify-package:")) ?? "ok",
+	],
+	[
 		// The committed SKILL.md is an installable deliverable, not a generated file.
 		"skill:check",
 		["bun", "run", "skill:check"],

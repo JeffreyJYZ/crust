@@ -13,7 +13,7 @@ import { createWindowPlugin } from "@/plugins/window.ts";
 import { darwinWindowAdapter } from "@/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "@/platform/darwin/platform.ts";
 import type { Collector } from "@/perf";
-import { perfNative } from "../../../scripts/perf/perf-native.ts";
+import { perfNative } from "./perf-native.ts";
 
 export interface LaunchedApp {
 	occlusionDetectionEnabled: boolean;
@@ -27,7 +27,11 @@ export interface LaunchedApp {
 
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
-export async function launchApp(root: string, collector: Collector, appName: string): Promise<LaunchedApp> {
+export async function launchApp(
+	root: string,
+	collector: Collector,
+	appName: string,
+): Promise<LaunchedApp> {
 	if (process.platform !== "darwin") {
 		throw new Error("perf record needs macOS/WebKit: an occluded window renders zero frames");
 	}
@@ -69,7 +73,10 @@ export async function launchApp(root: string, collector: Collector, appName: str
 	try {
 		platform = new DarwinPlatform({ appName, activate: "never" });
 		bridge = startBridge({
-			handlers: [createPerfPlugin(collector), createWindowPlugin(darwinWindowAdapter(platform))],
+			handlers: [
+				createPerfPlugin(collector),
+				createWindowPlugin(darwinWindowAdapter(platform)),
+			],
 			root,
 		});
 		await platform.start();
@@ -85,7 +92,8 @@ export async function launchApp(root: string, collector: Collector, appName: str
 		});
 		const web = platform.webview("main");
 		const win = platform.nativeWindow("main");
-		if (web === undefined || win === undefined) throw new Error("recorder window has no webview");
+		if (web === undefined || win === undefined)
+			throw new Error("recorder window has no webview");
 		const { S } = await import("@/platform/darwin/objc.ts");
 		const reassert = (): void => {
 			S.vq1(win, "setCollectionBehavior:", 1);
@@ -93,7 +101,8 @@ export async function launchApp(root: string, collector: Collector, appName: str
 		};
 		reassert();
 		const disabled = native.perf_occlusion(web, 0) === 1;
-		if (!disabled) throw new Error("private WebKit occlusion selector absent: rAF would be suspended");
+		if (!disabled)
+			throw new Error("private WebKit occlusion selector absent: rAF would be suspended");
 		const keepAwake = native.perf_keep_awake() === 1;
 		const occlusionState = Number(native.perf_occlusion_state(win));
 		const adapter = darwinTestingAdapter((label) =>

@@ -1,7 +1,7 @@
-/** Process gate for a recorder run. Reuses the harness snapshot and command runner. */
+/** Process gate for a recorder run. Reuses the in-package snapshot and command runner. */
 
-import { snapshot, type Conditions } from "../../../scripts/perf/conditions.ts";
-import { runCommand } from "../../../scripts/e2e-harness.ts";
+import { snapshot, type Conditions } from "./conditions.ts";
+import { runCommand } from "./command.ts";
 
 export { snapshot };
 export type { Conditions };
@@ -38,7 +38,10 @@ async function childPids(): Promise<number[]> {
 }
 
 /** Global bun count travels in metadata as contamination evidence; it is not the leak gate. */
-export function processGate(before: ProcessSnapshot, after: ProcessSnapshot): ProcessSnapshot & { ok: boolean; text: string } {
+export function processGate(
+	before: ProcessSnapshot,
+	after: ProcessSnapshot,
+): ProcessSnapshot & { ok: boolean; text: string } {
 	const newChildren = after.children.filter((pid) => !before.children.includes(pid));
 	const ok = after.children.length <= before.children.length && newChildren.length === 0;
 	after.newChildren = newChildren;
