@@ -132,18 +132,25 @@ export function createGtkBackend(
 				),
 			);
 			if (win === 0n) throw new Error("shim_window_new returned null");
-			const web = BigInt(Number(symbols.shim_webview_new() ?? 0));
-			if (web === 0n) throw new Error("shim_webview_new returned null");
-			// The container exists before the attach, so the app's own page is its main child rather
-			// than the window's only child — that is what leaves room for a surface beside it.
-			const box = BigInt(Number(symbols.shim_window_container(win) ?? 0));
-			if (box === 0n) throw new Error("shim_window_container returned null");
-			if (Number(symbols.shim_window_attach(win, web) ?? 0) !== 1)
-				throw new Error("shim_window_attach failed");
-			if (Number(symbols.shim_webview_load(web, cstring(url)) ?? 0) !== 1)
-				throw new Error(`shim_webview_load failed for ${url}`);
-			symbols.shim_window_show(win);
-			return { win, web, box, url };
+			try {
+				const web = BigInt(Number(symbols.shim_webview_new() ?? 0));
+				if (web === 0n) throw new Error("shim_webview_new returned null");
+				// The container exists before the attach, so the app's own page is its main child rather
+				// than the window's only child — that is what leaves room for a surface beside it.
+				const box = BigInt(Number(symbols.shim_window_container(win) ?? 0));
+				if (box === 0n) throw new Error("shim_window_container returned null");
+				if (Number(symbols.shim_window_attach(win, web) ?? 0) !== 1)
+					throw new Error("shim_window_attach failed");
+				if (Number(symbols.shim_webview_load(web, cstring(url)) ?? 0) !== 1)
+					throw new Error(`shim_webview_load failed for ${url}`);
+				symbols.shim_window_show(win);
+				return { win, web, box, url };
+			} catch (error) {
+				// GTK owns a window from `shim_window_new` on, but the platform records its label only
+				// after this call returns. Destroy it here: no caller can clean up a slot it never saw.
+				symbols.shim_window_destroy(win);
+				throw error;
+			}
 		},
 
 		placeWebview(box, web, bounds) {
