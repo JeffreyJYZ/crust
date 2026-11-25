@@ -46,10 +46,25 @@ describe("readAsset", () => {
 });
 
 describe("isEmbedded", () => {
-	test("is false in a normal run, where assets come from disk", () => {
-		// A test process is not a compiled executable, so nothing is embedded.
-		// The compiled path is proved by `bun build --compile --asset` in CI terms:
-		// see the standalone-binary note in docs/publishing.md.
-		expect(isEmbedded("templates/react/main.ts")).toBe(false);
+	test("matches an embedded name, falls back to a unique basename, and refuses ambiguity", () => {
+		// A test process has no embedded files, so asserting `false` only proved the fixture.
+		// Stub the same field the compiled executable uses to exercise the real lookup.
+		const bun = Bun as unknown as { embeddedFiles: Blob[] };
+		const original = bun.embeddedFiles;
+		const named = (name: string): Blob => Object.assign(new Blob(["x"]), { name });
+		try {
+			bun.embeddedFiles = [named("templates/react/main.ts")];
+			expect(isEmbedded("templates/react/main.ts")).toBe(true);
+			expect(isEmbedded("other/main.ts")).toBe(true);
+			expect(isEmbedded("templates/react/absent.ts")).toBe(false);
+
+			bun.embeddedFiles = [
+				named("templates/react/main.ts"),
+				named("templates/default/main.ts"),
+			];
+			expect(isEmbedded("main.ts")).toBe(false);
+		} finally {
+			bun.embeddedFiles = original;
+		}
 	});
 });

@@ -40,6 +40,8 @@ describe("testing.waitFor honesty", () => {
 		const waited = "waitedMs" in answer ? answer.waitedMs : -1;
 		expect(typeof waited).toBe("number");
 		expect(waited).toBeGreaterThanOrEqual(elapsed - 12);
+		// A field that always reported the configured 500 ms budget also cleared the lower bound.
+		expect(waited).toBeLessThanOrEqual(elapsed + 12);
 	});
 
 	test("a page failure is a structured failure naming the wait, not the raw page answer", async () => {

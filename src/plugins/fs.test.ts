@@ -103,7 +103,16 @@ describe("fs.remove", () => {
 			const nested = join(dir, "notes");
 			await writeFile(join(dir, "notes-keep.md"), "x", "utf8");
 			await Bun.write(join(nested, "a.md"), "x");
-			await expect(call("remove", { path: nested })).rejects.toBeDefined();
+			// A non-empty directory without `recursive` must refuse with a real filesystem error:
+			// a typo in this test's `call()` helper throws a bare Error with no `code`. Bun prefixes
+			// its codes with ERR_FS_ and the code is not an own property, so it cannot go through
+			// toMatchObject; read the field directly. Node reports ENOTEMPTY/EEXIST instead.
+			const refused = await call("remove", { path: nested }).then(
+				() => undefined,
+				(error: unknown) => error as { code?: string; message?: string },
+			);
+			expect(refused?.code).toMatch(/^ERR_FS_(EISDIR|ENOTEMPTY|EEXIST)$/);
+			expect(refused?.message).toMatch(/directory/i);
 			await call("remove", { path: nested, recursive: true });
 			await expect(call("stat", { path: nested })).rejects.toMatchObject({
 				code: "not-found",
