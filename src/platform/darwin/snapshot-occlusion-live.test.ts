@@ -42,9 +42,11 @@ describe.skipIf(!live)("window.capture ignoreOcclusion on a real off-screen view
 	test("a never-activated window at -4000,-4000 answers real pixels and restores the flag", async () => {
 		const result = await probe();
 		expect(result.error).toBeUndefined();
-		expect(result.width).toBe(960);
-		expect(result.height).toBe(640);
-		expect(result.scale).toBe(2);
+		// The window is 480x320 points; the bitmap is that times the display's own scale, which
+		// is 2 on a Retina laptop and 1 on a non-Retina CI runner. Never hardcode either.
+		expect(result.scale).toBeGreaterThanOrEqual(1);
+		expect(result.width).toBe(480 * (result.scale ?? 0));
+		expect(result.height).toBe(320 * (result.scale ?? 0));
 		expect(result.colours).toBeGreaterThan(1);
 		expect(result.calls).toEqual(["off", "take", "on"]);
 	}, 30_000);

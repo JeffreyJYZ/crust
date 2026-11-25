@@ -11,6 +11,7 @@ import { resetActivationPolicy, setTestingActivation } from "@/plugins/activatio
 import { createPerfPlugin } from "@/plugins/perf.ts";
 import { createWindowPlugin } from "@/plugins/window.ts";
 import { darwinWindowAdapter } from "@/platform/darwin/window-adapter.ts";
+import { occlusionOwner, type OcclusionSender } from "@/platform/darwin/occlusion.ts";
 import { DarwinPlatform } from "@/platform/darwin/platform.ts";
 import type { Collector } from "@/perf";
 import { perfNative } from "./perf-native.ts";
@@ -44,6 +45,15 @@ export async function launchApp(
 	let platform: DarwinPlatform | undefined;
 	let bridge: Awaited<ReturnType<typeof startBridge>> | undefined;
 	let stopped = false;
+	// The perf run holds one occlusion slot for its whole life. A capture that opts in shares that
+	// slot's view, so it can never re-enable detection under the recorder.
+	const perfHolder = Symbol("crust perf record");
+	let heldWeb: number | undefined;
+	const releaseOcclusion = (): void => {
+		if (heldWeb === undefined) return;
+		occlusionOwner.release(heldWeb, perfHolder);
+		heldWeb = undefined;
+	};
 	const cleanupSync = (): void => {
 		try {
 			platform?.destroy("main");
@@ -83,17 +93,20 @@ export async function launchApp(
 		// link idle. `orderFrontRegardless` brings it in without activation: no focus is stolen,
 		// and the private occlusion selector is re-applied on every tick in case WebKit caches it
 		// at the first visibility change.
+		const send: OcclusionSender = (target, enabled) =>
+			native.perf_occlusion(target, enabled ? 1 : 0) === 1;
+		const disabled = occlusionOwner.acquire(web, perfHolder, send);
+		if (!disabled)
+			throw new Error("private WebKit occlusion selector absent: rAF would be suspended");
+		heldWeb = web;
 		const reassert = (): void => {
 			// Keep the probe above an app the human switches to; no activation, so no focus theft.
 			S.vq1(win, "setLevel:", 3); // NSFloatingWindowLevel
 			S.v0(win, "orderFrontRegardless");
-			native.perf_occlusion(web, 0);
+			occlusionOwner.reassert(web);
 		};
 		reassert();
 		const occlusionNow = (): number => Number(native.perf_occlusion_state(win));
-		const disabled = native.perf_occlusion(web, 0) === 1;
-		if (!disabled)
-			throw new Error("private WebKit occlusion selector absent: rAF would be suspended");
 		const keepAwake = native.perf_keep_awake() === 1;
 		const occlusionState = Number(native.perf_occlusion_state(win));
 		const adapter = darwinTestingAdapter((label) =>
@@ -102,6 +115,7 @@ export async function launchApp(
 		const stop = async (): Promise<void> => {
 			if (stopped) return;
 			stopped = true;
+			releaseOcclusion();
 			cleanupSync();
 			trap.detach();
 			resetActivationPolicy();
@@ -117,6 +131,7 @@ export async function launchApp(
 			stop,
 		};
 	} catch (error) {
+		releaseOcclusion();
 		cleanupSync();
 		trap.detach();
 		resetActivationPolicy();

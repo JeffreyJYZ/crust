@@ -5,6 +5,7 @@
  * `snapshot-occlusion-live.test.ts`.
  */
 import { describe, expect, test } from "bun:test";
+import { occlusionOwner } from "./occlusion.ts";
 import {
 	OCCLUSION_UNAVAILABLE,
 	SNAPSHOT_STATUS,
@@ -114,6 +115,37 @@ describe("window.capture ignoreOcclusion", () => {
 			"channel broke",
 		);
 		expect(seam.calls).toEqual(["off", "on"]);
+	});
+
+	/**
+	 * The cross-feature proof: a perf run already holds the override on this webview. The capture
+	 * must not turn detection back on when it finishes, or every frame after it is scored against a
+	 * suspended renderer. The perf sender is the only one that sees an `on`, and only at its release.
+	 */
+	test("a capture inside a perf-style override leaves detection disabled afterwards", async () => {
+		const perfHolder = Symbol("perf-style holder");
+		const perfSends: string[] = [];
+		const view = 4242;
+		expect(
+			occlusionOwner.acquire(view, perfHolder, (target, enabled) => {
+				perfSends.push(enabled ? "on" : "off");
+				expect(target).toBe(view);
+				return true;
+			}),
+		).toBe(true);
+		try {
+			const seam = recording();
+			const shot = await takeSnapshot(view, seam, 1000, { ignoreOcclusion: true });
+			expect(shot.scale).toBe(2);
+			// Detection was already off, so the capture sends nothing at all, not even a restore.
+			expect(seam.calls).toEqual(["take"]);
+			expect(perfSends).toEqual(["off"]);
+			expect(occlusionOwner.holds(view)).toBe(1);
+		} finally {
+			occlusionOwner.release(view, perfHolder);
+		}
+		expect(perfSends).toEqual(["off", "on"]);
+		expect(occlusionOwner.holds(view)).toBe(0);
 	});
 
 	test("an absent private selector refuses by name before any send", async () => {

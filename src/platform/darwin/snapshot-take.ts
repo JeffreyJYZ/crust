@@ -5,6 +5,7 @@
  * than answering the newer promise with the older window's picture.
  */
 import type { WindowSnapshot } from "@/plugins/window-types.ts";
+import { occlusionOwner, type OcclusionSender } from "./occlusion.ts";
 import {
 	darwinSnapshotShim,
 	type SnapshotOptions,
@@ -48,29 +49,28 @@ export function takeSnapshot(
 	supersede();
 	const id = ++generation;
 	const override = options.ignoreOcclusion === true;
+	const holder = Symbol("window.capture ignoreOcclusion");
 	if (override) {
 		if (typeof shim.occlusion !== "function") {
 			return Promise.reject(
 				new Error("crust: window.capture ignoreOcclusion needs an occlusion-capable shim"),
 			);
 		}
+		const send: OcclusionSender = (target, enabled) => shim.occlusion!(target, enabled);
 		// A WebKit update can remove the private selector. Refuse by name before sending, so the
-		// caller gets a status rather than a stalled capture or a crash.
-		if (shim.occlusion(view, false) !== true) {
+		// caller gets a status rather than a stalled capture or a crash. The owner sends the disable
+		// only when crust has no other holder on this view, and remembers this holder for release.
+		if (!occlusionOwner.acquire(view, holder, send)) {
 			return Promise.reject(new Error(OCCLUSION_UNAVAILABLE));
 		}
 	}
 	return new Promise<WindowSnapshot>((resolve, reject) => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
-		let restored = false;
-		/** Every terminal path calls this, so the flag never outlives one capture. */
+		/** Every terminal path calls this, so this holder never outlives one capture. */
 		const done = (): void => {
 			if (timer !== undefined) clearTimeout(timer);
 			timer = undefined;
-			if (override && !restored) {
-				restored = true;
-				shim.occlusion?.(view, true);
-			}
+			if (override) occlusionOwner.release(view, holder);
 		};
 		pending = {
 			id,
