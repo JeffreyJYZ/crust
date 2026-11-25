@@ -119,11 +119,17 @@ export function installInvoke(
 	const half = (async (plugin: string, command: string, args?: unknown) => {
 		if (hasRealm) {
 			const reply = await realmCall(plugin, command, args === undefined ? null : args);
-			const status =
-				reply && reply.ok === true ? 200 : (reply?.error?.status as number) || 500;
-			onAnswer(status, reply?.error?.message);
-			if (reply && reply.ok === true) return revive(reply.result, 0);
-			throw fail(reply?.error, 0);
+			if (reply?.ok === true) {
+				onAnswer(200);
+				return revive(reply.result, 0);
+			}
+			// `error.status` is wire data: a string "200" must not coerce into a successful
+			// handshake. An invalid status is a refusal, and status 0 means no transport answered,
+			// so neither is allowed to settle `ready`.
+			const raw = reply?.error?.status;
+			const status = typeof raw === "number" ? raw : 400;
+			if (status !== 0) onAnswer(status, reply?.error?.message);
+			throw fail(reply?.error, status);
 		}
 		const fetchImpl = scope.fetch ?? (globalThis as any).fetch;
 		if (typeof fetchImpl !== "function") {
@@ -147,8 +153,10 @@ export function installInvoke(
 		} catch {
 			body = undefined;
 		}
-		// 2xx and handler throws prove reachability; a 4xx rejects `ready` with its status/reason.
-		onAnswer(status, body?.error?.message ?? body?.error?.code);
+		// A parsed `ok:true` envelope proves reachability even when a typed failure chose a 4xx:
+		// the command failed, the bridge did not. Only a refusal body (`ok !== true`) may reject
+		// `ready`, with that body's status and reason.
+		onAnswer(body?.ok === true ? 200 : status, body?.error?.message ?? body?.error?.code);
 		if (body === undefined) {
 			throw new InvokeFailure(
 				"bad-response",

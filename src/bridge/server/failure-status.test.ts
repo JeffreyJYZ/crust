@@ -49,11 +49,13 @@ describe("a plugin failure value reaches the transport status", () => {
 		});
 	});
 
-	test("the page client still resolves the typed failure rather than rejecting", async () => {
+	test("the page client resolves the typed failure and a healthy ready", async () => {
 		const bridge = windowBridge();
 		const { api } = installPage(bridge, { stream: false });
 		const answer = await (api.invoke as any)("window", "close", { label: "missing" });
 		expect(answer).toMatchObject({ ok: false, code: "unknown-window" });
+		// The 404 belongs to the command, not to the bridge the page just reached.
+		await expect(api.ready).resolves.toBeUndefined();
 	});
 
 	test("resultStatus uses the CrustError table and leaves every success at 200", () => {
