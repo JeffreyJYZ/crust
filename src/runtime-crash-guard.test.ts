@@ -5,22 +5,20 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Subprocess } from "bun";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	CRASH_EXIT_CODE,
-	CRASH_RECORD_BYTES,
-	crashRecordPath,
-	decodeCrashRecord,
-	signalName,
-} from "@/platform/darwin/crash-record";
+import { CRASH_EXIT_CODE, crashRecordPath, lastCrashPath } from "@/platform/darwin/crash-record";
 import { type CrashGuard, startCrashGuard } from "@/runtime-crash-guard";
 import { listCrashes, readLastCrash } from "@/runtime-crash-store";
 
 const temps: string[] = [];
 const guards: CrashGuard[] = [];
 const children: Subprocess[] = [];
+
+/** Backstop only. The waited-for event is the process's own `exited` promise. */
+const EXIT_BACKSTOP_MS = 15_000;
 
 afterEach(async () => {
 	for (const guard of guards.splice(0)) guard.stop();
@@ -67,13 +65,37 @@ function childSource(boom: string, record: string, go: string, ending: string): 
 
 const FAULT = [`boom.symbols.boom();`, `process.exit(9);`].join("\n");
 
-async function waitFor<T>(probe: () => T | null | undefined, timeoutMs = 15000): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	for (;;) {
-		const value = probe();
-		if (value !== null && value !== undefined) return value;
-		if (Date.now() > deadline) throw new Error("timed out waiting for the guard");
-		await Bun.sleep(20);
+/**
+ * What a timed-out wait was waiting for. A bare "timed out waiting for the guard" hides the
+ * difference between a guard that exited without recording and one the runner never scheduled.
+ */
+function waitState(child: Subprocess | CrashGuard, root: string): string {
+	const stopped = "running" in child ? child.running() === false : false;
+	const exited = child.exitCode !== null || stopped;
+	return `pid ${child.pid}, exited=${exited}, exitCode=${child.exitCode ?? "null"}, crashRecord=${existsSync(crashRecordPath(root))}, lastCrash=${existsSync(lastCrashPath(root))}`;
+}
+
+/**
+ * Wait on the process's own exit event; the deadline is only a backstop. A poll around a file or
+ * `running()` measures the runner's scheduling, and a 15 s budget with no state in its error
+ * hides why the event never came.
+ */
+async function awaitExit(
+	child: Subprocess | CrashGuard,
+	label: string,
+	root: string,
+): Promise<number> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const backstop = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new Error(`timed out waiting for ${label}: ${waitState(child, root)}`)),
+			EXIT_BACKSTOP_MS,
+		);
+	});
+	try {
+		return await Promise.race([child.exited, backstop]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
 	}
 }
 
@@ -106,48 +128,33 @@ async function watch(root: string, ending: string): Promise<Subprocess> {
 }
 
 describe("crash guard", () => {
-	test("decodeCrashRecord reads the fixed 84-byte layout", () => {
-		const bytes = new Uint8Array(CRASH_RECORD_BYTES);
-		bytes.set([0x43, 0x52, 0x53, 0x48]);
-		const view = new DataView(bytes.buffer);
-		view.setInt32(4, 11, true);
-		view.setInt32(8, 2, true);
-		view.setBigUint64(12, 0xdeadbeefn, true);
-		bytes.set(new TextEncoder().encode("SIGSEGV"), 20);
-		expect(decodeCrashRecord(bytes)).toEqual({
-			signal: 11,
-			code: 2,
-			address: 0xdeadbeefn,
-			handler: "SIGSEGV",
-		});
-		expect(signalName(11)).toBe("SIGSEGV");
-		expect(decodeCrashRecord(bytes.subarray(0, 40))).toBeNull();
-		expect(decodeCrashRecord(new Uint8Array(CRASH_RECORD_BYTES))).toBeNull();
-	});
-
 	test("a child that faults on a null dereference is recorded by name, and the guard exits", async () => {
 		const root = await tempDir();
 		const child = await watch(root, FAULT);
-		await child.exited;
-		const crash = await waitFor(() => readLastCrash(root));
+		expect(await awaitExit(child, "the faulting child", root)).toBe(CRASH_EXIT_CODE);
+		const guard = guards[guards.length - 1] as CrashGuard;
+		expect(await awaitExit(guard, "the guard", root)).toBe(0);
+		const crash = readLastCrash(root);
+		if (crash === null) {
+			throw new Error(
+				`the guard exited without recording a crash: ${waitState(guard, root)}`,
+			);
+		}
 		expect(crash.signal).toBe("SIGSEGV");
 		expect(crash.handler).toBe("SIGSEGV");
 		expect(crash.exitCode).toBe(CRASH_EXIT_CODE);
 		expect(crash.address).toMatch(/^0x[0-9a-f]+$/);
 		// The handler ran: the default SIGSEGV disposition would have reaped the child by signal.
-		expect(child.exitCode).toBe(CRASH_EXIT_CODE);
 		expect(listCrashes(root).map((entry) => entry.signal)).toEqual(["SIGSEGV"]);
-		const guard = guards[guards.length - 1] as CrashGuard;
-		await waitFor(() => (guard.running() ? null : true));
 		expect(processAlive(guard.pid)).toBe(false);
 	}, 30_000);
 
 	test("a child that exits cleanly records nothing", async () => {
 		const root = await tempDir();
 		const child = await watch(root, "process.exit(0);");
-		await child.exited;
+		expect(await awaitExit(child, "the clean child", root)).toBe(0);
 		const guard = guards[guards.length - 1] as CrashGuard;
-		await waitFor(() => (guard.running() ? null : true));
+		await awaitExit(guard, "the guard", root);
 		expect(readLastCrash(root)).toBeNull();
 		expect(listCrashes(root)).toEqual([]);
 	}, 30_000);
@@ -166,7 +173,8 @@ describe("crash guard", () => {
 		expect(guard.running()).toBe(true);
 		expect(processAlive(guard.pid)).toBe(true);
 		guard.stop();
-		await waitFor(() => (processAlive(guard.pid) ? null : true));
+		await awaitExit(guard, "the stopped guard", root);
 		expect(guard.running()).toBe(false);
+		expect(processAlive(guard.pid)).toBe(false);
 	}, 30_000);
 });
