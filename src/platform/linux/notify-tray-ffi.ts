@@ -7,10 +7,7 @@
  * of what was absent, and only that namespace refuses.
  */
 import { cc, FFIType } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { materialiseNativeSource } from "@/native-source.ts";
 import { notifyTraySource } from "./notify-tray-source.ts";
 
 const I32 = FFIType.i32;
@@ -100,14 +97,12 @@ export const NOTIFY_TRAY_INSTALL_LINE =
 	"Debian/Ubuntu: sudo apt install libnotify4 libgtk-3-0 · Fedora: sudo dnf install libnotify gtk3";
 
 /**
- * Materialise the unit and compile it. Content-hashed, so a second launch reuses the same file and
- * TinyCC's per-path cache. `cc()` links only libc, and `linkError` already translates a missing
- * `libc.so` linker script on the platform's own path.
+ * Materialise the unit in the private per-user cache and compile it. Content-hashed, so a second
+ * launch reuses TinyCC's per-path cache. `cc()` links only libc, and `linkError` already translates
+ * a missing `libc.so` linker script on the platform's own path.
  */
 export function compileNotifyTray(): LinuxNotifyTrayShim {
-	const hash = createHash("sha256").update(notifyTraySource).digest("hex").slice(0, 16);
-	const path = join(tmpdir(), `crust-linux-notify-tray-${hash}.c`);
-	if (!existsSync(path)) writeFileSync(path, notifyTraySource);
+	const path = materialiseNativeSource("crust-linux-notify-tray", notifyTraySource);
 	const library = cc({
 		source: path,
 		symbols: {
