@@ -31,6 +31,7 @@ export const EVAL_TIMEOUT_MS = 4000;
 /** The exported table, typed by hand: `cc()` hands back loose symbols. */
 interface TestingNative {
 	crust_testing_available: (web: number) => number;
+	crust_testing_off_main: () => number;
 	crust_testing_set_sink: (sink: number) => void;
 	crust_testing_eval: (
 		web: number,
@@ -51,6 +52,7 @@ function native(): TestingNative {
 		flags: ["-framework", "AppKit", "-framework", "Foundation", "-framework", "WebKit"],
 		symbols: {
 			crust_testing_available: { args: [P], returns: I32 },
+			crust_testing_off_main: { args: [], returns: I32 },
 			crust_testing_set_sink: { args: [P], returns: FFIType.void },
 			crust_testing_eval: { args: [P, P, I64, I64], returns: I32 },
 		},
@@ -103,6 +105,7 @@ function queueFor(table: TestingNative): EvalQueue {
 			// wall clock does not, so a wall-clock deadline would report a page it never gave a turn.
 			progress: pumpProgressMs,
 			frames: () => timeoutFrames?.() ?? -1,
+			offMain: () => table.crust_testing_off_main(),
 			// A stale or mismatched id used to vanish silently, leaving a timeout with no evidence.
 			onDrop: ({ id, kind, text, waitedIds }) =>
 				console.warn(
@@ -113,7 +116,8 @@ function queueFor(table: TestingNative): EvalQueue {
 			onTimeout: (d) =>
 				console.log(
 					`crust: eval timeout id=${d.id} waited=[${d.waitedIds.join(",")}] ` +
-						`progress=${d.progressStart}->${d.progressNow} frames=${d.framesStart}->${d.framesNow}`,
+						`progress=${d.progressStart}->${d.progressNow} ` +
+							`frames=${d.framesStart}->${d.framesNow} offMain=${d.offMain}`,
 				),
 		});
 	}

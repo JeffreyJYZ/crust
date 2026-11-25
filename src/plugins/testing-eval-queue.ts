@@ -20,6 +20,8 @@ export interface TimeoutDetail {
 	progressNow: number;
 	framesStart: number;
 	framesNow: number;
+	/** Completions delivered off the sink's thread, counted by the native unit. */
+	offMain: number;
 }
 
 export interface EvalQueueOptions {
@@ -34,6 +36,8 @@ export interface EvalQueueOptions {
 	progress?: () => number;
 	/** Optional page frame counter, sampled at the start and the expiry of every wait. */
 	frames?: () => number;
+	/** Optional native count of completions delivered off the sink's thread. */
+	offMain?: () => number;
 	/** Diagnostic hook for an answer whose id has no waiter; the count is kept regardless. */
 	onDrop?: (drop: DroppedCompletion) => void;
 	/** Printed unconditionally on a real timeout: that is when evidence matters most. */
@@ -131,6 +135,7 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 						progressNow: now,
 						framesStart,
 						framesNow: options.frames?.() ?? -1,
+						offMain: options.offMain?.() ?? -1,
 					});
 					reject(new Error(`crust: the page did not answer within ${timeoutMs} ms`));
 				}, CHECK_MS);
