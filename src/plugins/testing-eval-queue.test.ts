@@ -73,7 +73,13 @@ describe("native evaluation correlation", () => {
 	});
 
 	test("a completion nobody waits for is counted and reported with the awaited ids", async () => {
-		const drops: Array<{ id: number; kind: number; text: string; waitedIds: number[] }> = [];
+		const drops: Array<{
+			id: number;
+			kind: number;
+			text: string;
+			waitedIds: number[];
+			elapsedMs: number;
+		}> = [];
 		const ids: number[] = [];
 		const queue = createEvalQueue({
 			send: (id) => {
@@ -88,24 +94,32 @@ describe("native evaluation correlation", () => {
 		const stale = (ids[1] ?? 0) + 1000;
 		queue.deliver(stale, 0, "from an older request");
 		expect(queue.dropped()).toBe(1);
-		expect(drops).toEqual([
+		expect(drops).toMatchObject([
 			{ id: stale, kind: 0, text: "from an older request", waitedIds: ids },
 		]);
+		expect(drops[0]?.elapsedMs).toBeGreaterThanOrEqual(0);
 		queue.deliver(ids[0] ?? 0, 0, "answer-first");
 		queue.deliver(ids[1] ?? 0, 0, "answer-second");
 		await expect(first).resolves.toBe("answer-first");
 		await expect(second).resolves.toBe("answer-second");
 	});
 
-	test("a progress clock pauses the deadline while the runner makes no progress", async () => {
-		let now = 0;
-		const queue = createEvalQueue({ send: () => 0, timeoutMs: 100, progress: () => now });
+	test("a starved runner pauses the wall deadline until its pump advances", async () => {
+		let wallNow = 0;
+		let progressNow = 0;
+		const queue = createEvalQueue({
+			send: () => 0,
+			timeoutMs: 100,
+			wall: () => wallNow,
+			progress: () => progressNow,
+		});
 		const answer = queue.run(1, "x");
 		// Wall time passes, but a starved runner has delivered no pump tick: no timeout yet.
+		wallNow = 500;
 		await Bun.sleep(40);
 		expect(queue.pending()).toBe(1);
-		// Progress reaches the budget; the same command is now reported, not left hanging.
-		now = 100;
+		// Pump progress reaches the budget; the same command is now reported, not left hanging.
+		progressNow = 100;
 		await expect(answer).rejects.toThrow(/did not answer/);
 		expect(queue.pending()).toBe(0);
 	});

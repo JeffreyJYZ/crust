@@ -17,7 +17,12 @@ import { materialiseNativeSource } from "@/native-source.ts";
 import { pumpProgressMs } from "@/platform/darwin/pump.ts";
 import type { WebviewFor } from "@/platform/darwin/webview-target";
 import { CrustError } from "../bridge/errors";
-import { createEvalQueue, createLabeledQueue, type EvalQueue } from "./testing-eval-queue.ts";
+import {
+	createEvalQueue,
+	createLabeledQueue,
+	EVAL_TIMEOUT_MS,
+	type EvalQueue,
+} from "./testing-eval-queue.ts";
 import source from "./testing-eval.c" with { type: "text" };
 import type { TestingAdapter } from "./testing-types";
 
@@ -25,8 +30,11 @@ const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
 
-/** How long one evaluation may stay unanswered before it is reported rather than left hanging. */
-export const EVAL_TIMEOUT_MS = 4000;
+/**
+ * How long one evaluation may stay unanswered before it is reported rather than left hanging.
+ * A liveness budget, not a correctness bound: a hidden page at low QoS answers in tens of seconds.
+ */
+export { EVAL_TIMEOUT_MS };
 
 /** The exported table, typed by hand: `cc()` hands back loose symbols. */
 interface TestingNative {
@@ -64,9 +72,24 @@ let sink: JSCallback | undefined;
 let evaluations: EvalQueue | undefined;
 const labeled = createLabeledQueue();
 let timeoutFrames: (() => number) | undefined;
+let timeoutVisibility: (() => string) | undefined;
+let timeoutHeartbeat: (() => number) | undefined;
 /** Test scaffolding: page frame count for the unconditional timeout diagnostic. */
 export function setTestingTimeoutFrames(frames: () => number): void {
 	timeoutFrames = frames;
+}
+
+/**
+ * Page-world signals for the timeout diagnostic. rAF frames stop when WebKit considers the page
+ * hidden, so a frame count alone cannot tell a throttled page from a dead one; a `setInterval`
+ * heartbeat and `document.visibilityState` can.
+ */
+export function setTestingTimeoutSignals(signals: {
+	visibility?: () => string;
+	heartbeat?: () => number;
+}): void {
+	timeoutVisibility = signals.visibility;
+	timeoutHeartbeat = signals.heartbeat;
 }
 
 function callbackPointer(callback: JSCallback): number {
@@ -101,23 +124,28 @@ function queueFor(table: TestingNative): EvalQueue {
 			send: (id, target, bytes) =>
 				table.crust_testing_eval(target, ptr(bytes), BigInt(bytes.length), BigInt(id)),
 			timeoutMs: EVAL_TIMEOUT_MS,
-			// The completion is delivered by the pump. On a starved runner the pump stops and the
-			// wall clock does not, so a wall-clock deadline would report a page it never gave a turn.
+			// Wall time is the budget: a hidden WebContent process answers in tens of seconds while
+			// the runner's pump keeps ticking. Pump progress only gates a *starved runner*, which
+			// has had no chance to deliver the completion yet.
 			progress: pumpProgressMs,
 			frames: () => timeoutFrames?.() ?? -1,
+			visibility: () => timeoutVisibility?.() ?? "n/a",
+			heartbeat: () => timeoutHeartbeat?.() ?? -1,
 			offMain: () => table.crust_testing_off_main(),
 			// A stale or mismatched id used to vanish silently, leaving a timeout with no evidence.
-			onDrop: ({ id, kind, text, waitedIds }) =>
+			onDrop: ({ id, kind, text, waitedIds, elapsedMs }) =>
 				console.warn(
-					`crust: dropped completion id=${id} kind=${kind} ` +
+					`crust: dropped completion id=${id} kind=${kind} elapsed=${elapsedMs}ms ` +
 						`waited=[${waitedIds.join(",")}] text=${text.slice(0, 80)}`,
 				),
 			// A timeout is the one moment evidence must not sit behind CRUST_TEST.
 			onTimeout: (d) =>
 				console.log(
 					`crust: eval timeout id=${d.id} waited=[${d.waitedIds.join(",")}] ` +
-						`progress=${d.progressStart}->${d.progressNow} ` +
-							`frames=${d.framesStart}->${d.framesNow} offMain=${d.offMain}`,
+						`wall=${d.elapsedMs}ms progress=${d.progressStart}->${d.progressNow} ` +
+						`frames=${d.framesStart}->${d.framesNow} ` +
+						`visibility=${d.visibilityStart}->${d.visibilityNow} ` +
+						`heartbeat=${d.heartbeatStart}->${d.heartbeatNow} offMain=${d.offMain}`,
 				),
 		});
 	}

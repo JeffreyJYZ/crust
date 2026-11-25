@@ -464,9 +464,12 @@ OS input**, so nothing moves a cursor and no Accessibility grant is involved; a 
 one `KeyboardEvent` the page sees and no browser default follows it, so `key: "Enter"` submits
 nothing.
 
-Native `testing` evals time out on pump progress (4000 ms of pump ticks), not wall time. A
-`crust: eval timeout id=… waited=[…] progress=…->… frames=…->…` line under load means the runner was
-starved, not that the page stalled for four seconds; `waitFor`'s own `timeoutMs` is wall-clock.
+Native `testing` evals use a 30 000 ms wall-clock liveness budget with a pump-progress gate: a
+starved runner pauses the deadline, but a hidden low-QoS page that answers 22 s later now passes.
+`crust: eval timeout id=… waited=[…] wall=…ms progress=…->… frames=…->… visibility=…->… heartbeat=…->…`
+prints the states: rAF frames show visibility, a setInterval heartbeat shows liveness. A
+`dropped completion … elapsed=…ms` line is a late answer, not a lost one; `waitFor`'s own
+`timeoutMs` is a separate wall-clock poll.
 
 Those commands never need the app active, but the launch does by default. Set `testing.activation`
 in `crust.config.ts` to `"none"` (never activates; an AX read answers `needs-activation`) or
