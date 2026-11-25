@@ -44,6 +44,19 @@ function delay(ms: number): Promise<null> {
 }
 
 /**
+ * Streaming decode belongs to one pipe: a decoder holds partial UTF-8 bytes between chunks, so two
+ * pipes sharing one corrupt each other's split characters. Flush at the end for a trailing partial.
+ */
+export async function pumpText(
+	stream: ReadableStream<Uint8Array>,
+	sink: (text: string) => void,
+): Promise<void> {
+	const decoder = new TextDecoder();
+	for await (const chunk of stream) sink(decoder.decode(chunk, { stream: true }));
+	sink(decoder.decode());
+}
+
+/**
  * Run a command, capture both streams, never throw on a non-zero exit. The child is its own process
  * group (`detached`) so a helper it spawned is signalled too — that helper is exactly what keeps a
  * pipe open after the parent is gone.
@@ -67,15 +80,11 @@ export async function runCommand(
 	let stderr = "";
 	let code: number | null = null;
 	let settled = false;
-	const decoder = new TextDecoder();
-	const pump = async (stream: ReadableStream<Uint8Array>, sink: (text: string) => void) => {
-		for await (const chunk of stream) sink(decoder.decode(chunk, { stream: true }));
-	};
 	const pumping = Promise.all([
-		pump(child.stdout, (text) => {
+		pumpText(child.stdout, (text) => {
 			stdout += text;
 		}),
-		pump(child.stderr, (text) => {
+		pumpText(child.stderr, (text) => {
 			stderr += text;
 		}),
 	]).catch(() => undefined);
