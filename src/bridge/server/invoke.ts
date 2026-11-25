@@ -32,6 +32,8 @@ export type Run = (
 	authority?: string,
 	/** Raw body bytes, so the record can say how big the request was. */
 	bytesIn?: number,
+	/** The presenting document token, forwarded as `ctx.pageId` for per-page listener bookkeeping. */
+	credential?: string,
 ) => Promise<unknown>;
 
 /**
@@ -50,7 +52,7 @@ export function createRunner(
 	ctx: PluginContext,
 	capabilities: CompiledCapabilities = compileCapabilities(undefined),
 ): Run {
-	return async function run(plugin, command, args, routing, authority, bytesIn) {
+	return async function run(plugin, command, args, routing, authority, bytesIn, credential) {
 		const key = `${plugin}.${command}`;
 		const started = performance.now();
 		perfCollector.beforeInvoke(plugin); // perf-hook
@@ -88,7 +90,11 @@ export function createRunner(
 			}
 			// The calling window rides on the request, never in the handler's own arguments: it is a
 			// routing hint `window.label` answers, so no command can mistake it for a label it was given.
-			const request = routing === undefined ? ctx : { ...ctx, window: routing };
+			const request: PluginContext = {
+				...ctx,
+				...(routing === undefined ? {} : { window: routing }),
+				pageId: credential,
+			};
 			let result: unknown;
 			try {
 				result = await handler(args, request);

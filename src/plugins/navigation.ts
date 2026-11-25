@@ -103,10 +103,12 @@ export function createNavigationPlugin(adapter?: NavigationAdapter): PluginDefin
 		commands: {
 			/** Install the delegate on one window. Every later callback reaches this page as an event. */
 			start: (args: NavigationArgs | undefined, ctx: PluginContext) =>
-				run("start", args, (web, label) => listeners.start(web, label, ctx.emit)),
+				run("start", args, (web, label) =>
+					listeners.start(web, label, ctx.emit, ctx.pageId),
+				),
 			/** Remove the delegate; the webview keeps loading, it just stops reporting. */
 			stop: (args: NavigationArgs | undefined, ctx: PluginContext) =>
-				run("stop", args, (web, label) => listeners.stop(web, label, ctx.emit)),
+				run("stop", args, (web, label) => listeners.stop(web, label, ctx.emit, ctx.pageId)),
 			/** The address, title and history flags at this moment. */
 			state: (args: NavigationArgs | undefined) =>
 				run("state", args, (web, label) => {

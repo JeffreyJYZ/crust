@@ -191,8 +191,9 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		if (url.pathname === INVOKE_PATH && request.method === "POST") {
 			// The label bound to the credential is the only authority for the capability gate.
 			// `invokeRequest` still reads the body/query label as a routing hint for `ctx.window`.
-			const authority = state.labels.get(headerToken ?? queryToken ?? token);
-			return await invokeRequest(request, url, state.run, cors, authority);
+			const credential = headerToken ?? queryToken ?? token;
+			const authority = state.labels.get(credential);
+			return await invokeRequest(request, url, state.run, cors, authority, credential);
 		}
 
 		return errorResponse(new CrustError("not-found", url.pathname), cors);
