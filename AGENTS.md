@@ -7,8 +7,11 @@ measurements live in the docs site under `site/app/docs`; the design reasoning i
 
 - **Never fewer than 3 subagents in flight**, unless the provider is genuinely unavailable — the work
   partitions by directory, and one lane at a time serialises what could run beside it.
-- **Every dispatch and every continue pins `opencode-go/deepseek-v4.1-flash#high`** — the global
-  config sets no `model`, so an unpinned call inherits the session's own paid lane.
+- **Every dispatch and every continue pins `opencode-go/hy4-flash-free#high`** — the global config sets
+  no `model`, so an unpinned call inherits the session's own paid lane, and the owner's standing rule is
+  ALWAYS HY4 FLASH (user, 2026-11-21). This repo line said `deepseek-v4.1-flash#high` until 2026-11-25 and
+  four capture lanes were dispatched on it before the owner caught it; the global rule outranks a stale
+  repo line, so prefer HY4 and treat this bullet as the place a repo may narrow, never contradict.
 - **One writer per file.** Give lanes disjoint file sets; two agents on one file is how a merge
   silently keeps one of them.
 - **Merging and tagging here need no permission** — the owner waived the approval step for crust on 2026-11-17, so land PRs and cut tags directly; a tag push is still one tag at a time (user, 2026-11-17).
