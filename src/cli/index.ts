@@ -29,6 +29,7 @@ import {
 	OPTION_DESCRIPTIONS,
 	PUBLISHED_LIMITS,
 } from "./help.ts";
+import { runPerf } from "./perf/index.ts";
 import { VERSION } from "./util.ts";
 
 /** The no-config error is thrown by config/load.ts, which this layer does not own. */
@@ -81,6 +82,8 @@ function unknownCommand(name: string): number {
 
 /** argv to an exit code: parse, answer `--help`/`--version`, then run one command. */
 async function main(argv: string[]): Promise<number> {
+	// `perf` owns its own argv and help; it is not in COMMANDS, so cac never sees it.
+	if (argv[0] === "perf") return await runPerf(argv.slice(1));
 	// Decided from raw argv: a global flag answers even when a value flag would
 	// otherwise complain, and a following flag is never eaten as a value.
 	const parsed = cli.parse(["bun", "crust", ...argv], { run: false });

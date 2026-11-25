@@ -1,0 +1,117 @@
+# Performance
+
+crust is a Bun backend plus the system WebView, and the compositor is the same one Tauri gets. So the
+question "why is my app slow" almost never has the answer "the WebView". It has one of three answers: work
+crust does on the main thread, work your page does, or latency the user feels rather than frames.
+
+This page has the measured numbers for the first one, how to look at your own app with the overlay, and an
+honest account of what Tauri and native-Rust frameworks do differently.
+
+Every number below was measured on one Apple-silicon machine under load averages between 2 and 5, so treat
+them as ratios rather than absolute targets. The reports, with the exact commands, are under
+`docs/reviews/perf/` in the repository.
+
+## What crust used to cost per frame
+
+The macOS backend ran a repeating 16 ms timer that drained AppKit events. Every tick handed
+`nextEventMatchingMask:untilDate:inMode:dequeue:` a 4 ms deadline, which meant the JS thread waited inside
+AppKit on every single tick whether or not an event existed.
+
+| | before | after |
+| --- | --- | --- |
+| mean time blocked per tick | 6.84 ms | **0.78 ms** |
+| ticks delivered per second | 41 | 54 |
+| app CPU, bridge idle | 1.7% | 0.7% |
+| ticks per second, window occluded | ~40 | ~13 |
+| animating page, frame p95 | 25 ms | 21 ms |
+
+Blocking 6.84 ms of a 16 ms budget is 28% of every second spent waiting before your page gets a turn —
+that is the difference between an animation that looks smooth and one that visibly hitches. Passing `nil`
+as the deadline makes an empty queue return immediately, and a 0.25 ms run-loop slice keeps painting
+serviced. A native menu still opens, a window still drags, and a capture through `window.capture` still
+paints.
+
+## What crust does not cost
+
+These were hypothesised as the cause and measured as noise. Each arm sat inside the spread of the same arm
+run against itself, which is the only honest bar for a small delta.
+
+| arm | result |
+| --- | --- |
+| invokes at 30/s and at 200/s | free — no frame cost outside the control spread |
+| a 30 Hz server-sent event stream | free at 30 Hz and at 120 Hz |
+| webview configuration flags | `drawsBackground`, `wantsLayer`, `layerContentsRedrawPolicy`, `suppressesIncrementalRendering` and a fresh process pool each changed nothing |
+| the invoke round trip | 5.8–6.7 µs end to end, and 0.045 ms on a reused socket |
+| a 1 MB binary result | 40 µs p50 / 100 µs p95 to parse in the page |
+
+So if your app feels slow, it is not the bridge. Look at what your page does per frame, at how often you
+re-render, and at latency — a 60 fps app still feels broken when a keystroke takes 200 ms to appear.
+
+## The overlay
+
+Enable the `perf` capability and open the overlay from your page:
+
+```ts
+await crust.invoke("perf.overlay", { enabled: true });
+```
+
+It shows frames drawn, fps, frame-time p50/p95/worst, long tasks, runtime event-loop delay and a per-plugin
+invoke table. Frame statistics come from the page's own `requestAnimationFrame` deltas, because only the
+page can see them; the runtime half reports event-loop delay, heap, invoke counts and event throughput.
+
+Two behaviours worth knowing:
+
+- A window that is not visible draws no frames, and the overlay says `no frames` rather than `0 fps`.
+  Occluded windows are suspended by the system — that is battery behaviour, not a bug.
+- The overlay is excluded from a production build. The panel's marker string appears zero times in a build
+  without the capability, so it cannot ship by accident.
+
+Reading the same numbers yourself, from a page:
+
+```ts
+const sample = await crust.invoke("perf.sample", {});
+// { frame: { fps, p50, p95, worst, longTasks, framesDrawn } | null, runtime: { … }, invoke: { … } }
+```
+
+`frame` is `null` until a page reports one, so a consumer can tell "nothing was drawn" from "zero frames
+per second".
+
+## Why Tauri apps feel smooth
+
+Tauri embeds the same `WKWebView` through wry, so page layout, script and paint are the same WebKit work.
+Two structural differences matter, and only one of them is a crust cost:
+
+1. **Tauri's main thread runs a native event loop** (tao's `EventLoop::run`), not a JavaScript timer doing
+   AppKit work. That was crust's 16 ms pump above, and it is now fixed.
+2. **Tauri's invoke is a custom-protocol `fetch`** (`ipc://localhost/<cmd>` with the callback in a header),
+   not a loopback HTTP POST. crust measured its own loopback path at 5.8–6.7 µs per invoke, so this is a
+   microsecond difference, not the reason an app feels different.
+
+Claiming the IPC design is why Tauri feels fast would be a story, not a measurement. The event loop was the
+real difference.
+
+## Why Rune feels smooth, and what cannot be copied
+
+Rune is a native GPU-rendered framework: a Rust element tree, a display-link-paced render thread, and no
+JavaScript bridge in the desktop path. That buys smoothness crust cannot reach while its UI is a system
+WebView — there is no DOM, no style recalculation, no layout pass, and no compositor handoff between your
+code and the drawable.
+
+Two honest caveats. Rune evaluated GPUI and rejected it, so "GPUI's scene graph" is not the explanation for
+Rune's smoothness. And Rune still hands off to the window server for glass, video and native layers, on the
+main thread.
+
+The parts of the gap that are closable, and are now closed: main-thread blocking from the event pump, and
+having no way to see where your own frames go. The parts that are not closable without replacing the WebView:
+owning the paint loop and skipping the compositor.
+
+## Measuring your own app
+
+Start with the overlay and answer three questions in order:
+
+1. **What is the frame time with nothing happening?** If it is above ~20 ms at rest, something in your page
+   is re-rendering continuously.
+2. **Does frame time rise when you interact?** If yes, look at what the interaction handler writes to the
+   DOM, not at the bridge.
+3. **Is it latency rather than frames?** A click that takes 300 ms to show a result is a blocked main
+   thread or a slow handler, and a profiler that only reports fps will tell you everything is fine.

@@ -305,10 +305,32 @@ Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. Th
 | `crust build [file]` | compile; **macOS** assembles `X.app` in `dist/` and ad-hoc signs it. Linux/Windows produce the flat binary. `--sign --notarize --dmg` add the release stages in that order |
 | `crust package --format <fmt>` | release artefacts: `dmg`, `appimage`, `nsis`; repeatable, defaults to `dmg` |
 | `crust doctor` | one line per launch check, exit 1 on any failure |
+| `crust perf record --app <dir> --seconds 10 --out perf.json` | launch the built app with the perf sink on and write one sample per second; exit 2 when nothing was drawn |
+| `crust perf diff before.json after.json [--tolerance 5]` | per-field deltas with a direction per field; exit 1 when a metric regressed past the tolerance |
 
 `--dir <path>` and `--config <path>` work on all of them.
 
 `crust sign`, `crust dmg` and `crust notarize` are gone — each prints `crust: unknown command "<verb>"`. Use the `crust build` stages in order: build → ad-hoc sign → `--sign` → `--notarize` → `--dmg`. `--notarize` needs `--sign`; the dmg is built from the stapled app and is not itself notarized.
+
+## Performance
+
+`perf` is an **opt-in plugin**, so it is absent from the namespace table above: an app adds
+`createPerfPlugin()` to its plugins, then the page can call `perf.sample`, `perf.frameReport`,
+`perf.overlay({ enabled })`, `perf.sinks` and `perf.reset`. Without it every call answers
+`not-implemented` with `requires: "perf plugin mounted"`.
+
+- `perf.sample()` returns `{ frame, runtime, invoke, events }`; `frame` is `null` until a page has called
+  `perf.frameReport({ fps, p50, p95, worst, longTasks, framesDrawn })`, because only the page can see its
+  own `requestAnimationFrame` deltas. A `null` frame means "nothing reported"; an occluded window draws zero
+  frames and is reported as such, never as `0 fps`.
+- `perf.overlay({ enabled: true })` mounts the debug overlay: frames drawn, fps, frame-time p50/p95/worst,
+  long tasks, runtime event-loop delay and a per-plugin invoke table. The overlay's code is excluded from a
+  production build unless the capability is granted.
+- `crust perf record` / `crust perf diff` write and compare the same numbers headlessly, which is how a
+  performance change gets a before/after instead of an opinion.
+
+The measured costs and the honest comparison with Tauri and native-Rust frameworks are on the
+[performance page](/docs/guides/performance).
 
 ## Validate an app
 
