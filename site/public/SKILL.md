@@ -305,7 +305,7 @@ Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. Th
 | `crust build [file]` | compile; **macOS** assembles `X.app` in `dist/` and ad-hoc signs it. Linux/Windows produce the flat binary. `--sign --notarize --dmg` add the release stages in that order |
 | `crust package --format <fmt>` | release artefacts: `dmg`, `appimage`, `nsis`; repeatable, defaults to `dmg` |
 | `crust doctor` | one line per launch check, exit 1 on any failure |
-| `crust perf record --app <dir> --seconds 10 --out perf.json` | launch the built app with the perf sink on and write one sample per second; exit 2 when nothing was drawn |
+| `crust perf record --app <project-dir> --seconds 10 --out perf.json [--format json\|text]` | launch with the perf sink on and write one sample per second; `--app` is a directory with `index.html`, a project directory with `public/index.html`, or a bundle with `Contents/Resources/public/index.html`, never a bare binary (`src/cli/perf/app-root.ts:18-34`); `--seconds` is the sampling duration, and a run in which the renderer never painted is refused with exit 2 and no file (`src/cli/perf/record.ts:119-125`). `--format` defaults to `text`, which prints one headline `fps=<fps> p50=<ms>ms p95=<ms>ms long=<n> heap=<MB>MB`; `json` prints the summary, meta and out path as one JSON line (`src/cli/perf/index.ts:16,63-69,132-133`; `src/cli/perf/format.ts:27-33`) |
 | `crust perf diff before.json after.json [--tolerance 5]` | per-field deltas with a direction per field; exit 1 when a metric regressed past the tolerance |
 
 `--dir <path>` and `--config <path>` work on all of them.
@@ -317,21 +317,29 @@ Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. Th
 `perf` is an **opt-in plugin**, so it is absent from the namespace table above: an app adds it to its
 plugins, then the page can call `perf.sample`, `perf.frameReport`, `perf.overlay({ enabled })`,
 `perf.sinks` and `perf.reset`. Without it every call answers `not-implemented` with
-`requires: "perf plugin mounted"`.
+`requires: "perf plugin mounted"` (`src/plugins/perf.ts:20,32-35`).
 
 ```ts
 import { createPerfPlugin } from "crust/plugin";
 
 app.plugin(createPerfPlugin()); // mounts the runtime half; perf.sample answers from here
+
+// invoke(plugin, command, args) is the plugin form; invoke(name, args) routes to app.invoke.
+await crust.invoke("perf", "overlay", { enabled: true });
+const sample = await crust.invoke("perf", "sample");
 ```
 
-- `perf.sample()` returns `{ frame, runtime, invoke, events }`; `frame` is `null` until a page has called
-  `perf.frameReport({ fps, p50, p95, worst, longTasks, framesDrawn })`, because only the page can see its
-  own `requestAnimationFrame` deltas. A `null` frame means "nothing reported"; an occluded window draws zero
-  frames and is reported as such, never as `0 fps`.
+- `perf.sample()` returns `{ at, frame, runtime, invoke, events, log }` (`src/perf/sample.ts:23-35`);
+  `frame` is `null` until a page has called `perf.frameReport({ fps, p50, p95, worst, longTasks,
+  framesDrawn })`, because only the page can see its own `requestAnimationFrame` deltas. `null` means
+  "no page half reported"; "nothing was drawn" is a non-null frame with `framesDrawn === 0`, and an
+  occluded window is reported by that zero, never as a fabricated `0 fps` frame
+  (`src/perf/sample.ts:14,25`; `src/plugins/perf.ts:10-12`).
 - `perf.overlay({ enabled: true })` mounts the debug overlay: frames drawn, fps, frame-time p50/p95/worst,
-  long tasks, runtime event-loop delay and a per-plugin invoke table. The overlay's code is excluded from a
-  production build unless the capability is granted.
+  long tasks, runtime event-loop delay and the three busiest plugins by invoke count
+  (`src/perf/overlay/overlay.ts:89-102`). Exclusion from a production build is by bundle entry, not by a
+  capability: the example's production bundle has zero occurrences of the panel marker
+  (`06-overlay.md:64-69`) and `mountOverlay` has no capability check (`src/perf/overlay/overlay.ts:64-66`).
 - `crust perf record` / `crust perf diff` write and compare the same numbers headlessly, which is how a
   performance change gets a before/after instead of an opinion.
 - The overlay module imports from `crust/perf/overlay` (`mountOverlay`, `MARKER`); it is page code with no

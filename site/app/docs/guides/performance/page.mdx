@@ -7,36 +7,41 @@ crust does on the main thread, work your page does, or latency the user feels ra
 This page has the measured numbers for the first one, how to look at your own app with the overlay, and an
 honest account of what Tauri and native-Rust frameworks do differently.
 
-Every number below was measured on one Apple-silicon machine under load averages between 2 and 5, so treat
-them as ratios rather than absolute targets. The reports, with the exact commands, are under
-`docs/reviews/perf/` in the repository.
+Every number below was measured on one Apple-silicon machine under heavy, contaminating load: one-minute
+load averages ran 2.39–12.76 (`05-pump.md:31`), 3.74–6.17 (`09-ab.md:16`) and 3.12–6.97
+(`10-startup.md:25`). Treat them as ratios, not absolute targets. Reports and commands are under `docs/reviews/perf/`.
 
 ## What crust used to cost per frame
 
 The macOS backend ran a repeating 16 ms timer that drained AppKit events. Every tick handed
 `nextEventMatchingMask:untilDate:inMode:dequeue:` a 4 ms deadline, which meant the JS thread waited inside
-AppKit on every single tick whether or not an event existed.
+AppKit on every single tick whether or not an event existed (`05-pump.md:4-7`).
 
-| | before | after |
-| --- | --- | --- |
-| mean time blocked per tick | 6.84 ms | **0.78 ms** |
-| ticks delivered per second | 41 | 54 |
-| app CPU, bridge idle | 1.7% | 0.7% |
-| ticks per second, window occluded | ~40 | ~13 |
-| animating page, frame p50 | 22 ms | **17 ms** |
-| animating page, frame p95 | 24 ms | **18 ms** |
-| animating page, fps | 57.6 | 57.2 (inside the control spread) |
+| metric | before | after | pass (review) |
+| --- | --- | --- | --- |
+| mean time blocked per tick, idle | 6.841 ms | 2.796 ms | lane E, first pass (`05-pump.md:44`) |
+| ticks delivered per second, idle | 41.1/s | 49.3/s | lane E, first pass (`05-pump.md:46`) |
+| mean time blocked per tick, idle | 2.818 ms | 0.781 ms | lane E, second pass (`05-pump.md:88`) |
+| ticks delivered per second, idle | 49.4/s | 54.4/s | lane E, second pass (`05-pump.md:91`) |
+| ticks per second, window occluded | ~40/s | ~13/s | occlusion arm (`05-pump.md:106`) |
+| animating page, frame p50 | 22 ms | 17 ms | same-tree A/B (`09-ab.md:10,63`) |
+| animating page, frame p95 | 24 ms | 18 ms | same-tree A/B, clean rows (`09-ab.md:10-11,64,68-69`) |
+| animating page, fps | 57.65 | 57.15 | same-tree A/B control rows (`09-ab.md:56-57,65`) |
 
-The frame rows come from a same-tree A/B — pre-fix and post-fix sources, one machine, one session,
-interleaved arms, two control rows. The p95 delta of 6 ms is far outside a 0 ms control spread and the arms
-do not overlap. The fps delta is inside it, which is why this is described as a frame-time win and not a
-throughput win: crust stops hitching, it does not run more frames.
+Before and after in each row come from the same pass; the two tick pairs are successive fixes, not one
+change measured twice (`05-pump.md:42-47,82-92`). The frame rows are a same-tree A/B: one machine, one
+session, interleaved arms, two control rows (`09-ab.md:22-36`). Its p95 delta of 6 ms is outside a 0 ms
+same-arm control spread, while fps is inside it, so this is a frame-time win, not a throughput win
+(`09-ab.md:59-70`). The first A/B arm's 34 ms p95 was a load spike and is excluded from the clean row
+(`09-ab.md:52,68-69`).
 
-Blocking 6.84 ms of a 16 ms budget is 28% of every second spent waiting before your page gets a turn —
-that is the difference between an animation that looks smooth and one that visibly hitches. Passing `nil`
-as the deadline makes an empty queue return immediately, and a 0.25 ms run-loop slice keeps painting
-serviced. A native menu still opens, a window still drags, and a capture through `window.capture` still
-paints.
+The CPU version of the finding was **killed**, not improved: idle CPU was 1.7% before, stayed 1.7%/1.2% in the first pass (`05-pump.md:11-12,47`) and 0.7%/0.8% in both arms of the second (`05-pump.md:92`). No CPU row belongs in a table of wins.
+
+Blocking 6.841 ms at 41.1 ticks/s is about 281 ms of every second spent waiting before your page gets a
+turn (`05-pump.md:44,46`) — that is the difference between an animation that looks smooth and one that
+visibly hitches. Passing `nil` as the deadline makes an empty queue return immediately, and a 0.25 ms
+run-loop slice keeps painting serviced (`05-pump.md:63-68`). A native menu still opens, a window still
+drags, and a capture through `window.capture` still paints (`05-pump.md:119-121`).
 
 ## What crust does not cost
 
@@ -45,14 +50,14 @@ run against itself, which is the only honest bar for a small delta.
 
 | arm | result |
 | --- | --- |
-| invokes at 30/s and at 200/s | free — no frame cost outside the control spread |
-| a 30 Hz server-sent event stream | free at 30 Hz and at 120 Hz |
-| webview configuration flags | `drawsBackground`, `wantsLayer`, `layerContentsRedrawPolicy`, `suppressesIncrementalRendering` and a fresh process pool each changed nothing |
-| the invoke round trip | 5.8–6.7 µs end to end, and 0.045 ms on a reused socket |
-| a 1 MB binary result | 40 µs p50 / 100 µs p95 to parse in the page |
+| invokes at 30/s and at 200/s | free — no frame cost outside the control spread (`07-page-invoke.md:3-4,50-51`) |
+| a 30 Hz server-sent event stream | free at 30 Hz and at 120 Hz (`07-page-invoke.md:3-4,52-53`) |
+| webview configuration flags | `drawsBackground`, `wantsLayer`, `layerContentsRedrawPolicy`, `suppressesIncrementalRendering` and a fresh process pool each changed nothing (`03-renderer.md:108-109,119`) |
+| the invoke round trip | 5.8–6.7 µs end to end, and 0.045 ms on a reused socket (`02-hotpaths.md:67-68`; `04-parity.md:106`) |
+| a 1 MB binary result | 40 µs p50 / 100 µs p95 to parse in the page (`07-page-invoke.md:91`) |
 
 So if your app feels slow, it is not the bridge. Look at what your page does per frame, at how often you
-re-render, and at latency — a 60 fps app still feels broken when a keystroke takes 200 ms to appear.
+re-render, and at latency — a smooth app still feels broken when a keystroke visibly lags.
 
 ## The overlay
 
@@ -73,30 +78,52 @@ import { createPerfPlugin } from "crust/plugin";
 app.plugin(createPerfPlugin()); // until this runs, every perf call refuses with "perf plugin mounted"
 ```
 
+There are two invoke arities: `invoke(plugin, command, args)` and `invoke(name, args)`, the latter routing
+through the `app` namespace (`src/bridge/client/install.ts:161-170`). Reaching the perf plugin needs the
+first form:
+
 ```ts
-await crust.invoke("perf.overlay", { enabled: true });
+await crust.invoke("perf", "overlay", { enabled: true });
 ```
 
-It shows frames drawn, fps, frame-time p50/p95/worst, long tasks, runtime event-loop delay and a per-plugin
-invoke table. Frame statistics come from the page's own `requestAnimationFrame` deltas, because only the
-page can see them; the runtime half reports event-loop delay, heap, invoke counts and event throughput.
+It shows frames drawn, fps, frame-time p50/p95/worst, long tasks, runtime event-loop delay and the three
+busiest plugins by invoke count (`src/perf/overlay/overlay.ts:89-102`; audit §Overlay). Frame statistics
+come from the page's own `requestAnimationFrame` deltas; the runtime half reports event-loop delay, heap,
+invoke counts and event throughput (`src/perf/overlay/overlay.ts:99-102`).
 
 Two behaviours worth knowing:
 
-- A window that is not visible draws no frames, and the overlay says `no frames` rather than `0 fps`.
-  Occluded windows are suspended by the system — that is battery behaviour, not a bug.
-- The overlay is excluded from a production build. The panel's marker string appears zero times in a build
-  without the capability, so it cannot ship by accident.
+- A window that is not visible draws no frames, and the overlay says `no frames` rather than `0 fps`
+  (`src/perf/overlay/overlay.ts:84-88`). Occluded windows are suspended by the system — battery
+  behaviour, not a bug.
+- Exclusion is by bundle entry, not a capability: `mountOverlay` has no capability check
+  (`src/perf/overlay/overlay.ts:64-66`). The overlay example's production bundle contains zero
+  occurrences of the panel marker because that entry is never referenced
+  (`06-overlay.md:64-69`).
 
 Reading the same numbers yourself, from a page:
 
 ```ts
-const sample = await crust.invoke("perf.sample", {});
-// { frame: { fps, p50, p95, worst, longTasks, framesDrawn } | null, runtime: { … }, invoke: { … } }
+const sample = await crust.invoke("perf", "sample");
+// { at, frame, runtime, invoke, events, log } (src/perf/sample.ts:23-35)
 ```
 
-`frame` is `null` until a page reports one, so a consumer can tell "nothing was drawn" from "zero frames
-per second".
+`frame` is `null` only until a page reports one. "Nothing was drawn" is a non-null frame with
+`framesDrawn === 0`; an occluded window is reported by that zero, never by a fabricated `0 fps` frame
+(`src/perf/sample.ts:14,25`; `src/plugins/perf.ts:10-12`).
+
+## Recording from the CLI
+
+`crust perf record --app <project-dir> --seconds 10 --out perf.json [--format json|text]` resolves
+`--app` to a directory with `index.html`, a project directory with `public/index.html`, or a bundle with
+`Contents/Resources/public/index.html`; a path with none of those is refused with
+`not an app: … — no index.html or public/index.html` (`src/cli/perf/app-root.ts:18-34`,
+`src/cli/perf/record.ts:62-63`). `--seconds` is the sampling duration; a run whose renderer never
+painted is refused with exit 2 and no sample file (`src/cli/perf/record.ts:119-125`).
+
+`--format` defaults to `text`, which prints one headline line shaped
+`fps=<fps> p50=<ms>ms p95=<ms>ms long=<n> heap=<MB>MB`; `json` prints the summary, meta and output path as
+one JSON line (`src/cli/perf/index.ts:16,63-69,132-133`; `src/cli/perf/format.ts:27-33`).
 
 ## Why Tauri apps feel smooth
 
@@ -106,8 +133,8 @@ Two structural differences matter, and only one of them is a crust cost:
 1. **Tauri's main thread runs a native event loop** (tao's `EventLoop::run`), not a JavaScript timer doing
    AppKit work. That was crust's 16 ms pump above, and it is now fixed.
 2. **Tauri's invoke is a custom-protocol `fetch`** (`ipc://localhost/<cmd>` with the callback in a header),
-   not a loopback HTTP POST. crust measured its own loopback path at 5.8–6.7 µs per invoke, so this is a
-   microsecond difference, not the reason an app feels different.
+   not a loopback HTTP POST. crust measured its own loopback path at 5.8–6.7 µs per invoke
+   (`02-hotpaths.md:67-68`), so this is a microsecond difference, not the reason an app feels different.
 
 Claiming the IPC design is why Tauri feels fast would be a story, not a measurement. The event loop was the
 real difference.
@@ -134,25 +161,27 @@ where the time goes:
 
 | segment | ms |
 | --- | ---: |
-| everything before the window | 128 |
-| `NSWindow` + `WKWebView` creation | 318 |
-| first navigation | 192 |
-| **total** | **608** |
+| everything before the window | 128 (`10-startup.md:72`) |
+| `NSWindow` + `WKWebView` creation | 318 (`10-startup.md:42`) |
+| first navigation | 192 (`10-startup.md:43`) |
+| **total** | **608** (harness-corrected: `10-startup.md:58`) |
 
 A bare AppKit program — one `NSWindow`, a stock `WKWebView`, `loadHTMLString`, no crust in the process —
-takes **568 ms p50** to its first `requestAnimationFrame`. Adding crust's window configuration, its
-content world and injected scripts, its scheme handler, its process pool and its bridge one at a time
-moved that by no more than the 21 ms control spread, except the injected scripts which were inside it
-after one contaminated run was excluded.
+takes **568 ms p50** to its first `requestAnimationFrame` (`10-startup.md:110`). Adding crust's window
+configuration, its content world and injected scripts, its scheme handler, its process pool and its
+bridge one at a time moved that by no more than the 21 ms control spread, except the injected scripts
+which were inside it after one contaminated run was excluded (`10-startup-bare.md:57-58`).
 
-So crust's own contribution to startup is on the order of **40 ms**, and the rest is WebKit bringing up
-its services and producing the first frame. Two consequences worth knowing:
+Like for like, crust adds about **72 ms** end to end: the harness-corrected 608 ms launch minus the
+536 ms corrected bare floor (`10-startup.md:4-6,58`). The rest is WebKit bringing up its services and
+producing the first frame. Two consequences worth knowing:
 
-- **A build-time fix does not exist here.** The JavaScript prelude is 15 ms, there is no synchronous log or
-  store read on the launch path, and the embedded native shim compiles in **17 ms cold / 1.3 ms warm**.
-- **Deferring the bridge does not help.** Starting it in parallel with window creation saves 8 ms, inside
-  the noise, and the bridge cannot simply be moved later: it serves the document, so a build without it
-  never paints at all.
+- **A build-time fix does not exist here.** The JavaScript prelude is 15 ms (`10-startup.md:120`), there
+  is no synchronous log or store read on the launch path (`10-startup.md:123-128`), and the embedded
+  native shim compiles in 17 ms cold / 1.3 ms warm (`10-startup.md:64`).
+- **Deferring the bridge does not help.** Binding it after window creation and before the document
+  request is 8 ms below the floor, inside noise (`10-startup-bare.md:71-72`); binding it after first
+  paint never paints at all (`10-startup-bare.md:50,73-75`).
 
 What this means for your app: if launch feels slow, the time is WebKit starting and your first paint, not
 crust's initialisation. Keep the first paint simple — a small document that paints something immediately
@@ -162,19 +191,9 @@ and loads the rest afterwards beats a large document that paints once.
 
 Start with the overlay and answer three questions in order:
 
-1. **What is the frame time with nothing happening?** If it is above ~20 ms at rest, something in your page
-   is re-rendering continuously.
+1. **What is the frame time with nothing happening?** If an idle page hitches, something in your page is
+   re-rendering continuously.
 2. **Does frame time rise when you interact?** If yes, look at what the interaction handler writes to the
    DOM, not at the bridge.
-3. **Is it latency rather than frames?** A click that takes 300 ms to show a result is a blocked main
-   thread or a slow handler, and a profiler that only reports fps will tell you everything is fine.
-
-
-Start with the overlay and answer three questions in order:
-
-1. **What is the frame time with nothing happening?** If it is above ~20 ms at rest, something in your page
-   is re-rendering continuously.
-2. **Does frame time rise when you interact?** If yes, look at what the interaction handler writes to the
-   DOM, not at the bridge.
-3. **Is it latency rather than frames?** A click that takes 300 ms to show a result is a blocked main
-   thread or a slow handler, and a profiler that only reports fps will tell you everything is fine.
+3. **Is it latency rather than frames?** A click that visibly lags before showing a result is a blocked
+   main thread or a slow handler, and a profiler that only reports fps will tell you everything is fine.
