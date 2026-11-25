@@ -85,6 +85,8 @@ describe("first-run CLI messages", () => {
 		for (const command of ["init", "dev", "build", "package", "doctor"]) {
 			expect(run.out).toContain(`crust ${command}`);
 		}
+		// `perf` has its own argv and help, but global help is the only discovery path.
+		expect(run.out).toContain("crust perf");
 		for (const verb of ["sign", "dmg", "notarize"]) {
 			expect(run.out).not.toContain(`crust ${verb}`);
 		}
