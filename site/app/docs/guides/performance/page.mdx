@@ -23,7 +23,14 @@ AppKit on every single tick whether or not an event existed.
 | ticks delivered per second | 41 | 54 |
 | app CPU, bridge idle | 1.7% | 0.7% |
 | ticks per second, window occluded | ~40 | ~13 |
-| animating page, frame p95 | 25 ms | 21 ms |
+| animating page, frame p50 | 22 ms | **17 ms** |
+| animating page, frame p95 | 24 ms | **18 ms** |
+| animating page, fps | 57.6 | 57.2 (inside the control spread) |
+
+The frame rows come from a same-tree A/B — pre-fix and post-fix sources, one machine, one session,
+interleaved arms, two control rows. The p95 delta of 6 ms is far outside a 0 ms control spread and the arms
+do not overlap. The fps delta is inside it, which is why this is described as a frame-time win and not a
+throughput win: crust stops hitching, it does not run more frames.
 
 Blocking 6.84 ms of a 16 ms budget is 28% of every second spent waiting before your page gets a turn —
 that is the difference between an animation that looks smooth and one that visibly hitches. Passing `nil`

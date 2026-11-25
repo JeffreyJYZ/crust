@@ -1,0 +1,143 @@
+{
+  "at": "2026-11-25T00:36:58.259Z",
+  "visibilityState": "visible",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "workload": {
+    "rows": 60,
+    "rects": 200,
+    "levelMs": 3000
+  },
+  "capture": {
+    "ok": true,
+    "width": 1800,
+    "height": 1280,
+    "scale": 2,
+    "pngBytes": 143240
+  },
+  "levels": [
+    {
+      "name": "none",
+      "activity": "none",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "requestAnimationFrame",
+      "rafFrames": 173,
+      "durationMs": 3026,
+      "frames": 172,
+      "fps": 56.84071381361534,
+      "frameP50Ms": 17,
+      "frameP95Ms": 18,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 0,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 0,
+      "eventCount": 0,
+      "errorCount": 0,
+      "occlusion": {
+        "disabled": true,
+        "keepAwake": true,
+        "state": 8192,
+        "occluded": true
+      }
+    },
+    {
+      "name": "one-invoke-per-second",
+      "activity": "one",
+      "stopped": true,
+      "eventHz": 0,
+      "eventStream": "not used",
+      "driver": "requestAnimationFrame",
+      "rafFrames": 174,
+      "durationMs": 3026,
+      "frames": 173,
+      "fps": 57.17118307997357,
+      "frameP50Ms": 17,
+      "frameP95Ms": 18,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 0,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 3,
+      "eventCount": 0,
+      "errorCount": 0,
+      "occlusion": {
+        "disabled": true,
+        "keepAwake": true,
+        "state": 8192,
+        "occluded": true
+      }
+    },
+    {
+      "name": "sustained-invoke-only",
+      "activity": "sustained-invoke",
+      "stopped": true,
+      "eventHz": 30,
+      "eventStream": "active SSE",
+      "driver": "backend-paced-invoke",
+      "rafFrames": 215,
+      "durationMs": 3708,
+      "frames": 63,
+      "fps": 16.990291262135923,
+      "frameP50Ms": 19,
+      "frameP95Ms": 21,
+      "longTasks": 0,
+      "longTaskP95Ms": null,
+      "longTaskSupported": true,
+      "longFrames": 1,
+      "heapStartBytes": null,
+      "heapEndBytes": null,
+      "invokeCount": 161,
+      "eventCount": 109,
+      "errorCount": 0,
+      "occlusion": {
+        "disabled": true,
+        "keepAwake": true,
+        "state": 8192,
+        "occluded": true
+      }
+    }
+  ],
+  "backend": {
+    "pingCount": 252,
+    "eventCount": 111,
+    "heapUsedBytes": 3921874,
+    "rssBytes": 67290456
+  },
+  "label": "ab-after-1",
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T00:36:47.537Z",
+      "load": {
+        "one": 5.1,
+        "five": 5.71,
+        "fifteen": 5.67
+      },
+      "bunProcesses": 19,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-25T00:36:58.368Z",
+      "load": {
+        "one": 5.88,
+        "five": 5.86,
+        "fifteen": 5.72
+      },
+      "bunProcesses": 21,
+      "probePids": []
+    },
+    "contaminated": true
+  },
+  "occlusionDetection": false,
+  "occlusion": {
+    "disabled": true,
+    "keepAwake": true,
+    "state": 8192,
+    "occluded": true
+  }
+}
