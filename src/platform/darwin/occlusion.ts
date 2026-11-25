@@ -67,10 +67,22 @@ function owner(): OcclusionOwner {
 	};
 }
 
-/** The process-wide owner. No other module keeps an occlusion count. */
+/** The process-wide owner of WebKit's `_setWindowOcclusionDetectionEnabled:` override. */
 export const occlusionOwner: OcclusionOwner = owner();
 
 /** A fresh, empty owner for a unit test that must not see another test's holders. */
 export function isolatedOcclusionOwner(): OcclusionOwner {
+	return owner();
+}
+
+/**
+ * The same one-owner rule for the harness-only composited-bit override. It is a different setter on
+ * a different object, so it needs its own holder set: two probes in one process must not clear each
+ * other's bit. Sharing the type keeps the ref-count rule identical.
+ */
+export const primeOwner: OcclusionOwner = owner();
+
+/** A fresh, empty prime owner for a unit test that needs isolation. */
+export function isolatedPrimeOwner(): OcclusionOwner {
 	return owner();
 }

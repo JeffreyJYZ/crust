@@ -5,7 +5,7 @@
  * than answering the newer promise with the older window's picture.
  */
 import type { WindowSnapshot } from "@/plugins/window-types.ts";
-import { occlusionOwner, type OcclusionSender } from "./occlusion.ts";
+import { occlusionOwner, primeOwner, type OcclusionSender } from "./occlusion.ts";
 import {
 	darwinSnapshotShim,
 	type SnapshotOptions,
@@ -13,6 +13,8 @@ import {
 	SNAPSHOT_STATUS,
 	snapshotStartReason,
 	OCCLUSION_UNAVAILABLE,
+	PRIME_UNAVAILABLE,
+	primeAvailable,
 	SNAPSHOT_TIMEOUT_MS,
 	snapshotFrom,
 } from "./snapshot.ts";
@@ -50,6 +52,20 @@ export function takeSnapshot(
 	const id = ++generation;
 	const override = options.ignoreOcclusion === true;
 	const holder = Symbol("window.capture ignoreOcclusion");
+	const primeOverride = options.prime === true;
+	const primeHolder = Symbol("window.capture prime");
+	if (primeOverride) {
+		// Both refusals are named before a send: an installed bundle cannot reach the SPI and a
+		// future macOS may remove the selector. There is no 5 s wait to learn either.
+		if (
+			!primeAvailable() ||
+			typeof shim.primeAvailable !== "function" ||
+			typeof shim.prime !== "function" ||
+			!shim.primeAvailable(view)
+		) {
+			return Promise.reject(new Error(PRIME_UNAVAILABLE));
+		}
+	}
 	if (override) {
 		if (typeof shim.occlusion !== "function") {
 			return Promise.reject(
@@ -64,6 +80,15 @@ export function takeSnapshot(
 			return Promise.reject(new Error(OCCLUSION_UNAVAILABLE));
 		}
 	}
+	if (primeOverride) {
+		// The owner's `false` means "hold acquired"; this SPI's 1 is what SETS the bit. Invert so
+		// acquire sets it and the last release clears it, matching the occlusion owner's rule.
+		const send: OcclusionSender = (target, enabled) => shim.prime!(target, !enabled);
+		if (!primeOwner.acquire(view, primeHolder, send)) {
+			if (override) occlusionOwner.release(view, holder);
+			return Promise.reject(new Error(PRIME_UNAVAILABLE));
+		}
+	}
 	return new Promise<WindowSnapshot>((resolve, reject) => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		/** Every terminal path calls this, so this holder never outlives one capture. */
@@ -71,6 +96,7 @@ export function takeSnapshot(
 			if (timer !== undefined) clearTimeout(timer);
 			timer = undefined;
 			if (override) occlusionOwner.release(view, holder);
+			if (primeOverride) primeOwner.release(view, primeHolder);
 		};
 		pending = {
 			id,

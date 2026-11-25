@@ -71,23 +71,38 @@ export function windowCaptureCommands(adapter?: WindowNative) {
 export type WindowCaptureCommands = ReturnType<typeof windowCaptureCommands>;
 
 /**
- * Read the probe opt-in without coercing it: a truthy `"false"` must not silently disable an app's
- * occlusion behaviour. Absent gives an empty object, so an ordinary capture sends no option at all.
+ * Read both probe opt-ins without coercing them: a truthy `"false"` must not silently enable either
+ * one. Absent gives an empty object, so an ordinary capture sends no option at all.
  */
 function readCaptureOptions(
 	args: WindowCaptureArgs,
 	label: string,
 ): WindowCaptureOptions | WindowFailure {
-	const value = args.ignoreOcclusion;
-	if (value === undefined) return {};
-	if (typeof value === "boolean") return { ignoreOcclusion: value };
+	const occlusion = args.ignoreOcclusion;
+	if (occlusion !== undefined && typeof occlusion !== "boolean") {
+		return {
+			ok: false,
+			code: "invalid-value",
+			message:
+				"crust: window.capture ignoreOcclusion must be a boolean when given, got " +
+				`${JSON.stringify(occlusion)}`,
+			label,
+		};
+	}
+	const prime = args.prime;
+	if (prime !== undefined && typeof prime !== "boolean") {
+		return {
+			ok: false,
+			code: "invalid-value",
+			message:
+				"crust: window.capture prime must be a boolean when given, got " +
+				`${JSON.stringify(prime)}`,
+			label,
+		};
+	}
 	return {
-		ok: false,
-		code: "invalid-value",
-		message:
-			"crust: window.capture ignoreOcclusion must be a boolean when given, got " +
-			`${JSON.stringify(value)}`,
-		label,
+		...(occlusion === undefined ? {} : { ignoreOcclusion: occlusion }),
+		...(prime === undefined ? {} : { prime }),
 	};
 }
 

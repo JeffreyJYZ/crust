@@ -10,6 +10,8 @@
  */
 
 import { FFIType, JSCallback } from "bun:ffi";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { WindowSnapshot } from "@/plugins/window-types.ts";
 import {
 	type SnapshotNative,
@@ -43,6 +45,25 @@ export const OCCLUSION_UNAVAILABLE =
 	"_setWindowOcclusionDetectionEnabled: is absent on this macOS; no capture was started";
 
 /**
+ * `prime` names the same refusal in both cases: an installed bundle, and a future macOS without
+ * the private NSWindow selector. Nothing is sent before this answer, so a caller never waits out a
+ * 5 s budget to learn that the harness-only path is gone.
+ */
+export const PRIME_UNAVAILABLE =
+	"crust: window.capture prime-unavailable: the harness-only composited-bit override " +
+	"cannot be used here; no capture was started";
+
+/**
+ * The same guard the shim audit uses: NODE_ENV production, or no shim sources on disk, means this
+ * is an installed app whose C files travel as text inside the binary. `prime` is harness-only and
+ * must never become reachable there; this is checked before any private send.
+ */
+export function primeAvailable(): boolean {
+	if (process.env.NODE_ENV === "production") return false;
+	return existsSync(join(import.meta.dir, "shim", "10_prelude.c"));
+}
+
+/**
  * The opt-in a probe passes to `window.capture`. `ignoreOcclusion` says what the caller wants —
  * a picture of a view WebKit considers occluded — without naming the private selector behind it.
  * Absent means today's behaviour: no SPI call, no change to WebKit's rendering for the app.
@@ -55,6 +76,13 @@ export interface SnapshotOptions {
 	 * a named failure instead of crashing.
 	 */
 	ignoreOcclusion?: boolean;
+	/**
+	 * HARNESS ONLY. Force AppKit's composited bit on this webview's window for one capture, then
+	 * restore it in a `finally`. An automated probe whose accessory app never activates cannot get
+	 * that bit set by any public API; a shipped app should show or activate its window instead.
+	 * Refused by name in a production bundle or when the private selector is absent.
+	 */
+	prime?: boolean;
 }
 
 /**
@@ -74,6 +102,12 @@ export interface SnapshotShim {
 	setChannel(onAnswer: (id: number, ok: boolean) => void): void;
 	/** Unsupported WebKit SPI: 1 when the selector existed, else 0. `false` restores the default. */
 	occlusion?(view: number, enabled: boolean): boolean;
+	/** Private, harness-only NSWindow SPI: 1 when `_setOcclusionStateIsVisible:` exists. */
+	primeAvailable?(view: number): boolean;
+	/** Set or clear the composited bit; 1 only when the private selector existed. */
+	prime?(view: number, enabled: boolean): boolean;
+	/** Public `occlusionState` bit 2, so a test can prove the bit was restored. */
+	composited?(view: number): boolean;
 }
 
 /** One sink per process: C keeps a single function pointer, so a second JSCallback is never reached. */
@@ -97,6 +131,10 @@ export function darwinSnapshotShim(): SnapshotShim {
 		read: () => readShot(symbols()),
 		occlusion: (view, enabled) =>
 			Number(symbols().crust_shot_occlusion(view, enabled ? 1 : 0) ?? 0) === 1,
+		primeAvailable: (view) => Number(symbols().crust_shot_prime_available(view) ?? 0) === 1,
+		prime: (view, enabled) =>
+			Number(symbols().crust_shot_prime(view, enabled ? 1 : 0) ?? 0) === 1,
+		composited: (view) => Number(symbols().crust_shot_composited(view) ?? 0) === 1,
 		setChannel: (onAnswer) => {
 			listener = onAnswer;
 			if (sink === undefined) {

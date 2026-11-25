@@ -20,12 +20,15 @@ export interface WindowSnapshot {
 }
 
 /**
- * The probe-only opt-in. `ignoreOcclusion` asks for a picture of a view WebKit considers occluded —
- * an automated screenshot of a window that may be off the active Space. It says what the caller
- * wants, not the private WebKit selector that delivers it. Absent is the ordinary capture.
+ * The probe-only opt-ins. `ignoreOcclusion` asks for a picture of a view WebKit considers occluded;
+ * `prime` forces AppKit's composited bit on a view that never drew. Both say what the caller wants,
+ * not the private selectors that deliver them. Absent is the ordinary capture. `prime` is
+ * harness-only and refused in a shipped bundle.
  */
 export interface WindowCaptureOptions {
 	readonly ignoreOcclusion?: boolean;
+	/** HARNESS ONLY. See `SnapshotOptions.prime`; a shipped app should show its window instead. */
+	readonly prime?: boolean;
 }
 
 export interface WindowCaptureArgs extends WindowCaptureOptions {
