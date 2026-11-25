@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Collector, buildSample } from "@/perf";
 import { summaryOf } from "./format.ts";
-import { diffFiles, diffRecords } from "./diff.ts";
+import { delta, diffFiles, diffRecords } from "./diff.ts";
 import type { PerfRecordFile } from "./types.ts";
 
 function fixture(): PerfRecordFile {
@@ -79,5 +79,27 @@ describe("perf diff", () => {
 		expect(typeof result).not.toBe("string");
 		if (typeof result === "string") return;
 		expect(result.regressions).toEqual([]);
+	});
+
+	test("cumulative counters are compared per second, not across run lengths", () => {
+		const before = fixture();
+		before.meta.seconds = 10;
+		before.summary.frame.framesDrawn = 600;
+		before.summary.invokeThroughput = 100;
+		const after = structuredClone(before);
+		after.meta.seconds = 1;
+		after.summary.frame.framesDrawn = 60;
+		after.summary.invokeThroughput = 10;
+		const result = diffRecords(before, after, 5);
+		expect(typeof result).not.toBe("string");
+		if (typeof result === "string") return;
+		expect(result.regressions).toEqual([]);
+		expect(result.lines.find((line) => line.includes("throughput"))).toContain("+0.0%");
+	});
+
+	test("a from-zero delta keeps its sign and honours tolerance", () => {
+		expect(delta(0, 5, "higher", 1).pct).toBe(100);
+		expect(delta(0, 5, "lower", 100).bad).toBe(false);
+		expect(delta(0, 5, "lower", 5).bad).toBe(true);
 	});
 });
