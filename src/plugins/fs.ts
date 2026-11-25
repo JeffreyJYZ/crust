@@ -9,77 +9,41 @@ import { resolve } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 import { definePlugin } from "./define";
-import { binaryCommands } from "./fs-binary.ts";
+import { binaryCommands, type ScopedPath } from "./fs-binary.ts";
 import { createFsScope, type FsScopeOptions, scopeCommands } from "./fs-scope.ts";
+import { canonical } from "./fs-scope-path.ts";
+import type {
+	ListArgs,
+	ListEntry,
+	ListResult,
+	ReadTextFileArgs,
+	RemoveArgs,
+	RemoveResult,
+	RenameArgs,
+	RenameResult,
+	StatArgs,
+	StatResult,
+	WriteTextFileArgs,
+	WriteTextFileResult,
+} from "./fs-types.ts";
 
 export type { MkdirArgs, MkdirResult, ReadBinaryArgs } from "./fs-binary.ts";
 export type { WriteBinaryArgs, WriteBinaryResult } from "./fs-binary.ts";
 export type { FsGrant, FsScopeOptions, FsScopeStatus } from "./fs-scope.ts";
-
-export interface ReadTextFileArgs {
-	/** Absolute or cwd-relative path. */
-	path: string;
-}
-
-export interface WriteTextFileArgs {
-	path: string;
-	contents: string;
-}
-
-export interface WriteTextFileResult {
-	/** Bytes actually written, as `Bun.write` reports them. */
-	bytes: number;
-}
-
-export interface ListArgs {
-	path: string;
-}
-
-export interface ListEntry {
-	/** Basename, never a path. */
-	name: string;
-	/** Absolute path, so a page never has to join strings. */
-	path: string;
-	directory: boolean;
-	/** Bytes for a file; 0 for a directory. */
-	size: number;
-}
-
-export interface ListResult {
-	entries: ListEntry[];
-}
-
-export interface StatArgs {
-	path: string;
-}
-
-export interface StatResult {
-	path: string;
-	directory: boolean;
-	size: number;
-	/** Milliseconds since the epoch, as `fs.stat` reports it. */
-	modified: number;
-}
-
-export interface RemoveArgs {
-	path: string;
-	/** Remove a directory and everything under it. Refused for a non-empty one otherwise. */
-	recursive?: boolean;
-}
-
-export interface RemoveResult {
-	removed: boolean;
-	path: string;
-}
-
-export interface RenameArgs {
-	from: string;
-	to: string;
-}
-
-export interface RenameResult {
-	path: string;
-}
+export type {
+	ListArgs,
+	ListEntry,
+	ListResult,
+	ReadTextFileArgs,
+	RemoveArgs,
+	RemoveResult,
+	RenameArgs,
+	RenameResult,
+	StatArgs,
+	StatResult,
+	WriteTextFileArgs,
+	WriteTextFileResult,
+} from "./fs-types.ts";
 
 /** A missing path is `not-found`, which is the one filesystem error worth naming. */
 function missing(error: unknown, path: string, command: string): never {
@@ -97,13 +61,18 @@ function attempt<Result>(command: string, path: string, run: Promise<Result>): P
 export function createFsPlugin(options: FsScopeOptions = {}) {
 	const scope = createFsScope(options);
 
-	/** A path argument, refused unless it resolves inside the scope. No-op with nothing configured. */
-	const scoped = async (value: unknown): Promise<string> => {
+	/**
+	 * Resolve once, check that resolved path, and hand the same path to the operation. Checking the
+	 * caller's raw string and then opening it left a window in which a symlink flip could redirect
+	 * the read or write outside the scope; preview already follows this fixed pattern.
+	 */
+	const scoped = async (value: unknown): Promise<ScopedPath> => {
 		if (typeof value !== "string" || value.length === 0) {
 			throw new CrustError("bad-request", 'fs: "path" must be a non-empty string');
 		}
-		await scope.check(value);
-		return value;
+		const approved = await canonical(value);
+		await scope.check(approved);
+		return { path: resolve(value), approved };
 	};
 
 	/**
@@ -112,14 +81,15 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 	 * at, which `fs.stat` on that same file correctly refuses. An out-of-scope target is reported as 0.
 	 */
 	const entrySize = async (entry: Dirent, full: string): Promise<number> => {
+		const approved = await canonical(full);
 		if (entry.isSymbolicLink()) {
 			try {
-				await scope.check(full);
+				await scope.check(approved);
 			} catch {
 				return 0;
 			}
 		}
-		const info = await statPath(full).catch(() => undefined);
+		const info = await statPath(approved).catch(() => undefined);
 		return info?.size ?? 0;
 	};
 
@@ -127,7 +97,7 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 		name: "fs",
 		commands: {
 			readTextFile: async ({ path }: ReadTextFileArgs): Promise<string> => {
-				const file = await scoped(path);
+				const { approved: file } = await scoped(path);
 				const handle = Bun.file(file);
 				if (!(await handle.exists())) {
 					throw new CrustError("not-found", `fs.readTextFile: no file at ${file}`);
@@ -138,7 +108,7 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 				path,
 				contents,
 			}: WriteTextFileArgs): Promise<WriteTextFileResult> => {
-				const file = await scoped(path);
+				const { approved: file } = await scoped(path);
 				if (typeof contents !== "string") {
 					throw new CrustError(
 						"bad-request",
@@ -149,11 +119,11 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 				return { bytes };
 			},
 			list: async ({ path }: ListArgs): Promise<ListResult> => {
-				const dir = await scoped(path);
+				const { path: raw, approved: dir } = await scoped(path);
 				const entries = await attempt("list", dir, readdir(dir, { withFileTypes: true }));
 				const listed: ListEntry[] = [];
 				for (const entry of entries) {
-					const full = resolve(dir, entry.name);
+					const full = resolve(raw, entry.name);
 					listed.push({
 						name: entry.name,
 						path: full,
@@ -166,26 +136,26 @@ export function createFsPlugin(options: FsScopeOptions = {}) {
 				};
 			},
 			stat: async ({ path }: StatArgs): Promise<StatResult> => {
-				const target = await scoped(path);
+				const { path: raw, approved: target } = await scoped(path);
 				const info = await attempt("stat", target, statPath(target));
 				return {
-					path: resolve(target),
+					path: raw,
 					directory: info.isDirectory(),
 					size: info.isDirectory() ? 0 : info.size,
 					modified: info.mtimeMs,
 				};
 			},
 			remove: async ({ path, recursive }: RemoveArgs): Promise<RemoveResult> => {
-				const target = await scoped(path);
+				const { path: raw, approved: target } = await scoped(path);
 				await attempt("remove", target, rm(target, { recursive: recursive === true }));
-				return { removed: true, path: resolve(target) };
+				return { removed: true, path: raw };
 			},
 			rename: async ({ from, to }: RenameArgs): Promise<RenameResult> => {
 				// Both ends: a rename out of a prefix leaks the file as surely as a read.
-				const source = await scoped(from);
-				const destination = await scoped(to);
+				const { approved: source } = await scoped(from);
+				const { path: raw, approved: destination } = await scoped(to);
 				await attempt("rename", source, renamePath(source, destination));
-				return { path: resolve(destination) };
+				return { path: raw };
 			},
 			...binaryCommands(scoped),
 			...scopeCommands(scope),

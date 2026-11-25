@@ -63,6 +63,7 @@ int tray_button_window_frame(obj_t item, double *out) {
 	if (!key) return 0;
 	obj_t box = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(window,
 	                                                            sel_registerName("valueForKey:"), key);
+	crust_release(key);
 	if (!box || !tray_responds(box, "getValue:")) return 0;
 	((void (*)(void *, void *, void *))objc_msgSend)(box, sel_registerName("getValue:"), out);
 	return 1;

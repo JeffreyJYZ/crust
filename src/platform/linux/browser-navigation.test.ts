@@ -50,7 +50,10 @@ function harness() {
 	return { fake, adapter, seen, popups, decide, open };
 }
 
-function partsFor(decide: (url: string) => boolean, onPopup: (url: string) => void): NavigationParts<Surface> {
+function partsFor(
+	decide: (url: string) => boolean,
+	onPopup: (url: string) => void,
+): NavigationParts<Surface> {
 	const decisions = new NavigationDecisions();
 	decisions.set("docs", decide);
 	const surface: Surface = { label: "docs", onPopup };
@@ -85,7 +88,10 @@ describe("the Linux committed-navigation gate", () => {
 
 	test("an allowed target goes through to WebKit", () => {
 		const { adapter, fake } = harness();
-		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({ ok: true, loaded: true });
+		expect(adapter.navigate("docs", `${TRUSTED}next`)).toMatchObject({
+			ok: true,
+			loaded: true,
+		});
 		expect(fake.calls.some((call) => call.startsWith("navigate:"))).toBe(true);
 	});
 
@@ -112,7 +118,26 @@ describe("the Linux committed-navigation gate", () => {
 	});
 
 	test("a throwing decision refuses rather than slips past the gate", () => {
-		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
+		expect(
+			navigationAllowed(() => {
+				throw new Error("page bug");
+			}, TRUSTED),
+		).toBe(false);
+	});
+
+	test("kind 1 reads the decision URL, not the popup buffer", () => {
+		const fake = new FakePorts();
+		const seen: string[] = [];
+		const parts = partsFor(
+			(url) => {
+				seen.push(url);
+				return true;
+			},
+			() => {},
+		);
+		parts.urlOf = (kind) => (kind === 0 ? fake.popupUrl() : fake.decisionUrl());
+		expect(decideNavigation(parts, 1, Number(WEB))).toBe(1);
+		expect(seen).toEqual([fake.decisionUrl()]);
 	});
 
 	/**
@@ -137,19 +162,25 @@ describe("the Linux committed-navigation gate", () => {
 describe("the decide-policy hook in the shim", () => {
 	test("a navigation decision is read from the action's URI request", () => {
 		const browser = SHIM_PARTS[2];
-		expect(browser).toContain('webkit_policy_decision_get_navigate_action');
-		expect(browser).toContain('webkit_navigation_action_get_request');
-		expect(browser).toContain('webkit_uri_request_get_uri');
+		expect(browser).toContain("webkit_policy_decision_get_navigate_action");
+		expect(browser).toContain("webkit_navigation_action_get_request");
+		expect(browser).toContain("webkit_uri_request_get_uri");
 		expect(browser).toContain('shim_view_connect(web, "decide-policy"');
 		// Only navigation-action decisions are gated; a NEW_WINDOW_ACTION belongs to browser-popup.
 		expect(browser).toContain("if (type != 0) return 0;");
 		// An unreadable URI is not a reason to cancel the surface's first load.
-		expect(browser).toContain("if (!shim_browser_popup[0]) return 0;");
+		expect(browser).toContain("if (!shim_browser_navigation[0]) return 0;");
+		// Popups and decisions own separate buffers: a later commit cannot erase a refused URL.
+		expect(browser).toContain("int shim_browser_navigation_url(char *dst, int cap)");
+		expect(browser).toContain("shim_browser_record(shim_browser_navigation, action)");
 		// A refusal ignores the decision and handles the signal so WebKit's default use() cannot run.
 		expect(browser).toContain("shim_policy_ignore(decision)");
 		expect(browser).toContain("shim_browser_decision_sink(1, shim_browser_count, web)");
 		const symbols = readFileSync(join(import.meta.dir, "shim-symbols.ts"), "utf8");
 		expect(symbols).toContain("shim_browser_watch_nav: { args: [P], returns: I32 }");
 		expect(symbols).toContain("shim_browser_set_decision_sink: { args: [P], returns: V }");
+		expect(symbols).toContain("shim_browser_navigation_url: { args: [P, I32], returns: I32 }");
+		const source = readFileSync(join(import.meta.dir, "browser.ts"), "utf8");
+		expect(source).toContain("kind === 0 ? port().popupUrl() : port().decisionUrl()");
 	});
 });

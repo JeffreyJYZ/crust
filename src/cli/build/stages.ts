@@ -81,6 +81,7 @@ export async function runStages(
 			bundle,
 			env.CRUST_SIGNING_IDENTITY!.trim(),
 			config.security?.microphone !== undefined,
+			config.build?.sidecars ?? [],
 		);
 		if (code !== 0) return code;
 	}

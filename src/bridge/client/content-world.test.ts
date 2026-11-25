@@ -9,7 +9,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { definePlugin } from "@/plugins/define";
 import { installCrust } from "@/bridge/client";
+import { installA11yHelpers } from "@/bridge/client/a11y-helpers.ts";
+import { installHandshake } from "@/bridge/client/handshake.ts";
 import { installInvoke } from "@/bridge/client/invoke.ts";
+import { installReviver } from "@/bridge/client/reviver.ts";
 import { startBridge, type BridgeHandle } from "@/bridge/server";
 import {
 	CONTENT_WORLD_SOURCE,
@@ -117,7 +120,15 @@ function installBoth(bridge: BridgeHandle, options: { scrub?: boolean } = {}): I
 	// The client installs into that same page world, so `window.crust` lands beside
 	// `window.crustInvoke` — which is exactly where a scrape would look.
 	page.__CRUST__ = { url: bridge.url, token: bridge.token };
-	const api = installCrust({ url: bridge.url }, page as any, installInvoke);
+	const api = installCrust(
+		{ url: bridge.url },
+		page as any,
+		installInvoke,
+		undefined,
+		installReviver,
+		installHandshake,
+		installA11yHelpers,
+	);
 	return { api, page, pageSearch: visible, rewritten };
 }
 

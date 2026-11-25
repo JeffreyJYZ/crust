@@ -154,9 +154,27 @@ export function recordPageCrash(
  */
 export function asStored(value: unknown): StoredCrash | null {
 	if (!isCrashRecord(value)) return null;
-	const record = value as StoredCrash;
-	if (record.type !== "signal" && record.type !== "webview") return { ...record, type: "signal" };
-	return record;
+	// `isCrashRecord` checks only `at` and `handler`, but its result is typed as a full record and
+	// handed to `crash-reporter.last/list`. Check the rest before that type can do any work: a torn
+	// or hand-edited line must be dropped, not presented as a record with a numeric `code`.
+	const record = value as unknown as Record<string, unknown>;
+	const nullableString = (field: unknown) => field === null || typeof field === "string";
+	const nullableNumber = (field: unknown) => field === null || typeof field === "number";
+	if (
+		!nullableString(record.signal) ||
+		!nullableNumber(record.code) ||
+		!nullableString(record.address) ||
+		!nullableNumber(record.exitCode) ||
+		(record.message !== undefined && typeof record.message !== "string") ||
+		(record.stack !== undefined && typeof record.stack !== "string")
+	) {
+		return null;
+	}
+	const stored = value as StoredCrash;
+	if (record.type !== "signal" && record.type !== "webview") {
+		return { ...stored, type: "signal" };
+	}
+	return stored;
 }
 
 /** The decoded fixed record, re-exported so a caller of this file needs no second import. */

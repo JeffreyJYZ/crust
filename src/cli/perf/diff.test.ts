@@ -1,10 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Collector, buildSample } from "@/perf";
 import { summaryOf } from "./format.ts";
-import { diffFiles, diffRecords } from "./diff.ts";
+import { delta, diffFiles, diffRecords } from "./diff.ts";
 import type { PerfRecordFile } from "./types.ts";
 
 function fixture(): PerfRecordFile {
@@ -79,5 +79,60 @@ describe("perf diff", () => {
 		expect(typeof result).not.toBe("string");
 		if (typeof result === "string") return;
 		expect(result.regressions).toEqual([]);
+	});
+
+	test("cumulative counters are compared per second, not across run lengths", () => {
+		const before = fixture();
+		before.meta.seconds = 10;
+		before.summary.frame.framesDrawn = 600;
+		before.summary.invokeThroughput = 100;
+		const after = structuredClone(before);
+		after.meta.seconds = 1;
+		after.summary.frame.framesDrawn = 60;
+		after.summary.invokeThroughput = 10;
+		const result = diffRecords(before, after, 5);
+		expect(typeof result).not.toBe("string");
+		if (typeof result === "string") return;
+		expect(result.regressions).toEqual([]);
+		expect(result.lines.find((line) => line.includes("throughput"))).toContain("+0.0%");
+	});
+
+	test("failures go to stderr, the report stays on stdout", async () => {
+		const log = spyOn(console, "log").mockImplementation(() => {});
+		const error = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			expect(await diffFiles("a", "b", -1)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("--tolerance"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			expect(await diffFiles("/no/such/before.json", "/no/such/after.json", 5)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("cannot read a sample"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			const dir = await mkdtemp(join(tmpdir(), "crust-perf-diff-"));
+			const noFrame = join(dir, "no-frame.json");
+			await writeFile(noFrame, JSON.stringify({ version: 1, samples: [] }), "utf8");
+			expect(await diffFiles(noFrame, noFrame, 5)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("no frame block"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			const good = join(dir, "good.json");
+			await writeFile(good, JSON.stringify(fixture()), "utf8");
+			expect(await diffFiles(good, good, 5)).toBe(0);
+			expect(log).toHaveBeenCalledWith(expect.stringContaining("field"));
+			expect(error).not.toHaveBeenCalled();
+		} finally {
+			log.mockRestore();
+			error.mockRestore();
+		}
+	});
+
+	test("a from-zero delta keeps its sign and honours tolerance", () => {
+		expect(delta(0, 5, "higher", 1).pct).toBe(100);
+		expect(delta(0, 5, "lower", 100).bad).toBe(false);
+		expect(delta(0, 5, "lower", 5).bad).toBe(true);
 	});
 });

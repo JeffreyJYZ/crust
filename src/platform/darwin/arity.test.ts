@@ -131,6 +131,10 @@ describe("bun:ffi declarations match the C prototypes", () => {
 			"shim_open_panel",
 			"shim_save_panel",
 			"shim_webview_load",
+			"shim_audit_balance",
+			"shim_audit_events",
+			"shim_audit_reset",
+			"shim_audit_bump",
 		]) {
 			expect(c.has(name)).toBe(true);
 		}

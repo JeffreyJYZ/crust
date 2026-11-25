@@ -75,6 +75,15 @@ function fail(message: string): number {
 	return 2;
 }
 
+/**
+ * Every failure after the output path is known goes through here. A failed re-record must not leave
+ * the previous run's file on disk for `perf diff` to read as this run's result.
+ */
+export async function failRecord(out: string, message: string, code = 2): Promise<number> {
+	await rm(out, { force: true });
+	return fail(message);
+}
+
 export async function record(args: RecordArgs): Promise<number> {
 	const root = await appRoot(args.app);
 	if (root === undefined)
@@ -126,7 +135,7 @@ export async function record(args: RecordArgs): Promise<number> {
 			recordedAt: new Date().toISOString(),
 		};
 	} catch (error) {
-		return fail(error instanceof Error ? error.message : String(error));
+		return await failRecord(out, error instanceof Error ? error.message : String(error));
 	} finally {
 		if (keepAlive !== undefined) clearInterval(keepAlive);
 		await app?.stop();
@@ -137,17 +146,17 @@ export async function record(args: RecordArgs): Promise<number> {
 	console.error(gate.text);
 	const summary = summaryOf(samples, meta?.occludedWindows ?? []);
 	if (meta === undefined || summary === undefined) {
-		return fail("no page frame report was collected; no sample written");
+		return await failRecord(out, "no page frame report was collected; no sample written");
 	}
 	if (!gate.ok) {
-		await rm(out, { force: true });
-		console.error(
-			"crust perf record: fail — an app process outlived the run; no sample written",
+		return await failRecord(
+			out,
+			"fail — an app process outlived the run; no sample written",
+			1,
 		);
-		return 1;
 	}
 	const decision = verdict(samples);
-	if (!decision.ok) return fail(decision.reason);
+	if (!decision.ok) return await failRecord(out, decision.reason);
 
 	meta.processesAfter = after.conditions.bunProcesses;
 	const file: PerfRecordFile = { version: 1, meta, summary, samples };

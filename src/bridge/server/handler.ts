@@ -91,9 +91,12 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 				const documentToken = mintDocumentToken(ledger, label);
 				const location = new URL(request.url);
 				location.searchParams.set(TOKEN_PARAM, documentToken);
+				// Absolute, always. A path beginning `//` is protocol-relative: emitting it as a
+				// relative Location handed the freshly minted token to that foreign host.
+				// `new URL` keeps the path byte-exact, so the document still resolves on this bridge.
 				return new Response(null, {
 					status: 302,
-					headers: { location: `${location.pathname}${location.search}${location.hash}` },
+					headers: { location: location.toString() },
 				});
 			}
 			return await documentResponse({

@@ -11,7 +11,6 @@
  */
 
 import { mkdir as mkdirPath } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { CrustError } from "../bridge/errors";
 
@@ -69,11 +68,17 @@ function toBytes(value: unknown, command: string): Uint8Array {
 	);
 }
 
+/** A caller's path and the canonical path the scope approved. Only `approved` may be opened. */
+export interface ScopedPath {
+	path: string;
+	approved: string;
+}
+
 /** The three commands, addressed by the plugin that spreads them into its own table. */
-export function binaryCommands(scoped: (value: unknown) => Promise<string>) {
+export function binaryCommands(scoped: (value: unknown) => Promise<ScopedPath>) {
 	return {
 		readBinary: async ({ path }: ReadBinaryArgs): Promise<Uint8Array> => {
-			const file = await scoped(path);
+			const { approved: file } = await scoped(path);
 			const handle = Bun.file(file);
 			if (!(await handle.exists())) {
 				throw new CrustError("not-found", `fs.readBinary: no file at ${file}`);
@@ -82,18 +87,18 @@ export function binaryCommands(scoped: (value: unknown) => Promise<string>) {
 		},
 
 		writeBinary: async ({ path, bytes }: WriteBinaryArgs): Promise<WriteBinaryResult> => {
-			const file = await scoped(path);
+			const { approved: file } = await scoped(path);
 			const data = toBytes(bytes, "writeBinary");
 			const written = await Bun.write(file, data);
 			return { bytes: written };
 		},
 
 		mkdir: async ({ path }: MkdirArgs): Promise<MkdirResult> => {
-			const dir = await scoped(path);
+			const { path: raw, approved } = await scoped(path);
 			// Recursive mkdir returns the first path it created, or undefined if the whole chain
 			// existed — so the verdict is measured, not guessed from a prior stat.
-			const first = await mkdirPath(dir, { recursive: true });
-			return { path: resolve(dir), created: first !== undefined };
+			const first = await mkdirPath(approved, { recursive: true });
+			return { path: raw, created: first !== undefined };
 		},
 	};
 }

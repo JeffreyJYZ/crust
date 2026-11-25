@@ -10,6 +10,9 @@
 import type * as T from "./types";
 import type { installInvoke } from "./invoke.ts";
 import type { installPageA11y } from "./a11y-page.ts";
+import type { installA11yHelpers } from "./a11y-helpers.ts";
+import type { installHandshake } from "./handshake.ts";
+import type { installReviver } from "./reviver.ts";
 import type { PageA11y } from "./a11y-page-types.ts";
 
 export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
@@ -17,6 +20,9 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	target: T.CrustTarget = globalThis as unknown as T.CrustTarget,
 	invokeFactory?: typeof installInvoke,
 	a11yFactory?: typeof installPageA11y,
+	reviveFactory?: typeof installReviver,
+	handshakeFactory?: typeof installHandshake,
+	helpersFactory?: typeof installA11yHelpers,
 ): T.CrustApi<Schema> {
 	const scope = target as unknown as Record<string, any>;
 	// A page that already has a client keeps it: a second install would open a
@@ -39,7 +45,6 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	const token = resolved.token;
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
 	const waiters = new Map<string, Array<(payload: unknown) => void>>();
-	let handshaken = false;
 	let resolveReady: (() => void) | undefined;
 	let rejectReady: ((reason?: unknown) => void) | undefined;
 	const ready = new Promise<void>((resolve, reject) => {
@@ -49,24 +54,12 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	// A refusal rejects `ready`; a page that never awaits it is not an unhandled rejection.
 	void ready.catch(() => {});
 
-	// Only a completed 2xx exchange is readiness. A 4xx is the bridge refusing this page — a stale
-	// token, a bad origin, no route — and rejects with its status and reason, so the page can tell a
-	// refusal from "no bridge". A 5xx is a handler that threw; the bridge is reachable, so it counts.
-	const markHandshake = (status: number, reason?: string) => {
-		if (handshaken) return;
-		handshaken = true;
-		if (status < 400 || status >= 500) {
-			resolveReady?.();
-			return;
-		}
-		const error = new Error(
-			`crust: bridge refused (${status})${reason ? `: ${reason}` : ""}`,
-		) as Error & { name: string; code: string; status: number };
-		error.name = "CrustInvokeError";
-		error.code = "bridge-refused";
-		error.status = status;
-		rejectReady?.(error);
-	};
+	// Readiness lives in its own injected factory; the rule stays the same: 2xx and handler throws
+	// prove reachability, a 4xx refusal does not.
+	const markHandshake = handshakeFactory!(
+		() => resolveReady?.(),
+		(reason) => rejectReady?.(reason),
+	);
 
 	// A frame's `data` is JSON on the wire and a string in a `CustomEvent`, so both transports hand
 	// this half text and it is parsed once, here.
@@ -80,6 +73,13 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	};
 
 	const dispatch = (event: string, payload: unknown) => {
+		// Drain before listeners run: a listener that re-arms `once(event)` must not have its fresh
+		// waiter settled by the very event that triggered it.
+		const pending = waiters.get(event);
+		if (pending) {
+			waiters.delete(event);
+			for (const fn of pending) fn(payload);
+		}
 		const set = listeners.get(event);
 		if (set) {
 			for (const fn of Array.from(set)) {
@@ -91,11 +91,6 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 						console.error(`crust: listener for "${event}" threw`, error);
 				}
 			}
-		}
-		const pending = waiters.get(event);
-		if (pending) {
-			waiters.delete(event);
-			for (const fn of pending) fn(payload);
 		}
 	};
 
@@ -111,12 +106,13 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 			if (event === "crust:ready") markHandshake(200);
 			dispatch(event, decode(payload));
 		},
+		reviveFactory!,
 	);
 
-	// The page's own DOM view. Absent only for a hand-built install that did not pass the factory;
-	// the bridge's two injected sources always pass it, so a real page always has `crust.a11y`.
+	// The page's own DOM view, with its description helpers injected beside it. Absent only for a
+	// hand-built install that did not pass the factories; a real page always has `crust.a11y`.
 	const a11y: PageA11y | undefined =
-		typeof a11yFactory === "function" ? a11yFactory(scope) : undefined;
+		typeof a11yFactory === "function" ? a11yFactory(scope, helpersFactory!(scope)) : undefined;
 
 	const listen = <T = unknown>(event: string, fn: (payload: T) => void): (() => void) => {
 		const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();

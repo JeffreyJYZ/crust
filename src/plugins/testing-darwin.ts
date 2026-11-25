@@ -12,10 +12,7 @@
  */
 
 import { cc, FFIType, JSCallback, ptr, toArrayBuffer } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { materialiseNativeSource } from "@/native-source.ts";
 
 import type { WebviewFor } from "@/platform/darwin/webview-target";
 import { CrustError } from "../bridge/errors";
@@ -34,17 +31,20 @@ export const EVAL_TIMEOUT_MS = 4000;
 interface TestingNative {
 	crust_testing_available: (web: number) => number;
 	crust_testing_set_sink: (sink: number) => void;
-	crust_testing_eval: (web: number, bytes: number, length: number | bigint, id: number | bigint) => number;
+	crust_testing_eval: (
+		web: number,
+		bytes: number,
+		length: number | bigint,
+		id: number | bigint,
+	) => number;
 }
 
 let library: TestingNative | undefined;
 
-/** Compile the evaluate unit once per process, content-hashed so a second call reuses TinyCC's cache. */
+/** Compile once per process from a private per-user cache, never a planted /tmp path. */
 function native(): TestingNative {
 	if (library) return library;
-	const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
-	const path = join(tmpdir(), `crust-testing-${hash}.c`);
-	if (!existsSync(path)) writeFileSync(path, source);
+	const path = materialiseNativeSource("crust-testing", source);
 	library = cc({
 		source: path,
 		flags: ["-framework", "AppKit", "-framework", "Foundation", "-framework", "WebKit"],

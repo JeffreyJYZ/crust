@@ -52,7 +52,7 @@ crust: savePanel refused (busy); an NSOpenPanel sheet is already up, and only on
 
 ## `window` and `tray`
 
-These two return a typed failure value rather than a rejected invoke: `{ ok: false, code, message }`, with `label` on every window failure that knows one. The bridge maps the code to a non-200 status through the `CrustError` table — `invalid-*` → 400, `unknown-window` and `destroyed` → 404, `unknown-adapter` → 501, `handler-error` → 500, any unmapped code → 400 — while the `{ ok: true, result: … }` envelope and body stay unchanged. Because the body is unchanged, `await window.close()` still resolves with the typed failure instead of rejecting, so a caller that ignores the result keeps working.
+These two return a typed failure value rather than a rejected invoke: `{ ok: false, code, message }`, with `label` on every window failure that knows one. The bridge maps the code to a non-200 status through the `CrustError` table — `invalid-*` → 400, `unknown-window` and `destroyed` → 404, `unknown-adapter` → 501, `handler-error` → 500, server-side faults (`signature-mismatch`, `hash-mismatch`, `unverified-artifact`, `relaunch-failed`, `io-error`, `corrupt`, `sql-error`, `contract-violation`) → 500, any other unmapped code → 400 — while the `{ ok: true, result: … }` envelope and body stay unchanged. Because the body is unchanged, `await window.close()` still resolves with the typed failure instead of rejecting, so a caller that ignores the result keeps working.
 
 | code              | raised when                                                                 |
 | ----------------- | --------------------------------------------------------------------------- |

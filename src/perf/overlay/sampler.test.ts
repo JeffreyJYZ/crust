@@ -107,6 +107,40 @@ describe("rAF sampler", () => {
 		s.stop();
 	});
 
+	test("an observer that cannot be constructed reports longtask n/a", () => {
+		class LiarLongTask {
+			static supportedEntryTypes = ["longtask"];
+		}
+		class ThrowingLongTask {
+			static supportedEntryTypes = ["longtask"];
+			constructor() {
+				throw new Error("no observer");
+			}
+			observe(): void {}
+			disconnect(): void {}
+		}
+		const d = driver();
+		const liar = createSampler({
+			raf: d.raf,
+			cancelRaf: d.cancelRaf,
+			now: d.now,
+			performanceObserver: LiarLongTask,
+		});
+		const throwing = createSampler({
+			raf: d.raf,
+			cancelRaf: d.cancelRaf,
+			now: d.now,
+			performanceObserver: ThrowingLongTask,
+		});
+		liar.start();
+		throwing.start();
+		d.step();
+		expect(liar.frame().longTasks).toBeNull();
+		expect(throwing.frame().longTasks).toBeNull();
+		liar.stop();
+		throwing.stop();
+	});
+
 	test("no advancing frames is framesDrawn staying still, not a slow app", () => {
 		const d = driver();
 		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });
@@ -130,5 +164,34 @@ describe("rAF sampler", () => {
 		expect(s.frame().framesDrawn).toBe(1);
 		s.reset();
 		expect(s.frame().framesDrawn).toBe(0);
+	});
+
+	test("a frame older than the 10 s window cannot influence p50 or p95", () => {
+		const d = driver();
+		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });
+		s.start();
+		for (let i = 0; i < 600; i++) d.step(20);
+		expect(s.frame().p50).toBe(20);
+		for (let i = 0; i < 11_000; i++) d.step(1);
+		const late = s.frame();
+		expect(late.p50).toBe(1);
+		expect(late.p95).toBe(1);
+		expect(late.worst).toBe(1);
+		s.stop();
+	});
+
+	test("restart clears deltas from before the hide", () => {
+		const d = driver();
+		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });
+		s.start();
+		d.step(10);
+		d.step(40);
+		expect(s.frame().worst).toBe(40);
+		s.stop();
+		s.start();
+		d.step(1);
+		d.step(1);
+		expect(s.frame().worst).toBe(1);
+		s.stop();
 	});
 });

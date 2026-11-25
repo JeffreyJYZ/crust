@@ -24,6 +24,10 @@ const SYMBOLS = [
 	"menu_api_submenu",
 	"menu_api_tag",
 	"menu_api_target",
+	"shim_audit_balance",
+	"shim_audit_bump",
+	"shim_audit_events",
+	"shim_audit_reset",
 ];
 
 describe("98_menu_api.c with 98_menu_read.c and 99_menu_context.c", () => {

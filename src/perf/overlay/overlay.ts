@@ -3,19 +3,14 @@
  * never per row or per frame. Before the `perf` plugin is mounted the panel shows page-only numbers
  * and says so. `MARKER` lets a production-bundle byte search prove this module was not pulled in.
  */
+import { installHotkey, type KeyHost } from "./hotkey.ts";
 import { createPanel, bridgeStore, type DocumentLike, type Panel } from "./panel.ts";
+import { isPerfSample, type PerfSampleLike } from "./sample-shape.ts";
 import { createSampler, type FrameStats, type Sampler } from "./sampler.ts";
 
-export const MARKER = "crust-perf-overlay/v1";
+export type { PerfSampleLike } from "./sample-shape.ts";
 
-export interface PerfSampleLike {
-	at: number;
-	frame: FrameStats | null;
-	runtime: { eventLoopDelayP95: number; heapUsed: number; heapTotal: number };
-	invoke: Record<string, { count: number; p50: number; p95: number; errors: number }>;
-	events: { emitted: number; delivered: number; dropped: number; p95: number };
-	log: { records: number; ms: number };
-}
+export const MARKER = "crust-perf-overlay/v1";
 
 export interface PerfApi {
 	sample(): unknown;
@@ -96,10 +91,18 @@ export function mountOverlay(options: OverlayOptions = {}) {
 			return out;
 		}
 		const s = sampled;
-		out.push(`loop     p95 ${s.runtime.eventLoopDelayP95.toFixed(2)} ms · heap ${mb(s.runtime.heapUsed)}/${mb(s.runtime.heapTotal)} MB`);
-		out.push(`events   emitted ${s.events.emitted} · delivered ${s.events.delivered} · dropped ${s.events.dropped} · p95 ${s.events.p95.toFixed(2)}`);
+		out.push(
+			`loop     p95 ${s.runtime.eventLoopDelayP95.toFixed(2)} ms · heap ${mb(s.runtime.heapUsed)}/${mb(s.runtime.heapTotal)} MB`,
+		);
+		out.push(
+			`events   emitted ${s.events.emitted} · delivered ${s.events.delivered} · dropped ${s.events.dropped} · p95 ${s.events.p95.toFixed(2)}`,
+		);
 		const names = Object.keys(s.invoke).slice(0, 3);
-		out.push(names.length === 0 ? "invoke   none" : `invoke   ${names.map((n) => `${n} ${s.invoke[n]?.count ?? 0}`).join(" · ")}`);
+		out.push(
+			names.length === 0
+				? "invoke   none"
+				: `invoke   ${names.map((n) => `${n} ${s.invoke[n]?.count ?? 0}`).join(" · ")}`,
+		);
 		return out;
 	}
 
@@ -120,14 +123,21 @@ export function mountOverlay(options: OverlayOptions = {}) {
 		try {
 			void Promise.resolve(perf.sample())
 				.then((answer) => {
-					runtimeMounted = !refusal(answer);
-					sampled = runtimeMounted ? (answer as PerfSampleLike) : undefined;
+					const valid = !refusal(answer) && isPerfSample(answer);
+					runtimeMounted = valid;
+					sampled = valid ? answer : undefined;
 				})
 				.catch(() => {
 					runtimeMounted = false;
 					sampled = undefined;
 				})
-				.finally(() => panel.update(lines(frame), frame.p95, now()));
+				.finally(() => {
+					try {
+						panel.update(lines(frame), frame.p95, now());
+					} catch {
+						// Repaint is best-effort: a failed panel must not reject into the page.
+					}
+				});
 		} catch {
 			runtimeMounted = false;
 			sampled = undefined;
@@ -153,17 +163,10 @@ export function mountOverlay(options: OverlayOptions = {}) {
 
 	const handle = options.interval?.(tick, 1000) ?? setInterval(tick, 1000);
 	const stopInterval = options.clearInterval ?? (clearInterval as (h: unknown) => void);
-	if (options.dev !== false) {
-		try {
-			(scope.document as { addEventListener?: (t: string, fn: (e: unknown) => void) => void })
-				?.addEventListener?.("keydown", (event) => {
-					const e = event as { metaKey?: boolean; shiftKey?: boolean; key?: string };
-					if (e.metaKey && e.shiftKey && e.key?.toLowerCase() === "p") setVisible(!visible);
-				});
-		} catch {
-			// Conflicting hot key degrades to the API.
-		}
-	}
+	const removeHotkey =
+		options.dev === false
+			? undefined
+			: installHotkey(scope.document as KeyHost | undefined, () => setVisible(!visible));
 
 	return {
 		marker: MARKER,
@@ -184,6 +187,7 @@ export function mountOverlay(options: OverlayOptions = {}) {
 			stopInterval(handle);
 			sampler.stop();
 			panel.destroy();
+			removeHotkey?.();
 		},
 	};
 }

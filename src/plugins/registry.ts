@@ -75,7 +75,11 @@ export class PluginRegistry {
 		if (!plugin) {
 			throw new CrustError("unknown-plugin", `no plugin named "${pluginName}"`);
 		}
-		const handler = plugin.commands[commandName];
+		// `commandName` is untrusted wire data: a bare lookup would return inherited
+		// `Object.prototype` functions (`constructor`, `toString`, …) and invoke them as commands.
+		const handler = Object.hasOwn(plugin.commands, commandName)
+			? plugin.commands[commandName]
+			: undefined;
 		if (typeof handler !== "function") {
 			throw new CrustError(
 				"unknown-command",

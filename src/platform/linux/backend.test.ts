@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createGtkBackend } from "./backend.ts";
 import { decode, fakeShim } from "./backend-shim-fake.ts";
+import type { LinuxShim } from "./shim-ffi.ts";
 
 const URL = "http://127.0.0.1:4123/";
 
@@ -124,5 +125,45 @@ describe("guards", () => {
 		);
 		expect(() => backend.load()).toThrow("cannot load libgtk-3.so.0");
 		expect(() => backend.load()).toThrow("apt install");
+	});
+});
+
+/** Every step after `shim_window_new` can fail; none may leave a window the platform never saw. */
+function failedCreate(breakIt: (symbols: LinuxShim) => void, message: string): void {
+	const { symbols, calls } = fakeShim();
+	breakIt(symbols);
+	const backend = createGtkBackend(
+		() => symbols,
+		() => [],
+	);
+	backend.load();
+	expect(() => backend.createWindow({ label: "main" }, URL)).toThrow(message);
+	expect(calls.indexOf("window_destroy")).toBeGreaterThan(calls.indexOf("window_new"));
+	expect(calls).not.toContain("window_show");
+}
+
+describe("a failed window creation", () => {
+	test("a null webview destroys the window", () => {
+		failedCreate((symbols) => {
+			symbols.shim_webview_new = () => 0;
+		}, "shim_webview_new returned null");
+	});
+
+	test("a null container destroys the window", () => {
+		failedCreate((symbols) => {
+			symbols.shim_window_container = () => 0;
+		}, "shim_window_container returned null");
+	});
+
+	test("a refused attach destroys the window", () => {
+		failedCreate((symbols) => {
+			symbols.shim_window_attach = () => 0;
+		}, "shim_window_attach failed");
+	});
+
+	test("a refused load destroys the window", () => {
+		failedCreate((symbols) => {
+			symbols.shim_webview_load = () => 0;
+		}, `shim_webview_load failed for ${URL}`);
 	});
 });

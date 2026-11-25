@@ -32,7 +32,10 @@ void shim_window_set_title(obj_t win, const char *title) {
 	    allocd, sel_registerName("initWithBytes:length:encoding:"), title,
 	    (unsigned long)shim_cstr_len(title), 4LL);
 	if (!s) return;
+	crust_own(s);
 	((void (*)(void *, void *, obj_t))objc_msgSend)(win, sel_registerName("setTitle:"), s);
+	// AppKit copies the title. The +1 we built ends with the setter.
+	crust_release(s);
 }
 
 // The window's own title, decoded back to C so JS can verify what was applied.

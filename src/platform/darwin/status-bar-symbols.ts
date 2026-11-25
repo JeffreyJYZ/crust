@@ -26,6 +26,10 @@ export const STATUS_BAR_SYMBOL_NAMES = [
 	"tray_menu_activate",
 	"tray_item_index",
 	"tray_destroy",
+	"shim_audit_balance",
+	"shim_audit_events",
+	"shim_audit_reset",
+	"shim_audit_bump",
 ] as const;
 
 export type StatusBarSymbolName = (typeof STATUS_BAR_SYMBOL_NAMES)[number];

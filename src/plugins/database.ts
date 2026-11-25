@@ -15,6 +15,7 @@ import { Database } from "bun:sqlite";
 
 import { definePlugin, type PluginDefinition } from "./define";
 import { isFailure, readSql, sqlFailure, unknownHandle } from "./database-args.ts";
+import { guardSql } from "./database-sql.ts";
 import { ensureDatabaseFile, type DatabasePathOptions } from "./database-name.ts";
 import type {
 	CloseResult,
@@ -66,6 +67,8 @@ export function createDatabasePlugin(
 	options: DatabasePathOptions = {},
 ): PluginDefinition<"database", DatabaseCommands> {
 	const open = new Map<string, Database>();
+	/** A readonly main handle may not open a second file through ATTACH either. */
+	const readonlyHandles = new Set<string>();
 	let next = 0;
 
 	const handleOf = (db: Database): string => {
@@ -94,9 +97,11 @@ export function createDatabasePlugin(
 						file,
 						readonly === true ? { readonly: true } : { create: true },
 					);
+					const handle = handleOf(db);
+					if (readonly === true) readonlyHandles.add(handle);
 					return {
 						ok: true,
-						handle: handleOf(db),
+						handle,
 						path: file,
 						readonly: readonly === true,
 					};
@@ -109,6 +114,7 @@ export function createDatabasePlugin(
 				const db = find(handle);
 				if (!(db instanceof Database)) return db;
 				open.delete(handle);
+				readonlyHandles.delete(handle);
 				db.close();
 				return { ok: true, handle };
 			},
@@ -116,11 +122,12 @@ export function createDatabasePlugin(
 			exec: async (args: SqlArgs): Promise<ExecResult | SqlFailure> => {
 				const read = readSql(args);
 				if (isFailure(read)) return read;
-				const { sql, bound } = read;
 				const db = find(args.handle);
 				if (!(db instanceof Database)) return db;
+				const checked = await guardSql(read, options, readonlyHandles.has(args.handle));
+				if (isFailure(checked)) return checked;
 				try {
-					const run = db.prepare(sql).run(...(bound as never[]));
+					const run = db.prepare(checked.sql).run(...(checked.bound as never[]));
 					return {
 						ok: true,
 						changes: run.changes,
@@ -134,11 +141,14 @@ export function createDatabasePlugin(
 			query: async (args: SqlArgs): Promise<QueryResult | SqlFailure> => {
 				const read = readSql(args);
 				if (isFailure(read)) return read;
-				const { sql, bound } = read;
 				const db = find(args.handle);
 				if (!(db instanceof Database)) return db;
+				const checked = await guardSql(read, options, readonlyHandles.has(args.handle));
+				if (isFailure(checked)) return checked;
 				try {
-					const rows = db.prepare(sql).all(...(bound as never[])) as SqlRow[];
+					const rows = db
+						.prepare(checked.sql)
+						.all(...(checked.bound as never[])) as SqlRow[];
 					return { ok: true, rows };
 				} catch (error) {
 					return sqlFailure(error);
@@ -148,11 +158,14 @@ export function createDatabasePlugin(
 			get: async (args: SqlArgs): Promise<GetResult | SqlFailure> => {
 				const read = readSql(args);
 				if (isFailure(read)) return read;
-				const { sql, bound } = read;
 				const db = find(args.handle);
 				if (!(db instanceof Database)) return db;
+				const checked = await guardSql(read, options, readonlyHandles.has(args.handle));
+				if (isFailure(checked)) return checked;
 				try {
-					const row = db.prepare(sql).get(...(bound as never[])) as SqlRow | null;
+					const row = db
+						.prepare(checked.sql)
+						.get(...(checked.bound as never[])) as SqlRow | null;
 					return { ok: true, row: row ?? null };
 				} catch (error) {
 					return sqlFailure(error);

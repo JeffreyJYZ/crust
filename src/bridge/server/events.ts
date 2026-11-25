@@ -71,16 +71,23 @@ export class Events {
 	private watchReload(file: string): void {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const name = basename(file);
-		const watcher = watch(dirname(file), (_event, filename) => {
-			if (filename !== null && String(filename) !== name) return;
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				const next = tokenOf(file);
-				if (next.length === 0 || next === this.reloadToken) return;
-				this.reloadToken = next;
-				this.emit(DEV_RELOAD_EVENT, { at: Date.now() });
-			}, RELOAD_DEBOUNCE_MS);
-		});
+		let watcher: ReturnType<typeof watch>;
+		try {
+			watcher = watch(dirname(file), (_event, filename) => {
+				if (filename !== null && String(filename) !== name) return;
+				clearTimeout(timer);
+				timer = setTimeout(() => {
+					const next = tokenOf(file);
+					if (next.length === 0 || next === this.reloadToken) return;
+					this.reloadToken = next;
+					this.emit(DEV_RELOAD_EVENT, { at: Date.now() });
+				}, RELOAD_DEBOUNCE_MS);
+			});
+		} catch {
+			// A missing or unwritable scratch directory is a dev-harness fault, not a reason to
+			// kill the bridge: this run simply gets no reload events.
+			return;
+		}
 		this.cleanups.add(() => {
 			clearTimeout(timer);
 			watcher.close();

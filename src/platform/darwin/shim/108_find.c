@@ -39,9 +39,11 @@ static find_t find_nsstring(const char *bytes, long long length) {
 	find_t allocd = ((find_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
 	                                                          sel_registerName("alloc"));
 	if (!allocd) return 0;
-	return ((find_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
+	find_t text = ((find_t (*)(void *, void *, const char *, unsigned long, long long))objc_msgSend)(
 	    allocd, sel_registerName("initWithBytes:length:encoding:"), bytes, (unsigned long)length,
 	    4LL);
+	crust_own(text);
+	return text;
 }
 
 // Runs on the main thread when WebKit has searched. `-matchFound` is a BOOL, read as one
@@ -68,6 +70,7 @@ static find_t find_config(int backwards, int case_sensitive) {
 	                                              backwards ? 1 : 0);
 	((void (*)(void *, void *, int))objc_msgSend)(config, sel_registerName("setCaseSensitive:"),
 	                                              case_sensitive ? 1 : 0);
+	crust_own(config);
 	return config;
 }
 
@@ -94,10 +97,16 @@ int crust_find_search(void *web, const char *bytes, long long length, int backwa
 	text = find_nsstring(bytes, length);
 	if (!text) return 2;
 	config = find_config(backwards, case_sensitive);
-	if (!config) return 2;
+	if (!config) {
+		crust_release(text);
+		return 2;
+	}
 	((void (*)(void *, void *, find_t, find_t, void *))objc_msgSend)(
 	    web, sel_registerName("findString:withConfiguration:completionHandler:"), text, config,
 	    block);
+	// WebKit copies what it needs. Both +1 objects we built end with this send.
+	crust_release(config);
+	crust_release(text);
 	return 0;
 }
 

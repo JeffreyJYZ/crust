@@ -141,6 +141,10 @@ export function describeNotarize(result: NotarizeResult): string {
 	}
 	const id = result.submissionId ? `  ${result.submissionId}` : "";
 	const lines = [`notarize ${result.status.padEnd(9)}${id}  ${result.appPath}`];
+	// A failed staple/validate/spctl step carries a status too. Dropping its reason here
+	// prints "notarize rejected" with no exit code and no tool text — unusable in a build log.
+	if (result.reason) lines.push(`  ${result.reason}`);
+	if (result.log) lines.push(`  ${result.log.trim()}`);
 	for (const issue of result.issues ?? []) lines.push(`  ${issue}`);
 	return lines.join("\n");
 }

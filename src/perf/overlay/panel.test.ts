@@ -3,6 +3,8 @@ import { bridgeStore, createPanel, type DocumentLike, type ElementLike } from ".
 
 /** A DOM whose layout counts only in-flow children, so a `position:fixed` panel is invisible to it. */
 function fakeDom() {
+	const captured: number[] = [];
+	const released: number[] = [];
 	const body = {
 		style: {},
 		textContent: "",
@@ -17,7 +19,10 @@ function fakeDom() {
 	const doc: DocumentLike = {
 		body,
 		createElement(tag: string): ElementLike {
-			const listeners = new Map<string, (e: { clientX: number; clientY: number }) => void>();
+			const listeners = new Map<
+				string,
+				(e: { clientX: number; clientY: number; pointerId?: number }) => void
+			>();
 			const children: ElementLike[] = [];
 			return {
 				style: {},
@@ -27,18 +32,29 @@ function fakeDom() {
 					children.push(child);
 				},
 				addEventListener(type, fn) {
-					listeners.set(type, fn);
+					listeners.set(
+						type,
+						fn as (e: { clientX: number; clientY: number; pointerId?: number }) => void,
+					);
+				},
+				setPointerCapture(id: number) {
+					captured.push(id);
+				},
+				releasePointerCapture(id: number) {
+					released.push(id);
 				},
 				remove() {},
-				fire(type: string, x: number, y: number) {
-					listeners.get(type)?.({ clientX: x, clientY: y });
+				fire(type: string, x: number, y: number, pointerId?: number) {
+					listeners.get(type)?.({ clientX: x, clientY: y, pointerId });
 				},
-			} as ElementLike & { fire: (type: string, x: number, y: number) => void };
+			} as ElementLike & {
+				fire: (type: string, x: number, y: number, pointerId?: number) => void;
+			};
 		},
 	};
 	const scrollHeight = (): number =>
 		100 + body.children.filter((c) => c.style.position !== "fixed").length * 20;
-	return { doc, body, scrollHeight, root: () => body.children.at(-1)! };
+	return { doc, body, scrollHeight, captured, released, root: () => body.children.at(-1)! };
 }
 
 describe("fixed overlay panel", () => {
@@ -73,13 +89,39 @@ describe("fixed overlay panel", () => {
 		});
 		await Bun.sleep(0);
 		expect(d.root().style.transform).toBe("translate3d(40px, 60px, 0)");
-		const header = (d.root() as unknown as { children: Array<{ fire: (t: string, x: number, y: number) => void }> }).children[0]!;
+		const header = (
+			d.root() as unknown as {
+				children: Array<{ fire: (t: string, x: number, y: number) => void }>;
+			}
+		).children[0]!;
 		header.fire("pointerdown", 0, 0);
 		header.fire("pointermove", 10, 5);
 		expect(d.root().style.transform).toBe("translate3d(50px, 65px, 0)");
 		header.fire("pointerup", 10, 5);
 		await Bun.sleep(0);
 		expect(written).toEqual([{ key: "perf-overlay.corner", value: { x: 50, y: 65 } }]);
+		panel.destroy();
+	});
+
+	test("a captured pointer finishes the drag even when it leaves the header", () => {
+		const d = fakeDom();
+		const panel = createPanel({ doc: d.doc });
+		const header = (
+			d.root() as unknown as {
+				children: Array<{ fire: (t: string, x: number, y: number, id?: number) => void }>;
+			}
+		).children[0]!;
+		header.fire("pointerdown", 0, 0, 7);
+		expect(d.captured).toEqual([7]);
+		header.fire("pointermove", 10, 5, 7);
+		expect(d.root().style.transform).toBe("translate3d(18px, 13px, 0)");
+		header.fire("pointerup", 10, 5, 7);
+		expect(d.released).toEqual([7]);
+		// A cancelled pointer must clear the drag too: a later hover is not a drag.
+		header.fire("pointerdown", 0, 0, 8);
+		header.fire("pointercancel", 0, 0, 8);
+		header.fire("pointermove", 50, 50, 8);
+		expect(d.root().style.transform).toBe("translate3d(18px, 13px, 0)");
 		panel.destroy();
 	});
 
@@ -92,6 +134,26 @@ describe("fixed overlay panel", () => {
 		expect(panel.spark.overBudget).toBe(false);
 		panel.update(["fps 20", "p95 40"], 40, 2000);
 		expect(panel.spark.overBudget).toBe(true);
+		panel.destroy();
+	});
+
+	test("no document gives a named refusal, not an opaque TypeError", () => {
+		expect(() => createPanel()).toThrow("no document");
+	});
+
+	test("a canvas without a drawing context degrades instead of being asserted", () => {
+		const d = fakeDom();
+		const doc: DocumentLike = {
+			body: d.doc.body,
+			createElement(tag: string) {
+				const el = d.doc.createElement(tag);
+				return tag === "canvas" ? Object.freeze(el) : el;
+			},
+		};
+		const panel = createPanel({ doc });
+		panel.update(["fps 55", "p95 26"], 26, 1000);
+		expect(panel.spark.count).toBe(1);
+		expect(d.root().style.position).toBe("fixed");
 		panel.destroy();
 	});
 

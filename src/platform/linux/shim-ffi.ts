@@ -1,12 +1,9 @@
 /**
  * Compiling the shipped C shim, once per process. `cc()` compiles C only, and this unit links nothing beyond libc — GTK and WebKit are reached through `dlopen` inside the shim — so there are no `-l` flags and no `-dev` headers are needed. Linking libc still wants the `libc.so` **linker script**, which only the C development package ships: that one package is the whole reason a machine with GTK and WebKitGTK can still fail here, so a `library c not found` from TinyCC is translated by `linkError` instead of escaping raw.
- * Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file does not exist, so the source travels in the binary as text and is materialised to a temp file before `cc()` is called.
+ * Inside a compiled binary `import.meta.dir` is `/$bunfs/root`, where the .c file does not exist, so the source travels in the binary as text and is materialised to a private per-user file before `cc()` is called.
  */
 import { cc } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { materialiseNativeSource } from "@/native-source.ts";
 import type { LinuxBrowserShim } from "./shim-browser.ts";
 import type { LinuxDialogShim } from "./dialog-ffi.ts";
 import { linkError } from "./preflight.ts";
@@ -158,10 +155,9 @@ export interface LinuxProofShim {
 
 /** Compile the embedded shim and declare every entry point it exports. */
 function compile(): { symbols: LinuxShim & LinuxProofShim } {
-	/** Content-hashed, so a second launch reuses the same file and TinyCC's per-path cache. */
-	const hash = createHash("sha256").update(shimSource).digest("hex").slice(0, 16);
-	const path = join(tmpdir(), `crust-linux-shim-${hash}.c`);
-	if (!existsSync(path)) writeFileSync(path, shimSource);
+	// Content-hashed inside a private cache, so a second launch reuses TinyCC's per-path cache
+	// without ever compiling a file a local user planted at a predictable /tmp path.
+	const path = materialiseNativeSource("crust-linux-shim", shimSource);
 
 	const options = { source: path, symbols: shimSymbols };
 

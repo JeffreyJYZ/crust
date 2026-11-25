@@ -9,6 +9,7 @@
 // surface forgets its slot so a new view at the same address cannot inherit the old wrapper.
 static void *shim_host_view[SHIM_BOX_MAX];
 static void *shim_host_fixed[SHIM_BOX_MAX];
+static void *shim_host_win[SHIM_BOX_MAX];
 
 void *shim_webview_host(void *web) {
 	if (!web) return 0;
@@ -23,12 +24,29 @@ void shim_host_forget(void *web) {
 		if (shim_host_view[i] == web) {
 			shim_host_view[i] = 0;
 			shim_host_fixed[i] = 0;
+			shim_host_win[i] = 0;
 			return;
 		}
 	}
 }
 
-static void *shim_host_for(void *web) {
+/**
+ * A destroyed host window frees its overlay children, but nothing calls `browser.close` for them:
+ * without this, 32 window closes exhaust both the host and the view-state tables and a later view at
+ * a reused address reads a stale record. GTK owns the widgets here; only the records are ours.
+ */
+void shim_host_forget_window(void *win) {
+	if (!win) return;
+	for (int i = 0; i < SHIM_BOX_MAX; i++) {
+		if (shim_host_win[i] != win || !shim_host_view[i]) continue;
+		shim_state_forget(shim_host_view[i]);
+		shim_host_view[i] = 0;
+		shim_host_fixed[i] = 0;
+		shim_host_win[i] = 0;
+	}
+}
+
+static void *shim_host_for(void *web, void *win) {
 	void *host = shim_webview_host(web);
 	int slot = -1;
 	if (host || !web || !shim_fixed_new || !shim_container_add) return host;
@@ -46,6 +64,7 @@ static void *shim_host_for(void *web) {
 	if (!host) return 0;
 	shim_host_view[slot] = web;
 	shim_host_fixed[slot] = host;
+	shim_host_win[slot] = win;
 	return host;
 }
 
@@ -57,7 +76,10 @@ static void *shim_host_for(void *web) {
 int shim_webview_place(void *box, void *web, int x, int y, int w, int h) {
 	void *host;
 	if (!box || !web || !shim_overlay_add || !shim_widget_parent) return 0;
-	host = shim_host_for(web);
+	// Resolve the optional readbacks here too: `browser.setBounds` reaches place without any proof
+	// readback, and leaving `shim_queue_resize` null on that path silently drops both resize calls.
+	shim_container_resolve_reads();
+	host = shim_host_for(web, shim_box_window(box));
 	if (!host) return 0;
 	// The wrapper is the overlay child; the webview is a child of the wrapper, so its allocation is
 	// its own size request and not the overlay's remaining area.

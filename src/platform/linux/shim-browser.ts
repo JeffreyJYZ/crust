@@ -28,4 +28,6 @@ export interface LinuxBrowserShim {
 	shim_browser_set_decision_sink?(sink: number): void;
 	shim_browser_popups?(): number;
 	shim_browser_popup_url?(dst: Uint8Array, cap: number): number;
+	/** The decided navigation's URI, in its own buffer so a later commit cannot erase a popup. */
+	shim_browser_navigation_url?(dst: Uint8Array, cap: number): number;
 }
