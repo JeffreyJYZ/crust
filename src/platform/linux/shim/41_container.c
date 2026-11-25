@@ -159,6 +159,14 @@ void *shim_window_container(void *win) {
 	return box;
 }
 
+/** The window that owns one positioned container, so a surface's records can follow its host. */
+void *shim_box_window(void *box) {
+	if (!box) return 0;
+	for (int i = 0; i < shim_box_count; i++)
+		if (shim_boxes[i].box == box) return shim_boxes[i].win;
+	return 0;
+}
+
 // A destroyed window frees its box with it, so the entry must go too: a new
 // window can land on the same address, and it needs a box of its own.
 void shim_container_forget(void *win) {

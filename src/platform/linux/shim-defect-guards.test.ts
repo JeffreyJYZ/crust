@@ -26,4 +26,14 @@ describe("native defect guards (read source, no GTK)", () => {
 		expect(host).toContain("if (shim_queue_resize) shim_queue_resize(host);");
 		expect(host).toContain("if (shim_queue_resize) shim_queue_resize(box);");
 	});
+
+	test("destroying a host window frees its surface slots and view records", () => {
+		expect(container).toContain("void *shim_box_window(void *box)");
+		expect(host).toContain("static void *shim_host_win[SHIM_BOX_MAX]");
+		expect(host).toContain("void shim_host_forget_window(void *win)");
+		expect(host).toContain("shim_state_forget(shim_host_view[i])");
+		expect(host).toContain("shim_host_win[slot] = win");
+		expect(windowPart).toContain("shim_host_forget_window(widget)");
+		expect(windowPart).toContain("shim_host_forget_window(win)");
+	});
 });

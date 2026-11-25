@@ -17,6 +17,7 @@ static void *(*shim_connect)(void *, const char *, void *, void *, void *, int);
 // somewhere to be placed. Forward-declared because the window arrives first.
 void *shim_window_container(void *win);
 void shim_container_forget(void *win);
+void shim_host_forget_window(void *win);
 
 int shim_gtk_resolve(void) {
 	void *h = shim_gtk_handle();
@@ -68,6 +69,7 @@ static void shim_on_destroy(void *widget, void *data) {
 	}
 	shim_slot_release(widget);
 	shim_container_forget(widget);
+	shim_host_forget_window(widget);
 }
 
 int shim_window_alive(void *win) {
@@ -140,4 +142,5 @@ void shim_window_destroy(void *win) {
 	// handler that was never connected must not leave the slot occupied.
 	shim_slot_release(win);
 	shim_container_forget(win);
+	shim_host_forget_window(win);
 }
