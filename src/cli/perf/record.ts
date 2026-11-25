@@ -33,7 +33,8 @@ async function pageSamplerSource(): Promise<string> {
 			target: "browser",
 			format: "iife",
 		});
-		if (!result.success) throw new Error(`page sampler build failed: ${result.logs.join("\n")}`);
+		if (!result.success)
+			throw new Error(`page sampler build failed: ${result.logs.join("\n")}`);
 		const output = result.outputs[0];
 		if (output === undefined) throw new Error("page sampler build emitted nothing");
 		// The native evaluate channel has no answer for `undefined`; return a string.
@@ -41,6 +42,22 @@ async function pageSamplerSource(): Promise<string> {
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+}
+
+const STALLED =
+	"renderer never drew a frame (occluded or suspended WebView); no sample written — " +
+	"a stalled run must not read as fast or slow";
+
+/**
+ * The one failure this recorder owns: the renderer never painted in the whole run. A page that
+ * painted and then went idle is a valid measurement — `frame.idleWindows` in the file says so,
+ * and `fps === 0` after a paint must not be read as fast or as stalled.
+ */
+export type RecordVerdict = { ok: true } | { ok: false; reason: string };
+
+export function verdict(samples: PerfSample[]): RecordVerdict {
+	const painted = samples.some((sample) => sample.frame !== null && sample.frame.framesDrawn > 0);
+	return painted ? { ok: true } : { ok: false, reason: STALLED };
 }
 
 async function waitForFirstFrame(collector: Collector, timeoutMs = 3000): Promise<boolean> {
@@ -60,8 +77,10 @@ function fail(message: string): number {
 
 export async function record(args: RecordArgs): Promise<number> {
 	const root = await appRoot(args.app);
-	if (root === undefined) return fail(`not an app: ${args.app} — no index.html or public/index.html`);
-	if (!Number.isFinite(args.seconds) || args.seconds < 1) return fail("--seconds needs a positive number");
+	if (root === undefined)
+		return fail(`not an app: ${args.app} — no index.html or public/index.html`);
+	if (!Number.isFinite(args.seconds) || args.seconds < 1)
+		return fail("--seconds needs a positive number");
 	const seconds = Math.min(Math.floor(args.seconds), 10);
 	const out = resolve(args.out);
 	const before = await recorderSnapshot();
@@ -73,11 +92,10 @@ export async function record(args: RecordArgs): Promise<number> {
 
 	try {
 		app = await launchApp(root, collector, `crust-perf-record-${process.pid}`);
-		if (!(await waitForPage(app))) throw new Error("page never exposed window.crust.perf.frameReport");
+		if (!(await waitForPage(app)))
+			throw new Error("page never exposed window.crust.perf.frameReport");
 		await app.evaluate(await pageSamplerSource());
-		if (!(await waitForFirstFrame(collector))) {
-			throw new Error("zero frames drawn — WebKit did not paint (occlusion detection must be off)");
-		}
+		if (!(await waitForFirstFrame(collector))) throw new Error(STALLED);
 		// WebKit re-occludes an unfocused window on any app switch; keep the private selector live
 		// for the whole run rather than only at launch.
 		keepAlive = setInterval(() => app?.reassert(), 100);
@@ -113,17 +131,13 @@ export async function record(args: RecordArgs): Promise<number> {
 	}
 	if (!gate.ok) {
 		await rm(out, { force: true });
-		console.error("crust perf record: fail — an app process outlived the run; no sample written");
+		console.error(
+			"crust perf record: fail — an app process outlived the run; no sample written",
+		);
 		return 1;
 	}
-	const previous = samples.at(-2)?.frame ?? undefined;
-	const advanced = previous === undefined || summary.frame.framesDrawn > previous.framesDrawn;
-	if (summary.frame.framesDrawn === 0 || summary.frame.fps === 0 || !advanced) {
-		return fail(
-			"renderer stopped drawing (occluded or suspended WebView); no sample written — " +
-				"a stalled run must not read as fast or slow",
-		);
-	}
+	const decision = verdict(samples);
+	if (!decision.ok) return fail(decision.reason);
 
 	meta.processesAfter = after.conditions.bunProcesses;
 	const file: PerfRecordFile = { version: 1, meta, summary, samples };

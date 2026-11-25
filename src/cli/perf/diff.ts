@@ -5,6 +5,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { summaryOf } from "./format.ts";
 import type { PerfRecordFile, Summary } from "./types.ts";
 
 type Direction = "lower" | "higher";
@@ -22,22 +23,10 @@ export interface DiffResult {
 }
 
 function fieldOf(record: PerfRecordFile): Summary | undefined {
-	if (record.summary?.frame !== undefined) return record.summary;
-	const last = record.samples?.at(-1);
-	if (last === undefined || last.frame === null) return undefined;
-	let throughput = 0;
-	let invokeP95 = 0;
-	for (const stat of Object.values(last.invoke)) {
-		throughput += stat.count;
-		if (stat.p95 > invokeP95) invokeP95 = stat.p95;
-	}
-	return {
-		frame: { ...last.frame },
-		runtime: { ...last.runtime },
-		events: { ...last.events },
-		invokeThroughput: throughput,
-		invokeP95,
-	};
+	// A summary written before `idleWindows` existed is still readable: the count is neutral 0
+	// there, never invented from wall time. Records with only samples get the same summary the
+	// recorder writes, so both paths agree on every field.
+	return record.summary ?? summaryOf(record.samples ?? []);
 }
 
 function metrics(before: Summary, after: Summary): Metric[] {
@@ -48,6 +37,9 @@ function metrics(before: Summary, after: Summary): Metric[] {
 		["frame.worst", "worst", "lower"],
 		["frame.longTasks", "longTasks", "lower"],
 		["frame.framesDrawn", "framesDrawn", "higher"],
+		// Not a blanket "after > before is bad": a jump in idle windows means the renderer
+		// stopped painting where it used to keep going, so fewer is the better direction.
+		["frame.idleWindows", "idleWindows", "lower"],
 	];
 	const rows: Metric[] = fields.map(([field, key, better]) => ({
 		field,

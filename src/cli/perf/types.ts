@@ -22,6 +22,8 @@ export interface SummaryFrame {
 	p95: number;
 	worst: number;
 	longTasks: number;
+	/** One-second windows with no new frames. Idle after a paint, not a fast or a slow app. */
+	idleWindows: number;
 }
 
 export interface Summary {
