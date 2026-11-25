@@ -4,6 +4,17 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.22] — 2026-11-25
+
+### Fixed
+
+- **A window WebKit never composited still could not be captured, and `ignoreOcclusion` alone could not save it.** `0.2.21` stopped WebKit suspending a view; it cannot wake one that has already stopped compositing, and a real caller proved the difference: the flag arrived (`bytesIn 102` against `79` for a bare call, and the page logged the probe reason) and the capture still answered `no-completion` after 5000 ms. Every public route was then measured and is dead: `orderBack:`, `alphaValue` 0.01, a 1×1 on-screen window at alpha 0, `-[NSWindow display]`/`displayIfNeeded`, an occlusion hold taken before the page loaded (4002 ms fail against a 4006 ms control), and detach-snapshot-reattach (no png, and it dropped `firstResponder` 1 → 0). The positive control is the finding: a window on screen at (20,20), 120×90, alpha 1, ordered front, never sets the composited bit (`occlusionState` stays 8192) because the app never activated. Only setting that bit makes the capture answer — 17 ms instead of a 5 s timeout.
+- **`window.capture { prime: true }`** sets the composited bit through the private `-[NSWindow _setOcclusionStateIsVisible:]`, captures, and restores on every terminal path including timeout and supersede; two probes in one process cannot fight over it because the bit is ref-counted by one owner. It is **harness-only**: `NODE_ENV=production` or a bundle without the shim sources answers `prime-unavailable` before anything is sent, so an installed app cannot raise itself above the user's windows. Absent or `false` leaves today's behaviour untouched, and a non-boolean is `invalid-value` rather than being coerced.
+
+### Changed
+
+- **The docs stop implying `ignoreOcclusion` is sufficient.** It is necessary for a view WebKit is about to suspend and useless for one already gone, the measurement that separates the two is recorded, and the remaining public options for a caller are named honestly: capture early, activate the app, or show the window.
+
 ## [0.2.21] — 2026-11-25
 
 ### Fixed
