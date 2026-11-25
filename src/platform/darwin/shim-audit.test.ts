@@ -109,11 +109,11 @@ function unit(
 }
 
 const units: Record<string, AuditUnit> = {
-	menu: unit("menu", ["98_menu_api.c", "98_menu_read.c", "99_menu_context.c"], MENU_DRIVER),
+	menu: unit("menu", ["98_menu_prelude.c", "98_menu_api.c", "98_menu_read.c", "99_menu_context.c"], MENU_DRIVER),
 	tray: unit("tray", STATUS_BAR_PARTS, TRAY_DRIVER),
 	window: unit("window", ["10_prelude.c", "20_sends.c", "30_webview.c", "40_window.c", "121_content_world.c"], WINDOW_DRIVER),
 	find: unit("find", ["108_find.c", "109_find_ids.c"], FIND_DRIVER),
-	announce: unit("announce", ["106_accessibility_page.c"], ANNOUNCE_DRIVER),
+	announce: unit("announce", ["106_accessibility_page.c", "106_accessibility_focus.c"], ANNOUNCE_DRIVER),
 };
 
 const DRIVERS: Record<string, [string, string]> = {

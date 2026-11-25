@@ -103,16 +103,42 @@ export async function runFileSteps(checks: Checks, dir: string): Promise<ListEnt
 				: false,
 	);
 
-	// 5. A menu-bar item with a menu — the state the tray adapter holds.
+	// 5. A menu-bar item with a menu — the state the tray adapter holds. The title, tooltip,
+	//    tray menu and app menu are each rebuilt twice, and a find-in-page search runs, so a
+	//    native unit that balances only its first build still fails here.
+	const native: boolean[] = [];
+	const menuItems = TRAY_ITEMS.map((label) => ({ label }));
+	for (const title of ["Dogear", "Dogear notes"]) {
+		native.push(
+			(await plugin<{ ok: boolean }>("tray", "setTitle", { text: title })).ok === true,
+		);
+	}
+	native.push(
+		(await plugin<{ ok: boolean }>("tray", "setTooltip", { text: "notes" })).ok === true,
+	);
+	for (const items of [[{ label: "Dogear" }], menuItems]) {
+		native.push((await plugin<{ ok: boolean }>("menu", "setAppMenu", { items })).ok === true);
+		native.push((await plugin<TrayAnswer>("tray", "setMenu", { items })).ok === true);
+	}
+	native.push(
+		(
+			await plugin<{ ok: boolean; matches?: number }>("findinpage", "search", {
+				text: "self-check",
+			})
+		).ok === true,
+	);
 	await check(
 		"tray item",
-		() =>
-			plugin<TrayAnswer>("tray", "setMenu", {
+		async () =>
+			await plugin<TrayAnswer>("tray", "setMenu", {
 				items: TRAY_ITEMS.map((label) => ({ label })),
 			}),
 		(answer) =>
-			answer.ok && (answer.labels?.length ?? 0) === TRAY_ITEMS.length
-				? `menu with ${TRAY_ITEMS.length} rows: ${TRAY_ITEMS.join(", ")}`
+			answer.ok &&
+			(answer.labels?.length ?? 0) === TRAY_ITEMS.length &&
+			native.length === 8 &&
+			native.every(Boolean)
+				? `menu with ${TRAY_ITEMS.length} rows: ${TRAY_ITEMS.join(", ")}; ${native.length} native rebuilds answered`
 				: false,
 	);
 

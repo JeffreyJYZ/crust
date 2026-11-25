@@ -36,3 +36,7 @@ static obj_t tray_nsstring(const char *bytes, long long len) {
 	return string;
 }
 
+// Ownership follows 00_audit.c, injected into this unit by status-bar-ffi.ts: crust_own when the
+// +1 is built, crust_release after the AppKit send that copies it. Early returns before a menu is
+// stored also balance their strings, so the audit net never carries a partial build.
+

@@ -50,6 +50,7 @@ int tray_set_title(obj_t item, const char *bytes, long long len) {
 		return 0;
 	}
 	((void (*)(void *, void *, obj_t))objc_msgSend)(button, sel_registerName("setTitle:"), title);
+	// AppKit copies the title; our +1 ends on every path.
 	crust_release(title);
 	return 1;
 }
@@ -125,6 +126,7 @@ int tray_set_tooltip(obj_t item, const char *bytes, long long len) {
 		return 0;
 	}
 	((void (*)(void *, void *, obj_t))objc_msgSend)(button, sel_registerName("setToolTip:"), text);
+	// AppKit copies the tooltip; our +1 ends on every path.
 	crust_release(text);
 	return 1;
 }

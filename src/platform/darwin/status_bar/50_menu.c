@@ -7,6 +7,8 @@ static obj_t tray_building_menu;
 
 int tray_menu_begin(obj_t item) {
 	if (!item) return 0;
+	// A second begin abandons the first build; drop our +1 on it before the static is overwritten.
+	crust_release(tray_building_menu);
 	tray_building_menu = 0;
 	obj_t cls = objc_getClass("NSMenu");
 	if (!cls || !tray_responds(cls, "alloc")) return 0;
@@ -17,9 +19,13 @@ int tray_menu_begin(obj_t item) {
 	obj_t title = tray_nsstring("", 0);
 	if (!title) return 0;
 	obj_t allocated = ((obj_t (*)(void *, void *))objc_msgSend)(cls, sel_registerName("alloc"));
-	if (!allocated) return 0;
+	if (!allocated) {
+		crust_release(title);
+		return 0;
+	}
 	obj_t menu = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(
 	    allocated, sel_registerName("initWithTitle:"), title);
+	// NSMenu copies the title. The menu keeps our +1 until end, replace or teardown.
 	crust_release(title);
 	if (!menu) return 0;
 	crust_own(menu);
@@ -53,6 +59,7 @@ int tray_menu_add(const char *label, long long len, int tag) {
 	}
 	obj_t row = ((obj_t (*)(void *, void *, obj_t, obj_t, obj_t))objc_msgSend)(
 	    allocated, sel_registerName("initWithTitle:action:keyEquivalent:"), title, action, key);
+	// The row copies its title and key equivalent; both of our +1 strings end here.
 	crust_release(title);
 	crust_release(key);
 	if (!row) return 0;
@@ -70,6 +77,7 @@ int tray_menu_add(const char *label, long long len, int tag) {
 	                                                tray_target);
 	((void (*)(void *, void *, obj_t))objc_msgSend)(tray_building_menu,
 	                                                sel_registerName("addItem:"), row);
+	// The menu retains the row once added, so our +1 ends after addItem:.
 	crust_release(row);
 	return 1;
 }
@@ -80,6 +88,7 @@ int tray_menu_end(obj_t item) {
 	if (!tray_has_instance("NSStatusItem", "setMenu:")) return 0;
 	((void (*)(void *, void *, obj_t))objc_msgSend)(item, sel_registerName("setMenu:"),
 	                                                tray_building_menu);
+	// NSStatusItem retains the menu; drop crust's +1 once it is installed.
 	crust_release(tray_building_menu);
 	tray_building_menu = 0;
 	return 1;

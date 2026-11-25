@@ -2,11 +2,13 @@
 // Part 2 of `98_menu_api.c`, concatenated into that unit so it shares its helpers and
 // statics: it compiles nowhere alone. It reads `-[NSApp mainMenu]` — the menu AppKit
 // holds, not the spec that asked for it — and flattens it, because no struct crosses
-// bun:ffi. Root rows come first, then each row's children; `parent` is an index.
-// One level only: a deeper submenu is not walked, and a caller sees `hasSubmenu`.
+// bun:ffi. Root rows come first, then each row's children, recursively; `parent` is an index.
+// The walk is bounded by the 64-row cap and by the builder's depth 8 — a spec deeper than the
+// builder can install — so a caller that reads the live bar sees the whole tree AppKit holds.
 
 #define MENU_READ_MAX 64
 #define MENU_READ_BYTES 256
+#define MENU_READ_DEPTH 8
 static obj_t menu_read_rows[MENU_READ_MAX];
 static int menu_read_parent[MENU_READ_MAX];
 static int menu_read_count;
@@ -42,23 +44,29 @@ static int menu_read_push(obj_t row, int parent) {
 	return at;
 }
 
+// Depth-first over the live bar. `parent` is the index of the row that owns the submenu, so a caller
+// can rebuild every level; the row cap is the only silent limit left, and the returned count is its
+// visible marker (a spec with more rows than the answer asked for cannot be verified by readback).
+static int menu_read_walk(obj_t menu, int parent, int depth) {
+	long long total = menu_read_total(menu);
+	for (long long i = 0; i < total; i++) {
+		obj_t row = menu_read_at(menu, i);
+		int at = menu_read_push(row, parent);
+		if (at < 0) return -1;
+		obj_t submenu = menu_read_submenu(row);
+		if (!submenu || depth >= MENU_READ_DEPTH) continue;
+		if (menu_read_walk(submenu, at, depth + 1) < 0) return -1;
+	}
+	return 0;
+}
+
 // The whole bar, flattened. -1 means AppKit holds no main menu at all, which is a
 // different answer from an empty one and is what `reset` is measured against.
 int menu_api_read(void) {
 	menu_read_count = 0;
 	obj_t main_menu = menu_read_main();
 	if (!main_menu) return -1;
-	long long roots = menu_read_total(main_menu);
-	for (long long i = 0; i < roots; i++) {
-		obj_t row = menu_read_at(main_menu, i);
-		int at = menu_read_push(row, -1);
-		if (at < 0) return menu_read_count;
-		obj_t submenu = menu_read_submenu(row);
-		long long kids = menu_read_total(submenu);
-		for (long long j = 0; j < kids; j++) {
-			if (menu_read_push(menu_read_at(submenu, j), at) < 0) return menu_read_count;
-		}
-	}
+	menu_read_walk(main_menu, -1, 0);
 	return menu_read_count;
 }
 

@@ -46,6 +46,9 @@ static find_t find_nsstring(const char *bytes, long long length) {
 	return text;
 }
 
+// Ownership follows 00_audit.c: crust_own when the +1 is built, crust_release after the WebKit
+// send that copies it, so the audit sees both sides and the net stays zero.
+
 // Runs on the main thread when WebKit has searched. `-matchFound` is a BOOL, read as one
 // byte because it arrives in w0 that way. The id names the request, so a completion from a
 // superseded search is discarded by the caller instead of answering the newer one.

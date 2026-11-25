@@ -39,6 +39,10 @@ const char *shim_name_of_class(void *cls) {
 
 void *shim_instance_method(void *cls, obj_t sel) { return class_getInstanceMethod(cls, sel); }
 
+// Ownership is counted by 00_audit.c, prepended to every audited unit by shim-audit.ts. Use
+// crust_own / crust_retain / crust_release there so the audit sees the +1 and its balance; a raw
+// objc_msgSend(release) would fix the leak but leave the audit under-counting this unit.
+
 // [obj respondsToSelector:sel] — the only existence test that is safe on an
 // instance, and the honest one on a class object.
 int shim_responds(obj_t obj, obj_t candidate) {
