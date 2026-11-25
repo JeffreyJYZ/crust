@@ -6,6 +6,7 @@
  */
 
 import type { DocumentLike, InvokeHalf } from "./invoke-half.ts";
+import type { Revive } from "./reviver.ts";
 import type * as T from "./types";
 
 export type { DocumentLike, InvokeHalf } from "./invoke-half.ts";
@@ -28,7 +29,9 @@ export function installInvoke(
 	label: string | undefined,
 	onAnswer: (status: number, reason?: string) => void,
 	onEvent: (event: string, payload: unknown) => void,
+	reviveFactory: (scope: Record<string, any>) => Revive,
 ): InvokeHalf {
+	const revive = reviveFactory(scope);
 	class InvokeFailure extends Error implements T.CrustInvokeError {
 		readonly code: string;
 		readonly status: number;
@@ -48,41 +51,6 @@ export function installInvoke(
 	const asked: Record<string, boolean> = Object.create(null);
 	let stream: any = null;
 	let relayed = false;
-
-	// A binary result arrives tagged `{ __crustBytes: base64 }`, revived one level deep; a data
-	// object that carried a tag key arrives as `{ __crustLiteral: … }` and is handed back whole.
-	// `Object.defineProperty` for every key, because one literally named `__proto__` would
-	// otherwise set the prototype instead of surviving as a field.
-	const put = (out: any, key: string, value: any) => {
-		Object.defineProperty(out, key, {
-			value,
-			enumerable: true,
-			writable: true,
-			configurable: true,
-		});
-	};
-
-	const revive = (value: any, depth: number): any => {
-		if (depth > 1 || value === null || typeof value !== "object") return value;
-		if (
-			typeof value.__crustLiteral === "object" &&
-			value.__crustLiteral !== null &&
-			!Array.isArray(value.__crustLiteral)
-		) {
-			// Real data that merely carried a tag key. Walk its *values* one level down, so the
-			// object itself is never read as a tag while a genuine binary inside it still revives.
-			const literal = value.__crustLiteral;
-			const out: any = {};
-			for (const key of Object.keys(literal)) put(out, key, revive(literal[key], depth + 1));
-			return out;
-		}
-		if (typeof value.__crustBytes === "string") {
-			return Uint8Array.from(atob(value.__crustBytes), (char) => char.charCodeAt(0));
-		}
-		const out: any = Array.isArray(value) ? [] : {};
-		for (const key of Object.keys(value)) put(out, key, revive(value[key], depth + 1));
-		return out;
-	};
 
 	/** Rebuild the error an envelope names, so both transports throw the same class. */
 	const fail = (error: any, status: number): InvokeFailure =>

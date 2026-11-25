@@ -2,14 +2,17 @@
  * The source text a page is given: the served document's inline script, or the
  * one `crust/vite` injects into a dev-server page.
  *
- * Both halves of the client are serialised here, because each is
- * `Function.prototype.toString()` and neither may reference module scope: the
- * invoke half is handed to `installCrust` as an argument.
+ * Every injected half is serialised here, because each is
+ * `Function.prototype.toString()` and none may reference module scope: the
+ * invoke, readiness, reviver and a11y halves are handed to `installCrust` as arguments.
  */
 
+import { installA11yHelpers } from "./a11y-helpers.ts";
 import { installPageA11y } from "./a11y-page.ts";
+import { installHandshake } from "./handshake.ts";
 import { installCrust } from "./install.ts";
 import { installInvoke } from "./invoke.ts";
+import { installReviver } from "./reviver.ts";
 import type { CrustConfig } from "./types.ts";
 
 /**
@@ -66,7 +69,7 @@ function jsonForScript(value: unknown): string {
  */
 export function bootstrapSource(config: CrustConfig): string {
 	const served = `Object.assign({ window: ${PAGE_WINDOW}, token: ${PAGE_TOKEN} }, ${jsonForScript(config)})`;
-	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()}, ${installPageA11y.toString()});`;
+	return `(${installCrust.toString()})(${served}, window, ${installInvoke.toString()}, ${installPageA11y.toString()}, ${installReviver.toString()}, ${installHandshake.toString()}, ${installA11yHelpers.toString()});`;
 }
 
 /**
@@ -80,5 +83,5 @@ export function bootstrapSource(config: CrustConfig): string {
  */
 export function pageClientSource(): string {
 	const dev = `Object.assign({ window: ${PAGE_WINDOW} }, window.__CRUST__)`;
-	return `(${installCrust.toString()})(${dev}, window, ${installInvoke.toString()}, ${installPageA11y.toString()});`;
+	return `(${installCrust.toString()})(${dev}, window, ${installInvoke.toString()}, ${installPageA11y.toString()}, ${installReviver.toString()}, ${installHandshake.toString()}, ${installA11yHelpers.toString()});`;
 }
