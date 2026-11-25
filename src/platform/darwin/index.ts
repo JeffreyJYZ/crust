@@ -4,10 +4,7 @@
  */
 
 import { cc, FFIType } from "bun:ffi";
-import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { materialiseNativeSource } from "@/native-source.ts";
 import type { Shim } from "./shim-symbols.ts";
 
 // A compiled binary has no .c file at import.meta.dir, so the shim travels as text.
@@ -23,13 +20,10 @@ const CS = FFIType.cstring;
 
 /** Compile the shipped C shim. `cc()` compiles C only, and a framework must be linked. */
 function compile() {
-	/** Content-hashed, so a second launch reuses the file and TinyCC's cache. */
+	/** The audited source goes to the shared private cache, whose name is a hash of its bytes, so a
+	 * second launch reuses TinyCC's per-path cache and a planted /tmp file is never compiled. */
 	function shimPath(): string {
-		const source = auditSource(shimSource);
-		const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
-		const path = join(tmpdir(), `crust-shim-${hash}.c`);
-		if (!existsSync(path)) writeFileSync(path, source);
-		return path;
+		return materialiseNativeSource("crust-shim", auditSource(shimSource));
 	}
 
 	return cc({
