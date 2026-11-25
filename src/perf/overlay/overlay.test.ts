@@ -109,7 +109,9 @@ describe("overlay seam", () => {
 		const scope = {
 			crust: {
 				invoke: async (_p: string, command: string) =>
-					command === "sample" ? { code: "not-implemented", requires: "perf plugin mounted" } : { ok: true },
+					command === "sample"
+						? { code: "not-implemented", requires: "perf plugin mounted" }
+						: { ok: true },
 			},
 		};
 		const panel = fakePanel();
@@ -164,7 +166,20 @@ describe("overlay seam", () => {
 		overlay.toggle();
 		expect(overlay.visible).toBe(true);
 		expect(() =>
-			mountOverlay({ window: { document: { addEventListener: () => { throw new Error("taken"); } } }, dev: true, panel: fakePanel(), sampler: fakeSampler(), interval: () => 1, clearInterval: () => {} }),
+			mountOverlay({
+				window: {
+					document: {
+						addEventListener: () => {
+							throw new Error("taken");
+						},
+					},
+				},
+				dev: true,
+				panel: fakePanel(),
+				sampler: fakeSampler(),
+				interval: () => 1,
+				clearInterval: () => {},
+			}),
 		).not.toThrow();
 		overlay.destroy();
 	});
