@@ -15,6 +15,9 @@ export * from "./verify.ts";
 
 export type SignMode = "adhoc" | "developer-id";
 
+/** The runner, injectable so a test records the exact codesign argv and its order. */
+export type SignExec = (args: string[]) => Promise<unknown>;
+
 export interface SignOptions {
 	/** Path to the assembled `.app`. */
 	appPath: string;
@@ -34,6 +37,14 @@ export interface SignOptions {
 	 * with `hardenedRuntime`, which is the only mode that enforces entitlements at all.
 	 */
 	microphone?: boolean;
+	/**
+	 * Already-resolved sidecar paths to sign before the bundle, deepest first. Each gets the
+	 * same identity, timestamp, runtime options and entitlements as the app. Ad-hoc callers
+	 * leave this unset and keep their byte-identical argv.
+	 */
+	sidecars?: readonly string[];
+	/** Defaults to `runOrThrow`; a test passes a recorder. */
+	exec?: SignExec;
 }
 
 export interface SignResult {
@@ -45,7 +56,42 @@ export interface SignResult {
 }
 
 /**
- * Sign `appPath`. `--force` replaces an existing signature, which makes a rebuild idempotent; `--timestamp=none` because an ad-hoc signature has no chain to timestamp against and asking only slows the build.
+ * The exact codesign argv for one artefact. Kept pure so the ordering and flags can be read
+ * by a test without a certificate. Ad-hoc stays byte-identical: `--timestamp=none` and nothing
+ * else. Developer ID gets `--timestamp` — Apple names a missing secure timestamp as a
+ * notarization rejection — and shares the identity, runtime options and entitlements.
+ */
+export function signCommand(
+	path: string,
+	options: {
+		identity: string;
+		mode: SignMode;
+		hardenedRuntime?: boolean;
+		entitlementsPath?: string;
+	},
+): string[] {
+	const args = ["codesign", "--force", "--sign", options.identity];
+	if (options.mode === "adhoc") {
+		args.push("--timestamp=none");
+	} else {
+		args.push("--timestamp");
+	}
+	if (options.hardenedRuntime) {
+		args.push("--options", "runtime");
+	}
+	if (options.entitlementsPath) {
+		args.push("--entitlements", options.entitlementsPath);
+	}
+	args.push(path);
+	return args;
+}
+
+/**
+ * Sign `sidecars` first, deepest first, then seal `appPath`. `--force` replaces the ad-hoc
+ * signatures the plain build already applied: codesign does not re-sign nested code that is
+ * already signed, so leaving a sidecar ad-hoc makes notarization reject the whole bundle.
+ * One invocation per artefact — codesign rewrites the Mach-O in place, so nothing may hold a
+ * file open across its signature.
  */
 export async function signApp(options: SignOptions): Promise<SignResult> {
 	const mode = options.mode ?? "adhoc";
@@ -60,14 +106,7 @@ export async function signApp(options: SignOptions): Promise<SignResult> {
 
 	const hardenedRuntime = options.hardenedRuntime ?? false;
 	const entitled = hardenedRuntime && (options.jitEntitlement ?? true);
-
-	const args = ["codesign", "--force", "--sign", identity];
-	if (mode === "adhoc") {
-		args.push("--timestamp=none");
-	}
-	if (hardenedRuntime) {
-		args.push("--options", "runtime");
-	}
+	const exec = options.exec ?? runOrThrow;
 
 	let entitlementsDir: string | undefined;
 	let entitlementsPath: string | undefined;
@@ -80,16 +119,15 @@ export async function signApp(options: SignOptions): Promise<SignResult> {
 			hardenedEntitlements({ microphone: options.microphone === true }),
 			"utf8",
 		);
-		args.push("--entitlements", entitlementsPath);
 	}
 
-	args.push(options.appPath);
+	const commandOptions = { identity, mode, hardenedRuntime, entitlementsPath };
+	const targets = [...(options.sidecars ?? []), options.appPath];
 
 	try {
-		// One invocation per artefact. codesign rewrites the Mach-O in place to
-		// embed the signature, so the binary on disk changes size (89,159,906 ->
-		// 88,642,144 in the probe); nothing may hold the file open across it.
-		await runOrThrow(args);
+		for (const target of targets) {
+			await exec(signCommand(target, commandOptions));
+		}
 	} finally {
 		if (entitlementsDir) {
 			await rm(entitlementsDir, { recursive: true, force: true });

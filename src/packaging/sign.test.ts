@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { JIT_ENTITLEMENT_PLIST } from "./sign";
+import { JIT_ENTITLEMENT_PLIST, signApp, signCommand } from "./sign";
 import { hardenedEntitlements } from "./entitlements";
 
 /**
@@ -50,5 +50,108 @@ describe("microphone entitlement", () => {
 		expect(hardenedEntitlements({ microphone: false })).not.toContain(
 			"com.apple.security.device.audio-input",
 		);
+	});
+});
+
+const IDENTITY = "Developer ID Application: Crust (ABCDE12345)";
+const APP = "/dist/Crust.app";
+const SIDECARS = [
+	"/dist/Crust.app/Contents/MacOS/bin/tool.sh",
+	"/dist/Crust.app/Contents/MacOS/tools/helper",
+] as const;
+
+/** No certificate exists here, so the recorded argv is the only honest proof. */
+function recorder() {
+	const calls: string[][] = [];
+	const exec = async (args: string[]): Promise<void> => {
+		calls.push(args);
+	};
+	return { calls, exec };
+}
+
+function withoutPlist(argv: string[]): string[] {
+	const at = argv.indexOf("--entitlements");
+	return at < 0 ? argv : [...argv.slice(0, at + 1), "<plist>", ...argv.slice(at + 2)];
+}
+
+describe("signApp argv", () => {
+	test("ad-hoc stays byte-identical: --timestamp=none, no secure timestamp", async () => {
+		const fake = recorder();
+		await signApp({ appPath: APP, exec: fake.exec });
+		expect(fake.calls).toEqual([
+			["codesign", "--force", "--sign", "-", "--timestamp=none", APP],
+		]);
+	});
+
+	test("Developer ID re-signs both sidecars before the app, deepest first", async () => {
+		const fake = recorder();
+		await signApp({
+			appPath: APP,
+			mode: "developer-id",
+			identity: IDENTITY,
+			hardenedRuntime: true,
+			sidecars: SIDECARS,
+			exec: fake.exec,
+		});
+		expect(fake.calls.map((argv) => argv.at(-1))).toEqual([...SIDECARS, APP]);
+		expect(fake.calls.map(withoutPlist)).toEqual([
+			[
+				"codesign",
+				"--force",
+				"--sign",
+				IDENTITY,
+				"--timestamp",
+				"--options",
+				"runtime",
+				"--entitlements",
+				"<plist>",
+				SIDECARS[0],
+			],
+			[
+				"codesign",
+				"--force",
+				"--sign",
+				IDENTITY,
+				"--timestamp",
+				"--options",
+				"runtime",
+				"--entitlements",
+				"<plist>",
+				SIDECARS[1],
+			],
+			[
+				"codesign",
+				"--force",
+				"--sign",
+				IDENTITY,
+				"--timestamp",
+				"--options",
+				"runtime",
+				"--entitlements",
+				"<plist>",
+				APP,
+			],
+		]);
+		expect(fake.calls.every((argv) => argv.includes("--timestamp"))).toBe(true);
+		expect(fake.calls.some((argv) => argv.includes("--timestamp=none"))).toBe(false);
+	});
+
+	test("signCommand adds --timestamp only on the Developer ID path", () => {
+		expect(signCommand(APP, { identity: "-", mode: "adhoc" })).toEqual([
+			"codesign",
+			"--force",
+			"--sign",
+			"-",
+			"--timestamp=none",
+			APP,
+		]);
+		expect(signCommand(APP, { identity: IDENTITY, mode: "developer-id" })).toEqual([
+			"codesign",
+			"--force",
+			"--sign",
+			IDENTITY,
+			"--timestamp",
+			APP,
+		]);
 	});
 });

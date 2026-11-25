@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SignResult } from "@/packaging/sign";
-import { signVerdict } from "./sign";
+import { signSidecarPaths, signVerdict } from "./sign";
 
 const DEVELOPER_ID: SignResult = {
 	appPath: "/tmp/dist/Crust.app",
@@ -27,5 +27,17 @@ describe("signVerdict", () => {
 		expect(lines.some((text) => text.includes("Developer ID Application certificate"))).toBe(
 			true,
 		);
+	});
+});
+
+describe("signSidecarPaths", () => {
+	test("resolves declared names under Contents/MacOS, deepest first", () => {
+		expect(
+			signSidecarPaths("/dist/Crust.app", ["bin/tool.sh", "a/b/c.sh", "tools/helper"]),
+		).toEqual([
+			"/dist/Crust.app/Contents/MacOS/a/b/c.sh",
+			"/dist/Crust.app/Contents/MacOS/bin/tool.sh",
+			"/dist/Crust.app/Contents/MacOS/tools/helper",
+		]);
 	});
 });
