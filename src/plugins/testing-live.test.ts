@@ -93,6 +93,14 @@ describe("a live page", () => {
 			win = Number(shim().symbols.shim_window_new(-4000, -4000, 480, 320, 0n, 2n, 0) ?? 0);
 			expect(win).toBeGreaterThan(0);
 			S.v1(win, "setContentView:", web);
+			// Trap: WebKit suspends rendering for a window it considers occluded, and a suspended
+			// webview never services the evaluate callback — "the page did not answer". This window
+			// is off every display, so the page boots `visibilityState=hidden` with zero frames
+			// unless this private selector is applied. Before orderFrontRegardless: WebKit caches
+			// occlusion at first visibility. Dev-only scaffold, never a shipped default;
+			// scripts/perf/in-process.ts applies the same remedy for the same reason.
+			const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
+			expect(perfNative().perf_occlusion(web, 0)).toBe(1);
 			S.v0(win, "orderFrontRegardless");
 			expect(Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0)).toBe(1);
 
