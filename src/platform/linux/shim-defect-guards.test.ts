@@ -19,4 +19,11 @@ describe("native defect guards (read source, no GTK)", () => {
 		expect(windowPart).toContain("if (shim_destroy) shim_destroy(win);\n\t\treturn 0;");
 		expect(windowPart).not.toContain("if (slot >= 0) {");
 	});
+
+	test("place resolves the resize pointer itself, not only on proof readbacks", () => {
+		expect(host).toContain("shim_container_resolve_reads();");
+		expect(container).toContain('shim_sym_or_null(h, "gtk_widget_queue_resize")');
+		expect(host).toContain("if (shim_queue_resize) shim_queue_resize(host);");
+		expect(host).toContain("if (shim_queue_resize) shim_queue_resize(box);");
+	});
 });

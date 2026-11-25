@@ -57,6 +57,9 @@ static void *shim_host_for(void *web) {
 int shim_webview_place(void *box, void *web, int x, int y, int w, int h) {
 	void *host;
 	if (!box || !web || !shim_overlay_add || !shim_widget_parent) return 0;
+	// Resolve the optional readbacks here too: `browser.setBounds` reaches place without any proof
+	// readback, and leaving `shim_queue_resize` null on that path silently drops both resize calls.
+	shim_container_resolve_reads();
 	host = shim_host_for(web);
 	if (!host) return 0;
 	// The wrapper is the overlay child; the webview is a child of the wrapper, so its allocation is
