@@ -72,6 +72,31 @@ describe("native evaluation correlation", () => {
 		expect(queue.pending()).toBe(0);
 	});
 
+	test("a completion nobody waits for is counted and reported with the awaited ids", async () => {
+		const drops: Array<{ id: number; kind: number; text: string; waitedIds: number[] }> = [];
+		const ids: number[] = [];
+		const queue = createEvalQueue({
+			send: (id) => {
+				ids.push(id);
+				return 0;
+			},
+			timeoutMs: 1000,
+			onDrop: (drop) => drops.push(drop),
+		});
+		const first = queue.run(1, "first");
+		const second = queue.run(1, "second");
+		const stale = (ids[1] ?? 0) + 1000;
+		queue.deliver(stale, 0, "from an older request");
+		expect(queue.dropped()).toBe(1);
+		expect(drops).toEqual([
+			{ id: stale, kind: 0, text: "from an older request", waitedIds: ids },
+		]);
+		queue.deliver(ids[0] ?? 0, 0, "answer-first");
+		queue.deliver(ids[1] ?? 0, 0, "answer-second");
+		await expect(first).resolves.toBe("answer-first");
+		await expect(second).resolves.toBe("answer-second");
+	});
+
 	test("a progress clock pauses the deadline while the runner makes no progress", async () => {
 		let now = 0;
 		const queue = createEvalQueue({ send: () => 0, timeoutMs: 100, progress: () => now });

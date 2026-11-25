@@ -97,6 +97,12 @@ function queueFor(table: TestingNative): EvalQueue {
 			// The completion is delivered by the pump. On a starved runner the pump stops and the
 			// wall clock does not, so a wall-clock deadline would report a page it never gave a turn.
 			progress: pumpProgressMs,
+			// A stale or mismatched id used to vanish silently, leaving a timeout with no evidence.
+			onDrop: ({ id, kind, text, waitedIds }) =>
+				console.warn(
+					`crust: dropped completion id=${id} kind=${kind} ` +
+						`waited=[${waitedIds.join(",")}] text=${text.slice(0, 80)}`,
+				),
 		});
 	}
 	return evaluations;

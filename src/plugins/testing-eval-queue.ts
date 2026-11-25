@@ -5,6 +5,14 @@
  * (rather than a shared helper) because the C sink here is the only one with this shape.
  */
 
+export interface DroppedCompletion {
+	id: number;
+	kind: number;
+	text: string;
+	/** Ids with a live waiter when the completion arrived. */
+	waitedIds: number[];
+}
+
 export interface EvalQueueOptions {
 	/** Start one evaluation. `id` is echoed by the native sink when the answer arrives. */
 	send: (id: number, target: number, bytes: Uint8Array) => number;
@@ -15,6 +23,8 @@ export interface EvalQueueOptions {
 	 * it, so the answer is not declared lost before the loop had a chance to deliver it.
 	 */
 	progress?: () => number;
+	/** Diagnostic hook for an answer whose id has no waiter; the count is kept regardless. */
+	onDrop?: (drop: DroppedCompletion) => void;
 }
 
 interface Waiter {
@@ -27,6 +37,8 @@ export interface EvalQueue {
 	/** Settle the one request this completion belongs to; drop it if that request already timed out. */
 	deliver(id: number, kind: number, text: string): void;
 	pending(): number;
+	/** Completions whose id had no waiter: stale, duplicate or mismatched answers. */
+	dropped(): number;
 }
 
 /** How often the deadline is checked; the budget itself is measured by `progress`. */
@@ -42,6 +54,7 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 	const progress = options.progress;
 	const waiters = new Map<number, Waiter>();
 	let nextId = 0;
+	let drops = 0;
 
 	const forget = (id: number): Waiter | undefined => {
 		const waiter = waiters.get(id);
@@ -53,8 +66,13 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 		deliver(id, kind, text) {
 			const waiter = forget(id);
 			// A completion whose request is gone is a late answer from a timeout. It must not settle
-			// whichever command happens to hold the channel now.
-			if (waiter === undefined) return;
+			// whichever command happens to hold the channel now. Count it and expose the ids that
+			// were live: a mismatch here used to be indistinguishable from no completion at all.
+			if (waiter === undefined) {
+				drops++;
+				options.onDrop?.({ id, kind, text, waitedIds: [...waiters.keys()] });
+				return;
+			}
 			if (kind === 0) waiter.settle(text);
 			else if (kind === 1) waiter.fail(new Error(text || "crust: the page threw"));
 			else waiter.fail(new Error("crust: the page answered nothing"));
@@ -100,6 +118,10 @@ export function createEvalQueue(options: EvalQueueOptions): EvalQueue {
 
 		pending() {
 			return waiters.size;
+		},
+
+		dropped() {
+			return drops;
 		},
 	};
 }
