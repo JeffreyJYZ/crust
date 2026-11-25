@@ -66,7 +66,8 @@ export function darwinSnapshotShim(): SnapshotShim {
 	const symbols = () => snapshotUnit().symbols;
 	return {
 		available: (view) => Number(symbols().crust_shot_available(view) ?? 0) === 1,
-		take: (view, id) => Number(symbols().crust_shot_take(view, id) ?? SNAPSHOT_STATUS.unavailable),
+		take: (view, id) =>
+			Number(symbols().crust_shot_take(view, id) ?? SNAPSHOT_STATUS.unavailable),
 		read: () => readShot(symbols()),
 		setChannel: (onAnswer) => {
 			listener = onAnswer;
@@ -137,7 +138,11 @@ export function takeSnapshot(
 			settle: (ok) => {
 				done();
 				if (!ok) {
-					reject(new Error("crust: WebKit took no snapshot — the view rendered nothing"));
+					reject(
+						new Error(
+							`crust: window.capture: ${snapshotStartReason(SNAPSHOT_STATUS.noPicture)}`,
+						),
+					);
 					return;
 				}
 				try {
@@ -163,7 +168,9 @@ export function takeSnapshot(
 		if (pending !== undefined && status !== SNAPSHOT_STATUS.started) {
 			done();
 			pending = undefined;
-			reject(new Error(`crust: window.capture did not start: ${snapshotStartReason(status)}`));
+			reject(
+				new Error(`crust: window.capture did not start: ${snapshotStartReason(status)}`),
+			);
 			return;
 		}
 		timer = setTimeout(() => {
@@ -171,7 +178,8 @@ export function takeSnapshot(
 			pending = undefined;
 			reject(
 				new Error(
-					`crust: the snapshot completion handler did not answer within ${timeoutMs} ms`,
+					`crust: window.capture: ${snapshotStartReason(SNAPSHOT_STATUS.noCompletion)} ` +
+						`(waited ${timeoutMs} ms)`,
 				),
 			);
 		}, timeoutMs);
