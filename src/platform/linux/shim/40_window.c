@@ -32,9 +32,10 @@ int shim_gtk_resolve(void) {
 
 // A closed window's widget is freed by GTK, so liveness must never read it: the
 // destroy signal clears its slot here, and `window(label)` reads the table.
-// 32 slots is the ceiling on *simultaneously* tracked windows — a slot is reused
-// as soon as its window dies, so opening and closing more than 32 over a process
-// lifetime cannot leave a live window untracked.
+// 32 slots is the ceiling on *simultaneous* windows. A window with no free slot is destroyed and
+// refused, never returned untracked: a visible window absent from this table would be pruned by
+// `window-alive`, so `window-all-closed` could quit while it stayed on screen. A slot is reused as
+// soon as its window dies, so opening and closing more than 32 over a lifetime is fine.
 typedef struct {
 	void *win;
 	int alive;
@@ -101,10 +102,14 @@ void *shim_window_new(const char *title, int w, int h, int min_w, int min_h) {
 		}
 	}
 	if (slot < 0 && shim_slot_count < 32) slot = shim_slot_count++;
-	if (slot >= 0) {
-		shim_slots[slot].win = win;
-		shim_slots[slot].alive = 1;
+	if (slot < 0) {
+		// Destroy before returning: C cannot hand out a window it cannot track. `shim_destroy` emits
+		// the destroy signal, which finds no slot for this window and leaves the table untouched.
+		if (shim_destroy) shim_destroy(win);
+		return 0;
 	}
+	shim_slots[slot].win = win;
+	shim_slots[slot].alive = 1;
 	return win;
 }
 
