@@ -28,12 +28,14 @@ export function useStore() {
 	notesRef.current = notes;
 
 	const logRef = useRef<string[]>([]);
-	const report: Reporter = useCallback((line) => {
+	const report: Reporter = useCallback(async (line) => {
 		logRef.current.push(line);
 		setLog([...logRef.current]);
 		// The terminal copy is what a scripted run asserts on; the panel keeps
-		// the same line if the channel is ever unreachable.
-		logCommand(line).catch(() => undefined);
+		// the same line if the channel is ever unreachable. Awaited so `done`
+		// cannot overtake the last step's line to stdout and have the app killed
+		// before that line is flushed.
+		await logCommand(line).catch(() => undefined);
 	}, []);
 
 	return {

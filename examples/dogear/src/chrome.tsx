@@ -75,7 +75,7 @@ export function useChrome(store: Store, files: Files, dialogs: Dialogs): void {
 		booted.current = true;
 
 		void (async () => {
-			report(`page mounted at ${window.location.href}`);
+			await report(`page mounted at ${window.location.href}`);
 			let bootDir = "";
 			let selfcheck = false;
 			try {
@@ -94,11 +94,11 @@ export function useChrome(store: Store, files: Files, dialogs: Dialogs): void {
 					kind: "ok",
 					text: `${listed.length} note(s) in ${boot.dir} · bridge ${ready}`,
 				});
-				report(`boot ok — ${listed.length} note(s) in ${boot.dir} · bridge ${ready}`);
+				await report(`boot ok — ${listed.length} note(s) in ${boot.dir} · bridge ${ready}`);
 			} catch (error) {
 				const why = describe(error);
 				setStatus({ kind: "bad", text: `boot: ${why}` });
-				report(`boot failed — ${why}`);
+				await report(`boot failed — ${why}`);
 			}
 
 			try {

@@ -5,12 +5,13 @@
  */
 import { describe } from "../bridge";
 
-export type Reporter = (line: string) => void;
+/** Resolves only once the line has reached its destination, so callers can await order. */
+export type Reporter = (line: string) => Promise<void>;
 
 export interface Checks {
 	report: Reporter;
-	pass: (name: string, detail: string) => void;
-	fail: (name: string, why: string) => void;
+	pass: (name: string, detail: string) => Promise<void>;
+	fail: (name: string, why: string) => Promise<void>;
 	check: <T>(
 		name: string,
 		run: () => Promise<T>,
@@ -19,22 +20,24 @@ export interface Checks {
 }
 
 export function makeChecks(report: Reporter): Checks {
-	const pass = (name: string, detail: string) => report(`PASS ${name} — ${detail}`);
-	const fail = (name: string, why: string) => report(`FAIL ${name} — ${why}`);
+	const pass = async (name: string, detail: string): Promise<void> =>
+		await report(`PASS ${name} — ${detail}`);
+	const fail = async (name: string, why: string): Promise<void> =>
+		await report(`FAIL ${name} — ${why}`);
 
 	/** Run one check; a throw is a FAIL line, never a silent gap. */
 	const check = async <T,>(
 		name: string,
 		run: () => Promise<T>,
 		ok: (value: T) => string | false,
-	) => {
+	): Promise<boolean> => {
 		try {
 			const detail = ok(await run());
-			if (detail === false) fail(name, "unexpected answer");
-			else pass(name, detail);
+			if (detail === false) await fail(name, "unexpected answer");
+			else await pass(name, detail);
 			return detail !== false;
 		} catch (error) {
-			fail(name, describe(error));
+			await fail(name, describe(error));
 			return false;
 		}
 	};
