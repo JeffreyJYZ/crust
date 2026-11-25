@@ -10,24 +10,35 @@
 // same name, and a second distinct world would give a page two bridges with two different tokens.
 static obj_t content_world = 0;
 
+// One assignment point, so the +1 we own is balanced whenever the cache is replaced. Retain before
+// releasing the old value: storing the same world twice is a no-op, never a dangling pointer.
+static obj_t content_world_store(obj_t world) {
+	obj_t previous = content_world;
+	crust_retain(world);
+	content_world = world;
+	crust_release(previous);
+	return content_world;
+}
+
 obj_t shim_content_world(void) {
+	obj_t name, world;
 	if (content_world) return content_world;
 	if (!objc_getClass("WKContentWorld")) return 0;
-	obj_t name = ((obj_t (*)(void *, void *, const char *, unsigned long,
-	                         long long))objc_msgSend)(
+	name = ((obj_t (*)(void *, void *, const char *, unsigned long,
+	                   long long))objc_msgSend)(
 	    ((obj_t (*)(void *, void *))objc_msgSend)(objc_getClass("NSString"),
 	                                              sel_registerName("alloc")),
 	    sel_registerName("initWithBytes:length:encoding:"), "crust", (unsigned long)5, 4LL);
 	if (!name) return 0;
 	crust_own(name);
-	content_world = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(
+	world = ((obj_t (*)(void *, void *, obj_t))objc_msgSend)(
 	    objc_getClass("WKContentWorld"), sel_registerName("worldWithName:"), name);
 	crust_release(name);
-	// A convenience factory is +0/autoreleased and the pump drains a pool on every tick
-	// (50_app.c), so a cached pointer with no owning reference can be freed underneath us.
-	// Pin it once; the process keeps this one world for its whole life.
-	if (content_world) crust_retain(content_world);
-	return content_world;
+	if (!world) return 0;
+	// A convenience factory is +0/autoreleased and the pump drains a pool every tick (50_app.c),
+	// so the cached pointer needs one owning retain. The audit wrapper counts it; the store
+	// balances any replacement through the same wrapper.
+	return content_world_store(world);
 }
 
 // `world` must never be nil: `-initWithSource:…inContentWorld:` dereferences it and faults with no
@@ -86,7 +97,8 @@ int shim_webview_add_user_script(obj_t web, obj_t world, const char *source, int
 
 	((void (*)(void *, void *, obj_t))objc_msgSend)(
 	    controller, sel_registerName("addUserScript:"), script);
-	// The controller copies the script when the script is added; our own +1 ends here.
+	// The controller copies the script and the script copied the source, so both +1 objects end
+	// here. Two scripts are added per window; these go through the audit wrappers too.
 	crust_release(script);
 	crust_release(text);
 	return 1;
