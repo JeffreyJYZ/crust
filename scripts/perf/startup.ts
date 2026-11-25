@@ -17,6 +17,7 @@ import { startBridge } from "../../src/bridge/server.ts";
 import { setTestingActivation } from "../../src/plugins/activation-policy.ts";
 import { definePlugin } from "../../src/plugins/define.ts";
 import { createWindowPlugin } from "../../src/plugins/window.ts";
+import { occlusionOwner, type OcclusionSender } from "../../src/platform/darwin/occlusion.ts";
 import { darwinWindowAdapter } from "../../src/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "../../src/platform/darwin/platform.ts";
 import { runConditions, snapshot } from "./conditions.ts";
@@ -52,7 +53,8 @@ export async function measure(label: string, blank = false): Promise<number> {
 	setTestingActivation("none");
 	const native = perfNative();
 	mark("nativeReady");
-
+	const perfHolder = Symbol("crust startup probe");
+	let web: number | undefined;
 	let done = false;
 	let anchors: Record<string, number> | undefined;
 	let platform: DarwinPlatform | undefined;
@@ -109,10 +111,12 @@ export async function measure(label: string, blank = false): Promise<number> {
 			activate: false,
 		});
 		mark("windowCreated");
-		const web = platform.webview("main");
+		web = platform.webview("main");
 		const win = platform.nativeWindow("main");
 		if (web === undefined || win === undefined) throw new Error("probe window has no webview");
-		if (native.perf_occlusion(web, 0) !== 1)
+		const send: OcclusionSender = (target, enabled) =>
+			native.perf_occlusion(target, enabled ? 1 : 0) === 1;
+		if (!occlusionOwner.acquire(web, perfHolder, send))
 			throw new Error("private occlusion selector absent: rAF suspended");
 		if (!blank) {
 			const deadline = performance.now() + DEADLINE_MS;
@@ -120,6 +124,7 @@ export async function measure(label: string, blank = false): Promise<number> {
 			if (!done) throw new Error(`no report within ${DEADLINE_MS} ms`);
 		}
 	} finally {
+		if (web !== undefined) occlusionOwner.release(web, perfHolder);
 		cleanup();
 		process.removeListener("exit", cleanup);
 		await bridge?.stop();
