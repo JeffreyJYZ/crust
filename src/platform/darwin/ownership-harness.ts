@@ -88,6 +88,46 @@ int class_addMethod(void *cls, void *name, void *imp, const char *types) {
 }
 `;
 
+/**
+ * STUB_CLASS with a name-aware objc_getClass: only real framework classes resolve, so a pair that
+ * was allocated but never registered is invisible to the lookup every installer starts with.
+ * `fail_add_at` picks which class_addMethod (1-based) refuses, so every failure branch is drivable.
+ */
+export const STUB_CLASS_NAMED = `
+#include <string.h>
+static const char *sel_names[128];
+static int sel_count, object_ids, fail_add_at, add_calls, dispose_calls, allocate_calls, class_live;
+void *objc_getClass(const char *name) { return name && !strcmp(name, "NSObject") ? (void *)1 : 0; }
+void *sel_registerName(const char *name) {
+	int i;
+	for (i = 0; i < sel_count; i++) if (!strcmp(sel_names[i], name)) return (void *)(long)(i + 1);
+	sel_names[sel_count] = name;
+	return (void *)(long)(++sel_count);
+}
+void *objc_msgSend(void *self, void *sel, ...) {
+	long id = (long)sel;
+	const char *name = id > 0 && id <= sel_count ? sel_names[id - 1] : "";
+	if (!strcmp(name, "alloc") || !strcmp(name, "new")) return (void *)(long)(++object_ids);
+	if (!strncmp(name, "init", 4)) return self;
+	return (void *)1000;
+}
+void *objc_allocateClassPair(void *super, const char *name, unsigned long extra) {
+	(void)super; (void)name; (void)extra;
+	allocate_calls++;
+	if (class_live) return 0;
+	class_live = 1;
+	return (void *)2;
+}
+void objc_registerClassPair(void *cls) { (void)cls; }
+void objc_disposeClassPair(void *cls) { (void)cls; dispose_calls++; class_live = 0; }
+int class_addMethod(void *cls, void *name, void *imp, const char *types) {
+	(void)cls; (void)name; (void)imp; (void)types;
+	add_calls++;
+	if (add_calls == fail_add_at) return 0;
+	return 1;
+}
+`;
+
 /** Compile a stub harness + the named shim parts, expose one probe, and call it. */
 export function probeWith(stub: string, parts: string[], main: string, symbol: string): number {
 	// Foundation exports the concrete block classes in the real build; the stub defines them, so drop

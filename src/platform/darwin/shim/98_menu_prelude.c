@@ -12,6 +12,7 @@ extern obj_t sel_registerName(const char *name);
 extern void *class_getInstanceMethod(void *cls, void *sel);
 extern void *objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
+extern void objc_disposeClassPair(void *cls);
 extern int class_addMethod(void *cls, void *name, void *imp, const char *types);
 
 // Rect and point stay on the C stack: no struct crosses bun:ffi. Depth 1 is the root;
@@ -80,9 +81,12 @@ static int menu_make_target(void) {
 		if (!super) return 0;
 		void *cls = objc_allocateClassPair(super, "CrustMenuTarget", 0);
 		if (!cls) return 0;
-		// "v@:@" — void return, self, _cmd, one object argument.
-		if (!class_addMethod(cls, sel_registerName("crustMenuSelected:"), menu_imp, "v@:@"))
+		// "v@:@" — void return, self, _cmd, one object argument. A failed selector disposes the
+		// pair: an allocated, unregistered name is invisible to objc_getClass but still occupied.
+		if (!class_addMethod(cls, sel_registerName("crustMenuSelected:"), menu_imp, "v@:@")) {
+			objc_disposeClassPair(cls); // crustMenuSelected:
 			return 0;
+		}
 		objc_registerClassPair(cls);
 		menu_target_class = cls;
 	}

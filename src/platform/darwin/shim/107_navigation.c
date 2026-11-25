@@ -12,6 +12,7 @@ extern nav_t objc_getClass(const char *name);
 extern nav_t sel_registerName(const char *name);
 extern nav_t objc_allocateClassPair(void *superclass, const char *name, unsigned long extra);
 extern void objc_registerClassPair(void *cls);
+extern void objc_disposeClassPair(void *cls);
 extern int class_addMethod(void *cls, void *sel, void *imp, const char *types);
 extern void objc_setAssociatedObject(void *object, const void *key, void *value,
                                      unsigned long policy);
@@ -132,67 +133,40 @@ static void *nav_class(void) {
 	// comes first: a second webview reuses the class rather than failing to build one.
 	cls = objc_allocateClassPair(super, "CrustNavigationDelegate", 0);
 	if (!cls) return 0;
+	// Every failed selector below disposes the pair: an allocated, unregistered name is invisible
+	// to objc_getClass but still occupies the name, so keeping it wedges every later install.
 	if (!class_addMethod(cls, sel_registerName("webView:didStartProvisionalNavigation:"),
-	                     (void *)nav_did_start, "v@:@@"))
+	                     (void *)nav_did_start, "v@:@@")) {
+		objc_disposeClassPair(cls); // webView:didStartProvisionalNavigation:
 		return 0;
+	}
 	if (!class_addMethod(cls, sel_registerName("webView:didCommitNavigation:"),
-	                     (void *)nav_did_commit, "v@:@@"))
+	                     (void *)nav_did_commit, "v@:@@")) {
+		objc_disposeClassPair(cls); // webView:didCommitNavigation:
 		return 0;
+	}
 	if (!class_addMethod(cls, sel_registerName("webView:didFinishNavigation:"),
-	                     (void *)nav_did_finish, "v@:@@"))
+	                     (void *)nav_did_finish, "v@:@@")) {
+		objc_disposeClassPair(cls); // webView:didFinishNavigation:
 		return 0;
+	}
 	if (!class_addMethod(cls, sel_registerName("webView:didFailNavigation:withError:"),
-	                     (void *)nav_did_fail, "v@:@@@"))
+	                     (void *)nav_did_fail, "v@:@@@")) {
+		objc_disposeClassPair(cls); // webView:didFailNavigation:withError:
 		return 0;
+	}
 	if (!class_addMethod(cls, sel_registerName("webView:didFailProvisionalNavigation:withError:"),
-	                     (void *)nav_did_fail, "v@:@@@"))
+	                     (void *)nav_did_fail, "v@:@@@")) {
+		objc_disposeClassPair(cls); // webView:didFailProvisionalNavigation:withError:
 		return 0;
+	}
 	// Every navigation and redirect hop passes through this one decision point.
 	if (!class_addMethod(cls, sel_registerName("webView:decidePolicyForNavigationAction:decisionHandler:"),
-	                     (void *)nav_decide_policy, "v@:@@@"))
+	                     (void *)nav_decide_policy, "v@:@@@")) {
+		objc_disposeClassPair(cls); // webView:decidePolicyForNavigationAction:decisionHandler:
 		return 0;
+	}
 	objc_registerClassPair(cls);
 	return cls;
 }
 
-// 0 installed, 1 no webview or a missing selector, 3 the delegate class could not be built,
-// 4 already installed (the association answered), 5 this webview already has a navigation
-// delegate that is not ours — refusing beats clobbering a page's own.
-int crust_nav_install(void *web) {
-	if (!web) return 1;
-	if (!nav_has(web, "setNavigationDelegate:")) return 1;
-	if (objc_getAssociatedObject(web, &nav_key)) return 4;
-	if (!nav_has(web, "navigationDelegate")) return 1;
-	void *current = ((void *(*)(void *, void *))objc_msgSend)(web,
-	                                                          sel_registerName("navigationDelegate"));
-	if (current) return 5;
-
-	void *cls = nav_class();
-	if (!cls) return 3;
-	void *delegate = ((void *(*)(void *, void *))objc_msgSend)(cls, sel_registerName("new"));
-	if (!delegate) return 3;
-	// The association is set before the delegate, so the object outlives the unretained
-	// -setNavigationDelegate: send.
-	objc_setAssociatedObject(web, &nav_key, delegate, NAV_RETAIN);
-	((void (*)(void *, void *, void *))objc_msgSend)(web,
-	                                                 sel_registerName("setNavigationDelegate:"),
-	                                                 delegate);
-	return 0;
-}
-
-// 1 when a delegate this unit installed was removed, 0 when there was none.
-int crust_nav_uninstall(void *web) {
-	if (!web) return 0;
-	void *delegate = objc_getAssociatedObject(web, &nav_key);
-	if (!delegate) return 0;
-	if (nav_has(web, "setNavigationDelegate:"))
-		((void (*)(void *, void *, void *))objc_msgSend)(web,
-		                                                 sel_registerName("setNavigationDelegate:"),
-		                                                 0);
-	objc_setAssociatedObject(web, &nav_key, 0, NAV_RETAIN);
-	// The association's RETAIN is one owner; `[cls new]` at install was a second, +1 owner that
-	// clearing the association does not touch. Without this release every surface cycle leaks a
-	// CrustNavigationDelegate.
-	((void (*)(void *, void *))objc_msgSend)(delegate, sel_registerName("release"));
-	return 1;
-}
