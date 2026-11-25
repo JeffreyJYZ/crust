@@ -92,7 +92,15 @@ export async function watchCrashTarget(target: GuardTarget): Promise<void> {
 		if (!alive(target.pid)) break;
 		// The pid is live, but it may be a different process now. The token survives a fault, so it
 		// cannot distinguish reuse; the start time can. Stop without recording the old crash.
-		if (target.since !== undefined && identity(target.pid) !== target.since) return;
+		// An unreadable start time is not reuse: the process can exit between `alive` and `ps`, and
+		// a loaded runner can make `ps` fail to fork. Only a *different* time proves a new process.
+		if (target.since !== undefined) {
+			const now = identity(target.pid);
+			if (now !== undefined && now !== target.since) return;
+		}
+		// The identity probe may have outlived the process. Recheck liveness before sleeping, so a
+		// fault whose child died during that probe is still recorded instead of left unwritten.
+		if (!alive(target.pid)) break;
 		await Bun.sleep(POLL_MS);
 	}
 	if (!guardTokenHeld(target.root, target.token)) return;

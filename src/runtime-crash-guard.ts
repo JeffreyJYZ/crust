@@ -40,6 +40,10 @@ export interface CrashGuardOptions {
 export interface CrashGuard {
 	/** The guard process's pid, so a caller can prove it is gone. */
 	readonly pid: number;
+	/** The guard process's exit: the event to wait on instead of polling `running()`. */
+	readonly exited: Promise<number>;
+	/** The guard's exit status, or null until it exits. */
+	readonly exitCode: number | null;
 	/** True until `stop()` or until the guard exits on its own. */
 	running(): boolean;
 	/** Kill the guard; a no-op once it has exited. */
@@ -140,6 +144,10 @@ export function startCrashGuard(options: CrashGuardOptions): CrashGuard {
 	let stopped = false;
 	return {
 		pid: child.pid,
+		exited: child.exited,
+		get exitCode() {
+			return child.exitCode;
+		},
 		running: () => !stopped && child.exitCode === null,
 		stop: () => {
 			if (stopped) return;
