@@ -71,14 +71,25 @@ export async function signSidecars(
 	}
 }
 
+/** One `CreateDirectory` per distinct parent, then the `File /oname=` that needs it. */
 export function sidecarFileLines(names: readonly string[], appPath: string): string {
 	if (names.length === 0) return "";
 	const root = resolve(appPath);
-	const files = names.map((name) => {
-		const oname = name.replace(/[\\/]/g, "\\");
-		const source = join(root, ...name.split(/[\\/]/));
-		return `  File /oname=${oname} "${source}"`;
-	});
-	files.push(`  File "${join(root, SIDECAR_MANIFEST)}"`);
-	return `${files.join("\n")}\n`;
+	const lines: string[] = [];
+	const created = new Set<string>();
+	for (const name of names) {
+		const parts = name.split(/[\\/]/);
+		const parent = parts.slice(0, -1).join("\\");
+		// `File /oname=` never creates intermediate directories. Without this the sidecar
+		// is copied to an install path that does not exist, and the plugin cannot spawn it.
+		if (parent && !created.has(parent)) {
+			created.add(parent);
+			lines.push(`  CreateDirectory "$INSTDIR\\${parent}"`);
+		}
+		const oname = parts.join("\\");
+		const source = join(root, ...parts);
+		lines.push(`  File /oname=${oname} "${source}"`);
+	}
+	lines.push(`  File "${join(root, SIDECAR_MANIFEST)}"`);
+	return `${lines.join("\n")}\n`;
 }

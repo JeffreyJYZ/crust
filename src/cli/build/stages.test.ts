@@ -75,6 +75,23 @@ describe("stage order", () => {
 		expect(code).toBe(0);
 	});
 
+	test("passes the declared sidecars to the sign stage", async () => {
+		let sidecars: readonly string[] | undefined;
+		await runStages(
+			"/p/dist/Example.app",
+			{ dir: "/p", sign: true },
+			{ ...CONFIG, build: { sidecars: ["bin/tool.sh", "tools/helper"] } },
+			{
+				env: FULL_ENV,
+				sign: async (_bundle, _identity, _microphone, names) => {
+					sidecars = names;
+					return 0;
+				},
+			},
+		);
+		expect(sidecars).toEqual(["bin/tool.sh", "tools/helper"]);
+	});
+
 	test("a failed stage stops the chain and returns its exit code", async () => {
 		const calls: string[] = [];
 		const code = await runStages(
