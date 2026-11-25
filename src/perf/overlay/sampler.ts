@@ -29,14 +29,9 @@ export interface SamplerOptions {
 	performanceObserver?: unknown;
 }
 
+import { observerCtor, type Observer } from "./observer.ts";
+
 type Raf = (cb: (now: number) => void) => number;
-type Observer = {
-	observe: (args: { type: string }) => void;
-	disconnect: () => void;
-};
-type ObserverCtor = new (
-	cb: (list: { getEntries(): Array<{ startTime: number }> }) => void,
-) => Observer;
 
 function percentile(sorted: number[], fraction: number): number {
 	if (sorted.length === 0) return 0;
@@ -57,16 +52,7 @@ export function createSampler(options: SamplerOptions = {}) {
 		(() => {});
 	const now = options.now ?? (() => performance.now());
 	const windowMs = options.windowMs ?? 10_000;
-	const ObserverClass = (options.performanceObserver ?? globals.PerformanceObserver) as
-		ObserverCtor | undefined;
-	const supported =
-		ObserverClass !== undefined &&
-		Array.isArray(
-			(ObserverClass as unknown as { supportedEntryTypes?: unknown }).supportedEntryTypes,
-		) &&
-		(
-			ObserverClass as unknown as { supportedEntryTypes: readonly string[] }
-		).supportedEntryTypes.includes("longtask");
+	const ObserverClass = observerCtor(options.performanceObserver ?? globals.PerformanceObserver);
 
 	const stamps: number[] = [];
 	// Deltas need their own timestamps: `stamps` is trimmed to one second for fps, so testing it
@@ -79,9 +65,10 @@ export function createSampler(options: SamplerOptions = {}) {
 	let handle = 0;
 	let running = false;
 	let observer: Observer | undefined;
+	let usable = false;
 	let startedAt = now();
 
-	if (supported && ObserverClass !== undefined) {
+	if (ObserverClass !== undefined) {
 		try {
 			observer = new ObserverClass((list) => {
 				for (const entry of list.getEntries()) {
@@ -89,8 +76,10 @@ export function createSampler(options: SamplerOptions = {}) {
 				}
 			});
 			observer.observe({ type: "longtask" });
+			usable = true;
 		} catch {
 			observer = undefined;
+			usable = false;
 		}
 	}
 
@@ -130,7 +119,7 @@ export function createSampler(options: SamplerOptions = {}) {
 			p50: percentile(sorted, 0.5),
 			p95: percentile(sorted, 0.95),
 			worst,
-			longTasks: supported ? longTaskStamps.length : null,
+			longTasks: usable ? longTaskStamps.length : null,
 		};
 	}
 
