@@ -157,7 +157,7 @@ export function asStored(value: unknown): StoredCrash | null {
 	// `isCrashRecord` checks only `at` and `handler`, but its result is typed as a full record and
 	// handed to `crash-reporter.last/list`. Check the rest before that type can do any work: a torn
 	// or hand-edited line must be dropped, not presented as a record with a numeric `code`.
-	const record = value as Record<string, unknown>;
+	const record = value as unknown as Record<string, unknown>;
 	const nullableString = (field: unknown) => field === null || typeof field === "string";
 	const nullableNumber = (field: unknown) => field === null || typeof field === "number";
 	if (

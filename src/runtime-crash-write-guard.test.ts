@@ -13,7 +13,7 @@ const VALID = {
 	handler: "SIGSEGV",
 	exitCode: 70,
 	type: "signal",
-};
+} as const;
 
 describe("asStored validates the whole disk record", () => {
 	test("a complete record passes and an old record without a type is named signal", () => {
