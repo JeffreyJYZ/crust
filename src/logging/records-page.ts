@@ -4,6 +4,7 @@
  * rejections — and shapes `page.console` / `page.error`.
  */
 
+import { oneLineMessage } from "./message.ts";
 import type { LogInput, LogLevel } from "./types.ts";
 
 /** A console method's own name mapped onto the five levels a record may carry. */
@@ -35,10 +36,7 @@ export function pageRecord(payload: PageLogPayload, window?: string): LogInput {
 			level: CONSOLE_LEVEL[name] ?? "info",
 			source: "page",
 			event: "page.console",
-			msg: (payload.args ?? [])
-				.map((arg) => String(arg))
-				.join(" ")
-				.slice(0, 400),
+			msg: oneLineMessage((payload.args ?? []).map((arg) => String(arg)).join(" ")),
 			fields: { consoleLevel: name, args: payload.args ?? [], url: payload.url, window },
 		};
 	}
@@ -46,9 +44,7 @@ export function pageRecord(payload: PageLogPayload, window?: string): LogInput {
 		level: "error",
 		source: "page",
 		event: "page.error",
-		msg: String(payload.message ?? "uncaught page error")
-			.replace(/\s+/g, " ")
-			.trim(),
+		msg: oneLineMessage(String(payload.message ?? "uncaught page error")),
 		fields: {
 			message: payload.message,
 			stack: payload.stack?.split("\n").slice(0, 8).join("\n"),

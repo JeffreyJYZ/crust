@@ -12,6 +12,7 @@ export {
 	type LevelSources,
 	resolveLogLevel,
 } from "./level.ts";
+export { capText, oneLineMessage } from "./message.ts";
 export { redactFields, redactText, redactValue, isSecretName, REDACTED } from "./redact.ts";
 export { buildRecord, isoAt, parseLine, serializeRecord, sinceMs } from "./record.ts";
 export { archivePath, rotateChain } from "./rotate.ts";

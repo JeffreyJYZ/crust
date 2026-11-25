@@ -7,26 +7,16 @@
  * `window.*` plus `create/close/focus/resize`; there is no second `event` field to contradict it.
  */
 
-import {
-	type LogInput,
-	type LogLevel,
-	MAX_FIELD_CHARS,
-	MAX_MSG_CHARS,
-	type LogSource,
-} from "./types.ts";
+import { capText, oneLineMessage } from "./message.ts";
+import { type LogInput, type LogLevel, MAX_FIELD_CHARS, type LogSource } from "./types.ts";
 
 /** Answer a level from an outcome, so a failure is never quieter than the call it failed. */
 function failureLevel(code: string | undefined): LogLevel {
 	return code === "handler-error" || code === "not-implemented" ? "error" : "warn";
 }
 
-function cap(text: string, limit: number): string {
-	return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
-}
-
-function oneLine(text: string): string {
-	return cap(text.replace(/\s+/g, " ").trim(), MAX_MSG_CHARS);
-}
+const cap = capText;
+const oneLine = oneLineMessage;
 
 /** A page-supplied field: bounded before it is serialised, so a hostile name cannot fill the disk. */
 function field(value: string | undefined): string | undefined {

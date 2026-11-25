@@ -67,37 +67,20 @@ export function isSecretName(name: string): boolean {
 }
 
 /**
- * Query keys are built from the same vocabulary as field names, in every spelling a URL uses. A
- * curated shorter list left `?apiKey=`, `?jwt=` and `?refresh_token=` in messages unchanged.
+ * Query keys are derived from the field-name vocabulary, so the two passes cannot drift. A curated
+ * shorter list left `?apiKey=`, `?jwt=`, `?seed=`, `?sid=` and `?keychain=` in messages unchanged.
+ * The extra spellings carry underscores or joined words that the field-name splitter does not see;
+ * the regex is case-insensitive, so camelCase needs no separate entry.
  */
 const QUERY_KEYS = [
-	"token",
+	...SECRET_WORDS,
+	...SECRET_COMPOUNDS,
 	"key",
-	"secret",
-	"password",
-	"passwd",
-	"passphrase",
-	"credential",
-	"credentials",
 	"api_key",
-	"apiKey",
-	"apikey",
 	"access_token",
-	"accessToken",
-	"accesstoken",
 	"private_key",
-	"privateKey",
-	"privatekey",
 	"refresh_token",
-	"refreshToken",
-	"refreshtoken",
-	"jwt",
-	"session",
 	"sessionid",
-	"auth",
-	"authorization",
-	"bearer",
-	"assertion",
 ];
 const QUERY = new RegExp(`([?&](?:${QUERY_KEYS.join("|")})=)[^&#\\s"']+`, "gi");
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
@@ -138,6 +121,19 @@ const MAX_DEPTH = 6;
 const MAX_STRING = 2000;
 
 /**
+ * Assignment to `__proto__` sets the prototype instead of creating a field, so a JSON-parsed key of
+ * that name vanished from the log. Define an own data property for every redacted key instead.
+ */
+function setOwn(out: Record<string, unknown>, name: string, value: unknown): void {
+	Object.defineProperty(out, name, {
+		value,
+		enumerable: true,
+		writable: true,
+		configurable: true,
+	});
+}
+
+/**
  * One value, redacted: a secret-named key loses the whole value, a string still loses its query
  * token, and a structure is walked to {@link MAX_DEPTH}. A string is truncated because a page can
  * log a megabyte and the log must stay readable; the truncation is marked, never silent.
@@ -172,7 +168,7 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 	const out: Record<string, unknown> = {};
 	for (const [name, item] of Object.entries(value as Record<string, unknown>)) {
 		const next = redactValue(item, name, depth + 1);
-		if (next !== undefined) out[name] = next;
+		if (next !== undefined) setOwn(out, name, next);
 	}
 	return out;
 }
@@ -182,7 +178,7 @@ export function redactFields(fields: Record<string, unknown> = {}): Record<strin
 	const out: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(fields)) {
 		const next = redactValue(value, name);
-		if (next !== undefined) out[name] = next;
+		if (next !== undefined) setOwn(out, name, next);
 	}
 	return out;
 }

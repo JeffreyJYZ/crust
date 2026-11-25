@@ -5,9 +5,12 @@
  * tail is visible instead of missing.
  */
 
+import { capText } from "./message.ts";
 import { redactFields, redactText } from "./redact.ts";
 import {
 	type LogInput,
+	type LogLevel,
+	MAX_MSG_CHARS,
 	type LogRecord,
 	isLogLevel,
 	isLogSource,
@@ -28,7 +31,8 @@ export function buildRecord(input: LogInput, ts: number, pid: number, seq: numbe
 		level: input.level,
 		source: input.source,
 		event: input.event,
-		msg: redactText(input.msg),
+		// Redaction can lengthen text, so the bound is applied to the final value, not the input.
+		msg: capText(redactText(input.msg), MAX_MSG_CHARS),
 		pid,
 		seq,
 	};

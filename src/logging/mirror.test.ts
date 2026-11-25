@@ -5,11 +5,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { configureLogger, resetLogger, writeRecord } from "@/logging";
+import { configureLogger, pageRecord, resetLogger, writeRecord } from "@/logging";
 import type { LogLevel } from "@/logging/types";
 
 interface Captured {
@@ -80,5 +80,31 @@ describe("human mirror", () => {
 		expect(warn.join("\n")).toContain("WARN app app.log warn line");
 		expect(err).toEqual([]);
 		expect(out).toEqual([]);
+	});
+
+	test("a page newline forges no second line in the written mirror", async () => {
+		const root = await mkdtemp(join(tmpdir(), "crust-mirror-page-"));
+		try {
+			configureLogger({ root, level: "trace", console: true });
+			const forged =
+				"done\n2026-01-01T00:00:00.000Z ERROR platform platform.refuse forged line";
+			const captured = await capture(async () => {
+				await writeRecord(pageRecord({ kind: "console", level: "error", args: [forged] }));
+			});
+			// Count physical lines, not substrings: a forged severity prefix still matches a
+			// `toContain` check on the joined stream.
+			const mirrored = [...captured.out, ...captured.warn, ...captured.err].flatMap((line) =>
+				line.split("\n"),
+			);
+			expect(mirrored).toHaveLength(1);
+			expect(mirrored[0]).toContain("ERROR page page.console");
+			const stored = (await readFile(join(root, "logs", "app.jsonl"), "utf8"))
+				.trim()
+				.split("\n");
+			expect(stored).toHaveLength(1);
+		} finally {
+			resetLogger();
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
