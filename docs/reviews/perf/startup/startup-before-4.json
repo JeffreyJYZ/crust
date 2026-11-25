@@ -1,0 +1,52 @@
+{
+  "label": "startup-before-4",
+  "marks": {
+    "processStart": 0,
+    "firstLine": 14.54248046875,
+    "cliParsed": 14.54248046875,
+    "conditionsDone": 29.54248046875,
+    "nativeReady": 40.54248046875,
+    "platformStarted": 116.54248046875,
+    "bridgeReady": 116.54248046875,
+    "windowCreated": 446.54248046875,
+    "navAt": 636.54248046875,
+    "readyAt": 636.54248046875,
+    "firstRafAt": 636.54248046875
+  },
+  "segments": {
+    "process start → first crust line": 14.54248046875,
+    "module graph + CLI parse": 0,
+    "conditions snapshot (subprocesses)": 15,
+    "native shim cc compile": 11,
+    "platform.start()": 76,
+    "bridge bind": 0,
+    "window + WKWebView create": 330,
+    "navigation → first page script": 190,
+    "first page script → document complete": 0,
+    "document complete → first rAF": 0
+  },
+  "totalMs": 636.54248046875,
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T00:51:15.486Z",
+      "load": {
+        "one": 3.73,
+        "five": 4.75,
+        "fifteen": 4.96
+      },
+      "bunProcesses": 26,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-25T00:51:16.123Z",
+      "load": {
+        "one": 3.73,
+        "five": 4.75,
+        "fifteen": 4.96
+      },
+      "bunProcesses": 26,
+      "probePids": []
+    },
+    "contaminated": true
+  }
+}
