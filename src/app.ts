@@ -3,6 +3,7 @@
  * Through `startApp` (dev and built apps) the platform and config are attached before `main.ts` is imported and the bridge is created on the first `run()`, so a plugin mounted there is in the table the bridge snapshots; called bare (`bun src/main.ts`) it loads both itself, importing the platform lazily so macOS is not linked into a process that never opens a window.
  */
 import { ensureAppLogger, logAppReady, logAppStart, logCommandRegistered } from "./app-log.ts";
+import { closeConfiguredWindows } from "./app-cleanup.ts";
 import { createQuitter, finishQuit } from "./app-quit.ts";
 import { CrustError } from "@/bridge/errors";
 import type { BridgeTarget } from "@/bridge/server.ts";
@@ -10,13 +11,13 @@ import { type CrustConfig, loadConfig } from "@/config";
 import { frameQuitListener, quitAfterSaving } from "./app-frames.ts";
 import { type AppInfo, appInfo } from "./app-info.ts";
 import {
-	emit,
 	installLaunchDeepLink,
 	loadPlatform,
 	mountable,
 	openWindows,
 	watchLifecycle,
 } from "./app-loop.ts";
+import { emitGuarded } from "./app-watch.ts";
 import {
 	APP_NAMESPACE,
 	type AppEvent,
@@ -113,6 +114,11 @@ export class App {
 		return [...this.#plugins.values()];
 	}
 
+	/** True once `run()` has started the platform; the runtime's error path uses it to clean up. */
+	get started(): boolean {
+		return this.#started;
+	}
+
 	/** Listen for an app event. */
 	on(event: AppEvent, listener: AppListener): this {
 		const set = this.#listeners.get(event) ?? new Set<AppListener>();
@@ -140,8 +146,7 @@ export class App {
 		const platform = this.#platform ?? (await loadPlatform(config));
 		this.#config = config;
 		this.#platform = platform;
-		// A deferred bridge starts here, after the entry's plugins and commands
-		// are registered and before the first window is created.
+		// A deferred bridge starts here: the entry's plugins are registered, but no window exists yet.
 		if (this.#bridge === undefined && this.#bridgeFactory !== undefined) {
 			this.#bridge = this.#bridgeFactory(config);
 		}
@@ -150,23 +155,32 @@ export class App {
 		ensureAppLogger(config);
 		logAppStart(config, platform);
 		await platform.start();
-		await installLaunchDeepLink();
-		await openWindows(platform, config, this.#bridge, frameMemory());
-		// A signal restart never reaches a clean shutdown, so the frame is also saved on ⌘Q here.
-		const frameQuit = frameQuitListener();
-		if (frameQuit !== undefined) this.on("before-quit", frameQuit);
-		await emit(this.#listeners, "ready");
-		logAppReady(platform);
-		platform.pump(PUMP_INTERVAL_MS);
-		const lifecycle = platform.lifecycle?.();
-		const lifecycleCheck = lifecycle ? watchLifecycle(this.#listeners, lifecycle) : undefined;
-		let windowCheck: ReturnType<typeof setInterval> | undefined;
-		if (this.#listeners.get("window-all-closed")?.size) {
-			windowCheck = watchAllClosed(this.#listeners, config, platform, () =>
-				this.#quitter.begin("window-all-closed"),
-			);
+		try {
+			await installLaunchDeepLink();
+			await openWindows(platform, config, this.#bridge, frameMemory());
+			// A signal restart never reaches a clean shutdown, so the frame is also saved on ⌘Q here.
+			const frameQuit = frameQuitListener();
+			if (frameQuit !== undefined) this.on("before-quit", frameQuit);
+			// A throwing `ready` listener used to reject `run()` after start, leaving a half-run app.
+			await emitGuarded(this.#listeners, "ready");
+			logAppReady(platform);
+			platform.pump(PUMP_INTERVAL_MS);
+			const lifecycle = platform.lifecycle?.();
+			const lifecycleCheck = lifecycle
+				? watchLifecycle(this.#listeners, lifecycle)
+				: undefined;
+			let windowCheck: ReturnType<typeof setInterval> | undefined;
+			if (this.#listeners.get("window-all-closed")?.size) {
+				windowCheck = watchAllClosed(this.#listeners, config, platform, () =>
+					this.#quitter.begin("window-all-closed"),
+				);
+			}
+			this.#quitter.timers(windowCheck, lifecycleCheck);
+		} catch (error) {
+			// A failure here must not leave windows behind; `quit()` would exit(0) and hide the error.
+			closeConfiguredWindows(platform, config);
+			throw error;
 		}
-		this.#quitter.timers(windowCheck, lifecycleCheck);
 	}
 
 	/** Quit the application, emitting the save-on-quit events before anything closes. */

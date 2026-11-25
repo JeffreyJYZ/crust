@@ -65,12 +65,32 @@ describe("deep-link scheme wiring", () => {
 		}
 	});
 
-	test("the guard also rejects a URL for a scheme that was never registered", () => {
+	test("a URL for a foreign scheme is refused without throwing from run or the drain timer", () => {
 		const configured = fresh();
 		configureDeepLink({ ...base, build: { urlScheme: "crust" } }, configured);
-		expect(() => queueDeepLink("other://open/1", configured)).toThrow(
-			/not the registered scheme/,
-		);
+		const warn = console.warn;
+		const warned: string[] = [];
+		console.warn = (message: string) => void warned.push(message);
+		try {
+			expect(() => queueDeepLink("other://open/1", configured)).not.toThrow();
+		} finally {
+			console.warn = warn;
+		}
+		expect(configured.url()).toBeNull();
+		expect(warned.some((line) => line.includes("other://open/1"))).toBe(true);
+	});
+
+	test("a relative URL is refused without throwing", () => {
+		const configured = fresh();
+		configureDeepLink({ ...base, build: { urlScheme: "crust" } }, configured);
+		const warn = console.warn;
+		console.warn = () => {};
+		try {
+			expect(() => queueDeepLink("open/1", configured)).not.toThrow();
+		} finally {
+			console.warn = warn;
+		}
+		expect(configured.url()).toBeNull();
 	});
 });
 
