@@ -1,18 +1,12 @@
 # Lane M — launch to interactive, decomposed
 
-> **Correction, recorded rather than edited away.** Two rows of the stack are cost a real app never pays —
-> the harness's conditions snapshot (51 ms) and its `cc` compile of the probe shim (32 ms). The honest
-> app-launch figure is about **552 ms**, not 635 ms. The blank control below still runs through crust's own
-> `createNativeWindow`, so "WebKit, not crust" is an inference: a bare-AppKit `WKWebView` probe is the
-> follow-up that separates the floor from crust's configuration. Until it lands, the 318 ms is attributed,
-> not proven.
-
-**Verdict: the 634 ms is two native WebKit numbers, not a slow JS prelude and not blocking file I/O.**
-The median launch is 635 ms; 318 ms is window + `WKWebView` creation and 192 ms is navigation to the
-first page script. Together they are 510 ms, 80% of the total. A blank-document control still spends
-390 ms in window creation, so the first number is WebKit object/service start-up, not crust logic and
-not document load. No `src/**` file changed: the dominant segment lives in platform code this lane
-does not own, and deferring it would mean an observable window that appears without its page.
+**Verdict: an AppKit-only process takes 568 ms to first `requestAnimationFrame`; crust's additions
+are at or below the 21 ms control spread.** The crust launch is 635 ms p50 (608 ms after removing
+this harness's own 27 ms of snapshot/`cc` work). The bare floor is 568 ms p50 (536 ms after the same
+subtraction), so crust adds about 72 ms end to end, and no individual piece — activation policy,
+configuration, content-world scripts, scheme handler, process pool, bridge bind — is separable from
+noise. No `src/**` file changed: there is no deferrable crust cost large enough to justify the risk,
+and the bridge is on the document path, not just the invoke path.
 
 ## Method and safety
 
@@ -55,6 +49,21 @@ Page arm distribution: n=10, p50 635 ms, p95 887 ms, max 887 ms, min 598 ms. Sor
 598, 601, 601, 613, 618, 635, 636, 657, 684, 887. The 887 ms outlier ran at load 3.80; the 684
 ms one at 3.83 → 6.97. Load, not a code path, separates them.
 
+## Harness overhead and the corrected app-launch figure
+
+Two rows in the table belong to the measuring tool, not to an app: `conditions snapshot
+(subprocesses)` 16 ms and `native shim cc compile` 11 ms (page-arm medians). The blank arm's
+contaminated median shows 51 ms and 32 ms for the same rows — those larger figures belong to the
+blank arm and must not be subtracted from the page arm's total. Subtracting each run's own two rows
+from the page arm gives **p50 608 ms, p95 860 ms, min 573 ms, max 860 ms (n=10)**. That is the honest
+launch-to-interactive number for the measured path.
+
+The probe's `cc` row is `scripts/perf/perf-native.c`, compiled once by this harness. A built app does
+not pay that file, but it **does** compile its own embedded shim at launch: `src/platform/darwin/index.ts:25-36`
+calls `cc()` on the content-hashed temp copy. Measured separately on this machine (70,966 shim bytes):
+17.2 ms on a cold TinyCC cache, ~1.3 ms warm. It sits inside `platform.start()`'s 82 ms row and is
+therefore app cost, not harness cost.
+
 ### Mapping to the brief's six boundaries
 
 | Brief boundary | Rows here | ms |
@@ -96,6 +105,16 @@ Blank arm distribution: n=6, p50 611 ms, p95 3270 ms, max 3270 ms, min 463 ms. S
 navigation arm's 192 ms is therefore additive document/WebKit-side cost, not part of the native
 window number.
 
+## Bare AppKit floor and crust's deltas
+
+The AppKit-only probe is measured in full in `10-startup-bare.md`. Its floor is **568 ms p50**
+(536 ms after its own harness rows), with 112 ms in `NSApplication`/window/webview, 243 ms in
+`loadHTMLString`/WebKit service start and 172 ms until first rAF. Across 12 cumulative arms the
+same-flag control spreads 21 ms; every crust piece — activation policy, configuration, 7,230 bytes
+of injected scripts, scheme handler, process pool, bridge bind — is at or inside that spread. The
+bridge is on the document path: `bare-no-bridge` never painted in 4 s. Inline instead of a loopback
+document saves 28 ms, inside noise. No `src/**` change followed.
+
 ## The suspicion checks
 
 - **Bundle prelude.** First crust line is 15 ms at p50 (39 ms in the noisier blank median). The
@@ -115,27 +134,28 @@ window number.
 
 ## Change and what it buys
 
-No `src/**` change. The two large segments are `-[WKWebView initWithFrame:configuration:]`/`NSWindow`
-creation and the first WebKit navigation. Moving any of the owned work — config, logger, deep link,
-plugins — off the launch path would at most touch the 128 ms init subtotal and cannot shorten the
-510 ms that dominates. Cutting the dominant segment would require starting the webview before the
-window or faking an early frame; both change what the user sees, which the brief refuses.
+No `src/**` change. The bare floor is 568 ms; crust's pieces are at or below the 21 ms control
+spread, and the bridge cannot be deferred past document serving. Deferring config, logger, deep link
+or plugins would touch only the 128 ms init subtotal, which the floor already covers. Cutting the
+floor itself would require starting WebKit before the window or faking an early frame; both change
+what the user sees.
 
-What this lane adds is the measurement: `scripts/perf/startup.ts` makes the number reproducible and
-writes a stacked table per launch, and the blank arm attributes the first large row to WebKit. The
-next platform-level lane now has a target: 318 ms inside `createNativeWindow`, 192 ms in first
-navigation.
+What this lane adds is measurement: `scripts/perf/startup.ts` decomposes the crust launch, and
+`scripts/perf/startup-bare.ts` measures the AppKit-only floor plus crust's pieces one at a time. The
+objective statement is now: floor 568 ms, crust launch 635 ms (608 ms without harness overhead),
+crust-attributable addition about 72 ms end to end with no single deferrable item above the noise
+floor.
 
 ## What a user will notice
 
-Nothing changed in the app: the same window appears with the same page and the same first frame;
-the 635 ms is now explained rather than hidden behind "startup".
+Nothing changed in the app: same window, same page, same first frame. The 635 ms is now split into
+an AppKit/WebKit floor that cannot be removed from a desktop app and a small crust addition.
 
 ## Gates
 
 | Command | Result |
 |---|---|
-| `bun check` | PASS, exit 0 (1,274 files) |
+| `bun check` | PASS, exit 0 (1,277 files) |
 | `bun run test` | PASS, exit 0 — 2990 pass / 0 fail |
 | `bun run test:no-skips` | PASS, exit 0 — 2990 pass / 0 fail, no unapproved skips |
 | `bun run check:lines` | PASS, exit 0 |
@@ -149,4 +169,7 @@ probe-run -c 'timeout 20 bun scripts/perf/startup.ts measure --label startup-bef
 probe-run -c 'timeout 20 bun scripts/perf/startup.ts measure --label startup-blank-X --blank'
 bun scripts/perf/startup.ts summary --mode page
 bun scripts/perf/startup.ts summary --mode blank
+probe-run -c 'timeout 20 bun scripts/perf/startup-bare.ts measure --arm bare-inline --label bare-inline-X'
+probe-run -c 'timeout 20 bun scripts/perf/startup-bare.ts measure --arm bare-deferred-load --label bare-deferred-load-X'
+probe-run -c 'timeout 20 bun scripts/perf/startup-bare.ts measure --arm bare-http-control --label bare-http-control-X'
 ```
