@@ -8,6 +8,7 @@
 import { join } from "node:path";
 
 import { definePlugin } from "./define";
+import { badRequest, locked, readKey, type Session } from "./stronghold-helpers.ts";
 import { noteLegacyVault } from "./stronghold-legacy.ts";
 import { withFileLock } from "./store-file.ts";
 import { createStore, entryId, openStore, seal, unseal } from "./stronghold-crypto.ts";
@@ -23,7 +24,6 @@ import {
 	reasonOf,
 	type CloseResult,
 	type DeleteResult,
-	type DerivedKeys,
 	type GetResult,
 	type KeyArgs,
 	type KeysResult,
@@ -40,28 +40,18 @@ export * from "./stronghold-types.ts";
 export * from "./stronghold-file.ts";
 export * from "./stronghold-crypto.ts";
 
-interface Session {
-	file: StrongholdFile;
-	keys: DerivedKeys;
-}
-
-function locked(command: string): StrongholdFailure {
-	return failure("locked", `stronghold.${command} needs open first`);
-}
-
-function badRequest(message: string): StrongholdFailure {
-	return failure("bad-request", message);
-}
-
-function readKey(args: unknown): string | undefined {
-	const key = (args as KeyArgs | undefined)?.key;
-	return typeof key === "string" && key.length > 0 ? key : undefined;
-}
-
 export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 	const path = join(options.root ?? defaultStoreRoot(options.app ?? "crust"), STORE_FILE);
 	const iterations = options.iterations;
 	let session: Session | undefined;
+	/**
+	 * `session` identity is not a generation: two `set`s queued on the same instance both capture
+	 * the snapshot from before either entered the file lock, so the second commit writes both keys
+	 * to disk but fails `session === active` and leaves the cache one key short. `open`/`close` own
+	 * the generation; any commit from the generation that started it updates the cache, and one that
+	 * spanned a `close`/`open` does not resurrect the old session.
+	 */
+	let generation = 0;
 
 	return definePlugin({
 		name: "stronghold",
@@ -81,12 +71,14 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 							const created = await createStore(password, iterations);
 							await writeStore(path, created.file);
 							session = created;
+							generation++;
 							await noteLegacyVault(path);
 							return { ok: true, opened: true };
 						}
 						const opened = await openStore(read.file, password);
 						if (!opened.ok) return opened;
 						session = opened.store;
+						generation++;
 						return { ok: true, opened: true };
 					});
 				} catch (error) {
@@ -96,11 +88,13 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 
 			close: (): CloseResult => {
 				session = undefined;
+				generation++;
 				return { ok: true, closed: true };
 			},
 
 			set: async (args: SetArgs): Promise<SetResult | StrongholdFailure> => {
 				const active = session;
+				const began = generation;
 				if (active === undefined) return locked("set");
 				const key = readKey(args);
 				if (key === undefined) return badRequest("stronghold.set needs a non-empty key");
@@ -124,7 +118,9 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 						};
 						await writeStore(path, file);
 						// A `close` that landed during the write must not be undone by this one.
-						if (session === active) session = { file, keys: active.keys };
+						// A queued commit from this generation must reach the cache; a close/open that ran
+						// while this write held the lock invalidates it instead.
+						if (generation === began) session = { file, keys: active.keys };
 						return { ok: true, key };
 					});
 				} catch (error) {
@@ -152,6 +148,7 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 
 			delete: async (args: KeyArgs): Promise<DeleteResult | StrongholdFailure> => {
 				const active = session;
+				const began = generation;
 				if (active === undefined) return locked("delete");
 				const key = readKey(args);
 				if (key === undefined) return badRequest("stronghold.delete needs a non-empty key");
@@ -167,7 +164,9 @@ export function createStrongholdPlugin(options: StrongholdOptions = {}) {
 						delete entries[id];
 						const file: StrongholdFile = { ...current, entries };
 						await writeStore(path, file);
-						if (session === active) session = { file, keys: active.keys };
+						// A queued commit from this generation must reach the cache; a close/open that ran
+						// while this write held the lock invalidates it instead.
+						if (generation === began) session = { file, keys: active.keys };
 						return { ok: true, key, deleted: true };
 					});
 				} catch (error) {
