@@ -1,0 +1,51 @@
+{
+  "label": "bare-http-control-5",
+  "arm": "bare-http-control",
+  "mode": "bare-http-control",
+  "marks": {
+    "processStart": 0,
+    "firstLine": 7.582275390625,
+    "cliParsed": 7.582275390625,
+    "conditionsDone": 23.582275390625,
+    "bridgeDone": 24.582275390625,
+    "nativeReady": 37.582275390625,
+    "windowCreated": 137.582275390625,
+    "loadIssued": 373.582275390625,
+    "firstRaf": 530.582275390625
+  },
+  "segments": {
+    "prelude": 7.582275390625,
+    "conditions": 16,
+    "bridge": 1,
+    "cc": 13,
+    "window": 100,
+    "loadIssue": 236,
+    "firstRaf": 157
+  },
+  "totalMs": 530.582275390625,
+  "painted": true,
+  "scriptBytes": 7230,
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T01:16:16.916Z",
+      "load": {
+        "one": 3.84,
+        "five": 4.66,
+        "fifteen": 4.87
+      },
+      "bunProcesses": 34,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-25T01:16:17.446Z",
+      "load": {
+        "one": 3.84,
+        "five": 4.66,
+        "fifteen": 4.87
+      },
+      "bunProcesses": 34,
+      "probePids": []
+    },
+    "contaminated": true
+  }
+}
