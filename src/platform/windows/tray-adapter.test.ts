@@ -94,6 +94,23 @@ describe("tray.setMenu on Windows", () => {
 		expect(calls).toEqual([]);
 	});
 
+	/** C splits the joined buffer on every newline and ignores the row count, so `a\nb` is two rows. */
+	test("a newline inside a label is refused before any row is sent", () => {
+		const { plugin, calls } = built();
+		expect(
+			plugin.commands.setMenu({
+				items: [{ label: "a\nb" }, { label: "Quit" }],
+			}),
+		).toEqual({
+			ok: false,
+			code: "invalid-menu",
+			message:
+				"crust: tray.setMenu item 0 contains a newline; the Windows menu transport " +
+				"uses \\n to separate rows and cannot carry one inside a label",
+		});
+		expect(calls).toEqual([]);
+	});
+
 	test("a menu C could not store names the entry point that did not resolve", () => {
 		const { plugin } = built({ menuResult: 0, missing: "TrackPopupMenu" });
 		const result = plugin.commands.setMenu({ items: [{ label: "Open" }] });

@@ -92,6 +92,19 @@ export function windowsTrayAdapter(options: WindowsTrayOptions = {}): WindowsTra
 					`crust: tray.setMenu accepts at most ${TRAY_MAX_ITEMS} rows on Windows, got ${next.length}`,
 				);
 			}
+			// Rows travel to C separated by `\n`, and the C half splits on every one of them
+			// while ignoring the row count. A newline inside a label makes extra native rows,
+			// so every real row after it answers an index one too high and fires the next
+			// item's handler. Linux already refuses this; Windows carried the same transport
+			// without the guard.
+			const bad = next.findIndex((item) => item.label.includes("\n"));
+			if (bad >= 0) {
+				throw new TrayAdapterError(
+					"invalid-menu",
+					`crust: tray.setMenu item ${bad} contains a newline; the Windows menu transport ` +
+						"uses \\n to separate rows and cannot carry one inside a label",
+				);
+			}
 			const joined = next.map((item) => item.label).join("\n");
 			applied(
 				shim,
