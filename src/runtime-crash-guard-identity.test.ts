@@ -9,7 +9,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { liveChildren } from "@/child-reap.ts";
-import { guardTarget, startCrashGuard, watchCrashTarget } from "@/runtime-crash-guard.ts";
+import {
+	type GuardTarget,
+	guardTarget,
+	guardWatchExit,
+	startCrashGuard,
+	watchCrashTarget,
+} from "@/runtime-crash-guard.ts";
 
 const roots: string[] = [];
 const children: Subprocess[] = [];
@@ -71,6 +77,50 @@ describe("crash guard identity", () => {
 		]);
 		clearTimeout(timer);
 		expect(outcome).toBe("stopped");
+	});
+
+	test("a recycled pid ends the watch even with the token still held", async () => {
+		const root = await tempDir();
+		const token = "token-abc";
+		await writeFile(join(root, "crash-guard.token"), token, { mode: 0o600 });
+		const target: GuardTarget = {
+			pid: process.pid, // alive here, as a reused pid would be
+			root,
+			token,
+			since: "start-1",
+			identity: () => "start-2",
+		};
+		const outcome = await Promise.race([
+			watchCrashTarget(target).then(() => "stopped"),
+			Bun.sleep(1000).then(() => "timeout"),
+		]);
+		expect(outcome).toBe("stopped");
+	});
+
+	test("a guard that fails while recording reports the failure and exits non-zero", async () => {
+		const target: GuardTarget = { pid: process.pid, root: "/tmp/root", token: "t" };
+		const lines: string[] = [];
+		const codes: number[] = [];
+		await guardWatchExit(target, {
+			watch: async () => {
+				throw new Error("disk full");
+			},
+			report: (line) => void lines.push(line),
+			exit: (code) => void codes.push(code),
+		});
+		expect(codes).toEqual([1]);
+		expect(lines[0]).toContain("could not record the crash");
+		expect(lines[0]).toContain("disk full");
+	});
+
+	test("a clean watch exits zero", async () => {
+		const target: GuardTarget = { pid: process.pid, root: "/tmp/root", token: "t" };
+		const codes: number[] = [];
+		await guardWatchExit(target, {
+			watch: async () => {},
+			exit: (code) => void codes.push(code),
+		});
+		expect(codes).toEqual([0]);
 	});
 
 	test("the guard is registered with the reaper so a quit can signal it", async () => {
