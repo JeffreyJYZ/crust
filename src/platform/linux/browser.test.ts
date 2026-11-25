@@ -11,7 +11,7 @@ import { FakePorts, STATE } from "./browser-fake";
 const BOUNDS: BrowserBounds = { x: 10, y: 20, width: 640, height: 400 };
 
 describe("linuxBrowserAdapter", () => {
-	test("open creates the view, places it, loads it and installs both policies", () => {
+	test("open creates the view, places it, installs the policies, then loads", () => {
 		const fake = new FakePorts();
 		const adapter = linuxBrowserAdapter(fake);
 		expect(
@@ -28,13 +28,27 @@ describe("linuxBrowserAdapter", () => {
 		expect(fake.calls).toEqual([
 			"new",
 			"place:250:400:10,20,640,400",
-			`load:400:${STATE.url}`,
+			"sink:set",
+			"decision_sink:set",
 			"watch:400",
 			"deny:400",
 			"watch_nav:400",
+			`load:400:${STATE.url}`,
+		]);
+	});
+
+	test("the sink and every policy signal exist before the first document loads", () => {
+		const fake = new FakePorts();
+		linuxBrowserAdapter(fake).open({ label: "docs", url: STATE.url, bounds: BOUNDS });
+		const loaded = fake.calls.findIndex((call) => call.startsWith("load:"));
+		for (const call of [
 			"sink:set",
 			"decision_sink:set",
-		]);
+			"watch:400",
+			"deny:400",
+			"watch_nav:400",
+		])
+			expect(fake.calls.indexOf(call)).toBeLessThan(loaded);
 	});
 
 	test("a refused signal handler removes the view instead of leaving an unguarded surface", () => {
@@ -59,6 +73,18 @@ describe("linuxBrowserAdapter", () => {
 			}),
 		).toMatchObject({ ok: false, code: "handler-error" });
 		expect(fake.calls).toContain("close:400");
+		expect(adapter.state("docs")).toMatchObject({ ok: false, code: "not-found" });
+	});
+
+	test("a refused signal handler leaves no surface registered", () => {
+		const fake = new FakePorts();
+		fake.signalsRefused = true;
+		const adapter = linuxBrowserAdapter(fake);
+		expect(adapter.open({ label: "docs", url: STATE.url, bounds: BOUNDS })).toMatchObject({
+			ok: false,
+		});
+		expect(adapter.state("docs")).toMatchObject({ ok: false, code: "not-found" });
+		expect(fake.calls).not.toContain(`load:400:${STATE.url}`);
 	});
 
 	test("a duplicate label is refused before a second view exists", () => {
