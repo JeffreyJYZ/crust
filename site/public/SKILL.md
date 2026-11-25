@@ -438,6 +438,13 @@ detection for that one capture and restore it afterwards; it is unsupported SPI,
 moves anything, and a WebKit update that drops the selector answers `occlusion-unavailable` instead of
 stalling. Do not use it in a shipped screenshot path — show the window instead.
 
+`ignoreOcclusion` cannot wake a view WebKit has already stopped compositing, which is the state a
+probe is in when its window never drew. For that, `window.capture { label, prime: true }` sets the
+window's composited bit through unsupported private AppKit SPI for one capture and restores it
+afterwards; without it the answer is `handler-error` naming `no-completion`. Harness-only: a
+production bundle answers `prime-unavailable` before anything is sent, because a shipped app that
+needs a screenshot should show or activate its window rather than reach for private API.
+
 **`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
 cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
 It answers `{ ok, width, height, scale, png }` at the surface's page pixels — an unknown label is
