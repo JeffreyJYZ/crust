@@ -2,7 +2,7 @@
  * Single-file mode's bundle step: one `Bun.build`, the document beside it, and the reload marker a dev page polls. Only the bundle directory is written — `<dir>/.crust/single` in dev, `<dir>/dist/single` in a build.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { DEFAULT_EXTENSIONS_DIR, resolveExtensionFiles } from "@/extensions/load.ts";
 import type { SingleApp } from "./single-detect.ts";
@@ -58,6 +58,20 @@ async function refuseExtensions(app: SingleApp): Promise<void> {
 }
 
 /**
+ * `Bun.build` does not clean its outdir, and an `.html` entry skips the bundler entirely. Remove
+ * anything the current build did not just write, so an old `page.js` cannot travel into the binary
+ * after the source switched to plain HTML. Called only after a successful write, so a failed build
+ * still leaves the last good page in place.
+ */
+async function removeStale(dir: string, keep: readonly string[]): Promise<void> {
+	const wanted = new Set(keep);
+	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		if (wanted.has(entry.name)) continue;
+		await rm(join(dir, entry.name), { recursive: true, force: true });
+	}
+}
+
+/**
  * Bundle the page and write the document beside it. A failed build throws before touching `index.html` or the reload marker, so the previously written page stays where it was and a running window keeps it.
  */
 export async function buildPage(app: SingleApp, options: { dev: boolean }): Promise<PageBuild> {
@@ -72,9 +86,12 @@ export async function buildPage(app: SingleApp, options: { dev: boolean }): Prom
 	// page keeps its own markup, and skip the bundler entirely.
 	if (extname(app.file).toLowerCase() === ".html") {
 		await writeFile(join(outDir, "index.html"), await Bun.file(app.file).text(), "utf8");
+		const keep = ["index.html"];
 		if (options.dev) {
 			await writeFile(join(outDir, RELOAD_FILE), `${Date.now()}\n`, "utf8");
+			keep.push(RELOAD_FILE);
 		}
+		await removeStale(outDir, keep);
 		return { dir: outDir, entry: "index.html" };
 	}
 
@@ -118,8 +135,11 @@ export async function buildPage(app: SingleApp, options: { dev: boolean }): Prom
 		`${documentSource(app, PAGE_ENTRY, options.dev)}\n`,
 		"utf8",
 	);
+	const keep = ["index.html", PAGE_ENTRY];
 	if (options.dev) {
 		await writeFile(join(outDir, RELOAD_FILE), `${Date.now()}\n`, "utf8");
+		keep.push(RELOAD_FILE);
 	}
+	await removeStale(outDir, keep);
 	return { dir: outDir, entry: PAGE_ENTRY };
 }

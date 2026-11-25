@@ -3,9 +3,8 @@
  * as text or bytes so a compiled binary needs no project directory.
  */
 
-import { readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { exists } from "../util.ts";
 
 /**
  * Extensions embedded as text. Everything else is embedded as bytes, because a
@@ -39,7 +38,16 @@ export interface AssetFile {
  * Walk the asset directory and return every file as a request path plus its bytes. A compiled binary has no project directory on the recipient's machine, so the whole tree must travel inside it — one `index.html` was the v1 shortcut and the reason a real frontend could not ship. Which directory is `build.assets`' business: `public/` by default, a Vite `dist/web` for a project that builds its frontend.
  */
 export async function collectAssets(assetsDir: string): Promise<AssetFile[]> {
-	if (!(await exists(assetsDir, "dir"))) return [];
+	let root;
+	try {
+		root = await lstat(assetsDir);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+	if (root.isSymbolicLink())
+		throw new Error(`crust: refusing symlinked assets directory ${assetsDir}`);
+	if (!root.isDirectory()) return [];
 	const files: AssetFile[] = [];
 
 	async function walk(dir: string, prefix: string): Promise<void> {
@@ -49,11 +57,15 @@ export async function collectAssets(assetsDir: string): Promise<AssetFile[]> {
 			if (entry.name === ".DS_Store") continue;
 			const full = join(dir, entry.name);
 			const url = `${prefix}/${entry.name}`;
+			// Refuse rather than follow: a link can lead outside the declared asset root, and
+			// skipping it lets a build report success while shipping an incomplete page.
+			if (entry.isSymbolicLink())
+				throw new Error(`crust: refusing symlink in assets: ${full}`);
 			if (entry.isDirectory()) {
 				await walk(full, url);
 				continue;
 			}
-			if (!entry.isFile()) continue;
+			if (!entry.isFile()) throw new Error(`crust: refusing unsupported asset entry ${full}`);
 			const bytes = new Uint8Array(await readFile(full));
 			const dot = entry.name.lastIndexOf(".");
 			const extension = dot === -1 ? "" : entry.name.slice(dot).toLowerCase();
