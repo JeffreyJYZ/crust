@@ -34,6 +34,10 @@ than opening a window on a page that will never load.
 The bridge allows exactly the origin `dev.url` names, so pin the port (`strictPort` for Vite, `-p`
 for `next dev`); a dev server that picks a different port is a page whose calls are refused.
 
+### Dev tokens and window labels
+
+Under `crust dev`, a page on the dev origin selects its bridge token with `?window=<label>`: any page can name any configured label and receive that label's token, so per-label grants in dev are a preview, not a security boundary. What protects a shipped app is that a built document's token is bound to its window when the document is served; capabilities are open by default and only deny by default once you configure `security`. A low-grant dev page can read a higher label's token from a same-origin iframe of `?window=<label>`. If that distinction must hold, test `crust build` output, not the dev server — see [Permissions](/docs/guides/permissions#dev-is-not-a-boundary).
+
 ## What restarts the backend
 
 The watcher covers the backend entry's directory. On a `dev.url` project that directory holds your

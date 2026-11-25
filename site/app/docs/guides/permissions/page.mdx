@@ -31,6 +31,10 @@ The check lives in the invoke path, ahead of the handler, so both payload kinds 
 
 **The token is the authority, not the body's `window` field.** The document route mints a fresh token per document and records the `?window=` it served, so the bridge authorises on that bound label. A process token for a dev-server page is bound to `main`, and a request that names no window in its body still uses its token's label. The label in a request is a routing hint: a page that writes `"window":"admin"` can address the admin window but cannot hold the admin window's grants, which belong only to the token minted for that document.
 
+## Dev is not a boundary
+
+That binding is a built-app fact. Under `crust dev` the dev server injects the token and selects it from the page's `?window=<label>`; a page on the dev origin can name another label and hold its grants. Per-label grants in dev preview the built app, they do not enforce it — see [Dev server](/docs/guides/dev#dev-tokens-and-window-labels).
+
 ## Actions
 
 An action is `plugin:command`. `*` is the only metacharacter and matches any run of characters, including none:
