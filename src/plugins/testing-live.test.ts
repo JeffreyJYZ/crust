@@ -177,7 +177,10 @@ describe("a live page", () => {
 
 				// The completion is the regression, not a boolean on whatever the page said: a page
 				// that never answers times out here, so this still fails for a genuinely dead page.
-				const trivial = await darwinTestingAdapter(() => web).evaluate(undefined, "2 + 2");
+				const trivial = await darwinTestingAdapter(() => web).evaluate(
+					undefined,
+					"String(2 + 2)",
+				);
 				expect(trivial).toBe("4");
 
 				const captured = await plugin.commands.console({});
