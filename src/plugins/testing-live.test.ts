@@ -16,6 +16,34 @@ import { captureFrontmost, restoreFocus } from "../../scripts/harness/focus";
 import { CrustError } from "../bridge/errors";
 import { cstr, S } from "../platform/darwin/objc";
 
+/**
+ * The occlusion selector is private WebKit SPI, so its presence varies by macOS version. `skipIf`
+ * needs the answer before the test is registered, hence a throwaway webview here. Its value is
+ * class-level: measured 1 before a window, after setContentView and after orderFront alike, so
+ * ordering cannot make an absent selector appear.
+ */
+async function occlusionSelectorAvailable(): Promise<boolean> {
+	if (process.platform !== "darwin") return true;
+	try {
+		const { shim } = await import("../platform/darwin/index.ts");
+		const { S: ObjC } = await import("../platform/darwin/objc.ts");
+		const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
+		const native = perfNative();
+		const configuration = Number(shim().symbols.shim_webview_configuration() ?? 0);
+		const web = Number(shim().symbols.shim_webview_new(configuration, 10, 10) ?? 0);
+		if (web === 0) return false;
+		const available = native.perf_occlusion(web, 0) === 1;
+		ObjC.v0(web, "release");
+		return available;
+	} catch {
+		return false;
+	}
+}
+
+const LIVE_NAME = "click, type and console work in a real WKWebView";
+const SKIP_NAME = `${LIVE_NAME} — skipped: private WebKit _setWindowOcclusionDetectionEnabled: is unavailable on this macOS, so the occluded page draws no frames and no evaluate can be trusted`;
+const occlusionAvailable = await occlusionSelectorAvailable();
+
 const PAGE = `<!doctype html>
 <html><body>
 <button id="go" onclick="document.getElementById('out').textContent='clicked'">go</button>
@@ -47,7 +75,7 @@ const PAGE = `<!doctype html>
 const before = process.platform === "darwin" ? await captureFrontmost() : undefined;
 
 describe("a live page", () => {
-	test("click, type and console work in a real WKWebView", async () => {
+	test.skipIf(!occlusionAvailable)(occlusionAvailable ? LIVE_NAME : SKIP_NAME, async () => {
 		if (process.platform !== "darwin") {
 			// A platform with no WKWebView cannot evaluate at all; the plugin's refusal is proven in
 			// testing.test.ts, so there is nothing live to measure here.
@@ -100,8 +128,14 @@ describe("a live page", () => {
 			// occlusion at first visibility. Dev-only scaffold, never a shipped default;
 			// scripts/perf/in-process.ts applies the same remedy for the same reason.
 			const { perfNative } = await import("../../src/cli/perf/perf-native.ts");
-			expect(perfNative().perf_occlusion(web, 0)).toBe(1);
+			const native = perfNative();
+			expect(native.perf_occlusion(web, 0)).toBe(1);
+			// Public counterpart from scripts/perf/in-process.ts: join the active Space without
+			// activating the app, or WebKit still keeps the display link idle.
+			S.vq1(win, "setCollectionBehavior:", 1);
 			S.v0(win, "orderFrontRegardless");
+			// Re-assert at first visibility; WebKit caches occlusion there (perf/launch.ts does this).
+			expect(native.perf_occlusion(web, 0)).toBe(1);
 			expect(Number(shim().symbols.shim_webview_load(web, cstr(url)) ?? 0)).toBe(1);
 
 			const plugin = createTestingPlugin(
