@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import { definePlugin, notImplemented, type NotImplemented, type PluginDefinition } from "./define";
 import { failure, invalidLabel, knownWindow, readLabel } from "./window-args.ts";
+import { restorableFrame } from "./window-frame.ts";
 import { createFrameMemory, setFrameMemory } from "./window-frame-memory.ts";
 import { type WindowStateAllCommands, windowStateAllCommands } from "./window-persist-all.ts";
 import type {
@@ -148,7 +149,13 @@ export function createWindowStatePlugin(
 				act("restore", args, async (native, label) => {
 					const calls = frames(native);
 					const frame = (await readState(file))[label];
-					if (frame === undefined)
+					// The automatic dev path checks visible overlap; the built app's only path is
+					// this one, so apply the same rule when work areas are available.
+					const areas = options.workAreas?.();
+					if (
+						frame === undefined ||
+						(areas !== undefined && !restorableFrame(frame, areas))
+					)
 						return {
 							ok: true as const,
 							label,
