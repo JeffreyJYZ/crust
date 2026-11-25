@@ -8,17 +8,19 @@ Every command is one JavaScript expression run through `-[WKWebView evaluateJava
 
 The namespace exists only when the process was started with `CRUST_TEST=1`. The gate is read when the core plugin set is built, so a normal `crust build` (or `crust dev`) has no `testing` name in its registry at all: `invoke("testing", …)` answers `unknown-plugin`, exactly what a misspelled namespace gets. It is an environment variable rather than a config key on purpose — a `testing` key would ship inside the app's own `crust.config.ts` and become a setting somebody could leave on, while `CRUST_TEST=1` is a property of the process that was started.
 
-## Eval deadlines use pump progress
+## Eval deadlines are wall time with a pump gate
 
-Each command is one native `evaluateJavaScript:` call with a 4000 ms budget. On macOS that budget is measured by the native pump's progress clock, which advances one scheduling interval per pump tick — **not by wall time**. A starved runner delivers neither the completion nor the pump ticks, so the deadline pauses with the loop instead of firing against it. A `crust: the page did not answer within 4000 ms` failure therefore does not mean the page took four wall-clock seconds; under load it can mean the loop never got a turn. Do not read that number as elapsed time.
+Each command is one native `evaluateJavaScript:` call with a **30 000 ms liveness budget**. Wall time is the budget; the native pump's progress clock is only a gate — the deadline may fire only after the runner's pump has advanced by the budget too, so a runner starved enough to stop its pump never fails a page that has not had a turn to answer. The older 4000 ms budget counted pump progress alone. On a loaded CI runner the pump ticked steadily while WebKit ran a page it considers hidden at low QoS: a `console` command answered **22 seconds later with the correct payload** and was reported as lost. It was late, not lost. Pump progress measured the runner, not the page.
+
+Hidden is a supported state (`window.crust.hide()`), not an error, and WebKit keys WebContent process QoS on page visibility. Applying the private occlusion selector a probe may use keeps rendering from being suspended, but it does not ask for foreground treatment. So treat 30 000 ms as a liveness budget, **not a correctness bound**: a slow page passes, a page that never calls its completion still fails. Do not read the number as a promise about response time.
 
 The runtime prints evidence on a real timeout, even when `CRUST_TEST` is not set:
 
 ```text
-crust: eval timeout id=12 waited=[13] progress=1000->4000 frames=20->20
+crust: eval timeout id=11 waited=[11] wall=30000ms progress=1920->5920 frames=0->0 visibility=hidden->hidden heartbeat=18->94 offMain=0
 ```
 
-`progress` is pump progress in milliseconds and `waited` lists the ids still waiting. `frames` is a page frame counter when the harness installed one, and `-1` otherwise. `progress` advancing far less than the 4000 ms budget means the pump was starved, not that the page stalled. A completion whose id has no waiter is counted and warned about as `crust: dropped completion id=… kind=… waited=[…] text=…`, so a stale answer can no longer settle the next command silently. The page-side `waitFor { timeoutMs }` is different: it is a wall-clock poll of `query` in the document.
+`wall` is elapsed wall time and `progress` is pump progress in milliseconds. `waited` lists the ids still waiting, including the id that just expired. `frames` is a page rAF counter when the harness installed one and `-1` otherwise; rAF stops for a hidden page, so **frames measure visibility, not liveness**. `visibility` is `document.visibilityState` and `heartbeat` is a `setInterval` tick count from the page, both `n/a`/`-1` without a probe that reports them: a hidden page whose heartbeat still climbs is throttled, one whose heartbeat is frozen is dead. `offMain` counts completions delivered off the sink's thread. A completion whose id has no waiter is counted and warned about as `crust: dropped completion id=11 kind=0 elapsed=22000ms waited=[12] text=…`, so a late answer is distinguishable from a lost one and can no longer settle the next command silently. The page-side `waitFor { timeoutMs }` is different: it is a wall-clock poll of `query` in the document.
 
 ## Activation
 
