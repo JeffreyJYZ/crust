@@ -25,5 +25,5 @@ export async function runSelfCheck(report: Reporter, dir: string): Promise<void>
 
 	await runPanelSteps(checks, note);
 
-	report("done");
+	await report("done");
 }

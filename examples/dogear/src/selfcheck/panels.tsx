@@ -30,10 +30,13 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 		const raced = await settle(pick, 1500);
 		if (!raced.done) {
 			folderRun = pick;
-			pass("dialog sheet", "NSOpenPanel is up; a pick needs a human, so it stays pending");
+			await pass(
+				"dialog sheet",
+				"NSOpenPanel is up; a pick needs a human, so it stays pending",
+			);
 		} else {
 			const picked = raced.value.paths[0];
-			pass(
+			await pass(
 				"dialog sheet",
 				picked === undefined
 					? "NSOpenPanel answered with no path (cancelled)"
@@ -41,7 +44,7 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 			);
 		}
 	} catch (error) {
-		fail("dialog sheet", describe(error));
+		await fail("dialog sheet", describe(error));
 	}
 
 	// 11. The page's own cancel, then the save panel.
@@ -86,13 +89,13 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 		});
 		const raced = await settle(panel, 1500);
 		if (!raced.done) {
-			pass(
+			await pass(
 				"save panel",
 				`NSSavePanel is up; ${cancelNote}; a pick needs a human, so this one stays pending`,
 			);
 		} else {
 			const picked = raced.value.paths[0];
-			pass(
+			await pass(
 				"save panel",
 				picked === undefined
 					? `NSSavePanel answered with no path (cancelled); ${cancelNote}; nothing was written`
@@ -100,6 +103,6 @@ export async function runPanelSteps(checks: Checks, note: ListEntry): Promise<vo
 			);
 		}
 	} catch (error) {
-		fail("save panel", describe(error));
+		await fail("save panel", describe(error));
 	}
 }

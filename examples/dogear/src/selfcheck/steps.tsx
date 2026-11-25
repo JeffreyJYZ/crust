@@ -65,7 +65,7 @@ export async function runFileSteps(checks: Checks, dir: string): Promise<ListEnt
 	);
 
 	if (first === undefined) {
-		report("FAIL nothing to read — the folder held no markdown file");
+		await report("FAIL nothing to read — the folder held no markdown file");
 		return undefined;
 	}
 	const note = first;
