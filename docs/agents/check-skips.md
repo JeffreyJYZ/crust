@@ -35,3 +35,7 @@ wildcards or prefixes — an exact match keeps the rule auditable.
 
 `test:no-skips` is a separate script: the existing `test` script is unchanged.
 Wiring this into CI is a separate decision and has not been done.
+
+## Approved entry
+
+`click, type and console work in a real WKWebView — skipped: private WebKit _setWindowOcclusionDetectionEnabled: is unavailable on this macOS, so the occluded page draws no frames and no evaluate can be trusted` is allowlisted. The live test drives a window parked off every display; without this private selector WebKit suspends the page's rendering and its evaluate callback never answers. `src/plugins/testing-live.test.ts` probes the selector at definition time and skips with that exact name only when it is absent; where it exists the test still asserts the call returns 1. An occluded page cannot be tested meaningfully, so a skip is honest; a green test that never ran is not.
