@@ -131,4 +131,33 @@ describe("rAF sampler", () => {
 		s.reset();
 		expect(s.frame().framesDrawn).toBe(0);
 	});
+
+	test("a frame older than the 10 s window cannot influence p50 or p95", () => {
+		const d = driver();
+		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });
+		s.start();
+		for (let i = 0; i < 600; i++) d.step(20);
+		expect(s.frame().p50).toBe(20);
+		for (let i = 0; i < 11_000; i++) d.step(1);
+		const late = s.frame();
+		expect(late.p50).toBe(1);
+		expect(late.p95).toBe(1);
+		expect(late.worst).toBe(1);
+		s.stop();
+	});
+
+	test("restart clears deltas from before the hide", () => {
+		const d = driver();
+		const s = createSampler({ raf: d.raf, cancelRaf: d.cancelRaf, now: d.now });
+		s.start();
+		d.step(10);
+		d.step(40);
+		expect(s.frame().worst).toBe(40);
+		s.stop();
+		s.start();
+		d.step(1);
+		d.step(1);
+		expect(s.frame().worst).toBe(1);
+		s.stop();
+	});
 });

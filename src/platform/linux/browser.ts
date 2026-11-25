@@ -56,7 +56,8 @@ export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
 		sink = navigationChannel({
 			find: (web) => store.values().find((entry) => entry.web === web),
 			labelOf: (surface) => surface.label,
-			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().popupUrl()),
+			// C keeps each kind's URI in its own buffer, so one commit cannot erase another URL.
+			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().decisionUrl()),
 			decide: (label) => decisions.get(label),
 			onPopup: (surface, url) => surface.onPopup?.(url),
 			setSink: (pointer) => {
@@ -97,30 +98,31 @@ export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
 						new Error("browser.open: the container refused the rectangle"),
 					);
 				}
-				if (!p.load(web, input.url)) {
-					p.close(web);
-					return asFailure(
-						new Error(`browser.open: the surface could not load ${input.url}`),
-					);
-				}
-				// Three policies: popups are refused, capture is denied, and `decide-policy` sends every
-				// committed navigation through the origin gate.
+				// Register before any signal can fire: the sink finds a surface through the store, and
+				// the first document can ask for a popup or capture before `load` even returns.
+				store.set({ label: input.label, web, owner: owner.label, onPopup: input.onPopup });
+				const decide = (input as NavigateInput).onNavigate;
+				if (decide !== undefined)
+					decisions.set(input.label, firstLoadAware(input.url, decide));
+				channel();
+				// Three policies, installed before the first load: popups are refused, capture is
+				// denied, and `decide-policy` gates every committed navigation.
 				if (!p.watch(web) || !p.denyCapture(web) || !p.watchNav(web)) {
+					store.delete(input.label);
+					decisions.delete(input.label);
 					p.close(web);
 					return asFailure(
 						new Error("browser.open: GTK refused the surface's signal handlers"),
 					);
 				}
-				channel();
-				const decide = (input as NavigateInput).onNavigate;
-				if (decide !== undefined)
-					decisions.set(input.label, firstLoadAware(input.url, decide));
-				store.set({
-					label: input.label,
-					web,
-					owner: owner.label,
-					onPopup: input.onPopup,
-				});
+				if (!p.load(web, input.url)) {
+					store.delete(input.label);
+					decisions.delete(input.label);
+					p.close(web);
+					return asFailure(
+						new Error(`browser.open: the surface could not load ${input.url}`),
+					);
+				}
 				return { ok: true, label: input.label };
 			} catch (error) {
 				return asFailure(error);

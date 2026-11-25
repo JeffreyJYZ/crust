@@ -7,6 +7,7 @@ import {
 	PREFLIGHT,
 	preflightError,
 	preflightErrors,
+	shimSource,
 } from "./index.ts";
 
 const [gtk] = PREFLIGHT;
@@ -26,36 +27,24 @@ describe("PREFLIGHT", () => {
 		expect(webkit.symbol).toBe("webkit_web_view_new");
 	});
 
-	// Each of these is resolved with `shim_sym` — mandatory at launch. A library
-	// that exports the first two but not these used to pass the probe and fail
-	// later with a bare "missing symbol" from C.
-	test("covers every symbol the shim requires, not only the two library proofs", () => {
+	/**
+	 * Every mandatory `shim_sym(h, "…")` in the shipped C is resolved by `shim_lib_open`. Derive the
+	 * list from that source: a hardcoded copy cannot catch a resolver the probe forgot. A library
+	 * exporting all but one used to pass preflight and fail later with a bare "missing symbol".
+	 */
+	test("covers every symbol the shim's mandatory resolver requires", () => {
 		const symbols = PREFLIGHT.map((entry) => entry.symbol);
-		for (const required of [
-			"gtk_init_check",
-			"g_main_context_iteration",
-			"webkit_web_view_new",
-			"webkit_web_view_load_uri",
-			"gtk_window_new",
-			"gtk_window_set_title",
-			"gtk_window_set_default_size",
-			"gtk_widget_set_size_request",
-			"gtk_container_add",
-			"gtk_widget_show_all",
-			"gtk_widget_destroy",
-			"g_signal_connect_data",
-			// The window's positioned container: required because the app's own webview lives in it.
-			"gtk_overlay_new",
-			"gtk_overlay_add_overlay",
-			"gtk_widget_show",
-			"gtk_widget_set_halign",
-			"gtk_widget_set_valign",
-			"gtk_widget_set_margin_start",
-			"gtk_widget_set_margin_top",
-			"gtk_widget_get_parent",
-		]) {
-			expect(symbols).toContain(required);
-		}
+		const required = [
+			...new Set(
+				[...shimSource.matchAll(/\bshim_sym\(\s*h\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"/g)].map(
+					(match) => match[1] as string,
+				),
+			),
+		];
+		expect(required.length).toBeGreaterThan(20);
+		for (const symbol of required) expect(symbols).toContain(symbol);
+		for (const symbol of ["gtk_fixed_new", "gtk_widget_set_hexpand", "gtk_widget_set_vexpand"])
+			expect(required).toContain(symbol);
 		// Optional proof entries stay optional: launching an app must not require
 		// `evaluate_javascript`, which arrived only in WebKitGTK 2.40.
 		expect(symbols).not.toContain("webkit_web_view_evaluate_javascript");

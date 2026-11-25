@@ -110,4 +110,39 @@ describe("crust build --notarize stage", () => {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
+
+	test("a failed staple prints the step, its exit code and the tool log", async () => {
+		const root = await project(true);
+		try {
+			const exec = async (command: string[]): Promise<RunResult> => {
+				if (command[1] === "notarytool" && command[2] === "submit") {
+					return {
+						code: 0,
+						stdout: JSON.stringify({ id: "sub-1", status: "Accepted" }),
+						stderr: "",
+					};
+				}
+				if (command[1] === "stapler" && command[2] === "staple") {
+					return { code: 17, stdout: "", stderr: "stapler: ticket not found" };
+				}
+				return { code: 0, stdout: "", stderr: "" };
+			};
+			const { code, out } = await capture(() =>
+				notarizeStage(
+					appPath(root),
+					{
+						CRUST_SIGNING_IDENTITY: "Developer ID Application: Crust (ABCDE12345)",
+						CRUST_NOTARY_PROFILE: "crust",
+					},
+					exec,
+				),
+			);
+			expect(code).toBe(1);
+			expect(out).toContain("notarize rejected");
+			expect(out).toContain("staple failed (exit 17)");
+			expect(out).toContain("stapler: ticket not found");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 });

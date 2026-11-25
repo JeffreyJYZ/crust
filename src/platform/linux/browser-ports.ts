@@ -38,6 +38,8 @@ export interface LinuxBrowserPorts {
 	sink(pointer: number): void;
 	decisionSink(pointer: number): void;
 	popupUrl(): string;
+	/** The decided navigation's URI, read from a buffer separate from the popup one. */
+	decisionUrl(): string;
 	opener(url: string): { status: number; reason: string };
 }
 
@@ -60,6 +62,13 @@ export function realPorts(): LinuxBrowserPorts {
 		return live;
 	};
 	const opener = linuxOpenerAdapter(symbols);
+	const readUrl = (read: ((buffer: Uint8Array, cap: number) => number) | undefined): string => {
+		if (!read) return "";
+		const buffer = new Uint8Array(2048);
+		const length = Number(read(buffer, buffer.length) ?? 0);
+		if (length <= 0) return "";
+		return new TextDecoder().decode(buffer.subarray(0, Math.min(length, buffer.length - 1)));
+	};
 
 	return {
 		shim: symbols,
@@ -113,14 +122,8 @@ export function realPorts(): LinuxBrowserPorts {
 		decisionSink: (pointer) => {
 			symbols().shim_browser_set_decision_sink?.(pointer);
 		},
-		popupUrl: () => {
-			const buffer = new Uint8Array(2048);
-			const length = Number(symbols().shim_browser_popup_url?.(buffer, buffer.length) ?? 0);
-			if (length <= 0) return "";
-			return new TextDecoder().decode(
-				buffer.subarray(0, Math.min(length, buffer.length - 1)),
-			);
-		},
+		popupUrl: () => readUrl(symbols().shim_browser_popup_url),
+		decisionUrl: () => readUrl(symbols().shim_browser_navigation_url),
 		opener: (url) => {
 			const outcome = opener.openUrl(url);
 			// `external` is a synchronous answer by contract; a promise here would be a page asking

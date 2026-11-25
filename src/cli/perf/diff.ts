@@ -30,7 +30,17 @@ function fieldOf(record: PerfRecordFile): Summary | undefined {
 	return record.summary ?? summaryOf(record.samples ?? []);
 }
 
-function metrics(before: Summary, after: Summary): Metric[] {
+function secondsOf(record: PerfRecordFile): number {
+	const seconds = record.meta?.seconds;
+	return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds : 1;
+}
+
+function metrics(
+	before: Summary,
+	after: Summary,
+	beforeSeconds: number,
+	afterSeconds: number,
+): Metric[] {
 	const fields: Array<[string, keyof Summary["frame"] | string, Direction]> = [
 		["frame.fps", "fps", "higher"],
 		["frame.p50", "p50", "lower"],
@@ -62,15 +72,29 @@ function metrics(before: Summary, after: Summary): Metric[] {
 	for (const [field, better, read] of groups) {
 		rows.push({ field, before: read(before), after: read(after), better });
 	}
+	// These two are cumulative totals, not rates. Comparing them across runs of different lengths
+	// turns a shorter run into a fake regression. The file records the length in `meta.seconds`.
+	const cumulative = new Set(["frame.framesDrawn", "invoke.throughput"]);
+	for (const row of rows) {
+		if (!cumulative.has(row.field)) continue;
+		row.field = `${row.field}/s`;
+		row.before /= beforeSeconds;
+		row.after /= afterSeconds;
+	}
 	return rows;
 }
 
 /** Percent change, with zero handled as a threshold rather than a division by zero. */
-function delta(before: number, after: number, better: Direction, tolerance: number) {
+export function delta(before: number, after: number, better: Direction, tolerance: number) {
 	if (before === 0 && after === 0) return { pct: 0, bad: false, text: "+0.0%" };
 	if (before === 0) {
-		const bad = better === "lower" && after > 0;
-		return { pct: bad ? Infinity : -Infinity, bad, text: after > 0 ? "+inf" : "-inf" };
+		// A percentage from zero is undefined. The change is the whole new value — 100% of it —
+		// so score it against the same percent tolerance as every other row. ±inf in the text
+		// still flags the undefined baseline, and its sign matches the direction of movement.
+		const pct = after > 0 ? 100 : -100;
+		const bad =
+			better === "lower" ? pct > tolerance : better === "higher" ? pct < -tolerance : false;
+		return { pct, bad, text: after > 0 ? "+inf" : "-inf" };
 	}
 	const pct = ((after - before) / Math.abs(before)) * 100;
 	const bad =
@@ -90,7 +114,7 @@ export function diffRecords(
 	}
 	const lines = ["field                      before       after    delta  rule"];
 	const regressions: string[] = [];
-	for (const row of metrics(before, after)) {
+	for (const row of metrics(before, after, secondsOf(beforeFile), secondsOf(afterFile))) {
 		const change = delta(row.before, row.after, row.better, tolerance);
 		const rule =
 			row.better === "lower"

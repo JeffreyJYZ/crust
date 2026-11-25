@@ -73,6 +73,9 @@ export class FakePorts implements LinuxBrowserPorts {
 	popupUrl() {
 		return "http://127.0.0.1:4321/popup";
 	}
+	decisionUrl() {
+		return "http://127.0.0.1:4321/navigated";
+	}
 	opener(url: string) {
 		return { status: url.includes("bad") ? 2 : 0, reason: "gio refused" };
 	}

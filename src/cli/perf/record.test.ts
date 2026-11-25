@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { record } from "./record.ts";
+import { failRecord, record } from "./record.ts";
 import { diffFiles } from "./diff.ts";
 import { idleWindowCount } from "./format.ts";
 import type { PerfRecordFile } from "./types.ts";
@@ -31,6 +31,14 @@ async function cli(args: string[]): Promise<{ code: number; out: string; err: st
 }
 
 describe("perf record", () => {
+	test("a failed record discards an output file left by an earlier run", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "crust-perf-stale-"));
+		const out = join(dir, "perf.json");
+		await writeFile(out, "stale result from a good run");
+		expect(await failRecord(out, "renderer never painted")).toBe(2);
+		expect(await exists(out)).toBe(false);
+	});
+
 	test("honest failure: a path that is not an app exits 2 with no file", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "crust-perf-honest-"));
 		const out = join(dir, "perf.json");

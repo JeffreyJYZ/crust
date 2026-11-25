@@ -32,9 +32,10 @@ describe("perf commands", () => {
 
 	test("mounted plugin answers sample, sinks, overlay and reset", () => {
 		const collector = new Collector();
-		const plugin = createPerfPlugin(collector, () => 1000);
+		const at = (ms: number) => () => collector.startedAt + ms;
+		const plugin = createPerfPlugin(collector, at(1000));
 		expect(plugin.name).toBe("perf");
-		const commands = createPerfCommands(collector, () => 1000);
+		const commands = createPerfCommands(collector, at(1000));
 		try {
 			expect(call(commands, "sinks", { overlay: true })).toEqual({
 				overlay: true,
@@ -49,7 +50,7 @@ describe("perf commands", () => {
 				invoke: object;
 				frame: unknown;
 			};
-			expect(sample.at).toBe(1000 - collector.startedAt);
+			expect(sample.at).toBe(1000);
 			expect(sample.invoke).toEqual({});
 			expect(sample.frame).toBeNull();
 			const frame = { framesDrawn: 56, fps: 56, p50: 17, p95: 26, worst: 40, longTasks: 0 };
@@ -59,5 +60,14 @@ describe("perf commands", () => {
 		} finally {
 			collector.setSinks({ overlay: false, file: false, stdout: false });
 		}
+	});
+
+	test("the default sample clock matches the collector's own clock", () => {
+		const collector = new Collector();
+		collector.mount();
+		const commands = createPerfCommands(collector);
+		const answer = call(commands, "sample") as { at: number };
+		expect(answer.at).toBeGreaterThanOrEqual(0);
+		expect(answer.at).toBeLessThan(1000);
 	});
 });

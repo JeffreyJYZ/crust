@@ -3,6 +3,7 @@
  * never per row or per frame. Before the `perf` plugin is mounted the panel shows page-only numbers
  * and says so. `MARKER` lets a production-bundle byte search prove this module was not pulled in.
  */
+import { installHotkey, type KeyHost } from "./hotkey.ts";
 import { createPanel, bridgeStore, type DocumentLike, type Panel } from "./panel.ts";
 import { createSampler, type FrameStats, type Sampler } from "./sampler.ts";
 
@@ -96,10 +97,18 @@ export function mountOverlay(options: OverlayOptions = {}) {
 			return out;
 		}
 		const s = sampled;
-		out.push(`loop     p95 ${s.runtime.eventLoopDelayP95.toFixed(2)} ms · heap ${mb(s.runtime.heapUsed)}/${mb(s.runtime.heapTotal)} MB`);
-		out.push(`events   emitted ${s.events.emitted} · delivered ${s.events.delivered} · dropped ${s.events.dropped} · p95 ${s.events.p95.toFixed(2)}`);
+		out.push(
+			`loop     p95 ${s.runtime.eventLoopDelayP95.toFixed(2)} ms · heap ${mb(s.runtime.heapUsed)}/${mb(s.runtime.heapTotal)} MB`,
+		);
+		out.push(
+			`events   emitted ${s.events.emitted} · delivered ${s.events.delivered} · dropped ${s.events.dropped} · p95 ${s.events.p95.toFixed(2)}`,
+		);
 		const names = Object.keys(s.invoke).slice(0, 3);
-		out.push(names.length === 0 ? "invoke   none" : `invoke   ${names.map((n) => `${n} ${s.invoke[n]?.count ?? 0}`).join(" · ")}`);
+		out.push(
+			names.length === 0
+				? "invoke   none"
+				: `invoke   ${names.map((n) => `${n} ${s.invoke[n]?.count ?? 0}`).join(" · ")}`,
+		);
 		return out;
 	}
 
@@ -153,17 +162,10 @@ export function mountOverlay(options: OverlayOptions = {}) {
 
 	const handle = options.interval?.(tick, 1000) ?? setInterval(tick, 1000);
 	const stopInterval = options.clearInterval ?? (clearInterval as (h: unknown) => void);
-	if (options.dev !== false) {
-		try {
-			(scope.document as { addEventListener?: (t: string, fn: (e: unknown) => void) => void })
-				?.addEventListener?.("keydown", (event) => {
-					const e = event as { metaKey?: boolean; shiftKey?: boolean; key?: string };
-					if (e.metaKey && e.shiftKey && e.key?.toLowerCase() === "p") setVisible(!visible);
-				});
-		} catch {
-			// Conflicting hot key degrades to the API.
-		}
-	}
+	const removeHotkey =
+		options.dev === false
+			? undefined
+			: installHotkey(scope.document as KeyHost | undefined, () => setVisible(!visible));
 
 	return {
 		marker: MARKER,
@@ -184,6 +186,7 @@ export function mountOverlay(options: OverlayOptions = {}) {
 			stopInterval(handle);
 			sampler.stop();
 			panel.destroy();
+			removeHotkey?.();
 		},
 	};
 }

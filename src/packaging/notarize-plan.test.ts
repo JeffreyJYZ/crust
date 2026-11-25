@@ -113,4 +113,20 @@ describe("describeNotarize", () => {
 			`  ${ISSUES[1]}`,
 		]);
 	});
+
+	test("a failed step surfaces its reason and log even though status is set", () => {
+		const text = describeNotarize({
+			ok: false,
+			status: "rejected",
+			appPath: APP,
+			submissionId: "sub-1",
+			reason: "staple failed (exit 17)",
+			log: "stapler: ticket not found",
+		});
+		expect(text.split("\n")).toEqual([
+			`notarize rejected   sub-1  ${APP}`,
+			"  staple failed (exit 17)",
+			"  stapler: ticket not found",
+		]);
+	});
 });

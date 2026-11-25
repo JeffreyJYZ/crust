@@ -13,14 +13,15 @@ export interface GatekeeperResult {
 }
 
 /**
- * The argv `crust sign` claims it ran. `--strict` is what makes the claim true:
- * without it a bundle with strict-only issues is still reported as clean.
+ * The argv `crust sign` claims it ran. `--strict` catches strict-only issues; `--deep` recurses
+ * into nested code, which a shallow verify only investigates weakly. Without both, a bundle
+ * with an ad-hoc sidecar reads as clean and the notary service is the first to disagree.
  */
 export function verifyCommand(appPath: string): string[] {
-	return ["codesign", "--verify", "--strict", "--verbose=4", appPath];
+	return ["codesign", "--verify", "--strict", "--deep", "--verbose=4", appPath];
 }
 
-/** `codesign --verify --strict` — cheap, local, no Gatekeeper, no network. */
+/** `codesign --verify --strict --deep` — cheap, local, no Gatekeeper, no network. */
 export async function verifySignature(appPath: string): Promise<VerifyResult> {
 	const result = await run(verifyCommand(appPath));
 	return {

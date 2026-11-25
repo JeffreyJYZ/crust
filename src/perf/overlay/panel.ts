@@ -12,12 +12,15 @@ export interface ElementLike {
 	textContent: string;
 	appendChild(child: ElementLike): void;
 	addEventListener(type: string, fn: (event: PointerLike) => void): void;
+	setPointerCapture?(pointerId: number): void;
+	releasePointerCapture?(pointerId: number): void;
 	remove(): void;
 }
 
 export interface PointerLike {
 	clientX: number;
 	clientY: number;
+	pointerId?: number;
 }
 
 export interface DocumentLike {
@@ -132,6 +135,8 @@ export function createPanel(options: PanelOptions = {}) {
 
 	header.addEventListener("pointerdown", (e) => {
 		drag = { x: e.clientX, y: e.clientY, ox: x, oy: y };
+		// Capture keeps move/up on the header when the pointer leaves it mid-drag.
+		if (e.pointerId !== undefined) header.setPointerCapture?.(e.pointerId);
 	});
 	header.addEventListener("pointermove", (e) => {
 		if (!drag) return;
@@ -139,11 +144,14 @@ export function createPanel(options: PanelOptions = {}) {
 		y = drag.oy + e.clientY - drag.y;
 		place();
 	});
-	header.addEventListener("pointerup", () => {
+	const endDrag = (e: PointerLike, persist: boolean): void => {
 		if (!drag) return;
+		if (e.pointerId !== undefined) header.releasePointerCapture?.(e.pointerId);
 		drag = undefined;
-		void store?.set(CORNER_KEY, { x, y });
-	});
+		if (persist) void store?.set(CORNER_KEY, { x, y });
+	};
+	header.addEventListener("pointerup", (e) => endDrag(e, true));
+	header.addEventListener("pointercancel", (e) => endDrag(e, false));
 
 	return {
 		element: root,
