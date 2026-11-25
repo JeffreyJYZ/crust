@@ -120,4 +120,18 @@ describe("one locale answer", () => {
 			text: "مرحبا",
 		});
 	});
+
+	test("an underscore locale narrows to its base language like a hyphen one", () => {
+		const plugin = createI18nPlugin({
+			messages: { en: { greeting: "Hello" }, ar: { greeting: "مرحبا" } },
+			adapter,
+		});
+		expect(call(plugin, "setLocale", { locale: "ar_SA" })).toMatchObject({ dir: "rtl" });
+		expect(call(plugin, "translate", { key: "greeting" })).toMatchObject({
+			locale: "ar",
+			dir: "rtl",
+			text: "مرحبا",
+		});
+		expect(call(plugin, "messages")).toMatchObject({ locale: "ar", dir: "rtl" });
+	});
 });

@@ -57,6 +57,8 @@ describe("autostart.enable", () => {
 			expect(text).toContain(`<string>${ID}</string>`);
 			expect(text).toContain("<key>RunAtLoad</key>");
 			expect(text).toContain(`<string>${app}</string>`);
+			// launchd execs argv[0]; a .app is a directory, so the bundle goes through /usr/bin/open.
+			expect(text).toContain("<string>/usr/bin/open</string>");
 			// The temp sibling is renamed away, so launchd only ever sees whole plists.
 			expect(await readdir(join(home, "Library", "LaunchAgents"))).toEqual([`${ID}.plist`]);
 		} finally {
@@ -135,6 +137,40 @@ describe("autostart.disable and isEnabled", () => {
 			await call(plugin, "enable", { appPath: app });
 			// No bundleId argument and none on the adapter: the id came from the plist read.
 			expect(await call(plugin, "disable")).toMatchObject({ ok: true, enabled: false });
+			expect(await call(plugin, "isEnabled")).toMatchObject({ ok: true, enabled: false });
+		} finally {
+			await rm(home, { recursive: true, force: true });
+		}
+	});
+
+	test("isEnabled refuses a plist whose argv would fail execve, even though the file exists", async () => {
+		const home = await scratch();
+		try {
+			const plugin = createAutostartPlugin({ home, bundleId: ID, platform: "darwin" });
+			const app = await bundle(home);
+			await call(plugin, "enable", { appPath: app });
+			const plist = join(home, "Library", "LaunchAgents", `${ID}.plist`);
+			// An older crust wrote the bundle directory as ProgramArguments[0]. The plist is still
+			// there, but launchd would execve a directory; the old `exists` check said enabled: true.
+			const wrong = (await readFile(plist, "utf8")).replace(
+				"<string>/usr/bin/open</string>\n\t\t<string>" + app + "</string>",
+				`<string>${app}</string>`,
+			);
+			await writeFile(plist, wrong, "utf8");
+			expect(await call(plugin, "isEnabled")).toMatchObject({ ok: true, enabled: false });
+		} finally {
+			await rm(home, { recursive: true, force: true });
+		}
+	});
+
+	test("a directory that is not a bundle is refused instead of being exec'd", async () => {
+		const home = await scratch();
+		try {
+			const plugin = createAutostartPlugin({ home, bundleId: ID, platform: "darwin" });
+			const dir = join(home, "tools");
+			await mkdir(dir, { recursive: true });
+			const result = await call(plugin, "enable", { appPath: dir });
+			expect(result).toMatchObject({ ok: false, code: "bad-request" });
 			expect(await call(plugin, "isEnabled")).toMatchObject({ ok: true, enabled: false });
 		} finally {
 			await rm(home, { recursive: true, force: true });

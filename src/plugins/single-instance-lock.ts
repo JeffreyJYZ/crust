@@ -6,7 +6,8 @@
  * live one in between, and deleting that would let both processes believe they won.
  */
 
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { linkSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -105,19 +106,46 @@ function drop(path: string): boolean {
 }
 
 /**
- * Compare-and-delete: unlink only when the file still holds exactly the bytes
- * that named the stale pid. A competing waiter can replace a stale lock with
- * its own live one between our read and here; an unconditional unlink would
- * destroy that fresh lock and let both processes report `acquired: true`.
+ * Atomic compare-and-delete. Read-then-unlink cannot be made safe by reordering: a competing
+ * waiter can replace the stale lock between the two syscalls, and the unlink then removes *its*
+ * fresh lock. Instead the file is hard-linked to a private name first. `link` is one atomic
+ * syscall, so the private name and the lock name point at the same inode from that instant. The
+ * bytes are read through the private name, and the link count decides the winner: `nlink === 2`
+ * means only our private name and the lock name still name that inode, so nobody else replaced it.
+ * A second waiter that linked the same inode raises the count to 3 and both back off; the acquire
+ * loop then retries against whatever is on disk. If the lock was already replaced, our private
+ * link names the old inode, its bytes still match, but `nlink === 1`, so we leave the new file be.
  */
-export function dropIfUnchanged(path: string, raw: string): boolean {
+export function dropIfUnchanged(
+	path: string,
+	raw: string,
+	duringTakeover?: BeforeTakeover,
+): boolean {
+	const claim = `${path}.${process.pid}.${randomUUID()}.claim`;
 	try {
-		if (readFileSync(path, "utf8") !== raw) return false;
-		unlinkSync(path);
-		return true;
+		linkSync(path, claim);
 	} catch (error) {
 		if (codeOf(error) === "ENOENT") return false;
 		throw error;
+	}
+	try {
+		if (readFileSync(claim, "utf8") !== raw) return false;
+		// Test seam: the exact window a plain compare-and-unlink could not survive.
+		duringTakeover?.(path);
+		if (statSync(claim).nlink !== 2) return false;
+		try {
+			unlinkSync(path);
+		} catch (error) {
+			if (codeOf(error) === "ENOENT") return false;
+			throw error;
+		}
+		return true;
+	} finally {
+		try {
+			unlinkSync(claim);
+		} catch {
+			// Best effort: the claim is a private hard link, never the lock itself.
+		}
 	}
 }
 
@@ -128,6 +156,7 @@ export function acquire(
 	dir: string,
 	rawId: unknown,
 	beforeTakeover?: BeforeTakeover,
+	duringTakeover?: BeforeTakeover,
 ): AcquireResult {
 	const path = lockPath(dir, rawId);
 	mkdirSync(dir, { recursive: true });
@@ -141,7 +170,7 @@ export function acquire(
 		if (holder === process.pid) return { acquired: true, pid: holder, path };
 		if (holder !== undefined && isAlive(holder)) return { acquired: false, pid: holder, path };
 		beforeTakeover?.(path);
-		dropIfUnchanged(path, lock.raw);
+		dropIfUnchanged(path, lock.raw, duringTakeover);
 	}
 	return { acquired: false, pid: readLock(path)?.pid ?? 0, path };
 }

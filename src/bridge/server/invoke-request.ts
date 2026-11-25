@@ -22,6 +22,8 @@ export async function invokeRequest(
 	cors?: Record<string, string>,
 	/** The label bound to the presented credential, from the document route. */
 	authority?: string,
+	/** The presenting token itself, forwarded to handlers as their stable per-page identity. */
+	credential?: string,
 ): Promise<Response> {
 	try {
 		const declared = Number(request.headers.get("content-length") ?? "0");
@@ -44,7 +46,15 @@ export async function invokeRequest(
 			const bytes = await readCappedBody(request);
 			// The binary form has no JSON body to carry a field, so the routing hint rides in the query.
 			const routing = asWindowLabel(url.searchParams.get("window"));
-			const result = await run(plugin, command, bytes, routing, authority, bytes.byteLength);
+			const result = await run(
+				plugin,
+				command,
+				bytes,
+				routing,
+				authority,
+				bytes.byteLength,
+				credential,
+			);
 			return jsonResponse(
 				{ ok: true, result: encodeResult(result) },
 				resultStatus(result),
@@ -75,6 +85,7 @@ export async function invokeRequest(
 			asWindowLabel(parsed.window),
 			authority,
 			sizeIn,
+			credential,
 		);
 		return jsonResponse({ ok: true, result: encodeResult(result) }, resultStatus(result), cors);
 	} catch (error) {

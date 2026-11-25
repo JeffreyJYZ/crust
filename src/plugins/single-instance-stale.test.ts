@@ -6,7 +6,7 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -37,6 +37,30 @@ test("a competing waiter's fresh lock is not unlinked during stale takeover", ()
 			if (fired) return;
 			fired = true;
 			// Another waiter replaced the stale lock with its own live one here.
+			writeFileSync(path, `${LIVE_FOREIGN_PID}\n`);
+		},
+	});
+
+	const result = plugin.commands.acquire({ id: "app" });
+	expect(fired).toBe(true);
+	expect(result.acquired).toBe(false);
+	expect(result.pid).toBe(LIVE_FOREIGN_PID);
+	expect(readFileSync(path, "utf8").trim()).toBe(String(LIVE_FOREIGN_PID));
+});
+
+test("a fresh lock written in the read-to-unlink window is never unlinked", () => {
+	const dir = tempDir();
+	const path = join(dir, "app.lock");
+	writeFileSync(path, `${DEAD_PID}\n`);
+	let fired = false;
+	const plugin = createSingleInstancePlugin({
+		dir,
+		duringTakeover: () => {
+			if (fired) return;
+			fired = true;
+			// The competing waiter replaces the stale lock after our compare but before our unlink.
+			// A real takeover unlinks then O_EXCL-creates, so the replacement is a new inode.
+			unlinkSync(path);
 			writeFileSync(path, `${LIVE_FOREIGN_PID}\n`);
 		},
 	});

@@ -20,6 +20,13 @@ export interface PluginContext {
 	 * route a command to a window and must never grant anything. The bearer token is the credential.
 	 */
 	window?: string;
+	/**
+	 * Stable identity of the calling document, minted by the bridge from its bearer token. Unlike
+	 * `emit`, which is one process-wide function shared by every page, this differs between two
+	 * pages in the *same* window and stays the same across that page's commands. Plugins that keep
+	 * per-page listener bookkeeping (navigation, deep links) key on this when it is present.
+	 */
+	pageId?: string;
 }
 
 export type CommandHandler<Args = any, Result = any> = (

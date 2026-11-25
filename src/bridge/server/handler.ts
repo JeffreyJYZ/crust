@@ -18,41 +18,14 @@ import { refuseRecord } from "@/logging/records";
 import { TOKEN_PARAM, tokenFromSearch, windowLabelFromSearch } from "../window-identity.ts";
 import { assetBody, documentResponse, hasDocument } from "./assets.ts";
 import { allowedOrigin, corsHeaders, preflight } from "./cors.ts";
-import { type DocumentTokenLedger, mintDocumentToken } from "./document-tokens.ts";
-import type { Events } from "./events.ts";
+import { mintDocumentToken } from "./document-tokens.ts";
 import { bearer, contentTypeOf, errorResponse, hasExtension } from "./http.ts";
-import { invokeRequest, type Run } from "./invoke.ts";
+import { invokeRequest } from "./invoke.ts";
 import { PAGE_LOG_PATH, pageLogRequest } from "./page-log.ts";
-import type { StartBridgeOptions } from "./types.ts";
+import type { BridgeState } from "./state.ts";
 
 export const INVOKE_PATH = "/_crust/invoke";
 export const EVENTS_PATH = "/_crust/events";
-
-export interface BridgeState {
-	options: StartBridgeOptions;
-	/** A config-supplied policy; absent means `defaultCsp(nonce)` is built per document. */
-	csp: string | undefined;
-	token: string;
-	devOrigins: readonly string[];
-	events: Events;
-	/**
-	 * token -> the label it was issued for. The process token is bound to the default label for the
-	 * dev-server path; each served document gets a fresh token bound to its own `?window=`. Both the
-	 * document route and the invoke route accept only tokens in this map, and capability authority
-	 * comes from the bound label — never from a request field.
-	 */
-	labels: Map<string, string | undefined>;
-	/** The single document-token ledger, shared with the runtime's one-shot dev-page mint. */
-	ledger: DocumentTokenLedger;
-	/**
-	 * Tokens allowed to seed a document. Only the host's process token by default — a document
-	 * token can re-serve its own page but can never choose a different label.
-	 */
-	seedTokens?: ReadonlySet<string>;
-	/** The bound port. An ephemeral bind only knows it after `serve` returns. */
-	port(): number;
-	run: Run;
-}
 
 export function createHandler(state: BridgeState): (request: Request) => Promise<Response> {
 	// The process token is the only seed unless the caller says otherwise. Keep it explicit: a
@@ -191,8 +164,9 @@ export function createHandler(state: BridgeState): (request: Request) => Promise
 		if (url.pathname === INVOKE_PATH && request.method === "POST") {
 			// The label bound to the credential is the only authority for the capability gate.
 			// `invokeRequest` still reads the body/query label as a routing hint for `ctx.window`.
-			const authority = state.labels.get(headerToken ?? queryToken ?? token);
-			return await invokeRequest(request, url, state.run, cors, authority);
+			const credential = headerToken ?? queryToken ?? token;
+			const authority = state.labels.get(credential);
+			return await invokeRequest(request, url, state.run, cors, authority, credential);
 		}
 
 		return errorResponse(new CrustError("not-found", url.pathname), cors);

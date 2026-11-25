@@ -93,6 +93,28 @@ describe("app.use", () => {
 		);
 	});
 
+	test("refuses every runtime-built namespace, not just the core four", () => {
+		// These used to pass `use()` and then throw from `startApp()`'s registry, after the bridge
+		// had already been built. `shell` and `deep-link` are the two most likely to be named.
+		for (const name of [
+			"shell",
+			"clipboard",
+			"keychain",
+			"deep-link",
+			"store",
+			"database",
+			"preview",
+			"browser",
+			"pty",
+			"single-instance",
+			"stronghold",
+		]) {
+			expect(() => mount(new App(), { name, commands: { x: () => 1 } })).toThrow(
+				/built-in plugin/,
+			);
+		}
+	});
+
 	test("refuses a second mount of the same name", () => {
 		const app = new App().use(clock);
 		expect(() => app.use(clock)).toThrow(/already mounted/);

@@ -12,6 +12,9 @@ import { armGuardToken, disarmGuardToken, GUARD_TOKEN_VAR } from "./runtime-cras
 import {
 	GUARD_PID_VAR,
 	GUARD_ROOT_VAR,
+	GUARD_SINCE_VAR,
+	processStartTime,
+	type GuardTarget,
 	guardTarget,
 	watchCrashTarget,
 } from "./runtime-crash-guard-watch.ts";
@@ -19,6 +22,8 @@ import {
 export {
 	GUARD_PID_VAR,
 	GUARD_ROOT_VAR,
+	GUARD_SINCE_VAR,
+	processStartTime,
 	guardTarget,
 	runCrashGuardIfMarked,
 	watchCrashTarget,
@@ -61,6 +66,7 @@ export function guardLaunch(
 	pid: number,
 	root: string,
 	token?: string,
+	since?: string,
 ): {
 	cmd: string[];
 	env: Record<string, string | undefined>;
@@ -75,6 +81,7 @@ export function guardLaunch(
 		"--root",
 		root,
 		...(token === undefined ? [] : ["--token", token]),
+		...(since === undefined ? [] : ["--since", since]),
 	];
 	return {
 		cmd,
@@ -83,6 +90,7 @@ export function guardLaunch(
 			[GUARD_PID_VAR]: String(pid),
 			[GUARD_ROOT_VAR]: root,
 			...(token === undefined ? {} : { [GUARD_TOKEN_VAR]: token }),
+			...(since === undefined ? {} : { [GUARD_SINCE_VAR]: since }),
 		},
 	};
 }
@@ -106,7 +114,10 @@ export function startCrashGuard(options: CrashGuardOptions): CrashGuard {
 	mkdirSync(root, { recursive: true });
 	rmSync(crashRecordPath(root), { force: true });
 	const token = armGuardToken(root);
-	const { cmd, env } = guardLaunch(pid, root, token);
+	// The token survives a fault by design, so a pid reused before the next poll would still look
+	// armed. The start time gives the guard a second identity it can check on every tick.
+	const since = processStartTime(pid);
+	const { cmd, env } = guardLaunch(pid, root, token, since);
 	let child: ReturnType<typeof Bun.spawn>;
 	try {
 		child = Bun.spawn({
@@ -143,8 +154,36 @@ export function startCrashGuard(options: CrashGuardOptions): CrashGuard {
 	};
 }
 
+export interface GuardWatchDeps {
+	watch?: (target: GuardTarget) => Promise<void>;
+	report?: (message: string) => void;
+	exit?: (code: number) => void;
+}
+
+/**
+ * The guard's one entry point. Writing a crash record reaches the filesystem, so a full disk
+ * or a changed mode can reject the watch. Without a catch that left an unhandled promise and
+ * no exit, and the parent had no way to learn that a crash it watched was lost.
+ */
+export async function guardWatchExit(
+	target: GuardTarget,
+	deps: GuardWatchDeps = {},
+): Promise<void> {
+	const watch = deps.watch ?? watchCrashTarget;
+	const report = deps.report ?? ((message: string) => console.error(message));
+	const exit = deps.exit ?? ((code: number) => process.exit(code));
+	try {
+		await watch(target);
+		exit(0);
+	} catch (error) {
+		const text = error instanceof Error ? error.message : String(error);
+		report("crust: crash guard could not record the crash: " + text);
+		exit(1);
+	}
+}
+
 if (import.meta.main) {
 	const target = guardTarget(process.env, process.argv.slice(2));
 	if (target === null) process.exit(2);
-	void watchCrashTarget(target).then(() => process.exit(0));
+	await guardWatchExit(target);
 }

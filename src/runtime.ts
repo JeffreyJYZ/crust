@@ -3,6 +3,7 @@
  * An invoke that matches no handler is the bridge's structured error, never a crash. Pieces: `runtime-shim.ts`, `runtime-plugins.ts`, `runtime-host.ts`. Run directly it IS the backend: `bun run src/runtime.ts --config <path> --entry <path>`.
  */
 import { dirname, join, resolve } from "node:path";
+import { closeConfiguredWindows } from "@/app-cleanup.ts";
 import { app, type App, type CommandHandler, type Platform } from "@/app.ts";
 import { loadDarwinPlatform, loadPlatform } from "./app-loop.ts";
 import { type AssetTable, type BridgeHandle, startBridge } from "@/bridge/server.ts";
@@ -22,7 +23,8 @@ import {
 } from "./runtime-host.ts";
 import { runCrashGuardIfMarked } from "./runtime-crash-guard.ts";
 import { createAppNamespacePlugin, nativePlugins } from "./runtime-plugins.ts";
-import { parseRuntimeArgs, registerShutdownSignals } from "./runtime-process.ts";
+import { runRuntimeCli } from "./runtime-cli.ts";
+import { registerShutdownSignals } from "./runtime-process.ts";
 import { claimForLaunch, quitSecondInstance } from "./runtime-single.ts";
 import { injectShim, selectedPlugins } from "./runtime-shim.ts";
 import { setBridgeToken, tokenClearedOnStop } from "@/bridge/window-identity.ts";
@@ -174,6 +176,13 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 		else await import(entryPath as string);
 	} catch (error) {
 		await bridge?.stop();
+		// An entry that failed after `app.run()` started would otherwise leave a platform running
+		// with open windows and no bridge. `app.run()` closes its own windows on failure; this arm
+		// covers a statement after `await app.run()` that throws. `platform.quit()` is deliberately
+		// not used here: on macOS it calls `process.exit(0)` and would hide the real error.
+		if (app.started && platform !== undefined) {
+			closeConfiguredWindows(platform, config);
+		}
 		throw error;
 	}
 
@@ -185,16 +194,6 @@ export async function startApp(options: StartAppOptions = {}): Promise<BridgeHan
 /** The one argument parser both this module and the CLI accept. */
 export { parseRuntimeArgs } from "./runtime-process.ts";
 
-if (import.meta.main) {
-	const args = parseRuntimeArgs(process.argv.slice(2));
-	// `crust dev` restarts by killing this process, and a window closing kills it
-	// from the platform side; both should end the process cleanly, not 130/143.
-	registerShutdownSignals();
-	startApp(args).catch((error: unknown) => {
-		const text = error instanceof Error ? error.message : String(error);
-		console.error(`crust: ${text}`);
-		process.exitCode = 1;
-	});
-}
+if (import.meta.main) runRuntimeCli();
 
 export type { App, BridgeHandle, CommandHandler, StartAppOptions };

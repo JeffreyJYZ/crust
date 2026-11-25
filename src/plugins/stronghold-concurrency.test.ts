@@ -110,6 +110,51 @@ describe("two instances over one vault", () => {
 	});
 });
 
+describe("one instance, overlapping commits", () => {
+	test("two concurrent sets in one instance keep both secrets in its own cache", async () => {
+		const root = await scratch();
+		try {
+			const call = await opened(root);
+			expect(
+				await Promise.all([
+					call("set", { key: "alpha", value: "1" }),
+					call("set", { key: "beta", value: "2" }),
+				]),
+			).toEqual([
+				{ ok: true, key: "alpha" },
+				{ ok: true, key: "beta" },
+			]);
+			// Both commands answered ok; the identity guard used to drop the second from the cache.
+			expect(await call("get", { key: "alpha" })).toMatchObject({ ok: true, value: "1" });
+			expect(await call("get", { key: "beta" })).toMatchObject({ ok: true, value: "2" });
+			expect(await call("keys")).toEqual({ ok: true, keys: ["alpha", "beta"] });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("two concurrent deletes in one instance both disappear from its cache", async () => {
+		const root = await scratch();
+		try {
+			const call = await opened(root);
+			await call("set", { key: "alpha", value: "1" });
+			await call("set", { key: "beta", value: "2" });
+			expect(
+				await Promise.all([
+					call("delete", { key: "alpha" }),
+					call("delete", { key: "beta" }),
+				]),
+			).toEqual([
+				{ ok: true, key: "alpha", deleted: true },
+				{ ok: true, key: "beta", deleted: true },
+			]);
+			expect(await call("keys")).toEqual({ ok: true, keys: [] });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("a replaced header", () => {
 	test("a write refuses instead of sealing entries under keys the new vault cannot read", async () => {
 		const root = await scratch();

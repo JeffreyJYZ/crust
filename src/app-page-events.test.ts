@@ -14,6 +14,7 @@ import type { AppEvent, AppListener, LifecycleSource } from "@/app-types.ts";
 import { watchLifecycle } from "@/app-loop.ts";
 import {
 	clearPageEvents,
+	emitOnQuit,
 	pageSinkCount,
 	publishPageEvent,
 	subscribePageEvents,

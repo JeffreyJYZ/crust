@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { createRunner } from "@/bridge/server/invoke.ts";
+import type { CommandHandler } from "@/plugins/define.ts";
 import { collector, fakeNavigation, READY_STATE } from "@/plugins/navigation-fake.ts";
 import { createNavigationPlugin } from "@/plugins/navigation.ts";
 
@@ -94,6 +96,43 @@ describe("navigation plugin events", () => {
 			stopped: true,
 		});
 		expect(calls.filter((call) => call === "stop")).toHaveLength(1);
+	});
+
+	test("two pages sharing one process emit are still distinct when pageId is supplied", () => {
+		const { adapter, fire } = fakeNavigation();
+		const plugin = createNavigationPlugin(adapter);
+		// Production shape: the bridge hands both pages the same emit function. Only `pageId`
+		// distinguishes them, as it does for two documents in one window.
+		let delivered = 0;
+		const emit = () => void delivered++;
+		const first = { emit, pageId: "doc-A" };
+		const second = { emit, pageId: "doc-B" };
+		expect(plugin.commands.start(undefined, first)).toMatchObject({ ok: true });
+		expect(plugin.commands.start(undefined, second)).toMatchObject({ ok: true });
+		expect(plugin.commands.stop(undefined, first)).toMatchObject({ ok: true, stopped: false });
+		fire("did-finish");
+		expect(delivered).toBe(1); // only the page that did not stop hears it
+		expect(plugin.commands.stop(undefined, second)).toMatchObject({ ok: true, stopped: true });
+	});
+
+	test("the runner forwards the document token as the per-page identity", async () => {
+		const { adapter, fire } = fakeNavigation();
+		const plugin = createNavigationPlugin(adapter);
+		const handlers = new Map<string, CommandHandler>([
+			["navigation.start", (args, ctx) => plugin.commands.start(args as never, ctx)],
+			["navigation.stop", (args, ctx) => plugin.commands.stop(args as never, ctx)],
+		]);
+		const frames: string[] = [];
+		const run = createRunner(handlers, {
+			emit: (event: string) => void frames.push(event),
+		});
+		await run("navigation", "start", undefined, "main", "main", 0, "doc-A");
+		await run("navigation", "start", undefined, "main", "main", 0, "doc-B");
+		fire("did-finish");
+		expect(frames).toHaveLength(2);
+		await run("navigation", "stop", undefined, "main", "main", 0, "doc-A");
+		fire("did-finish");
+		expect(frames).toHaveLength(3);
 	});
 
 	test("a callback before start emits nothing and does not throw", () => {

@@ -56,6 +56,8 @@ export function sseFrame(event: string, data: unknown): string {
 export class Events {
 	private readonly subscribers = new Set<Subscriber>();
 	private readonly cleanups = new Set<() => void>();
+	/** The stream teardown for each subscriber, so a failed `enqueue` can tear it down exactly as `cancel()` does. */
+	private readonly cleanupsBySubscriber = new WeakMap<Subscriber, () => void>();
 	private reloadToken: string;
 
 	constructor(reloadFile: string | undefined = process.env[RELOAD_ENV]) {
@@ -103,6 +105,10 @@ export class Events {
 			try {
 				subscriber.enqueue(frame);
 			} catch {
+				// The controller is closed or errored without the consumer's `cancel()` having run.
+				// Removing only from `subscribers` kept the cleanup, controller and subscriber alive
+				// for the process lifetime. Run the stream's own teardown instead.
+				this.cleanupsBySubscriber.get(subscriber)?.();
 				this.subscribers.delete(subscriber);
 			}
 		}
@@ -139,6 +145,7 @@ export class Events {
 						}
 					};
 					this.cleanups.add(detached);
+					this.cleanupsBySubscriber.set(subscriber, detached);
 				},
 				cancel: () => {
 					detached();

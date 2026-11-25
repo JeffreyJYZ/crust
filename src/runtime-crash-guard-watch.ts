@@ -4,6 +4,7 @@
  * the token file must still hold this launch's id while the pid is alive.
  */
 
+import { execFileSync } from "node:child_process";
 import { readCrashRecord, recordCrash } from "./runtime-crash-store";
 import { GUARD_TOKEN_VAR, guardTokenHeld } from "./runtime-crash-guard-token.ts";
 
@@ -14,6 +15,8 @@ const POLL_MS = 100;
 export const GUARD_PID_VAR = "CRUST_CRASH_GUARD";
 /** The app data directory a guard launch writes into; the record, the log and `last-crash.json`. */
 export const GUARD_ROOT_VAR = "CRUST_CRASH_GUARD_ROOT";
+/** The armed process's start time; a pid alone can be reused before the next poll. */
+export const GUARD_SINCE_VAR = "CRUST_CRASH_GUARD_SINCE";
 
 /** What a guard launch was told to watch. */
 export interface GuardTarget {
@@ -21,6 +24,10 @@ export interface GuardTarget {
 	root: string;
 	/** The parent's identity token; absent for a hand-run guard, which can only check the pid. */
 	token?: string;
+	/** Process start time captured when the token was armed, to detect pid reuse. */
+	since?: string;
+	/** Injectable in a test; defaults to reading the process start time. */
+	identity?: (pid: number) => string | undefined;
 }
 
 function alive(pid: number): boolean {
@@ -30,6 +37,19 @@ function alive(pid: number): boolean {
 	} catch (error) {
 		// EPERM means it exists and belongs to someone else; only ESRCH means gone.
 		return (error as { code?: string }).code === "EPERM";
+	}
+}
+
+/** The process's start time, or undefined when it is gone or the OS cannot report one. */
+export function processStartTime(pid: number): string | undefined {
+	try {
+		const out = execFileSync("ps", ["-p", String(pid), "-o", "lstart="], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return out.length === 0 ? undefined : out;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -54,15 +74,27 @@ export function guardTarget(
 		return null;
 	}
 	const token = env[GUARD_TOKEN_VAR] ?? flag(argv, "--token");
-	return token === undefined ? { pid, root } : { pid, root, token };
+	const since = env[GUARD_SINCE_VAR] ?? flag(argv, "--since");
+	return {
+		pid,
+		root,
+		...(token === undefined ? {} : { token }),
+		...(since === undefined ? {} : { since }),
+	};
 }
 
 /** Watch the armed process, then record the crash if the record says one happened. */
 export async function watchCrashTarget(target: GuardTarget): Promise<void> {
-	while (alive(target.pid) && guardTokenHeld(target.root, target.token)) {
+	const identity = target.identity ?? processStartTime;
+	for (;;) {
+		// A lost token is a clean exit: the parent disarmed it on its way out.
+		if (!guardTokenHeld(target.root, target.token)) return;
+		if (!alive(target.pid)) break;
+		// The pid is live, but it may be a different process now. The token survives a fault, so it
+		// cannot distinguish reuse; the start time can. Stop without recording the old crash.
+		if (target.since !== undefined && identity(target.pid) !== target.since) return;
 		await Bun.sleep(POLL_MS);
 	}
-	// A lost token is a clean exit: whatever holds the pid now is not the process we armed.
 	if (!guardTokenHeld(target.root, target.token)) return;
 	// No record means a clean exit, and a clean exit is not a crash.
 	const decoded = readCrashRecord(target.root);

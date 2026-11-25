@@ -13,7 +13,7 @@
  * a caller can branch on is the honest answer until that registry half exists.
  */
 
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -120,6 +120,15 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 				if (!MECHANISMS.has(platform)) return unsupported("enable", platform);
 				const present = await exists(appPath);
 				if (!present) return fail("not-found", `autostart.enable: no app at ${appPath}`);
+				// A directory that is not a `.app` would be handed to `execve` as-is and fail at login.
+				// Bundles are launched through `/usr/bin/open`; any other directory has no launch form.
+				const info = await stat(appPath);
+				if (info.isDirectory() && !appPath.endsWith(".app")) {
+					return fail(
+						"bad-request",
+						`autostart.enable: ${appPath} is a directory but not a .app bundle; pass the executable inside it or the bundle itself`,
+					);
+				}
 				const bundleId = resolveId(args?.bundleId) ?? (await bundleIdFromApp(appPath));
 				if (bundleId === undefined) {
 					return fail(
@@ -133,11 +142,12 @@ export function createAutostartPlugin(adapter: AutostartAdapter = { home: homedi
 				try {
 					await mkdir(dirname(entry.path), { recursive: true });
 					await entry.write(appPath);
-					// Read the mechanism back: a write that landed nowhere is not "enabled".
-					if (!(await exists(entry.path))) {
+					// Read the mechanism back as launchd would: an entry that exists but names a
+					// directory as its executable is not armed, however complete the file looks.
+					if (!(await entry.enabled())) {
 						return fail(
 							"handler-error",
-							`autostart.enable: ${entry.path} is still missing after the write`,
+							`autostart.enable: ${entry.path} does not name a launchable executable after the write`,
 						);
 					}
 				} catch (error) {

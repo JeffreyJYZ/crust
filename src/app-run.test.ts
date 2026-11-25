@@ -18,6 +18,7 @@ const CONFIG: CrustConfig = {
 
 interface Fake extends Platform {
 	quits: number;
+	pumps: number;
 	open: Set<string>;
 	/** How many times the watch called `windowLabels`: a positive signal that a tick ran. */
 	reads: number;
@@ -28,10 +29,11 @@ function fakePlatform(): Fake {
 	const open = new Set<string>();
 	const platform: Fake = {
 		quits: 0,
+		pumps: 0,
 		open,
 		reads: 0,
 		start: async () => {},
-		pump: () => {},
+		pump: () => void platform.pumps++,
 		createWindow: (options) => {
 			open.add(options.label);
 			return { label: options.label };
@@ -79,6 +81,39 @@ describe("app.run()", () => {
 
 		expect(platform.quits).toBe(1);
 		app.quit();
+	});
+
+	test("a throwing ready listener does not reject run or leave the platform half-started", async () => {
+		const platform = fakePlatform();
+		const app = createApp(platform, CONFIG, { url: "http://127.0.0.1:1", token: "t" });
+		const warn = console.warn;
+		const warned: string[] = [];
+		console.warn = (message: string) => void warned.push(message);
+		app.on("ready", () => {
+			throw new Error("startup save failed");
+		});
+		try {
+			await expect(app.run()).resolves.toBeUndefined();
+		} finally {
+			console.warn = warn;
+		}
+		// The pump and the watches are installed after `ready`; a throw used to skip all of them.
+		expect(platform.pumps).toBe(1);
+		expect(warned.some((line) => line.includes("ready listener threw"))).toBe(true);
+		app.quit();
+	});
+
+	test("a quit begun during ready does not install watches the quitter will never clear", async () => {
+		const platform = fakePlatform();
+		const app = createApp(platform, CONFIG, { url: "http://127.0.0.1:1", token: "t" });
+		app.on("window-all-closed", () => {});
+		app.on("ready", () => app.quit());
+		await app.run();
+		// Let the 250 ms watch tick twice. With the quitter refusing post-quit handles the count
+		// stays put; before the fix these intervals survived the quit forever.
+		const atRun = platform.reads;
+		await Bun.sleep(650);
+		expect(platform.reads).toBe(atRun);
 	});
 
 	test("a window-all-closed listener that resolves quits the app once", async () => {

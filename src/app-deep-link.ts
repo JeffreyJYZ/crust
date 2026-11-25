@@ -7,6 +7,7 @@
 
 import type { CrustConfig } from "@/config";
 import { deepLink as defaultLink, type DeepLink } from "@/plugins";
+import { parseDeepLink } from "@/plugins/deep-link.ts";
 import type { PluginContext } from "./plugins/define.ts";
 
 /** Page sinks armed by a live `ctx.emit`; a Set because one page may invoke several commands. */
@@ -37,6 +38,24 @@ export function attachDeepLinkDelivery(link: DeepLink = defaultLink): () => void
  * that polls); with one armed, `open` emits through the attached sink to that page.
  */
 export function queueDeepLink(url: string, link: DeepLink = defaultLink): void {
+	// The native argv scanner accepts any RFC-3986 scheme, while `accept()` throws for a relative
+	// URL or a foreign scheme. Without this guard a direct launch with a stray URL rejected
+	// `app.run()` after the windows were created, and a later bad URL escaped the drain timer as an
+	// uncaught exception. Refuse here, where the URL can be named, and keep the app alive.
+	try {
+		const target = parseDeepLink(url);
+		const scheme = link.scheme;
+		if (scheme !== undefined && target.scheme !== scheme) {
+			console.warn(
+				`  deep-link refused ${JSON.stringify(url)}: not the registered scheme "${scheme}"`,
+			);
+			return;
+		}
+	} catch (error) {
+		const text = error instanceof Error ? error.message : String(error);
+		console.warn(`  deep-link refused ${JSON.stringify(url)}: ${text}`);
+		return;
+	}
 	if (pages.size === 0) {
 		// Launch first, so a URL the scheme guard refuses never enters the replay queue.
 		link.launch(url);

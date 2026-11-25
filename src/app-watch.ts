@@ -105,12 +105,11 @@ export function watchWindows(
 }
 
 /**
- * Emit one app event on the window-all-closed quit path, naming a throwing listener instead of
- * letting it block termination. `emit` awaits each listener, so a rejection would otherwise skip
- * the quit and leave a windowless process alive. Each event gets its own call so a throw in
- * `before-quit` still lets `will-quit` run and the app quit.
+ * Fan an event out to backend listeners without letting one throwing listener block the caller.
+ * `emit` awaits each listener, so a rejection would otherwise skip the quit (or the rest of a
+ * startup) and leave a half-run process behind.
  */
-export function emitOnQuit(
+export function emitGuarded(
 	listeners: Map<AppEvent, Set<AppListener>>,
 	event: AppEvent,
 ): Promise<void> {
@@ -118,6 +117,20 @@ export function emitOnQuit(
 		const text = error instanceof Error ? error.message : String(error);
 		console.warn(`  lifecycle a ${event} listener threw: ${text}`);
 	});
+}
+
+/**
+ * Emit one app event on the window-all-closed / `app.quit()` path. The page hears the same event as
+ * the backend: `publishPageEvent` used to be called only from `watchLifecycle`, so the most common
+ * quit path produced no `app:*` frame at all and a page waiting for `before-quit` stayed deaf.
+ * Publishing is synchronous and catches a dead sink, so a page that is gone cannot hold up a quit.
+ */
+export function emitOnQuit(
+	listeners: Map<AppEvent, Set<AppListener>>,
+	event: AppEvent,
+): Promise<void> {
+	publishPageEvent(event);
+	return emitGuarded(listeners, event);
 }
 
 /**
@@ -133,6 +146,12 @@ export function watchLifecycle(
 	source: LifecycleSource,
 	intervalMs: number = LIFECYCLE_CHECK_INTERVAL_MS,
 ): ReturnType<typeof setInterval> {
+	// One tail across drains. A native `take()` can return several events at once; starting each
+	// fan-out with `void emit` let a later event's first listener run before an earlier event's last
+	// one finished, so the page and the backend saw different events in different orders. Chaining
+	// publishes each page frame immediately before its own backend fan-out, and waits for that
+	// fan-out before the next frame.
+	let tail: Promise<void> = Promise.resolve();
 	const handle = setInterval(() => {
 		let events: AppEvent[];
 		try {
@@ -164,14 +183,11 @@ export function watchLifecycle(
 			return;
 		}
 		for (const event of events) {
-			// The page hears it from this same loop, before the backend listeners are awaited, so the
-			// forward happens exactly once per drained event and the two cannot drift.
-			publishPageEvent(event);
-			logEvent(appRecord(`app.${event}`, event, { event }));
-			void emit(listeners, event)
-				.catch((error: unknown) => {
-					const text = error instanceof Error ? error.message : String(error);
-					console.warn(`  lifecycle a ${event} listener threw: ${text}`);
+			tail = tail
+				.then(async () => {
+					publishPageEvent(event);
+					logEvent(appRecord(`app.${event}`, event, { event }));
+					await emitGuarded(listeners, event);
 				})
 				.finally(() => {
 					if (event === "before-quit") source.settle?.();

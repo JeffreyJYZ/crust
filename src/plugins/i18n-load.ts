@@ -42,7 +42,16 @@ export async function loadCatalogue(directory: string): Promise<MessageCatalogue
 				`i18n.load: ${path} must hold an object of messages`,
 			);
 		}
-		catalogue[file.slice(0, -".json".length)] = parsed as MessageTable;
+		// A file named `__proto__.json` would otherwise hit the inherited setter and replace the
+		// catalogue's prototype instead of adding a locale, which `Object.keys` hides.
+		const locale = file.slice(0, -".json".length);
+		if (locale === "__proto__" || locale === "constructor") continue;
+		Object.defineProperty(catalogue, locale, {
+			value: parsed as MessageTable,
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
 	}
 	return catalogue;
 }

@@ -71,7 +71,9 @@ export function resolveCatalogue(
 	const first = Object.keys(catalogue)[0];
 	const wanted = preferred ?? fallback ?? first;
 	if (wanted === undefined) return undefined;
-	for (const candidate of [wanted, wanted.split("-")[0], fallback, first]) {
+	// Native locales use underscores (`ar_SA`) as often as hyphens (`ar-SA`); narrowing on `-`
+	// alone answered English for an Arabic-preferring user while `textDirection` said rtl.
+	for (const candidate of [wanted, wanted.split(/[-_]/)[0], fallback, first]) {
 		if (candidate === undefined) continue;
 		const messages = catalogue[candidate];
 		if (messages !== undefined) return { locale: candidate, messages };
