@@ -3,7 +3,7 @@
  * here cannot pull it into a production build. `perf.overlay` is the documented toggle; the page
  * implementation keeps its own handle and drives the real plugin through `invoke`.
  */
-import { MARKER, mountOverlay } from "../../src/perf/overlay/overlay.ts";
+import { MARKER, mountOverlay } from "crust/perf/overlay";
 
 const scope = globalThis as Record<string, any>;
 const overlay = mountOverlay({ window: scope, dev: true });

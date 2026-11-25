@@ -328,6 +328,8 @@ Linux build imports `crust/native/linux` and carries no AppKit or Win32 code. Th
   production build unless the capability is granted.
 - `crust perf record` / `crust perf diff` write and compare the same numbers headlessly, which is how a
   performance change gets a before/after instead of an opinion.
+- The overlay module imports from `crust/perf/overlay` (`mountOverlay`, `MARKER`); it is page code with no
+  bridge or plugin imports, and the subpath exists so a production entry never resolves it.
 
 The measured costs and the honest comparison with Tauri and native-Rust frameworks are on the
 [performance page](/docs/guides/performance).

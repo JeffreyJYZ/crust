@@ -49,7 +49,17 @@ re-render, and at latency — a 60 fps app still feels broken when a keystroke t
 
 ## The overlay
 
-Enable the `perf` capability and open the overlay from your page:
+The overlay is a page module, imported from its own subpath so a production build that never imports it
+cannot carry it:
+
+```ts
+import { mountOverlay } from "crust/perf/overlay";
+
+const overlay = mountOverlay(); // dev-only module; never import it from the production entry
+```
+
+Mount the runtime half in `main.ts` (`createPerfPlugin()`, an opt-in plugin) and the two halves talk over
+the same commands a page can call directly:
 
 ```ts
 await crust.invoke("perf.overlay", { enabled: true });
