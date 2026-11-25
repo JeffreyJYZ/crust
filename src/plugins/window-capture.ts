@@ -10,6 +10,7 @@
 import { notImplemented, type NotImplemented } from "./define";
 import type {
 	WindowCaptureArgs,
+	WindowCaptureOptions,
 	WindowCaptureResult,
 	WindowSnapshot,
 } from "./window-capture-types.ts";
@@ -44,8 +45,10 @@ export function windowCaptureCommands(adapter?: WindowNative) {
 			if (label === undefined) return invalidLabel(args);
 			const unknown = knownWindow(native, label);
 			if (unknown) return unknown;
+			const options = readCaptureOptions(args, label);
+			if ("ok" in options) return options;
 			try {
-				const snapshot = await native.capture(label);
+				const snapshot = await native.capture(label, options);
 				const shape = readSnapshot(snapshot);
 				if (shape === undefined) {
 					return {
@@ -66,6 +69,27 @@ export function windowCaptureCommands(adapter?: WindowNative) {
 }
 
 export type WindowCaptureCommands = ReturnType<typeof windowCaptureCommands>;
+
+/**
+ * Read the probe opt-in without coercing it: a truthy `"false"` must not silently disable an app's
+ * occlusion behaviour. Absent gives an empty object, so an ordinary capture sends no option at all.
+ */
+function readCaptureOptions(
+	args: WindowCaptureArgs,
+	label: string,
+): WindowCaptureOptions | WindowFailure {
+	const value = args.ignoreOcclusion;
+	if (value === undefined) return {};
+	if (typeof value === "boolean") return { ignoreOcclusion: value };
+	return {
+		ok: false,
+		code: "invalid-value",
+		message:
+			"crust: window.capture ignoreOcclusion must be a boolean when given, got " +
+			`${JSON.stringify(value)}`,
+		label,
+	};
+}
 
 /** A platform answer checked before it reaches the page: base64 text and three finite numbers. */
 function readSnapshot(value: unknown): WindowSnapshot | undefined {

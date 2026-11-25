@@ -19,7 +19,16 @@ export interface WindowSnapshot {
 	readonly png: string;
 }
 
-export interface WindowCaptureArgs {
+/**
+ * The probe-only opt-in. `ignoreOcclusion` asks for a picture of a view WebKit considers occluded —
+ * an automated screenshot of a window that may be off the active Space. It says what the caller
+ * wants, not the private WebKit selector that delivers it. Absent is the ordinary capture.
+ */
+export interface WindowCaptureOptions {
+	readonly ignoreOcclusion?: boolean;
+}
+
+export interface WindowCaptureArgs extends WindowCaptureOptions {
 	label: string;
 }
 
@@ -35,5 +44,5 @@ export interface WindowCaptureResult extends WindowSnapshot {
  * picture to a completion handler, so the answer arrives after the send.
  */
 export interface WindowCaptureNative {
-	capture?(label: string): Promise<WindowSnapshot>;
+	capture?(label: string, options?: WindowCaptureOptions): Promise<WindowSnapshot>;
 }

@@ -139,6 +139,18 @@ int crust_shot_available(void *web) {
 	return shot_has(web, "takeSnapshotWithConfiguration:completionHandler:");
 }
 
+// UNSUPPORTED WebKit SPI: _setWindowOcclusionDetectionEnabled:. A probe's window can be off every
+// Space, so WebKit suspends its display link and takeSnapshot never calls back. Disabling detection
+// keeps the view rendering. Returns 1 only when the selector existed; the caller names that absence
+// rather than crashing. The perf harness uses the same selector, for the same reason.
+int crust_shot_occlusion(void *web, int enabled) {
+	const char *name = "_setWindowOcclusionDetectionEnabled:";
+	if (!web || !shot_has(web, name)) return 0;
+	((void (*)(void *, void *, char))objc_msgSend)(
+	    web, sel_registerName(name), enabled ? 1 : 0);
+	return 1;
+}
+
 // 0 started, 1 no webview or no snapshot selector, 2 the configuration did not build, 3 the
 // completion block could not be built. The configuration is a default one: no `snapshotWidth`, so
 // WebKit renders the view's own bounds, and a default rect, which is the whole view. `id` is the
