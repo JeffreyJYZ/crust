@@ -161,4 +161,23 @@ describe("message text", () => {
 		expect(out.endsWith("…[truncated]")).toBe(true);
 		expect(out.length).toBe(2000 + "…[truncated]".length);
 	});
+
+	test("query keys follow the field-name vocabulary, so seed, sid and keychain mask too", () => {
+		for (const name of ["seed", "sid", "keychain"]) {
+			expect(isSecretName(name)).toBe(true);
+			expect(redactText(`GET /x?${name}=abc123`)).toBe(`GET /x?${name}=${REDACTED}`);
+		}
+	});
+
+	test("an own __proto__ key survives redaction instead of becoming a prototype", () => {
+		const source = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<
+			string,
+			unknown
+		>;
+		const out = redactFields(source);
+		expect(Object.hasOwn(out, "__proto__")).toBe(true);
+		expect(out.__proto__).toEqual({ polluted: true });
+		expect(JSON.parse(JSON.stringify(out))).toEqual(source);
+		expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+	});
 });

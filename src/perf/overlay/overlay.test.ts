@@ -133,4 +133,33 @@ describe("overlay seam", () => {
 		).not.toThrow();
 		overlay.destroy();
 	});
+
+	test("destroy removes the keydown listener it installed", () => {
+		let added = 0;
+		let removed = 0;
+		let handler: ((event: unknown) => void) | undefined;
+		const doc = {
+			addEventListener: (type: string, fn: (event: unknown) => void) => {
+				if (type === "keydown") {
+					added++;
+					handler = fn;
+				}
+			},
+			removeEventListener: (type: string, fn: (event: unknown) => void) => {
+				if (type === "keydown" && fn === handler) removed++;
+			},
+		};
+		const overlay = mountOverlay({
+			window: { document: doc },
+			dev: true,
+			interval: () => 1,
+			clearInterval: () => {},
+			sampler: fakeSampler(),
+			panel: fakePanel(),
+		});
+		expect(added).toBe(1);
+		overlay.destroy();
+		expect(removed).toBe(1);
+		expect(removed).toBe(added);
+	});
 });

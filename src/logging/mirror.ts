@@ -7,6 +7,7 @@
  * a terminal that tints stderr red cannot paint a healthy `info` line as a failure.
  */
 
+import { oneLineMessage } from "./message.ts";
 import { type LogLevel, type LogRecord, SEVERITY } from "./types.ts";
 
 /** What the mirror needs to know: whether it is on at all, and whether this is `crust dev`. */
@@ -17,7 +18,8 @@ export interface MirrorOptions {
 
 /** The human line a person reads in a terminal or the app's own console. */
 export function humanLine(record: LogRecord): string {
-	return `${record.ts} ${record.level.toUpperCase()} ${record.source} ${record.event} ${record.msg}`;
+	const msg = oneLineMessage(record.msg);
+	return `${record.ts} ${record.level.toUpperCase()} ${record.source} ${record.event} ${msg}`;
 }
 
 /** One record on the stream its level belongs to. */

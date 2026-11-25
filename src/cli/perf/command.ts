@@ -39,8 +39,30 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
 	}
 }
 
-function delay(ms: number): Promise<null> {
-	return new Promise((resolve) => setTimeout(() => resolve(null), ms));
+/**
+ * A deadline that can be cancelled when the other side wins. Leaving the timer armed after the
+ * race is what kept the CLI alive for 500 ms (or 2 s after a kill) after `runCommand` returned.
+ */
+function delay(ms: number): { wait: Promise<null>; cancel: () => void } {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const wait = new Promise<null>((resolve) => {
+		timer = setTimeout(() => resolve(null), ms);
+	});
+	return {
+		wait,
+		cancel: () => {
+			if (timer !== undefined) clearTimeout(timer);
+		},
+	};
+}
+
+async function raceDelay<T>(work: Promise<T>, ms: number): Promise<T | null> {
+	const { wait, cancel } = delay(ms);
+	try {
+		return await Promise.race([work, wait]);
+	} finally {
+		cancel();
+	}
 }
 
 /**
@@ -106,14 +128,14 @@ export async function runCommand(
 	if (outcome === "timeout") {
 		ended = "timeout";
 		signalGroup(child.pid, "SIGTERM");
-		await Promise.race([exited, delay(options.graceMs ?? 5000)]);
+		await raceDelay(exited, options.graceMs ?? 5000);
 		if (!settled) signalGroup(child.pid, "SIGKILL");
 		// A process that survives `SIGKILL` is a kernel problem, and waiting on it would hang here.
-		await Promise.race([exited, delay(2000)]);
+		await raceDelay(exited, 2000);
 	}
 
 	// Buffered output may still be arriving; give the readers a moment, then stop waiting.
-	await Promise.race([pumping, delay(500)]);
+	await raceDelay(pumping, 500);
 
 	if (ended === "timeout") {
 		// The deadline ended it, so its own exit code — often `SIGTERM`'s 143 — is a fact about the kill,
