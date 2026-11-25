@@ -82,6 +82,29 @@ export async function checkInstall(
 		(mounted.stderr.trim() || mounted.stdout.trim()).split("\n")[0] ?? `exit ${mounted.code}`,
 	);
 
+	// The overlay is page code behind its own subpath, and its two exports are what the docs an app
+	// reads tell it to import. Resolution is checked above for every declared subpath; this asserts the
+	// names, because a subpath that resolves to a module without `mountOverlay` is just as unusable.
+	const overlayExport = await run(
+		[
+			"bun",
+			"-e",
+			[
+				`const o = await import("crust/perf/overlay");`,
+				`if (typeof o.mountOverlay !== "function") { console.error("mountOverlay is " + typeof o.mountOverlay); process.exit(1); }`,
+				`if (typeof o.MARKER !== "string") { console.error("MARKER is " + typeof o.MARKER); process.exit(1); }`,
+				`console.log("overlay-ok");`,
+			].join("\n"),
+		],
+		{ cwd: consumer },
+	);
+	check(
+		'crust/perf/overlay exports mountOverlay and MARKER',
+		overlayExport.code === 0 && /overlay-ok/.test(overlayExport.stdout),
+		(overlayExport.stderr.trim() || overlayExport.stdout.trim()).split("\n")[0] ??
+			`exit ${overlayExport.code}`,
+	);
+
 	// `crust init` is the first command a user runs, and it reads the
 	// templates through `crustRoot` — so this proves the templates were
 	// found at their installed path, not only that they exist in a tarball.

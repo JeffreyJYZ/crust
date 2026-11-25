@@ -65,8 +65,13 @@ import { mountOverlay } from "crust/perf/overlay";
 const overlay = mountOverlay(); // dev-only module; never import it from the production entry
 ```
 
-Mount the runtime half in `main.ts` (`createPerfPlugin()`, an opt-in plugin) and the two halves talk over
-the same commands a page can call directly:
+Mount the runtime half in `main.ts` and the two halves talk over the same commands a page can call directly:
+
+```ts
+import { createPerfPlugin } from "crust/plugin";
+
+app.plugin(createPerfPlugin()); // until this runs, every perf call refuses with "perf plugin mounted"
+```
 
 ```ts
 await crust.invoke("perf.overlay", { enabled: true });
