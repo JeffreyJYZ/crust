@@ -30,8 +30,7 @@ async function cli(args: string[]): Promise<{ code: number; out: string; err: st
 }
 
 describe("perf record", () => {
-	test("honest failure: a path that is not an app exits 2 with no file", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "crust-perf-honest-"));
+	test("honest failure: a path that is not an app exits 2 with no file", async () => {		const dir = await mkdtemp(join(tmpdir(), "crust-perf-honest-"));
 		const out = join(dir, "perf.json");
 		expect(await record({ app: join(dir, "missing"), seconds: 1, out, format: "text" })).toBe(2);
 		expect(await exists(out)).toBe(false);
@@ -41,6 +40,9 @@ describe("perf record", () => {
 		expect(await exists(out)).toBe(false);
 	});
 
+	// Launching a real app, waiting for a paint and writing a sample cannot fit bun's 5 s default on a
+	// loaded CI runner: measured timing out at exactly 5000 ms there while passing locally. The timeout
+	// is the test's own budget, not the app's speed — `record` still has its own internal deadline.
 	test("round-trip: a real run, when it paints, diffs to zero; a stall is exit 2", async () => {
 		if (process.platform !== "darwin") {
 			// No WebKit here: the same command must still refuse instead of writing a fake sample.
@@ -63,7 +65,7 @@ describe("perf record", () => {
 		expect(file.summary.frame.framesDrawn).toBeGreaterThan(0);
 		expect(file.summary.frame.fps).toBeGreaterThan(0);
 		expect(await diffFiles(out, out, 5)).toBe(0);
-	});
+	}, 60_000);
 
 	test("diff routes through the CLI entry point", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "crust-perf-cli-"));

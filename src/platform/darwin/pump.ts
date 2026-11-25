@@ -4,8 +4,15 @@
  * this is a separate responsibility — a timer, not AppKit lifecycle.
  * A repeating interval would coalesce under power saving, so each tick re-arms itself.
  */
-/** The shim's -1 means every window is occluded, so WebKit has stopped painting. */
-export const OCCLUDED_PUMP_INTERVAL_MS = 100;
+/**
+ * The shim's -1 means every window is occluded, so WebKit has stopped painting — but a page can still
+ * be working: an occluded window answers bridge calls, runs timers and renders nothing. The pump is the
+ * run loop that delivers those answers, so this interval is a latency floor for every page round trip
+ * while occluded. 100 ms bought 0.1% CPU and turned a 4 s page deadline into a CI failure under load
+ * (`the page did not answer within 4000 ms`); 32 ms keeps the wakeup saving and keeps a round trip
+ * inside two frames.
+ */
+export const OCCLUDED_PUMP_INTERVAL_MS = 32;
 
 export interface Pump {
 	start(intervalMs: number, tick: () => unknown, slowMs?: number): void;
