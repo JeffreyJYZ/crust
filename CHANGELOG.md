@@ -4,6 +4,22 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.14] — 2026-11-25
+
+### Added
+
+- **A profiler, in the app and on the command line.** `perf` is an opt-in plugin (`createPerfPlugin()`) over one runtime collector: `perf.sample()`, `perf.frameReport({ fps, p50, p95, worst, longTasks, framesDrawn })`, `perf.overlay({ enabled })`, `perf.sinks` and `perf.reset`. Frame statistics come from the page because only the page sees its own `requestAnimationFrame` deltas, and `sample().frame` is `null` until a page reports — an occluded window draws nothing, which is a different fact from a slow app, so it is never reported as `0 fps`. The collector costs **+0.0195 µs per invoke** with every sink off against a 0.0034 µs same-arm control, with zero added clock reads.
+- **`crust/perf/overlay`.** `mountOverlay()` and `MARKER` had no supported import; an app could only reach them by a relative path into `src/`. The subpath re-exports them, and a test proves a production build carries zero markers — the same failure the native adapters had before `crust/native` existed.
+- **`crust perf record` and `crust perf diff`.** `record` launches a built app with the sink on, writes one sample per second, disables window occlusion detection in its own launch path (without it an unfocused app records 0 fps), and exits 2 with no file when nothing was drawn. `diff` prints per-field deltas with a direction per field and exits 1 on a real regression: `frame.p95 17.00 -> 25.50 (+50.0%, tolerance 5%, lower is better)`.
+
+### Changed
+
+- **The macOS pump no longer waits inside AppKit on every tick.** It handed `nextEventMatchingMask:untilDate:inMode:dequeue:` a 4 ms deadline 41 times a second, so the JS thread was blocked **6.84 ms of every 16 ms** before the page got a turn. A `nil` deadline and a 0.25 ms run-loop slice bring that to **0.78 ms**, with 54 ticks/s, idle CPU down from 1.7% to 0.7%, and an occluded window pumping at ~13 ticks/s instead of ~40. Same-tree A/B: frame p50 **22 → 17 ms**, p95 **24 → 18 ms**, arms non-overlapping against a 0 ms control spread. fps did not move outside its spread, so this is frame-time consistency rather than throughput.
+
+### Docs
+
+- A performance page states the measured before/after, lists what measured as noise (every webview flag tried, invokes at 200/s, a 30 Hz event stream, the 1 MB payload path), and gives the honest comparison: Tauri's advantage was its native event loop, not its IPC, and Rune's smoothness is partly unreachable while the UI is a system WebView. `SKILL.md` documents the opt-in namespace and both CLI verbs.
+
 ## [0.2.13] — 2026-11-22
 
 ### Added
