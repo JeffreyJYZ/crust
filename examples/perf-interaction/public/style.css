@@ -1,0 +1,35 @@
+/* Small window on purpose: window.capture returns a full PNG, and a small page
+   keeps the paint-detection poll cheap enough not to dominate the number. */
+body {
+	margin: 0;
+	background: #101216;
+	color: #e8eaed;
+	font: 13px/1.4 system-ui, sans-serif;
+}
+#glyph {
+	font-size: 48px;
+	font-weight: 700;
+	height: 60px;
+	letter-spacing: 8px;
+}
+#btn {
+	font-size: 18px;
+	padding: 6px 14px;
+}
+#list {
+	height: 120px;
+	overflow-y: scroll;
+	width: 260px;
+	border: 1px solid #3a6ea5;
+}
+#list div {
+	height: 24px;
+}
+#marker {
+	margin-top: 8px;
+}
+#result {
+	font-size: 10px;
+	max-width: 460px;
+	overflow-wrap: anywhere;
+}

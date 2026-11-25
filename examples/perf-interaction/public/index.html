@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>crust interaction-latency probe</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<h1>crust interaction-latency probe</h1>
+		<p id="status">starting</p>
+		<input id="key" aria-label="keystroke target" />
+		<div id="glyph" aria-live="polite"></div>
+		<button id="btn">click target</button>
+		<div id="list"></div>
+		<canvas id="marker" width="120" height="40"></canvas>
+		<div id="dot" style="width:4px;height:4px"></div>
+		<pre id="result">{}</pre>
+		<script src="/core.js"></script>
+		<script src="/windows.js"></script>
+		<script src="/arms.js"></script>
+		<script src="/main.js"></script>
+	</body>
+</html>

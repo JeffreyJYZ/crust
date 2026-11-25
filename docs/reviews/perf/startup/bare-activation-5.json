@@ -1,0 +1,51 @@
+{
+  "label": "bare-activation-5",
+  "arm": "bare-activation",
+  "mode": "bare-activation",
+  "marks": {
+    "processStart": 0,
+    "firstLine": 8.478759765625,
+    "cliParsed": 9.478759765625,
+    "conditionsDone": 24.478759765625,
+    "bridgeDone": 24.478759765625,
+    "nativeReady": 36.478759765625,
+    "windowCreated": 137.478759765625,
+    "loadIssued": 377.478759765625,
+    "firstRaf": 534.478759765625
+  },
+  "segments": {
+    "prelude": 8.478759765625,
+    "conditions": 16,
+    "bridge": 0,
+    "cc": 12,
+    "window": 101,
+    "loadIssue": 240,
+    "firstRaf": 157
+  },
+  "totalMs": 534.478759765625,
+  "painted": true,
+  "scriptBytes": 7230,
+  "conditions": {
+    "start": {
+      "at": "2026-11-25T01:14:50.010Z",
+      "load": {
+        "one": 4.66,
+        "five": 4.87,
+        "fifteen": 4.96
+      },
+      "bunProcesses": 27,
+      "probePids": []
+    },
+    "end": {
+      "at": "2026-11-25T01:14:50.536Z",
+      "load": {
+        "one": 4.66,
+        "five": 4.87,
+        "fifteen": 4.96
+      },
+      "bunProcesses": 27,
+      "probePids": []
+    },
+    "contaminated": true
+  }
+}
