@@ -22,7 +22,7 @@ export async function devSingle(app: SingleApp): Promise<number> {
 
 	// The runner imports the framework by absolute path, so the path has to be the
 	// one a *child* can read: inside a compiled executable that is the materialised
-	// copy in `$TMPDIR`, never `/$bunfs`, which is only mounted in this process.
+	// copy in the private per-user cache, never `/$bunfs`, which is mounted in this process only.
 	const root = await frameworkRoot();
 	const temp = await mkdtemp(join(tmpdir(), "crust-single-"));
 	const runner = join(temp, "run.ts");

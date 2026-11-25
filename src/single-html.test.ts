@@ -109,4 +109,18 @@ describe("buildPage with an .html entry", () => {
 		expect(await readFile(join(build.dir, "index.html"), "utf8")).toBe(markup);
 		expect((await readdir(build.dir)).sort()).toEqual(["index.html", RELOAD_FILE].sort());
 	});
+
+	test("switching a .tsx page to .html removes the stale bundle from dist/single", async () => {
+		const dir = await tempDir();
+		await source(dir, "app.tsx", "document.title = 'old';\n");
+		const bundled = await buildPage(await app(dir, "app.tsx"), { dev: false });
+		expect((await readdir(bundled.dir)).sort()).toEqual(["index.html", "page.js"]);
+
+		await source(dir, "page.html", "<!doctype html>\n<h1>new</h1>\n");
+		const html = await buildPage(await app(dir, "page.html"), { dev: false });
+
+		// The old page.js must not survive into the new binary's embedded asset table.
+		expect(await readdir(html.dir)).toEqual(["index.html"]);
+		await expect(readFile(join(html.dir, "page.js"), "utf8")).rejects.toThrow();
+	});
 });

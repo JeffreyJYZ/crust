@@ -4,9 +4,10 @@
  * Both shapes are exercised (single file and `crust dev --dir`), the interpreter case twice — Bun on PATH and a deliberately bare one are different branches. Survivors are checked after both runs, not only the last. Fixture in `dev-binary/fixture.ts`.
  */
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { clearSurvivors, guardFocus, restoreFocus, survivorsOf, Verdict } from "./e2e-harness.ts";
+import { checkFrameworkTree } from "./dev-binary/framework.ts";
 import { lastLine } from "./lib/text.ts";
 import { runOnce } from "./dev-binary/run.ts";
 import {
@@ -50,7 +51,10 @@ async function main(): Promise<number> {
 		const version = Bun.spawnSync([...bare(NO_BUN_PATH), "--version"])
 			.stdout.toString()
 			.trim();
-		const tree = join(tmpdir(), `crust-framework-${version}`);
+		// `bare()` starts the binary with env -i: HOME and TMPDIR travel, XDG_CACHE_HOME does
+		// not. So the tree it resolves is the default private cache under HOME, regardless of
+		// whatever XDG override this harness itself runs with.
+		const tree = join(homedir(), ".cache", "crust", "framework", version);
 
 		// The fallback interpreter exists at all: the binary, told to be Bun, answers as one.
 		const beBun = Bun.spawnSync([
@@ -107,17 +111,9 @@ async function main(): Promise<number> {
 			ECHO,
 		]);
 
-		// The runner the single-file path generated imports the framework by absolute
-		// path, so a missing tree means the child resolved nothing. It is materialised by
-		// the run above and keyed by version, so it exists here or the binary cannot dev.
-		const treeExists = await Bun.file(join(tree, "src", "runtime.ts")).exists();
-		verdict.check(
-			"framework tree",
-			treeExists,
-			treeExists
-				? `${tree} (readable from another process)`
-				: `${tree} holds no src/runtime.ts`,
-		);
+		// The runner the single-file path generated imports the framework by absolute path.
+		// The location alone proves little, so check the cache's privacy, marker and refusal too.
+		const isPrivateTree = await checkFrameworkTree(verdict, tree, page, single);
 
 		// 2. The project shape: `crust init`, then `crust dev --dir`. The scaffold's own
 		// `crust` dependency is linked to the tree the binary extracted rather than
@@ -133,7 +129,7 @@ async function main(): Promise<number> {
 				: `exited ${init.exitCode}: ${lastLine(init.stderr.toString())}`,
 		);
 
-		if (scaffolded && treeExists) {
+		if (scaffolded && isPrivateTree) {
 			await mkdir(join(project, "node_modules"), { recursive: true });
 			await symlink(tree, join(project, "node_modules", "crust"), "dir");
 			await runOnce(
