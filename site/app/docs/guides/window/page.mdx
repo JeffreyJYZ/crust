@@ -26,7 +26,7 @@ await window.crust.invoke("window", "create", {
 // { ok: true, label: "second", created: true }
 ```
 
-`{ label, title?, width?, height?, url? }`. An absent `url` means the app's own document; a relative path resolves against the document of an open window; an absolute URL is loaded as given. A width or height that is not a positive integer is refused, not clamped.
+`{ label, title?, width?, height?, url? }`. An absent `url` means the app's own document; a relative path resolves against the document of an open window. Every bridge-served document — relative or absolute on the bridge's own origin — carries `?window=<label>` with the label from the command and a seed token, so the document token is bound to that window's grants; a page-supplied `window` or `token` is replaced, not trusted. An absolute URL on a foreign origin is loaded as given without a token, and a bridge-origin URL whose path begins `//` is refused as `invalid-url` because the navigation would leave the origin. A width or height that is not a positive integer is refused, not clamped.
 
 ## Commands
 
