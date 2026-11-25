@@ -21,6 +21,7 @@ int shim_window_set_material(obj_t win) {
 	fx = ((obj_t (*)(void *, void *, shim_rect))objc_msgSend)(
 	    fx, sel_registerName("initWithFrame:"), bounds);
 	if (!fx) return 0;
+	crust_own(fx);
 
 	// 2 | 16 = NSViewWidthSizable | NSViewHeightSizable.
 	((void (*)(void *, void *, unsigned long long))objc_msgSend)(
@@ -33,6 +34,8 @@ int shim_window_set_material(obj_t win) {
 	// under the webview. `relativeTo:nil` means the whole content view.
 	((void (*)(void *, void *, obj_t, long long, obj_t))objc_msgSend)(
 	    content, sel_registerName("addSubview:positioned:relativeTo:"), fx, -1LL, 0);
+	// The content view retains the effect view; our +1 from alloc/initWithFrame: ends here.
+	crust_release(fx);
 
 	((void (*)(void *, void *, int))objc_msgSend)(win, sel_registerName("setOpaque:"), 0);
 	obj_t clear = ((obj_t (*)(void *, void *))objc_msgSend)(

@@ -3,6 +3,8 @@
 // freed trampoline behind a live object is a SIGABRT.
 void tray_destroy(obj_t item) {
 	if (!item) return;
+	// A build interrupted by teardown still owns its +1 menu; balance it here.
+	crust_release(tray_building_menu);
 	tray_building_menu = 0;
 	obj_t bar_cls = objc_getClass("NSStatusBar");
 	if (!bar_cls || !tray_responds(bar_cls, "systemStatusBar")) return;

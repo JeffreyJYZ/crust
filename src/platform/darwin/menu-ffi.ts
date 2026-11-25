@@ -11,11 +11,12 @@ import { join } from "node:path";
 // A compiled binary has no `import.meta.dir`, so the C units travel inside the binary
 // as text and are materialised before `cc()` sees them. The parts are one unit.
 import apiSource from "./shim/98_menu_api.c" with { type: "text" };
+import preludeSource from "./shim/98_menu_prelude.c" with { type: "text" };
 import readSource from "./shim/98_menu_read.c" with { type: "text" };
 import contextSource from "./shim/99_menu_context.c" with { type: "text" };
 import { auditFlags, auditSource, auditSymbols } from "./shim-audit.ts";
 
-const unitSource = auditSource([apiSource, readSource, contextSource].join(""));
+const unitSource = auditSource([preludeSource, apiSource, readSource, contextSource].join(""));
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
