@@ -56,7 +56,8 @@ export function linuxBrowserAdapter(ports?: LinuxBrowserPorts): BrowserAdapter {
 		sink = navigationChannel({
 			find: (web) => store.values().find((entry) => entry.web === web),
 			labelOf: (surface) => surface.label,
-			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().popupUrl()),
+			// C keeps each kind's URI in its own buffer, so one commit cannot erase another URL.
+			urlOf: (kind) => (kind === 0 ? port().popupUrl() : port().decisionUrl()),
 			decide: (label) => decisions.get(label),
 			onPopup: (surface, url) => surface.onPopup?.(url),
 			setSink: (pointer) => {

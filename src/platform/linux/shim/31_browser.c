@@ -14,7 +14,10 @@
 // The one sink a refused new window is reported through; a GObject signal handler may not cross
 // bun:ffi, so the URL is read back through `shim_browser_popup_url`.
 static int (*shim_browser_sink)(int kind, int count, void *web);
+// Two buffers, not one: a navigation committing after a refused popup used to overwrite its URL
+// before JavaScript read it, and made `urlOf(kind)` a dead ternary in the JS layer.
 static char shim_browser_popup[SHIM_BROWSER_POPUP_CAP];
+static char shim_browser_navigation[SHIM_BROWSER_POPUP_CAP];
 static int shim_browser_count;
 // Kind 0 is a refused new window, kind 1 a `decide-policy` navigation asking to be allowed.
 static int (*shim_browser_decision_sink)(int kind, int count, void *web);
@@ -40,22 +43,22 @@ static void shim_browser_resolve(void) {
 	shim_policy_ignore = (void (*)(void *))shim_sym_or_null(h, "webkit_policy_decision_ignore");
 }
 
-// The action's target URI into `shim_browser_popup`; an action with no request leaves it empty.
-static void shim_browser_record(void *action) {
+// The action's target URI into the caller's buffer; an action with no request leaves it empty.
+static void shim_browser_record(char *dst, void *action) {
 	const char *uri = 0;
-	shim_browser_popup[0] = 0;
+	dst[0] = 0;
 	shim_browser_resolve();
 	if (action && shim_action_request && shim_request_uri) {
 		void *request = shim_action_request(action);
 		if (request) uri = shim_request_uri(request);
 	}
-	if (uri) shim_copy_text(shim_browser_popup, SHIM_BROWSER_POPUP_CAP, uri);
+	if (uri) shim_copy_text(dst, SHIM_BROWSER_POPUP_CAP, uri);
 }
 
 // Returning NULL is the refusal: WebKit creates no second view, and the URL goes to JavaScript.
 static void *shim_browser_created(void *web, void *action, void *data) {
 	(void)data;
-	shim_browser_record(action);
+	shim_browser_record(shim_browser_popup, action);
 	shim_browser_count++;
 	if (shim_browser_sink) shim_browser_sink(0, shim_browser_count, web);
 	return 0;
@@ -72,10 +75,10 @@ static int shim_browser_decide(void *web, void *decision, int type, void *data) 
 	if (type != 0) return 0;
 	shim_browser_resolve();
 	void *action = shim_policy_action ? shim_policy_action(decision) : 0;
-	shim_browser_record(action);
+	shim_browser_record(shim_browser_navigation, action);
 	// No URI means there is nothing to gate: an older WebKit without the request getters, or a
 	// decision without an action, must not turn into a cancelled first load.
-	if (!shim_browser_popup[0]) return 0;
+	if (!shim_browser_navigation[0]) return 0;
 	shim_browser_count++;
 	int allowed = shim_browser_decision_sink
 	                  ? shim_browser_decision_sink(1, shim_browser_count, web)
@@ -122,14 +125,24 @@ void shim_browser_set_decision_sink(void *sink) {
 
 int shim_browser_popups(void) { return shim_browser_count; }
 
-// The URL of the last refused new window, as UTF-8 into a caller buffer; the full length.
-int shim_browser_popup_url(char *dst, int cap) {
+// One bounded UTF-8 readback, with the full length and a terminator in the caller's buffer.
+static int shim_browser_copy_url(const char *source, char *dst, int cap) {
 	int length = 0;
 	int take;
 	if (!dst || cap <= 0) return 0;
-	while (shim_browser_popup[length]) length++;
+	while (source[length]) length++;
 	take = length < cap - 1 ? length : cap - 1;
-	for (int i = 0; i < take; i++) dst[i] = shim_browser_popup[i];
+	for (int i = 0; i < take; i++) dst[i] = source[i];
 	dst[take] = 0;
 	return length;
+}
+
+// The URL of the last refused new window, and of the last navigation decision. Separate buffers:
+// reading one can no longer destroy the other, so `urlOf(kind)` has a real source for each kind.
+int shim_browser_popup_url(char *dst, int cap) {
+	return shim_browser_copy_url(shim_browser_popup, dst, cap);
+}
+
+int shim_browser_navigation_url(char *dst, int cap) {
+	return shim_browser_copy_url(shim_browser_navigation, dst, cap);
 }

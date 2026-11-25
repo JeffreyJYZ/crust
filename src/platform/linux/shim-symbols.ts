@@ -55,6 +55,7 @@ export const shimSymbols = {
 	shim_browser_set_decision_sink: { args: [P], returns: V },
 	shim_browser_popups: { args: [], returns: I32 },
 	shim_browser_popup_url: { args: [P, I32], returns: I32 },
+	shim_browser_navigation_url: { args: [P, I32], returns: I32 },
 
 	shim_window_api_ready: { args: [], returns: I32 },
 	shim_window_api_missing: { args: [], returns: CS },

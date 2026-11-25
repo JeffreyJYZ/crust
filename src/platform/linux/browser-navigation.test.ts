@@ -115,6 +115,21 @@ describe("the Linux committed-navigation gate", () => {
 		expect(navigationAllowed(() => { throw new Error("page bug"); }, TRUSTED)).toBe(false);
 	});
 
+	test("kind 1 reads the decision URL, not the popup buffer", () => {
+		const fake = new FakePorts();
+		const seen: string[] = [];
+		const parts = partsFor(
+			(url) => {
+				seen.push(url);
+				return true;
+			},
+			() => {},
+		);
+		parts.urlOf = (kind) => (kind === 0 ? fake.popupUrl() : fake.decisionUrl());
+		expect(decideNavigation(parts, 1, Number(WEB))).toBe(1);
+		expect(seen).toEqual([fake.decisionUrl()]);
+	});
+
 	/**
 	 * The first load already passed the plugin's entry check. Cancelling it left a real GTK surface
 	 * with no document (ubuntu-latest 2026-11-21); a redirect or later navigation is still gated.
@@ -144,12 +159,18 @@ describe("the decide-policy hook in the shim", () => {
 		// Only navigation-action decisions are gated; a NEW_WINDOW_ACTION belongs to browser-popup.
 		expect(browser).toContain("if (type != 0) return 0;");
 		// An unreadable URI is not a reason to cancel the surface's first load.
-		expect(browser).toContain("if (!shim_browser_popup[0]) return 0;");
+		expect(browser).toContain("if (!shim_browser_navigation[0]) return 0;");
+		// Popups and decisions own separate buffers: a later commit cannot erase a refused URL.
+		expect(browser).toContain("int shim_browser_navigation_url(char *dst, int cap)");
+		expect(browser).toContain("shim_browser_record(shim_browser_navigation, action)");
 		// A refusal ignores the decision and handles the signal so WebKit's default use() cannot run.
 		expect(browser).toContain("shim_policy_ignore(decision)");
 		expect(browser).toContain("shim_browser_decision_sink(1, shim_browser_count, web)");
 		const symbols = readFileSync(join(import.meta.dir, "shim-symbols.ts"), "utf8");
 		expect(symbols).toContain("shim_browser_watch_nav: { args: [P], returns: I32 }");
 		expect(symbols).toContain("shim_browser_set_decision_sink: { args: [P], returns: V }");
+		expect(symbols).toContain("shim_browser_navigation_url: { args: [P, I32], returns: I32 }");
+		const source = readFileSync(join(import.meta.dir, "browser.ts"), "utf8");
+		expect(source).toContain("kind === 0 ? port().popupUrl() : port().decisionUrl()");
 	});
 });
