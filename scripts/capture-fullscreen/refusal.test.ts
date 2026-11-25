@@ -12,7 +12,7 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "../..");
 
 /** A stub `osascript`: frontmost is a plain app, the AXFullScreen query answers nothing. */
-async function runWithoutFullscreen() {
+async function runWithoutFullscreen(extra: string[] = []) {
 	const dir = await mkdtemp(join(tmpdir(), "crust-fullscreen-refusal-"));
 	try {
 		const script = join(dir, "osascript");
@@ -23,7 +23,7 @@ async function runWithoutFullscreen() {
 		);
 		await chmod(script, 0o755);
 		return Bun.spawnSync({
-			cmd: ["bun", "run", "scripts/probe-capture-fullscreen.ts"],
+			cmd: ["bun", "run", "scripts/probe-capture-fullscreen.ts", ...extra],
 			cwd: ROOT,
 			env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
 			stdout: "pipe",
@@ -47,3 +47,19 @@ test("no fullscreen app: condition NO, exit 2, never a pass", async () => {
 	expect(child.exitCode).toBe(2);
 	expect(out.trim().split("\n").length).toBeLessThanOrEqual(10);
 });
+
+test.skipIf(process.platform !== "darwin")(
+	"--wait expires with the blocker printed and still refuses",
+	async () => {
+		const child = await runWithoutFullscreen(["--wait", "1"]);
+		const out = child.stdout.toString();
+		expect(out).toContain("waiting up to 1 s for another app to go fullscreen — press ⌃⌘F");
+		expect(out).toMatch(
+			/waited: 1\.\d s \(timed out — frontmost Test Terminal has no fullscreen window\)/,
+		);
+		expect(out).toContain("condition: NO");
+		expect(out).not.toContain("condition: YES");
+		expect(out).toContain("verdict: REFUSED");
+		expect(child.exitCode).toBe(2);
+	},
+);
