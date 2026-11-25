@@ -77,6 +77,8 @@ export interface SingleInstanceOptions {
 	adapter?: SingleInstanceAdapter;
 	/** Test seam: forces a competing waiter to replace a stale lock mid-acquire. */
 	beforeTakeover?: BeforeTakeover;
+	/** Test seam: fires after the takeover reads the stale bytes, before it drops them. */
+	duringTakeover?: BeforeTakeover;
 }
 
 export function createSingleInstancePlugin(options: SingleInstanceOptions = {}): PluginDefinition<
@@ -91,7 +93,8 @@ export function createSingleInstancePlugin(options: SingleInstanceOptions = {}):
 	return definePlugin({
 		name: "single-instance",
 		commands: {
-			acquire: (args: SingleInstanceArgs) => acquire(dir, args?.id, options.beforeTakeover),
+			acquire: (args: SingleInstanceArgs) =>
+				acquire(dir, args?.id, options.beforeTakeover, options.duringTakeover),
 			release: (args: SingleInstanceArgs) => release(dir, args?.id),
 			activate: (args: ActivateArgs) => activate(options.adapter, args?.pid),
 		},
