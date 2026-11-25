@@ -11,7 +11,7 @@
  * The map itself is the app's declaration; this module never invents keys for it.
  */
 
-import type { CommandHandler, MaybePromise, PluginContext } from "../plugins/define";
+import type { MaybePromise, PluginContext } from "../plugins/define";
 
 /**
  * The wire contract. One entry per command, keyed by the name the page passes to `invoke` — the
@@ -48,11 +48,12 @@ export interface TypedHost<M extends InvokeMap> {
 	 *
 	 * `ctx` is the bridge's `PluginContext` when the call arrives over HTTP; `app.invoke` (the
 	 * two-argument page form) calls the handler with its arguments alone, so `ctx` is `undefined`
-	 * on that path — the same behaviour `app.command` has always had.
+	 * on that path — the same behaviour `app.command` has always had. The type says `undefined`
+	 * too: a handler that wants `ctx.emit` must narrow it, exactly as the runtime requires.
 	 */
 	command<K extends keyof M & string>(
 		name: K,
-		handler: (input: M[K]["input"], ctx: PluginContext) => MaybePromise<M[K]["output"]>,
+		handler: (input: M[K]["input"], ctx?: PluginContext) => MaybePromise<M[K]["output"]>,
 	): TypedHost<M>;
 }
 
@@ -82,7 +83,7 @@ export interface TypedClient<M extends InvokeMap> {
 export function typedHost<M extends InvokeMap>(app: CommandHost): TypedHost<M> {
 	const wrap: TypedHost<M> = {
 		command(name, handler) {
-			app.command(name, handler as unknown as CommandHandler);
+			app.command(name, handler);
 			return wrap;
 		},
 	};
