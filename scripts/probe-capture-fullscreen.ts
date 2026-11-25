@@ -1,27 +1,27 @@
 #!/usr/bin/env bun
 /**
- * The fullscreen capture measurement, in ONE launch and with no arguments. It is the instrument for
- * the reported defect, not the fix: a real fullscreen app owning the active Space is detected, never
- * simulated, and an offscreen window that has never composited is captured twice.
+ * The reported fullscreen capture condition as a command the owner can type:
  *
- * No activation, no window movement, no cursor. The app is an accessory built from the shim, the
- * window is ordered front only at -4000,-4000, and no exit focus guard is armed — that would
- * activate an app and steal the screen. Frontmost and fullscreen apps are READ with read-only System
- * Events; this probe never becomes either. Run it yourself while a fullscreen app owns the Space.
+ *     bun run scripts/probe-capture-fullscreen.ts
  *
- * Seven short lines: frontmost, fullscreen, window facts, condition, two captures, verdict. The gate
- * fails only when the condition was actually present and `ignoreOcclusion` yielded no real pixels;
- * on a normal desktop it says NOT-REPORTED-STATE and exits 0, never claiming a pass it did not see.
+ * One process, no arguments, at most nine short lines. It detects the condition instead of assuming
+ * it: the frontmost app and its fullscreen windows come from read-only System Events, and the probe
+ * window's Space and occlusion come from AppKit. `condition: YES` needs BOTH a fullscreen app owning
+ * the active Space and this probe window off it. A normal desktop is a refusal, never a pass.
+ *
+ * No activation, no window movement, no cursor, no other app's Space. `activate: "never"` and the
+ * accessory policy keep the process off screen and out of the Dock, and no exit focus guard is armed
+ * because `restoreFocus` would activate an app. `captureFrontmost()` is the read-only half of the
+ * focus helpers; this probe never becomes the app it reads.
  */
 import { perfNative } from "@/cli/perf/perf-native.ts";
 import { shim } from "@/platform/darwin/index.ts";
 import { cls, cstr, S } from "@/platform/darwin/objc.ts";
 import { DarwinPlatform } from "@/platform/darwin/platform.ts";
-import { capture, line } from "./capture-fullscreen/shot.ts";
+import { capture, type Shot } from "./capture-fullscreen/shot.ts";
+import { captureFrontmost } from "./e2e-harness.ts";
 
 const APP = "crust-fullscreen-capture";
-const FRONTMOST =
-	'tell application "System Events" to get name of first process whose frontmost is true';
 const FULLSCREEN = `tell application "System Events"
 set found to {}
 repeat with p in (every process whose background only is false)
@@ -56,8 +56,19 @@ function ask(source: string): string {
 	}
 }
 
+/** One line per capture: elapsed, answer, and every number the decoded PNG gives. */
+function describe(label: string, shot: Shot): string {
+	const m = shot.measured;
+	return (
+		`capture ${label}: ${shot.ms}ms ${shot.answer} ${shot.picture} ` +
+		`width=${m?.width ?? 0} height=${m?.height ?? 0} scale=${shot.scale} bytes=${shot.bytes} ` +
+		`pixels=${m?.pixels ?? 0} opaque=${m?.opaque ?? 0} ` +
+		`colours=${m?.colours ?? 0} differing=${m?.differing ?? 0}`
+	);
+}
+
 async function main(): Promise<number> {
-	const frontmost = ask(FRONTMOST) || "unknown";
+	const frontmost = (await captureFrontmost()) ?? "unknown";
 	const listed = ask(FULLSCREEN);
 	const fullscreen = listed
 		? listed
@@ -66,14 +77,17 @@ async function main(): Promise<number> {
 				.filter(Boolean)
 		: [];
 	const other = fullscreen.filter((name) => name.toLowerCase() !== APP.toLowerCase());
+	const fullscreenFrontmost = other.some(
+		(name) => name.toLowerCase() === frontmost.toLowerCase(),
+	);
 
 	if (process.platform !== "darwin") {
 		console.log("frontmost: n/a (not macOS)");
 		console.log("fullscreen: n/a");
 		console.log("window: n/a");
 		console.log("condition: NO (no WKWebView on this platform)");
-		console.log("verdict: NOT-REPORTED-STATE");
-		return 0;
+		console.log("verdict: REFUSED (nothing measured)");
+		return 2;
 	}
 
 	const platform = new DarwinPlatform({ appName: APP, activate: "never" });
@@ -102,33 +116,30 @@ async function main(): Promise<number> {
 		const onActiveSpace = S.b0(win, "isOnActiveSpace");
 		const occlusion = S.q0(win, "occlusionState");
 		const visible = S.b0(win, "isVisible");
-		// The reported state needs BOTH facts: a fullscreen app frontmost AND this probe window
-		// pushed off the active Space. A fullscreen app on another display keeps onActiveSpace=1,
-		// which is visibly not the state the gate exists to measure.
-		const fullscreenFrontmost = other.some(
-			(name) => name.toLowerCase() === frontmost.toLowerCase(),
-		);
+		// A fullscreen app on another display keeps this window on the active Space, which is
+		// visibly NOT the reported state. Both facts are required before the gate applies.
 		const condition = fullscreenFrontmost && !onActiveSpace;
+		const reason = !fullscreenFrontmost
+			? `frontmost ${frontmost} has no fullscreen window`
+			: onActiveSpace
+				? `the probe window is on the active Space, so no fullscreen app owns it`
+				: `frontmost ${frontmost} is fullscreen and the probe window is off its Space`;
 
 		console.log(`frontmost: ${frontmost}`);
 		console.log(`fullscreen: ${other.length ? other.join(", ") : "none"}`);
 		console.log(
 			`window: onActiveSpace=${onActiveSpace ? 1 : 0} occlusion=${occlusion} visible=${visible ? 1 : 0}`,
 		);
-		console.log(
-			`condition: ${condition ? "YES" : "NO"} (frontmost ${frontmost} ` +
-				`fullscreen=${fullscreenFrontmost ? "yes" : "no"}, probe window ` +
-				`${onActiveSpace ? "on" : "off"} the active Space)`,
-		);
+		console.log(`condition: ${condition ? "YES" : "NO"} (${reason})`);
 
 		const baseline = await capture(web, false);
 		const fixed = await capture(web, true);
-		console.log(line("ignoreOcclusion=false", baseline));
-		console.log(line("ignoreOcclusion=true", fixed));
+		console.log(describe("ignoreOcclusion=false", baseline));
+		console.log(describe("ignoreOcclusion=true", fixed));
 
 		if (!condition) {
-			console.log("verdict: NOT-REPORTED-STATE (gate not applicable)");
-			return 0;
+			console.log(`verdict: REFUSED (condition absent: ${reason})`);
+			return 2;
 		}
 		if (fixed.picture !== "real") {
 			console.log(
@@ -148,6 +159,8 @@ async function main(): Promise<number> {
 main()
 	.then((code) => process.exit(code))
 	.catch((error: unknown) => {
-		console.log(`unreachable: ${error instanceof Error ? error.message : String(error)}`);
-		process.exit(1);
+		const detail = error instanceof Error ? error.message : String(error);
+		console.log(`condition: NO (unreachable: ${detail})`);
+		console.log("verdict: REFUSED (nothing measured)");
+		process.exit(2);
 	});
