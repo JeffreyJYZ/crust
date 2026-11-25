@@ -1,21 +1,14 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { sourceOwner } from "../native-source.ts";
 import { listAssets, readAsset } from "./assets.ts";
+import { FRAMEWORK_MARKER, frameworkStamp, type FrameworkEntry } from "./framework-stamp.ts";
 import { crustRoot, exists, VERSION } from "./util.ts";
 
 let cached: string | undefined;
-
-const MARKER = ".complete";
-
-/** One file the generated entry will import from the compiled cache. */
-interface FrameworkEntry {
-	relative: string;
-	bytes(): Promise<Uint8Array>;
-}
 
 /**
  * True when this code runs inside a compiled executable rather than a checkout. The embedded tree is mounted at `/$bunfs` and this process can read it, but a child `bun build` cannot — so `exists()` is not the test: it says yes inside a binary and the child then fails with `Could not resolve: "/$bunfs/root/src/runtime.ts"`.
@@ -100,18 +93,6 @@ async function frameworkEntries(): Promise<FrameworkEntry[]> {
 	return entries;
 }
 
-/** The marker is a hash of every file name and byte, not just a "done" flag. */
-async function frameworkStamp(entries: readonly FrameworkEntry[]): Promise<string> {
-	const hash = createHash("sha256");
-	for (const entry of entries) {
-		hash.update(entry.relative)
-			.update("\0")
-			.update(await entry.bytes())
-			.update("\0");
-	}
-	return hash.digest("hex");
-}
-
 /**
  * True when the tree was published with the matching marker and every cached file still holds the
  * shipped bytes. A missing marker means an interrupted publish, which is rebuilt; a present marker
@@ -124,14 +105,14 @@ async function verifyFramework(
 ): Promise<boolean> {
 	let marker: string;
 	try {
-		marker = await readFile(join(target, MARKER), "utf8");
+		marker = await readFile(join(target, FRAMEWORK_MARKER), "utf8");
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
 		throw error;
 	}
 	if (marker !== stamp)
 		throw new Error(
-			`crust: framework marker ${join(target, MARKER)} does not match this executable; ` +
+			`crust: framework marker ${join(target, FRAMEWORK_MARKER)} does not match this executable; ` +
 				`remove ${target} and retry`,
 		);
 	for (const entry of entries) {
@@ -187,7 +168,7 @@ export async function materialiseFramework(root = frameworkCacheRoot()): Promise
 		await mkdir(dirname(path), { recursive: true, mode: 0o700 });
 		await writeFile(path, await entry.bytes(), { mode: 0o600 });
 	}
-	await writeFile(join(staged, MARKER), stamp, { mode: 0o600 });
+	await writeFile(join(staged, FRAMEWORK_MARKER), stamp, { mode: 0o600 });
 	try {
 		await rename(staged, target);
 	} catch {
