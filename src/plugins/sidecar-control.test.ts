@@ -114,7 +114,10 @@ describe("sidecar.kill", () => {
 		const p = plugin({ killGraceMs: 10 });
 		const spawned = (await p.spawn({ name: "tool" })) as { id: string };
 		await p.kill({ id: spawned.id });
-		await tick(40);
+		// A single 40 ms sleep fails when the event loop stalls: the escalation timer is late even
+		// though the code is correct. Poll within a bounded budget instead.
+		const deadline = Date.now() + 2000;
+		while (!stubborn.signals.includes("SIGKILL") && Date.now() < deadline) await tick(5);
 		expect(stubborn.signals).toEqual(["SIGTERM", "SIGKILL"]);
 		expect(seen.filter((s) => s.event === "sidecar-exit")).toHaveLength(1);
 	});

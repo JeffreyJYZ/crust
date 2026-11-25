@@ -105,19 +105,38 @@ async function ended(app: Bun.Subprocess<"ignore", "pipe", "pipe">): Promise<voi
 	if (code === "timeout") throw new Error("the app did not exit");
 }
 
+/** A failed assertion must not leave a TERM-ignoring child or its scratch dir behind. */
+async function cleanup(app: Bun.Subprocess<"ignore", "pipe", "pipe">, pid: number, dir: string) {
+	if (app.exitCode === null) app.kill("SIGKILL");
+	try {
+		process.kill(pid, "SIGKILL");
+	} catch {
+		// Already gone: the normal path after a successful reap.
+	}
+	await rm(dir, { recursive: true, force: true });
+	expect(existsSync(dir)).toBe(false);
+	expect(await gone(pid)).toBe(true);
+}
+
 describe("shell children are reaped when crust leaves", () => {
 	test("app.quit() kills a child that ignores SIGTERM", async () => {
 		const { app, pid, dir } = await start("quit");
-		await ended(app);
-		expect(await gone(pid)).toBe(true);
-		await rm(dir, { recursive: true, force: true });
+		try {
+			await ended(app);
+			expect(await gone(pid)).toBe(true);
+		} finally {
+			await cleanup(app, pid, dir);
+		}
 	}, 15000);
 
 	test("SIGTERM, the crust dev restart signal, kills the same child", async () => {
 		const { app, pid, dir } = await start("term");
-		app.kill("SIGTERM");
-		await ended(app);
-		expect(await gone(pid)).toBe(true);
-		await rm(dir, { recursive: true, force: true });
+		try {
+			app.kill("SIGTERM");
+			await ended(app);
+			expect(await gone(pid)).toBe(true);
+		} finally {
+			await cleanup(app, pid, dir);
+		}
 	}, 15000);
 });

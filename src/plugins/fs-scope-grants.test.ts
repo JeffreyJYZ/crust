@@ -58,8 +58,8 @@ describe("fs scope grants", () => {
 			}
 		}
 		// A refused grant changed nothing: the sibling is still outside the configured prefix.
+		// The loop above already pinned the refusal code and message for this exact plugin and path.
 		const scoped = createFsPlugin({ allow: [inside], root });
-		await expect(call(scoped, "scopeAllow", { path: outside })).rejects.toBeDefined();
 		await expect(
 			call(scoped, "readTextFile", { path: join(outside, "secret.md") }),
 		).rejects.toMatchObject({ code: "outside-scope" });
