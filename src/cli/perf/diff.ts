@@ -147,7 +147,7 @@ export async function diffFiles(
 	tolerance: number,
 ): Promise<number> {
 	if (!Number.isFinite(tolerance) || tolerance < 0) {
-		console.log(`crust perf diff: --tolerance needs a non-negative number, got ${tolerance}`);
+		console.error(`crust perf diff: --tolerance needs a non-negative number, got ${tolerance}`);
 		return 1;
 	}
 	let before: PerfRecordFile;
@@ -155,12 +155,12 @@ export async function diffFiles(
 	try {
 		[before, after] = await Promise.all([load(beforePath), load(afterPath)]);
 	} catch (error) {
-		console.log(`crust perf diff: cannot read a sample: ${String(error)}`);
+		console.error(`crust perf diff: cannot read a sample: ${String(error)}`);
 		return 1;
 	}
 	const result = diffRecords(before, after, tolerance);
 	if (typeof result === "string") {
-		console.log(`crust perf diff: ${result}`);
+		console.error(`crust perf diff: ${result}`);
 		return 1;
 	}
 	for (const line of result.lines) console.log(line);

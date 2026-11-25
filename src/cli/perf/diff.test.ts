@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -95,6 +95,39 @@ describe("perf diff", () => {
 		if (typeof result === "string") return;
 		expect(result.regressions).toEqual([]);
 		expect(result.lines.find((line) => line.includes("throughput"))).toContain("+0.0%");
+	});
+
+	test("failures go to stderr, the report stays on stdout", async () => {
+		const log = spyOn(console, "log").mockImplementation(() => {});
+		const error = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			expect(await diffFiles("a", "b", -1)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("--tolerance"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			expect(await diffFiles("/no/such/before.json", "/no/such/after.json", 5)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("cannot read a sample"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			const dir = await mkdtemp(join(tmpdir(), "crust-perf-diff-"));
+			const noFrame = join(dir, "no-frame.json");
+			await writeFile(noFrame, JSON.stringify({ version: 1, samples: [] }), "utf8");
+			expect(await diffFiles(noFrame, noFrame, 5)).toBe(1);
+			expect(error).toHaveBeenCalledWith(expect.stringContaining("no frame block"));
+			expect(log).not.toHaveBeenCalled();
+			error.mockClear();
+
+			const good = join(dir, "good.json");
+			await writeFile(good, JSON.stringify(fixture()), "utf8");
+			expect(await diffFiles(good, good, 5)).toBe(0);
+			expect(log).toHaveBeenCalledWith(expect.stringContaining("field"));
+			expect(error).not.toHaveBeenCalled();
+		} finally {
+			log.mockRestore();
+			error.mockRestore();
+		}
 	});
 
 	test("a from-zero delta keeps its sign and honours tolerance", () => {
