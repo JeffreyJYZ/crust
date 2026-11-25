@@ -44,9 +44,9 @@ Sets the window's accessible name via `-setAccessibilityLabel:`, which is the st
 await window.crust.invoke("accessibility", "focus", { label: "main" });
 ```
 
-Sets `AXFocusedWindow` and `AXFocused`, then posts `AXFocusedWindowChanged` and `AXFocusedUIElementChanged`. A command that only set the attribute would record the intent without moving VoiceOver; the two posts are what makes it move. `focus` takes no text — a page cannot type into another app through it.
+The native half attempts to set `AXFocusedWindow` and `AXFocused`, then posts `AXFocusedWindowChanged` and `AXFocusedUIElementChanged`. `focus` takes no text — a page cannot type into another app through it. **Do not read `focused: true` as proof that a screen reader moved**: the current native unit does not check the three `AXUIElementSetAttributeValue` results, so a matching window can report success even when the AX server refused every set. Confirm assistive focus in the app itself where it matters.
 
-A `label` matches a window's title or its existing accessible name. Unknown labels answer `focused: false` with the name in `reason`, never a throw.
+A `label` matches a window's title or its existing accessible name. An unknown label answers a typed `{ ok: false, code: "bad-request", message }`, not a `focused: false` value and not a throw.
 
 ## Platforms without an announcement surface
 
@@ -66,7 +66,7 @@ The Windows answer is a deliberate refusal. `NotifyWinEvent` with `EVENT_OBJECT_
 const { trusted } = await window.crust.invoke("accessibility", "trusted");
 ```
 
-A read: it never raises a dialog. Use it before a call that needs the AX API, so the app can explain itself instead of failing opaquely.
+A read: it never raises a dialog. Use it before a call that needs the AX API, so the app can explain itself instead of failing opaquely. `trusted: false` should mean `AXIsProcessTrusted()` answered false. The current native adapter also returns `false` when its C unit could not be compiled, so the two states are not yet distinguishable here; `elementCount` names that compile failure in its refusal `reason` if you need to tell them apart.
 
 ```ts
 const { trusted, prompted } = await window.crust.invoke("accessibility", "prompt");
