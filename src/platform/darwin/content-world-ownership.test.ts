@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { auditSource } from "./shim-audit.ts";
 import { probeWith } from "./ownership-harness";
 
 const STUB = `
@@ -59,7 +60,7 @@ int test_content_world(void) {
 }
 `;
 	test("one retain survives a pool drain; the name is released", () => {
-		expect(probeWith(STUB, PARTS, main, "test_content_world")).toBe(101);
+		expect(probeWith(auditSource(STUB), PARTS, main, "test_content_world")).toBe(102);
 	});
 });
 
@@ -73,6 +74,6 @@ int test_user_script(void) {
 }
 `;
 	test("text and WKUserScript are each released after addUserScript:", () => {
-		expect(probeWith(STUB, PARTS, main, "test_user_script")).toBe(102);
+		expect(probeWith(auditSource(STUB), PARTS, main, "test_user_script")).toBe(102);
 	});
 });

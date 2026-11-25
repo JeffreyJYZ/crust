@@ -11,6 +11,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { auditSource } from "./shim-audit.ts";
+
 const STUB = `
 #include <string.h>
 static const char *sel_names[128];
@@ -68,13 +70,15 @@ int test_depth(void) {
 describe("menu_api_read walks every level of the installed bar", () => {
 	test("grandchild rows keep their parent index, so menu.read can rebuild the tree", () => {
 		const dir = join(import.meta.dir, "shim");
-		const body = [
-			STUB,
-			...["98_menu_prelude.c", "98_menu_api.c", "98_menu_read.c"].map((name) =>
-				readFileSync(join(dir, name), "utf8"),
-			),
-			MAIN,
-		].join("\n");
+		const body = auditSource(
+			[
+				STUB,
+				...["98_menu_prelude.c", "98_menu_api.c", "98_menu_read.c"].map((name) =>
+					readFileSync(join(dir, name), "utf8"),
+				),
+				MAIN,
+			].join("\n"),
+		);
 		const hash = createHash("sha256").update(body).digest("hex").slice(0, 16);
 		const path = join(tmpdir(), `crust-menu-depth-${hash}.c`);
 		if (!existsSync(path)) writeFileSync(path, body);

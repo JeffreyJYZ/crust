@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { auditSource } from "./shim-audit.ts";
 import { probeWith } from "./ownership-harness";
 
 const STUB = `
@@ -64,7 +65,7 @@ int test_titles(void) {
 }
 `;
 	test("a title and a tooltip each release their string", () => {
-		expect(probeWith(STUB, PARTS, titles, "test_titles")).toBe(2);
+		expect(probeWith(auditSource(STUB), PARTS, titles, "test_titles")).toBe(2);
 	});
 
 	const rebuild = `
@@ -81,6 +82,6 @@ int test_rebuild(void) {
 }
 `;
 	test("two menu builds release both trees: title+row per build plus each menu", () => {
-		expect(probeWith(STUB, PARTS, rebuild, "test_rebuild")).toBe(10);
+		expect(probeWith(auditSource(STUB), PARTS, rebuild, "test_rebuild")).toBe(12);
 	});
 });

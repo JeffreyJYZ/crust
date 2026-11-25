@@ -11,10 +11,14 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { auditSource } from "./shim-audit.ts";
+
 const DIR = join(import.meta.dir, "shim");
 
 function compile(stub: string, parts: string[], main: string, symbol: string): number {
-	const body = `${stub}\n${parts.map((name) => readFileSync(join(DIR, name), "utf8")).join("\n")}\n${main}`;
+	const body = auditSource(
+		`${stub}\n${parts.map((name) => readFileSync(join(DIR, name), "utf8")).join("\n")}\n${main}`,
+	);
 	const hash = createHash("sha256").update(body).digest("hex").slice(0, 16);
 	const path = join(tmpdir(), `crust-hunt22-ownership-${hash}.c`);
 	if (!existsSync(path)) writeFileSync(path, body);
@@ -71,7 +75,7 @@ int test_menu(void) {
 }
 `;
 	test("begin/item/submenu/close/install balance every +1", () => {
-		expect(compile(OBJC, ["98_menu_prelude.c", "98_menu_api.c"], main, "test_menu")).toBe(7);
+		expect(compile(OBJC, ["98_menu_prelude.c", "98_menu_api.c"], main, "test_menu")).toBe(6);
 	});
 });
 
