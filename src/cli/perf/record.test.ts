@@ -41,6 +41,9 @@ describe("perf record", () => {
 		expect(await exists(out)).toBe(false);
 	});
 
+	// Launching a real app, waiting for a paint and writing a sample cannot fit bun's 5 s default on a
+	// loaded CI runner: measured timing out at exactly 5000 ms in CI while passing locally in 3.2 s.
+	// `record` keeps its own internal deadline; this is only the test's own budget.
 	test("round-trip: a real run, when it paints, diffs to zero; a stall is exit 2", async () => {
 		if (process.platform !== "darwin") {
 			// No WebKit here: the same command must still refuse instead of writing a fake sample.
@@ -63,7 +66,7 @@ describe("perf record", () => {
 		expect(file.summary.frame.framesDrawn).toBeGreaterThan(0);
 		expect(file.summary.frame.fps).toBeGreaterThan(0);
 		expect(await diffFiles(out, out, 5)).toBe(0);
-	});
+	}, 60_000);
 
 	test("diff routes through the CLI entry point", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "crust-perf-cli-"));

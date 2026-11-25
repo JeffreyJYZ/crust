@@ -27,8 +27,13 @@ const P = FFIType.ptr;
 const I32 = FFIType.i32;
 const I64 = FFIType.i64;
 
-/** How long one evaluation may stay unanswered before it is reported rather than left hanging. */
-export const EVAL_TIMEOUT_MS = 4000;
+/**
+ * How long one evaluation may stay unanswered before it is reported rather than left hanging. A bound
+ * is the point, not the exact number: 4 s proved too tight for a loaded CI runner, where the live
+ * WKWebView test failed with `the page did not answer within 4000 ms` on a docs-only commit while the
+ * same test passed on three runs either side. 10 s still reports a hung page.
+ */
+export const EVAL_TIMEOUT_MS = 10_000;
 
 /** The exported table, typed by hand: `cc()` hands back loose symbols. */
 interface TestingNative {
