@@ -3,7 +3,7 @@
  */
 
 import { currentBridgeToken, isBridgeOrigin, withToken } from "@/bridge/window-identity.ts";
-import { withForcedWindowLabel, withoutWindowLabel } from "@/bridge/window-query.ts";
+import { withForcedWindowLabel } from "@/bridge/window-query.ts";
 import { logEvent } from "@/logging/logger";
 import { windowRecord } from "@/logging/records";
 import type { NotImplemented } from "./define";
@@ -57,18 +57,38 @@ export function createWindowCommand(
 	// builds one from `location.origin` names a path, not a different app. Such a URL keeps its
 	// query and hash and gets the token, because the document route refuses a request without one.
 	const bridgeOwned = url !== undefined && isBridgeOrigin(url);
+	// A bridge-owned URL with a `//host` path is still same-origin as a string, but the native
+	// navigation follows it as protocol-relative and lands on a foreign host. Refuse it before a
+	// token is appended, so no credential is ever composed into an off-origin navigation.
+	if (bridgeOwned && url !== undefined) {
+		let pathname = "";
+		try {
+			pathname = new URL(url).pathname;
+		} catch {
+			// `isBridgeOrigin` already parsed it; this is only defensive.
+		}
+		if (pathname.startsWith("//")) {
+			return {
+				ok: false as const,
+				code: "invalid-url" as const,
+				message:
+					"crust: window.create url must not use an authority-absolute path on the " +
+					"bridge origin",
+				label: parsed.options.label,
+			};
+		}
+	}
 	// The token rides along on the same URL, because the document route refuses a request that
 	// cannot present one — a window opened without it would answer `401` and show an error page.
 	const token = currentBridgeToken();
 	const appDocument = (): string => {
-		// Identity follows who composed the URL. A relative document is crust's own, so the label
-		// comes from the command. An absolute one is the app's to define in full: crust adds no
-		// identity to it, and a `?window=` the page put there is stripped before the seed token is
-		// appended, or it would mint a document bound to a label the page picked.
+		// Identity follows the command, not the page's query. A bridge-owned absolute URL is the
+		// app's path, so it gets the native label exactly like a relative one: stripping `window=`
+		// and leaving it absent made the document route fall back to `main`, handing `window:create`
+		// alone the main window's grants. `withForcedWindowLabel` also drops a page-supplied label
+		// hidden behind an encoded key.
 		const document = url ?? "/";
-		const labelled = bridgeOwned
-			? withoutWindowLabel(document)
-			: withForcedWindowLabel(document, parsed.options.label);
+		const labelled = withForcedWindowLabel(document, parsed.options.label);
 		return token === undefined ? labelled : withToken(labelled, token);
 	};
 	const options: WindowCreateOptions =

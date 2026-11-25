@@ -19,6 +19,7 @@
  * bound to that token when it served the document, never the label the page sends in a request.
  */
 
+import { withoutQueryPairs } from "./query-pairs.ts";
 import type { BridgeHandle } from "./server/types.ts";
 
 /** The query parameter that names a window. */
@@ -141,8 +142,9 @@ export function tokenFromSearch(search: string): string | undefined {
  *
  * An existing `token` is replaced rather than duplicated: the token is the bridge's to define, so a
  * stale one on an app-configured URL would otherwise shadow the live credential and every page load
- * would answer `401`. A relative reference stays relative for the same reason `withWindowLabel`'s
- * does — a query on `child/x` does not move the document.
+ * would answer `401`. Keys are compared decoded, the way `tokenFromSearch` reads them, so an encoded
+ * `%74oken=` cannot slip past the removal. A relative reference stays relative for the same reason
+ * `withWindowLabel`'s does — a query on `child/x` does not move the document.
  */
 export function withToken(url: string, token: string): string {
 	const hashAt = url.indexOf("#");
@@ -151,9 +153,7 @@ export function withToken(url: string, token: string): string {
 	const queryAt = head.indexOf("?");
 	const path = queryAt === -1 ? head : head.slice(0, queryAt);
 	const search = queryAt === -1 ? "" : head.slice(queryAt + 1);
-	const kept = search
-		.split("&")
-		.filter((pair) => pair.length > 0 && !pair.startsWith(`${TOKEN_PARAM}=`));
+	const kept = withoutQueryPairs(search, TOKEN_PARAM);
 	kept.push(`${TOKEN_PARAM}=${encodeURIComponent(token)}`);
 	return `${path}?${kept.join("&")}${hash}`;
 }

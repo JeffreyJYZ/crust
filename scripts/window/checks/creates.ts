@@ -74,35 +74,34 @@ export function checkCreates(verdict: Verdict, byTag: Map<string, PageAnswer>): 
 		createAbsOk ? `answered ${show(createAbs)}` : `page saw ${show(byTag.get("createabs"))}`,
 	);
 
-	// An absolute URL loads as given: the exact document the page named, at the
-	// same origin as the resolved one. (A page cannot distinguish "passed through"
-	// from "resolved to the same absolute string", so what is asserted here is the
-	// load itself; `window.test.ts` pins the pass-through ordering against a
-	// platform double, where both candidates are visible.) Crust adds no identity to
-	// a URL the app supplied in full, so `window.label` refuses by name there rather
-	// than inventing a label from a URL crust did not compose.
+	// An absolute bridge-owned URL loads the path the page named, but crust forces the command's
+	// native label into the query before appending the seed token. That is what binds the minted
+	// document token to this window instead of `main`; leaving `window=` absent made the document
+	// route fall back to `main` and handed a `window:create` caller main's grants. Both the URL's
+	// `window` parameter and the page's own `window.label` answer must name this window.
 	const absoluteChild = childReport(byTag.get("child.absolute"));
 	const absoluteUrl = absoluteChild === undefined ? undefined : urlOf(absoluteChild.href);
 	const absoluteOpen = resolved(absoluteChild?.open);
-	const absoluteLabel = absoluteChild?.label;
+	const absoluteLabel = resolved(absoluteChild?.label);
+	const absoluteIdentity = absoluteUrl?.searchParams.get("window") === "absolute";
+	const absoluteOwn = absoluteLabel?.ok === true && absoluteLabel?.label === "absolute";
 	const absoluteOk =
 		relativeOrigin !== undefined &&
 		absoluteUrl?.pathname === "/spare/child/absolute" &&
-		absoluteUrl?.searchParams.get("window") === null &&
+		absoluteIdentity &&
 		absoluteOpen?.ok === true &&
 		absoluteOpen?.label === "absolute" &&
 		absoluteOpen?.open === true &&
-		absoluteLabel?.how === "rejected" &&
-		absoluteLabel?.code === "not-implemented";
+		absoluteOwn;
 	verdict.check(
 		"child absolute",
 		absoluteOk,
 		absoluteOk
-			? `loaded ${JSON.stringify(absoluteChild?.href)} with no identity of its own, its own ` +
+			? `loaded ${JSON.stringify(absoluteChild?.href)} with ?window=absolute, its own ` +
 					`invoke answered ${show(absoluteOpen)}, and window.label answered ` +
-					`${show(absoluteChild?.label)}`
+					`${show(absoluteLabel)}`
 			: `page saw ${show(byTag.get("child.absolute"))} (path ` +
-					`${absoluteUrl?.pathname}, window ${show(absoluteUrl?.searchParams.get("window"))}, ` +
+					`${absoluteUrl?.pathname}, identity ${absoluteIdentity}, ` +
 					`window.label ${show(absoluteLabel)})`,
 	);
 

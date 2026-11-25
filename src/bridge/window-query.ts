@@ -7,6 +7,7 @@
  */
 
 import { WINDOW_PARAM } from "./window-identity.ts";
+import { withoutQueryPairs } from "./query-pairs.ts";
 
 interface UrlParts {
 	path: string;
@@ -27,18 +28,7 @@ function splitUrl(url: string): UrlParts {
 }
 
 function withoutWindowPairs(search: string): string[] {
-	return search.split("&").filter((pair) => {
-		if (pair.length === 0) return false;
-		const equals = pair.indexOf("=");
-		const rawKey = equals === -1 ? pair : pair.slice(0, equals);
-		let key = rawKey;
-		try {
-			key = decodeURIComponent(rawKey.replace(/\+/g, " "));
-		} catch {
-			// A malformed escape is not our parameter name; keep the pair verbatim.
-		}
-		return key !== WINDOW_PARAM;
-	});
+	return withoutQueryPairs(search, WINDOW_PARAM);
 }
 
 /**
