@@ -14,6 +14,7 @@ import { darwinWindowAdapter } from "@/platform/darwin/window-adapter.ts";
 import { DarwinPlatform } from "@/platform/darwin/platform.ts";
 import type { Collector } from "@/perf";
 import { perfNative } from "./perf-native.ts";
+import { processSignalHooks, trapSignals } from "./signals.ts";
 
 export interface LaunchedApp {
 	occlusionDetectionEnabled: boolean;
@@ -51,26 +52,7 @@ export async function launchApp(
 			// An exit trap cannot report, and the window may already be gone.
 		}
 	};
-	const onExit = (): void => cleanupSync();
-	const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
-	const handlers = new Map<(typeof signals)[number], () => void>();
-	const onSignal = (signal: (typeof signals)[number]): void => {
-		cleanupSync();
-		process.kill(process.pid, signal);
-	};
-	process.on("exit", onExit);
-	for (const signal of signals) {
-		const handler = (): void => onSignal(signal);
-		handlers.set(signal, handler);
-		process.on(signal, handler);
-	}
-	const detach = (): void => {
-		process.removeListener("exit", onExit);
-		for (const signal of signals) {
-			const handler = handlers.get(signal);
-			if (handler !== undefined) process.removeListener(signal, handler);
-		}
-	};
+	const trap = trapSignals(processSignalHooks, cleanupSync);
 
 	try {
 		platform = new DarwinPlatform({ appName, activate: "never" });
@@ -121,7 +103,7 @@ export async function launchApp(
 			if (stopped) return;
 			stopped = true;
 			cleanupSync();
-			detach();
+			trap.detach();
 			resetActivationPolicy();
 			await bridge?.stop();
 		};
@@ -136,8 +118,7 @@ export async function launchApp(
 		};
 	} catch (error) {
 		cleanupSync();
-		process.removeListener("exit", onExit);
-		for (const signal of signals) process.removeAllListeners(signal);
+		trap.detach();
 		resetActivationPolicy();
 		await bridge?.stop();
 		throw error;

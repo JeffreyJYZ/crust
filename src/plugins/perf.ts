@@ -41,7 +41,8 @@ function refusal(collector: Collector): Refusal | undefined {
  */
 export function createPerfCommands(
 	collector: Collector = perfCollector,
-	now: () => number = () => performance.now(),
+	// `Collector.startedAt` is epoch ms; a process-relative clock here made `sample().at` negative.
+	now: () => number = () => Date.now(),
 ) {
 	return {
 		sample(): PerfSample | Refusal {
