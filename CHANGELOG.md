@@ -4,6 +4,18 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.21] — 2026-11-25
+
+### Fixed
+
+- **`window.capture` could not photograph a window WebKit had never composited, and said nothing useful when it failed.** WebKit suspends the page for such a view and never calls the snapshot completion handler, so the capture waited out its 5000 ms budget and rejected with a bare timeout: no picture, no reason. That is exactly the state of an automated probe while the user works in a fullscreen app — its window is on another Space, so it never draws, so every programmatic screenshot failed precisely when someone was fullscreen. The failure is now named (`no-completion`, and `no-picture` for an answer without a bitmap), and automation that must capture in that state can pass `ignoreOcclusion: true` to disable WebKit's occlusion detection for that one capture and restore it afterwards. Verified against the measurement that the `createPDF` print path is not an alternative — its completion stalls in the same state.
+- **The occlusion override is owned in one place.** `_setWindowOcclusionDetectionEnabled:` is a void setter with no getter, so no caller can restore the prior state; crust now ref-counts its own holders per webview, which means a capture taken during a `crust perf record` run leaves the profiler's setting alone instead of switching detection back on mid-run and scoring every later frame against a suspended renderer.
+- **`browser.capture` shares the capture unit**, so both surfaces answer the same named statuses; a parity test pins that, because a later refactor that splits the two paths would otherwise reintroduce the gap in one of them only.
+
+### Changed
+
+- **A probe's measurements about window compositing are now recorded as tests and a script**, not prose: an eval stalls only when the window was never composited (the page keeps a nominal heartbeat and its clock keeps pace, so this is completion delivery, not CPU or suspension), `occlusionState` bit 2 is the lever rather than `isOnActiveSpace`, and a window that rendered once captures fine after it stops being visible.
+
 ## [0.2.20] — 2026-11-25
 
 ### Fixed

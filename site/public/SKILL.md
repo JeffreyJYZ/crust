@@ -429,6 +429,15 @@ render, never the display: no Screen Recording grant is asked for and none is ne
 whose webview cannot render a picture answers `not-implemented` naming the API rather than falling
 back to a screenshot of the screen.
 
+A window WebKit has never composited cannot be captured: the completion handler is never called, so
+the answer is `handler-error` naming `no-completion` after 5000 ms. That covers a window ordered out
+before it drew, one created at off-screen coordinates, and one on a Space the user is not looking at —
+the normal case for a probe taking a screenshot while a fullscreen app owns the active Space. Pass
+`window.capture { label, ignoreOcclusion: true }` from automation to disable WebKit's occlusion
+detection for that one capture and restore it afterwards; it is unsupported SPI, it never activates or
+moves anything, and a WebKit update that drops the selector answers `occlusion-unavailable` instead of
+stalling. Do not use it in a shipped screenshot path — show the window instead.
+
 **`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
 cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
 It answers `{ ok, width, height, scale, png }` at the surface's page pixels — an unknown label is
