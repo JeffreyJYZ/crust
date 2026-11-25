@@ -7,6 +7,14 @@
 /** The shim's -1 means every window is occluded, so WebKit has stopped painting. */
 export const OCCLUDED_PUMP_INTERVAL_MS = 100;
 
+/**
+ * Progress clock for waits that must survive a starved runner. It advances by one scheduling
+ * interval per native tick, never by wall time: a stalled loop delivers neither the answer nor
+ * progress, so a deadline measured here pauses with the loop instead of firing against it.
+ */
+let progressMs = 0;
+export const pumpProgressMs = (): number => progressMs;
+
 export interface Pump {
 	start(intervalMs: number, tick: () => unknown, slowMs?: number): void;
 	stop(): void;
@@ -65,6 +73,8 @@ export function createPump(options: PumpOptions = {}): Pump {
 			// A null from an unbound shim symbol is a normal tick; only -1 means occluded.
 			const status = Number(tick() ?? 0);
 			count++;
+			const interval = status === -1 ? slowMs : intervalMs;
+			progressMs += interval;
 			if (samples) {
 				const elapsed = performance.now() - begin;
 				total += elapsed;
@@ -81,7 +91,7 @@ export function createPump(options: PumpOptions = {}): Pump {
 					);
 				}
 			}
-			timer = setTimeout(step, status === -1 ? slowMs : intervalMs);
+			timer = setTimeout(step, interval);
 		};
 		step();
 	};

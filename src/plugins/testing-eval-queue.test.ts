@@ -71,6 +71,19 @@ describe("native evaluation correlation", () => {
 		await expect(answer).rejects.toThrow(/page threw/);
 		expect(queue.pending()).toBe(0);
 	});
+
+	test("a progress clock pauses the deadline while the runner makes no progress", async () => {
+		let now = 0;
+		const queue = createEvalQueue({ send: () => 0, timeoutMs: 100, progress: () => now });
+		const answer = queue.run(1, "x");
+		// Wall time passes, but a starved runner has delivered no pump tick: no timeout yet.
+		await Bun.sleep(40);
+		expect(queue.pending()).toBe(1);
+		// Progress reaches the budget; the same command is now reported, not left hanging.
+		now = 100;
+		await expect(answer).rejects.toThrow(/did not answer/);
+		expect(queue.pending()).toBe(0);
+	});
 });
 
 describe("per-window queue", () => {
