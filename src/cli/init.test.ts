@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 /** Files the standalone gate counts, excluding the dotfile it checks apart. */
-const COUNTS = { react: 6, svelte: 7, vue: 7, solid: 9, "": 6 } as const;
+const COUNTS = { next: 8, react: 6, svelte: 7, vue: 7, solid: 9, "": 6 } as const;
 
 /** Glob the way scripts/build-standalone.ts does, so the two agree by shape. */
 function listed(dir: string): string[] {
@@ -39,7 +39,7 @@ function listed(dir: string): string[] {
 }
 
 describe("init framework flags", () => {
-	for (const flag of ["react", "svelte", "vue", "solid"] as const) {
+	for (const flag of ["next", "react", "svelte", "vue", "solid"] as const) {
 		test(`--${flag} scaffolds its template and substitutes every token`, async () => {
 			const target = join(await scratch(), "My App");
 			const options: InitOptions = { dir: target };
@@ -54,6 +54,16 @@ describe("init framework flags", () => {
 			expect(config).not.toContain("{{");
 		});
 	}
+
+	test("a name containing replacement patterns is written literally", async () => {
+		for (const name of ["my$&app", "a$'b", "a$`b"]) {
+			const target = join(await scratch(), name);
+			expect(await init({ dir: target })).toBe(0);
+			const config = await Bun.file(join(target, "crust.config.ts")).text();
+			expect(config).not.toContain("{{");
+			expect(config).toContain(`name: ${JSON.stringify(name)}`);
+		}
+	});
 
 	test("two flags at once are refused, naming both", async () => {
 		const errors = spyOn(console, "error").mockImplementation(() => {});
