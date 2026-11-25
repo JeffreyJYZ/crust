@@ -134,6 +134,29 @@ describe("events", () => {
 		expect(seen).toEqual([1, 2, 3]);
 	});
 
+	test("once re-armed by a listener waits for the next event", async () => {
+		const bridge = start();
+		const { api, source } = installPage(bridge);
+		const listened: number[] = [];
+		const onceSeen: number[] = [];
+		let armed = false;
+		api.listen<number>("tick", (n) => {
+			listened.push(n);
+			if (!armed) {
+				armed = true;
+				void api.once<number>("tick").then((value) => onceSeen.push(value));
+			}
+		});
+		source?.dispatch("tick", 1);
+		await Bun.sleep(1);
+		expect(listened).toEqual([1]);
+		expect(onceSeen).toEqual([]);
+		source?.dispatch("tick", 2);
+		await Bun.sleep(1);
+		expect(onceSeen).toEqual([2]);
+		expect(listened).toEqual([1, 2]);
+	});
+
 	test("once rejects with a named timeout and leaves no waiter behind", async () => {
 		const bridge = start();
 		const { api, source } = installPage(bridge);

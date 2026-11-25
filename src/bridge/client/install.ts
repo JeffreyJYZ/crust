@@ -80,6 +80,13 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 	};
 
 	const dispatch = (event: string, payload: unknown) => {
+		// Drain before listeners run: a listener that re-arms `once(event)` must not have its fresh
+		// waiter settled by the very event that triggered it.
+		const pending = waiters.get(event);
+		if (pending) {
+			waiters.delete(event);
+			for (const fn of pending) fn(payload);
+		}
 		const set = listeners.get(event);
 		if (set) {
 			for (const fn of Array.from(set)) {
@@ -91,11 +98,6 @@ export function installCrust<Schema extends T.CommandSchema = T.CommandSchema>(
 						console.error(`crust: listener for "${event}" threw`, error);
 				}
 			}
-		}
-		const pending = waiters.get(event);
-		if (pending) {
-			waiters.delete(event);
-			for (const fn of pending) fn(payload);
 		}
 	};
 
