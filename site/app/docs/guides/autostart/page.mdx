@@ -14,8 +14,8 @@ const result = await window.crust.invoke("autostart", "enable", {
 // { ok: true, enabled: true, path: "/Users/you/Library/LaunchAgents/land.jyz.notes.plist" }
 ```
 
-| argument   | notes                                                              |
-| ---------- | ------------------------------------------------------------------ |
+| argument   | notes                                                               |
+| ---------- | ------------------------------------------------------------------- |
 | `appPath`  | required; the absolute path of the `.app` bundle, or the executable |
 | `bundleId` | optional; defaults to the app's own `CFBundleIdentifier`            |
 
@@ -26,6 +26,11 @@ second copy of its identifier. A bare executable has no bundle to read, so it ne
 `path` in the answer is the file that was written, whichever OS it is. The entry is written to a
 sibling temp file and renamed into place, so the OS never reads a half-written one. Nothing calls
 `launchctl`: the plist takes effect at the next login.
+
+On macOS a `.app` is a directory, and launchd hands `ProgramArguments[0]` straight to `execve`. A
+bundle is therefore written as `/usr/bin/open <bundle>`; a bare executable is named directly. A
+directory that is not a `.app` bundle is refused with `bad-request`, because no argv would launch
+it.
 
 ## disable and isEnabled
 
@@ -39,10 +44,14 @@ const { enabled } = await window.crust.invoke("autostart", "isEnabled", {});
 Both take an optional `{ bundleId }`. After one `enable` the plugin remembers the id it used, so a
 page that enabled at first launch needs no argument later.
 
-`isEnabled` reads the mechanism back instead of repeating what `enable` asked for: on macOS whether
-the plist exists, and on Linux whether the entry is a `Type=Application` file that is neither
-`Hidden=true` nor `X-GNOME-Autostart-enabled=false`. `disable` answers `enabled: false` only after the
-file is gone; a delete that left it behind is `handler-error`, not a quiet success.
+`isEnabled` reads the mechanism back instead of repeating what `enable` asked for: on macOS it
+checks what launchd would exec — the plist exists and its first `ProgramArguments` entry names an
+executable (`/usr/bin/open` plus a bundle path, when it is a `.app`). A plist that merely exists
+but points at a directory answers `enabled: false`; that shape used to report `enabled: true` and
+start nothing at login. On Linux `isEnabled` checks whether the entry is a `Type=Application` file
+that is neither `Hidden=true` nor `X-GNOME-Autostart-enabled=false`. `disable` answers
+`enabled: false` only after the file is gone; a delete that left it behind is `handler-error`, not a
+quiet success.
 
 ## Windows
 
@@ -53,12 +62,12 @@ and would not. Branch on the code, or keep the feature off that platform.
 
 ## Failure codes
 
-| code                   | when                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| code                   | when                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `bad-request`          | `appPath` empty or not a string, no bundle id known yet, the bundle declares none, or an id holding a path separator |
-| `not-found`            | nothing exists at `appPath`                                                                      |
-| `handler-error`        | the write, the delete or the read-back failed; the message is the filesystem's                   |
-| `unsupported-platform` | this OS has no login-item mechanism here (Windows today)                                         |
+| `not-found`            | nothing exists at `appPath`                                                                                          |
+| `handler-error`        | the write, the delete or the read-back failed; the message is the filesystem's                                       |
+| `unsupported-platform` | this OS has no login-item mechanism here (Windows today)                                                             |
 
 Every command answers a typed object rather than throwing, and a refusal names the path or the
 mechanism it refused.
