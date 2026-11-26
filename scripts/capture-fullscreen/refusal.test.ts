@@ -1,8 +1,8 @@
 /**
- * The refusal path, proved with an `osascript` stub that reports a frontmost app and NO fullscreen
- * window. The same script, same exit code path: a normal desktop must print `condition: NO` and
- * exit 2, so a smoke run on an ordinary machine can never be mistaken for evidence. On a non-darwin
- * host the probe refuses earlier and the same three assertions still hold.
+ * The refusal path, proved with the harness-only composited-bit override: the probe window has a
+ * composited view, so the predicate must print `condition: NO` and exit 2, never a pass. The stub
+ * `osascript` keeps frontmost/fullscreen as plain context, not as the gate. On a non-darwin host the
+ * probe refuses earlier and the same assertions still hold.
  */
 import { expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -11,8 +11,8 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "../..");
 
-/** A stub `osascript`: frontmost is a plain app, the AXFullScreen query answers nothing. */
-async function runWithoutFullscreen(extra: string[] = []) {
+/** Spawn the probe with a forced composited window and a stub reporting no fullscreen app. */
+async function runComposited(extra: string[] = []) {
 	const dir = await mkdtemp(join(tmpdir(), "crust-fullscreen-refusal-"));
 	try {
 		const script = join(dir, "osascript");
@@ -23,7 +23,7 @@ async function runWithoutFullscreen(extra: string[] = []) {
 		);
 		await chmod(script, 0o755);
 		return Bun.spawnSync({
-			cmd: ["bun", "run", "scripts/probe-capture-fullscreen.ts", ...extra],
+			cmd: ["bun", "run", "scripts/probe-capture-fullscreen.ts", "--composited", ...extra],
 			cwd: ROOT,
 			env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
 			stdout: "pipe",
@@ -35,11 +35,13 @@ async function runWithoutFullscreen(extra: string[] = []) {
 	}
 }
 
-test("no fullscreen app: condition NO, exit 2, never a pass", async () => {
-	const child = await runWithoutFullscreen();
+test("composited window: condition NO, exit 2, never a pass", async () => {
+	const child = await runComposited();
 	const out = child.stdout.toString();
 	expect(out).toContain("condition: NO");
 	expect(out).not.toContain("condition: YES");
+	expect(out).toContain("the probe window composited");
+	expect(out).not.toContain("the probe window is on the active Space");
 	expect(out).toContain("verdict: REFUSED");
 	expect(out).not.toContain("verdict: PASS");
 	for (const mode of ["bare", "ignoreOcclusion=true", "prime=true"])
@@ -49,13 +51,13 @@ test("no fullscreen app: condition NO, exit 2, never a pass", async () => {
 });
 
 test.skipIf(process.platform !== "darwin")(
-	"--wait expires with the blocker printed and still refuses",
+	"--wait expires with compositing named as the blocker and still refuses",
 	async () => {
-		const child = await runWithoutFullscreen(["--wait", "1"]);
+		const child = await runComposited(["--wait", "1"]);
 		const out = child.stdout.toString();
-		expect(out).toContain("waiting up to 1 s for another app to go fullscreen — press ⌃⌘F");
+		expect(out).toContain("waiting up to 1 s for the view to stop compositing — press ⌃⌘F");
 		expect(out).toMatch(
-			/waited: 1\.\d s \(timed out — frontmost Test Terminal has no fullscreen window\)/,
+			/waited: 1\.\d s \(timed out — the probe window composited \(occlusionState=\d+, bit 2 set\)\)/,
 		);
 		expect(out).toContain("condition: NO");
 		expect(out).not.toContain("condition: YES");

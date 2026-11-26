@@ -35,6 +35,14 @@ test("--wait N and --wait=N both parse", () => {
 	expect(parseWait(["--wait=7"])).toEqual({ seconds: 7 });
 });
 
+test("--composited is harness-only and leaves the wait default alone", () => {
+	expect(parseWait(["--composited"])).toEqual({ forceComposite: true });
+	expect(parseWait(["--wait", "7", "--composited"])).toEqual({
+		seconds: 7,
+		forceComposite: true,
+	});
+});
+
 test("bad --wait refuses with a reason instead of hanging", () => {
 	for (const args of [
 		["--wait", "0"],
