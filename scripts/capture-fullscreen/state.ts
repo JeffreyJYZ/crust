@@ -1,12 +1,20 @@
 /**
  * The read-only half of the fullscreen capture probe: System Events names the frontmost app and its
- * fullscreen windows, AppKit answers the probe window's Space, occlusion and visibility. Split out
- * of the probe so each file stays under the 200-line cap, and shared by every poll of a transition.
+ * fullscreen windows for context; AppKit answers the probe window's Space, composited bit and
+ * visibility. Split out of the probe so each file stays under the 200-line cap, and shared by every
+ * poll of a transition.
+ *
+ * The predicate is the platform fact, not the Space: a view that has never composited is the state
+ * that stalls a snapshot, and that window can sit on the active Space the whole time. Space
+ * membership stays in the output as context only.
  */
 import { S } from "@/platform/darwin/objc.ts";
 import { captureFrontmost } from "../e2e-harness.ts";
 
 export const APP = "crust-fullscreen-capture";
+
+/** NSWindowOcclusionState's composited flag; 8192 means it is absent, 8194 means it is set. */
+export const COMPOSITED_BIT = 2;
 
 const FULLSCREEN = `tell application "System Events"
 set found to {}
@@ -42,6 +50,7 @@ export interface State {
 	onActiveSpace: boolean;
 	occlusion: number;
 	visible: boolean;
+	/** True when the view has never composited — the measured condition, whatever the Space. */
 	condition: boolean;
 	reason: string;
 }
@@ -54,24 +63,20 @@ export async function readState(win: number): Promise<State> {
 		.split(",")
 		.map((name) => name.trim())
 		.filter((name) => name && name.toLowerCase() !== APP.toLowerCase());
-	const fullscreenFrontmost = other.some(
-		(name) => name.toLowerCase() === frontmost.toLowerCase(),
-	);
 	const onActiveSpace = S.b0(win, "isOnActiveSpace");
-	// A fullscreen app on another display keeps this window on the active Space, which is
-	// visibly NOT the reported state. Both facts are required before the gate applies.
-	const condition = fullscreenFrontmost && !onActiveSpace;
-	const reason = !fullscreenFrontmost
-		? `frontmost ${frontmost} has no fullscreen window`
-		: onActiveSpace
-			? `the probe window is on the active Space, so no fullscreen app owns it`
-			: `frontmost ${frontmost} is fullscreen and the probe window is off its Space`;
+	const occlusion = S.q0(win, "occlusionState");
+	const visible = S.b0(win, "isVisible");
+	const composited = (occlusion & COMPOSITED_BIT) !== 0;
+	const condition = !composited;
+	const reason = composited
+		? `the probe window composited (occlusionState=${occlusion}, bit 2 set)`
+		: `the probe window has never composited (occlusionState=${occlusion}, bit 2 clear)`;
 	return {
 		frontmost,
 		fullscreen: other.length ? other.join(", ") : "none",
 		onActiveSpace,
-		occlusion: S.q0(win, "occlusionState"),
-		visible: S.b0(win, "isVisible"),
+		occlusion,
+		visible,
 		condition,
 		reason,
 	};
@@ -82,7 +87,7 @@ export function printState(state: State): void {
 	console.log(`fullscreen: ${state.fullscreen}`);
 	console.log(
 		`window: onActiveSpace=${state.onActiveSpace ? 1 : 0} ` +
-			`occlusion=${state.occlusion} visible=${state.visible ? 1 : 0}`,
+			`occlusionState=${state.occlusion} visible=${state.visible ? 1 : 0}`,
 	);
 	console.log(`condition: ${state.condition ? "YES" : "NO"} (${state.reason})`);
 }
