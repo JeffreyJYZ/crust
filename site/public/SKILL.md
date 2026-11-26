@@ -431,8 +431,9 @@ back to a screenshot of the screen.
 
 A window WebKit has never composited cannot be captured: the completion handler is never called, so
 the answer is `handler-error` naming `no-completion` after 5000 ms. That covers a window ordered out
-before it drew, one created at off-screen coordinates, and one on a Space the user is not looking at —
-the normal case for a probe taking a screenshot while a fullscreen app owns the active Space. Pass
+before it drew, one created at off-screen coordinates, and one on a Space the user is not looking at.
+A probe taking a screenshot while a fullscreen app owns the active Space is the case measured below:
+it need not answer `no-completion` at all. Pass
 `window.capture { label, ignoreOcclusion: true }` from automation to disable WebKit's occlusion
 detection for that one capture and restore it afterwards; it is unsupported SPI, it never activates or
 moves anything, and a WebKit update that drops the selector answers `occlusion-unavailable` instead of
@@ -441,9 +442,29 @@ stalling. Do not use it in a shipped screenshot path — show the window instead
 `ignoreOcclusion` cannot wake a view WebKit has already stopped compositing, which is the state a
 probe is in when its window never drew. For that, `window.capture { label, prime: true }` sets the
 window's composited bit through unsupported private AppKit SPI for one capture and restores it
-afterwards; without it the answer is `handler-error` naming `no-completion`. Harness-only: a
-production bundle answers `prime-unavailable` before anything is sent, because a shipped app that
-needs a screenshot should show or activate its window rather than reach for private API.
+afterwards; in the fullscreen state measured below, the answer without it is an `ok: true` blank
+picture, not `no-completion`. Harness-only: a production bundle answers `prime-unavailable` before
+anything is sent, because a shipped app that needs a screenshot should show or activate its window
+rather than reach for private API.
+
+Measured on this machine with a fullscreen Ghostty frontmost and the probe window off its Space — the
+reported condition, confirmed:
+
+```text
+capture bare:                 1373ms ok blank  width=960 height=640 scale=2 bytes=12214 pixels=614400 opaque=614400 colours=1 differing=0
+capture ignoreOcclusion=true:    40ms ok blank  same numbers
+capture prime=true:              34ms ok real   bytes=12248 pixels=614400 opaque=614400 colours=4 differing=460800
+```
+
+`prime` is confirmed in that state: bare and `ignoreOcclusion` are useless there — both return a
+blank picture, and `ignoreOcclusion` only cuts the 1373 ms blank answer to 40 ms — while `prime`
+returns a real four-colour picture in 34 ms. The dangerous part is the blank answer: the capture
+answers `ok: true` with a valid PNG of 12214 bytes, 614400 opaque pixels, one colour and zero
+differing pixels, instead of the `no-completion` error. `ok` promises a picture, not that the page
+drew anything. That image is indistinguishable from a genuinely blank page by looking at it alone, so
+a caller that treats `ok` as "content captured" saves a solid-colour screenshot and reports success.
+A probe that must have real content uses `prime` and checks the pixels for itself; `ok` alone is not
+that check.
 
 **`browser.capture { label }`** is the picture of an embedded browser surface, which `window.capture`
 cannot see: the surface is a native sibling view, so it is missing from the app's own webview render.
