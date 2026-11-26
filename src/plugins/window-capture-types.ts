@@ -17,6 +17,18 @@ export interface WindowSnapshot {
 	readonly scale: number;
 	/** base64 of the PNG bytes, with no `data:` prefix. */
 	readonly png: string;
+	/**
+	 * Platform fact, not a page input: the finished bitmap has one distinct colour and zero
+	 * differing pixels. Absent when the platform cannot measure it (another platform, or a fake).
+	 * Pixels alone never decide a refusal — see `composited`.
+	 */
+	readonly flat?: boolean;
+	/**
+	 * Platform fact read at capture time: AppKit's composited bit on this view's window. Absent
+	 * when the platform cannot report it. `flat: true` plus `composited: false` is the
+	 * never-composited state; a flat picture from a composited page is still a picture.
+	 */
+	readonly composited?: boolean;
 }
 
 /**

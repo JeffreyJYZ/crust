@@ -89,6 +89,15 @@ export function takeSnapshot(
 			return Promise.reject(new Error(PRIME_UNAVAILABLE));
 		}
 	}
+	// Read after prime has set the bit and before `done()` restores it. A read after the completion
+	// would see the restored bit and lose the one fact that separates a never-drawn view from a
+	// page that meant to be one flat colour. A platform that cannot report it leaves it absent.
+	let composited: boolean | undefined;
+	try {
+		if (typeof shim.composited === "function") composited = shim.composited(view);
+	} catch {
+		composited = undefined;
+	}
 	return new Promise<WindowSnapshot>((resolve, reject) => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		/** Every terminal path calls this, so this holder never outlives one capture. */
@@ -111,7 +120,8 @@ export function takeSnapshot(
 					return;
 				}
 				try {
-					resolve(snapshotFrom(shim.read()));
+					const shot = snapshotFrom(shim.read());
+					resolve(composited === undefined ? shot : { ...shot, composited });
 				} catch (error) {
 					reject(error instanceof Error ? error : new Error(String(error)));
 				}

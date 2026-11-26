@@ -55,7 +55,8 @@ describe("window.capture", () => {
 		const answer = await createWindowPlugin().commands.capture({ label: "main" });
 
 		expect(answer).toMatchObject({ ok: false, code: "not-implemented" });
-		if (answer.ok !== false || answer.code !== "not-implemented") throw new Error("unreachable");
+		if (answer.ok !== false || answer.code !== "not-implemented")
+			throw new Error("unreachable");
 		expect(answer.requires).toBe(WINDOW_CAPTURE_REQUIRES);
 		expect(answer.requires).toContain("takeSnapshotWithConfiguration:completionHandler:");
 	});
@@ -67,7 +68,8 @@ describe("window.capture", () => {
 
 		const answer = await plugin.commands.capture({ label: "main" });
 		expect(answer).toMatchObject({ ok: false, code: "not-implemented" });
-		if (answer.ok !== false || answer.code !== "not-implemented") throw new Error("unreachable");
+		if (answer.ok !== false || answer.code !== "not-implemented")
+			throw new Error("unreachable");
 		expect(answer.requires).toBe(WINDOW_CAPTURE_REQUIRES);
 	});
 
@@ -108,7 +110,9 @@ describe("window.capture", () => {
 	test("a non-boolean prime is invalid-value, never coerced into an opt-in", async () => {
 		const plugin = createWindowPlugin(fakeAdapter(["main"]));
 
-		expect(await plugin.commands.capture({ label: "main", prime: "true" } as never)).toMatchObject({
+		expect(
+			await plugin.commands.capture({ label: "main", prime: "true" } as never),
+		).toMatchObject({
 			ok: false,
 			code: "invalid-value",
 			message: expect.stringContaining("window.capture prime must be a boolean"),
@@ -125,6 +129,63 @@ describe("window.capture", () => {
 		expect(await plugin.commands.capture({ label: "main" })).toMatchObject({
 			ok: false,
 			code: "handler-error",
+			label: "main",
+		});
+	});
+
+	// The state measured in the fullscreen probe: WebKit answered, but the view had never
+	// composited, so the PNG is one flat colour. Pixels alone cannot say that — a visible page
+	// that draws one flat colour looks identical — so the platform facts travel with the picture.
+	const flatFromNeverComposited = {
+		width: 960,
+		height: 640,
+		scale: 2,
+		png: FAKE_CAPTURE_PNG,
+		flat: true,
+		composited: false,
+	};
+
+	test("a flat picture from a view that never composited is no-picture, not ok", async () => {
+		const adapter = fakeAdapter();
+		const plugin = createWindowPlugin({
+			...adapter,
+			capture: async () => flatFromNeverComposited,
+		});
+
+		const answer = await plugin.commands.capture({ label: "main" });
+		expect(answer).toMatchObject({
+			ok: false,
+			code: "no-picture",
+			label: "main",
+		});
+		if (answer.ok !== false || answer.code !== "no-picture") throw new Error("unreachable");
+		expect(answer.message).toContain("answered the snapshot with no image");
+	});
+
+	test("one flat colour from a composited page is still a picture", async () => {
+		const adapter = fakeAdapter();
+		const plugin = createWindowPlugin({
+			...adapter,
+			capture: async () => ({ ...flatFromNeverComposited, composited: true }),
+		});
+
+		expect(await plugin.commands.capture({ label: "main" })).toMatchObject({
+			ok: true,
+			label: "main",
+			png: FAKE_CAPTURE_PNG,
+		});
+	});
+
+	test("a platform that reports no composited fact is not refused on pixels alone", async () => {
+		const adapter = fakeAdapter();
+		const { composited: _unreported, ...withoutFact } = flatFromNeverComposited;
+		const plugin = createWindowPlugin({
+			...adapter,
+			capture: async () => withoutFact,
+		});
+
+		expect(await plugin.commands.capture({ label: "main" })).toMatchObject({
+			ok: true,
 			label: "main",
 		});
 	});
