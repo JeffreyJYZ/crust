@@ -11,6 +11,11 @@ long long crust_shot_height(void) { return shot_px_h; }
 // Bitmap pixels per point, measured from the picture: 2 on a Retina display, 1 on a plain one.
 double crust_shot_scale(void) { return shot_scale; }
 
+// 1 when the finished bitmap has one distinct colour and zero differing pixels. Read from the
+// bitmap rep, not from compressed bytes: a caller still needs the composited bit to know whether
+// this is a never-drawn view or a page that meant to be one flat colour.
+int crust_shot_flat(void) { return shot_flat; }
+
 // The full PNG length, so a caller whose buffer was too small can ask again with an exact one;
 // -1 when no picture was taken.
 long long crust_shot_length(void) { return shot_png ? shot_integer(shot_png, "length") : -1; }

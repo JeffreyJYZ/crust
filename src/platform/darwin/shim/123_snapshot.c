@@ -31,6 +31,9 @@ enum { SHOT_STARTED = 0, SHOT_UNAVAILABLE = 1, SHOT_NO_CONFIG = 2, SHOT_NO_BLOCK
 /** The block a capture's id owns, chosen in 125_snapshot_ids.c before the send. */
 static void *shot_block_for(int id);
 
+/** Flatness measured in 127_snapshot_flat.c from the bitmap rep this file encodes. */
+static int shot_bitmap_flat(shot_t rep);
+
 /** The JSCallback bun:ffi hands out: (id, 1) for a picture, (id, 0) for a refusal. */
 static int (*shot_sink)(int id, int ok) = 0;
 
@@ -39,6 +42,8 @@ static shot_t shot_png = 0;
 static long long shot_px_w = 0;
 static long long shot_px_h = 0;
 static double shot_scale = 1.0;
+/** 1 when the finished bitmap has one distinct colour. A platform fact, never a PNG decode. */
+static int shot_flat = 0;
 /** The webview's width in points when the snapshot was asked for, so scale is measured, not assumed. */
 static double shot_frame_w = 0;
 
@@ -63,6 +68,7 @@ static void shot_clear(void) {
 	shot_px_w = 0;
 	shot_px_h = 0;
 	shot_scale = 1.0;
+	shot_flat = 0;
 }
 
 // The webview's width in points, through `valueForKey:` so no struct crosses bun:ffi: NSView
@@ -82,11 +88,12 @@ static double shot_width_points(shot_t view) {
 
 // PNG bytes of one snapshot image, retained. Pixels come from the bitmap rep itself, so what the
 // caller reports as width and height is what the picture holds, never what the window should be.
-static shot_t shot_encode(shot_t image, long long *w, long long *h) {
+static shot_t shot_encode(shot_t image, long long *w, long long *h, int *flat) {
 	shot_t tiff;
 	shot_t rep_class;
 	shot_t rep;
 	shot_t png;
+	*flat = 0;
 	if (!shot_has(image, "TIFFRepresentation")) return 0;
 	tiff = ((shot_t (*)(void *, void *))objc_msgSend)(image, sel_registerName("TIFFRepresentation"));
 	if (!tiff) return 0;
@@ -95,6 +102,7 @@ static shot_t shot_encode(shot_t image, long long *w, long long *h) {
 	rep = ((shot_t (*)(void *, void *, shot_t))objc_msgSend)(
 	    rep_class, sel_registerName("imageRepWithData:"), tiff);
 	if (!shot_has(rep, "representationUsingType:properties:")) return 0;
+	*flat = shot_bitmap_flat(rep);
 	*w = shot_integer(rep, "pixelsWide");
 	*h = shot_integer(rep, "pixelsHigh");
 	if (*w <= 0 || *h <= 0) return 0;
@@ -112,15 +120,17 @@ static shot_t shot_encode(shot_t image, long long *w, long long *h) {
 static void shot_finish(void *image, void *error, int id) {
 	long long w = 0;
 	long long h = 0;
+	int flat = 0;
 	shot_t png;
 	int ok = 0;
 	shot_clear();
 	if (image && !error) {
-		png = shot_encode(image, &w, &h);
+		png = shot_encode(image, &w, &h, &flat);
 		if (png) {
 			shot_png = png;
 			shot_px_w = w;
 			shot_px_h = h;
+			shot_flat = flat;
 			shot_scale = shot_frame_w > 0 ? (double)w / shot_frame_w : 1.0;
 			ok = 1;
 		}

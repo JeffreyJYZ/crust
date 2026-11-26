@@ -14,11 +14,22 @@ import {
 	takeSnapshot,
 } from "@/platform/darwin/snapshot.ts";
 
-const PICTURE: SnapshotBytes = { width: 960, height: 640, scale: 2, png: new Uint8Array([1, 2, 3]) };
+const PICTURE: SnapshotBytes = {
+	width: 960,
+	height: 640,
+	scale: 2,
+	flat: false,
+	png: new Uint8Array([1, 2, 3]),
+};
 
 /** Records `on`, `take`, `off` in the order AppKit would see them. */
 function recording(
-	options: { when?: "after" | "never"; answer?: boolean; status?: number; selector?: boolean } = {},
+	options: {
+		when?: "after" | "never";
+		answer?: boolean;
+		status?: number;
+		selector?: boolean;
+	} = {},
 ): SnapshotShim & { calls: string[] } {
 	const when = options.when ?? "after";
 	const selector = options.selector ?? true;
@@ -67,13 +78,17 @@ describe("window.capture prime (harness only)", () => {
 
 	test("a refused render still restores the bit", async () => {
 		const seam = recording({ answer: false });
-		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow("rendered nothing");
+		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow(
+			"rendered nothing",
+		);
 		expect(seam.calls).toEqual(["on", "take", "off"]);
 	});
 
 	test("a timeout still restores the bit", async () => {
 		const seam = recording({ when: "never" });
-		await expect(takeSnapshot(1, seam, 20, { prime: true })).rejects.toThrow("no composited picture");
+		await expect(takeSnapshot(1, seam, 20, { prime: true })).rejects.toThrow(
+			"no composited picture",
+		);
 		expect(seam.calls).toEqual(["on", "take", "off"]);
 	});
 
@@ -105,7 +120,9 @@ describe("window.capture prime (harness only)", () => {
 
 	test("a missing selector refuses by name before any send", async () => {
 		const seam = recording({ selector: false });
-		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow(PRIME_UNAVAILABLE);
+		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow(
+			PRIME_UNAVAILABLE,
+		);
 		expect(seam.calls).toEqual([]);
 	});
 
@@ -127,8 +144,30 @@ describe("window.capture prime (harness only)", () => {
 	test("a shim without the private seam refuses by name instead of ignoring the option", async () => {
 		const seam = recording();
 		delete seam.prime;
-		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow(PRIME_UNAVAILABLE);
+		await expect(takeSnapshot(1, seam, 1000, { prime: true })).rejects.toThrow(
+			PRIME_UNAVAILABLE,
+		);
 		expect(seam.calls).toEqual([]);
+	});
+
+	test("prime sets the bit before the composited fact is read, and a flat picture stays a picture", async () => {
+		let bit = 0;
+		const flatPicture = { ...PICTURE, flat: true };
+		const seam: SnapshotShim = {
+			...recording(),
+			prime: (_view, enabled) => {
+				bit = enabled ? 1 : 0;
+				return true;
+			},
+			composited: () => bit === 1,
+			read: () => flatPicture,
+		};
+
+		const shot = await takeSnapshot(1, seam, 1000, { prime: true });
+		expect(shot.composited).toBe(true);
+		expect(shot.flat).toBe(true);
+		// The read happened before `done()` restored the bit, so the fact survives the restore.
+		expect(bit).toBe(0);
 	});
 
 	test("a second holder keeps the bit set until the last one lets go", async () => {

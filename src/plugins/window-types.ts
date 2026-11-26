@@ -70,7 +70,9 @@ export type WindowErrorCode =
 	| "invalid-url"
 	| "duplicate-label"
 	| "unknown-adapter"
-	| "handler-error";
+	| "handler-error"
+	/** WebKit answered, but the platform knows the view drew nothing (a flat picture from a view that never composited). */
+	| "no-picture";
 
 /** The typed failure every command returns instead of throwing or resolving undefined. */
 export interface WindowFailure {

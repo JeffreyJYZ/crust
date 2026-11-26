@@ -160,5 +160,13 @@ export function snapshotFrom(bytes: SnapshotBytes): WindowSnapshot {
 		);
 	}
 	if (bytes.png.length === 0) throw new Error("crust: window.capture produced an empty PNG");
-	return { width, height, scale, png: Buffer.from(bytes.png).toString("base64") };
+	return {
+		width,
+		height,
+		scale,
+		// A platform fact, never a reason on its own: the composited bit read at capture time
+		// travels beside it so the plugin can tell a never-drawn view from a flat-colour page.
+		flat: bytes.flat,
+		png: Buffer.from(bytes.png).toString("base64"),
+	};
 }

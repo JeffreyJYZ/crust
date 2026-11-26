@@ -7,6 +7,8 @@ export interface SnapshotBytes {
 	width: number;
 	height: number;
 	scale: number;
+	/** One distinct colour and zero differing pixels, measured from the finished bitmap in C. */
+	flat: boolean;
 	png: Uint8Array;
 }
 
@@ -25,6 +27,7 @@ export function readShot(symbols: SnapshotNative): SnapshotBytes {
 		width: Number(symbols.crust_shot_width() ?? 0),
 		height: Number(symbols.crust_shot_height() ?? 0),
 		scale: Number(symbols.crust_shot_scale() ?? 0),
+		flat: Number(symbols.crust_shot_flat() ?? 0) === 1,
 		png: buffer,
 	};
 }

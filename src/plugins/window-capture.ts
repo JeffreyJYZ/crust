@@ -5,6 +5,8 @@
  * `capture` is not a stale adapter but a platform whose webview cannot render a picture, so it
  * answers `not-implemented` naming the API rather than `unknown-adapter`. That keeps a caller's
  * branch honest on Linux and Windows, where the answer is never a silent success.
+ * A flat PNG is also refused by name, but only when the platform says the view never
+ * composited: pixels alone cannot tell that from a page that legitimately draws one colour.
  */
 
 import { notImplemented, type NotImplemented } from "./define";
@@ -60,7 +62,27 @@ export function windowCaptureCommands(adapter?: WindowNative) {
 						label,
 					};
 				}
-				return { ok: true as const, label, ...shape };
+				// The platform, not the pixels, names this state: the same flat image from a
+				// page that really drew one colour has composited: true and stays a picture.
+				if (shape.flat === true && shape.composited === false) {
+					return {
+						ok: false,
+						code: "no-picture",
+						message:
+							"crust: window.capture: WebKit answered the snapshot with no image: " +
+							"the view never composited, so the PNG is one flat colour; " +
+							"show the window or pass prime: true, then retry",
+						label,
+					};
+				}
+				return {
+					ok: true as const,
+					label,
+					width: shape.width,
+					height: shape.height,
+					scale: shape.scale,
+					png: shape.png,
+				};
 			} catch (error) {
 				return failure(error, label);
 			}
@@ -106,13 +128,22 @@ function readCaptureOptions(
 	};
 }
 
-/** A platform answer checked before it reaches the page: base64 text and three finite numbers. */
+/** A platform answer checked before it reaches the page: base64 text, three finite numbers and two platform facts. */
 function readSnapshot(value: unknown): WindowSnapshot | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
-	const { width, height, scale, png } = value as Partial<WindowSnapshot>;
+	const { width, height, scale, png, flat, composited } = value as Partial<WindowSnapshot>;
 	if (typeof png !== "string" || png.length === 0) return undefined;
 	for (const number of [width, height, scale]) {
 		if (typeof number !== "number" || !Number.isFinite(number) || number <= 0) return undefined;
 	}
-	return { width: width as number, height: height as number, scale: scale as number, png };
+	return {
+		width: width as number,
+		height: height as number,
+		scale: scale as number,
+		png,
+		// A truthy string is not a fact. Absent stays absent, so a platform that cannot report
+		// the state is never refused on pixels alone.
+		...(typeof flat === "boolean" ? { flat } : {}),
+		...(typeof composited === "boolean" ? { composited } : {}),
+	};
 }

@@ -18,6 +18,7 @@ const PICTURE: SnapshotBytes = {
 	width: 960,
 	height: 640,
 	scale: 2,
+	flat: false,
 	png: new Uint8Array([1, 2, 3]),
 };
 
@@ -54,6 +55,19 @@ function recording(
 }
 
 describe("window.capture ignoreOcclusion", () => {
+	test("the composited bit and flatness reach the caller as capture-time facts", async () => {
+		const flatPicture = { ...PICTURE, flat: true };
+		const seam: SnapshotShim = {
+			...recording(),
+			composited: () => false,
+			read: () => flatPicture,
+		};
+
+		const shot = await takeSnapshot(1, seam);
+		expect(shot.composited).toBe(false);
+		expect(shot.flat).toBe(true);
+	});
+
 	test("an ordinary capture never touches WebKit's occlusion flag", async () => {
 		const seam = recording();
 		await takeSnapshot(1, seam);

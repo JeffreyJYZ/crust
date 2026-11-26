@@ -1,7 +1,7 @@
 /**
- * The snapshot C unit: `shim/123_snapshot.c` plus its reads in `shim/124_snapshot_read.c`, compiled
- * together at first capture by `cc()` — one unit, because the reads live on the statics the
- * completion handler fills. It builds a GLOBAL block for
+ * The snapshot C unit: `shim/123_snapshot.c` plus its reads in `shim/124_snapshot_read.c` and the
+ * flatness measurement in `shim/127_snapshot_flat.c`, compiled together at first capture by `cc()`
+ * — one unit, because the reads live on the statics the completion handler fills. It builds a GLOBAL block for
  * `-[WKWebView takeSnapshotWithConfiguration:completionHandler:]`, which is how a block crosses
  * into WebKit at all, and the picture itself never leaves C: the handler encodes PNG bytes, keeps
  * them, and reports the length so the caller can copy into an exact-size buffer, exactly as the
@@ -20,8 +20,9 @@ import blockPart from "./shim/123_snapshot.c" with { type: "text" };
 import idPart from "./shim/125_snapshot_ids.c" with { type: "text" };
 import readPart from "./shim/124_snapshot_read.c" with { type: "text" };
 import primePart from "./shim/126_snapshot_prime.c" with { type: "text" };
+import flatPart from "./shim/127_snapshot_flat.c" with { type: "text" };
 
-export const snapshotSource = `${blockPart}\n${idPart}\n${readPart}\n${primePart}`;
+export const snapshotSource = `${blockPart}\n${flatPart}\n${idPart}\n${readPart}\n${primePart}`;
 
 const P = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -79,6 +80,8 @@ export interface SnapshotUnit {
 		crust_shot_width: () => number;
 		crust_shot_height: () => number;
 		crust_shot_scale: () => number;
+		/** 1 when the finished bitmap is one flat colour, measured from the bitmap rep. */
+		crust_shot_flat: () => number;
 		crust_shot_length: () => number;
 		crust_shot_read: (dst: number, cap: number) => number;
 		crust_shot_block_ready: () => number;
@@ -106,6 +109,7 @@ function compile(): SnapshotUnit {
 			crust_shot_width: { args: [], returns: I64 },
 			crust_shot_height: { args: [], returns: I64 },
 			crust_shot_scale: { args: [], returns: F64 },
+			crust_shot_flat: { args: [], returns: I32 },
 			crust_shot_length: { args: [], returns: I64 },
 			crust_shot_read: { args: [P, I64], returns: I64 },
 			crust_shot_block_ready: { args: [], returns: I32 },

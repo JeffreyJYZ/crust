@@ -26,7 +26,13 @@ const PNG_BYTES = new Uint8Array([
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ]);
 
-const PICTURE: SnapshotBytes = { width: 2200, height: 1520, scale: 2, png: PNG_BYTES };
+const PICTURE: SnapshotBytes = {
+	width: 2200,
+	height: 1520,
+	scale: 2,
+	flat: false,
+	png: PNG_BYTES,
+};
 
 /**
  * A byte seam that answers as told. `answer` decides what the completion handler reports, and
