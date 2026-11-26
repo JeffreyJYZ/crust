@@ -429,9 +429,10 @@ render, never the display: no Screen Recording grant is asked for and none is ne
 whose webview cannot render a picture answers `not-implemented` naming the API rather than falling
 back to a screenshot of the screen.
 
-A window WebKit has never composited cannot be captured: the completion handler is never called, so
-the answer is `handler-error` naming `no-completion` after 5000 ms. That covers a window ordered out
-before it drew, one created at off-screen coordinates, and one on a Space the user is not looking at.
+A window WebKit has never composited cannot be captured: `no-completion` when the completion never
+fires (`handler-error` after 5000 ms); `no-picture` when it fires with nothing drawn. That covers a
+window ordered out before it drew, one created at off-screen coordinates, and one on a Space the user
+is not looking at.
 A probe taking a screenshot while a fullscreen app owns the active Space is the case measured below:
 it need not answer `no-completion` at all. Pass
 `window.capture { label, ignoreOcclusion: true }` from automation to disable WebKit's occlusion
@@ -446,6 +447,12 @@ afterwards; in the fullscreen state measured below, the answer without it is an 
 picture, not `no-completion`. Harness-only: a production bundle answers `prime-unavailable` before
 anything is sent, because a shipped app that needs a screenshot should show or activate its window
 rather than reach for private API.
+
+An `ok: true` capture promises a picture, not that the page drew content: a view WebKit never
+composited used to answer `ok` with a one-colour PNG. That state now answers `handler-error` naming
+`no-picture`, and the refusal needs both a flat image and a view that reports it never composited —
+a page that genuinely draws one colour is unaffected. A probe that must capture such a view passes
+`prime: true` (harness-only, documented above); a shipped app cannot, and shows its window instead.
 
 Measured on this machine with a fullscreen Ghostty frontmost and the probe window off its Space — the
 reported condition, confirmed:
