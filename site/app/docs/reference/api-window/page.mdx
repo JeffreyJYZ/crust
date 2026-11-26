@@ -60,7 +60,19 @@ The private call exists because there is no public route. Measured on macOS 27: 
 
 That is why `prime` is **not a default and not for a shipped app**. A production bundle, or a macOS where the selector is absent, answers `handler-error` naming `prime-unavailable` before anything is sent. A shipped app that needs a screenshot should show or activate its window instead of reaching for this; the private selector can change or disappear without notice. A non-boolean `prime` is `invalid-value` rather than being coerced. Absent or `false` leaves the path byte-identical to today's ordinary capture.
 
-Without the option, a never-composited window answers `handler-error` naming `no-completion` after the 5000 ms budget rather than a bare timeout, and an answer without a bitmap names `no-picture`. That is the state of an automated probe while a fullscreen app owns the active Space — its window never draws there — so a probe that must screenshot during a fullscreen session is the one caller that both needs this option and must not be a shipped app.
+Without the option, a never-composited window answers `handler-error` naming `no-completion` after the 5000 ms budget rather than a bare timeout, and an answer without a bitmap names `no-picture`. An automated probe while a fullscreen app owns the active Space is the caller that needs `prime` most: its window never draws there, and — as measured below — it need not answer `no-completion` at all.
+
+Measured on this machine with a fullscreen Ghostty frontmost and the probe window off its Space — the reported condition, confirmed:
+
+```text
+capture bare:                 1373ms ok blank  width=960 height=640 scale=2 bytes=12214 pixels=614400 opaque=614400 colours=1 differing=0
+capture ignoreOcclusion=true:    40ms ok blank  same numbers
+capture prime=true:              34ms ok real   bytes=12248 pixels=614400 opaque=614400 colours=4 differing=460800
+```
+
+`prime` is confirmed in that state: bare and `ignoreOcclusion` are useless there — both return a blank picture, and `ignoreOcclusion` only cuts the 1373 ms blank answer to 40 ms — while `prime` returns a real four-colour picture in 34 ms.
+
+The dangerous part is the blank answer. In that state the capture answers `ok: true` with a valid PNG — 12214 bytes, 614400 opaque pixels, one colour, zero differing pixels — instead of the `no-completion` error. `ok` promises a picture, not that the page drew anything. That image is indistinguishable from a genuinely blank page by looking at it alone, so a caller that treats `ok` as "content captured" saves a solid-colour screenshot and reports success. A probe that must have real content uses `prime` and checks the pixels for itself; `ok` alone is not that check.
 
 A platform whose webview cannot render a picture is not a stale adapter, so it answers `not-implemented` instead of `unknown-adapter` and never falls back to a screenshot of the screen: `requires: "-[WKWebView takeSnapshotWithConfiguration:completionHandler:]"`, with the message "window.capture renders the page with the webview itself, which this platform does not expose" and the adapter that supplies it on macOS named. That is the answer on Windows today; Linux supplies it through WebKitGTK's `webkit_web_view_get_snapshot` and refuses with a named `handler-error` when the view has not been realised, rather than returning an empty PNG. A label with no webview is `unknown-window` (the darwin adapter names it "no open window labelled … to capture"), and `handler-error` also covers a platform answer without all four fields, an empty PNG, and WebKit reporting it rendered nothing.
 
