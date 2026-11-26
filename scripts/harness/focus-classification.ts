@@ -30,6 +30,7 @@ export const LAUNCHERS = [
 	"capture-prime-probe.ts",
 	"first-run.ts",
 	"probe-capture-detach.ts",
+	"probe-capture-offscreen.ts",
 	"probe-capture-hold.ts",
 	"probe-capture-prime.ts",
 	"probe-focus-control.ts",
