@@ -4,6 +4,19 @@ Newest first, one line per entry. Format follows [Keep a Changelog](https://keep
 
 `0.1.21` was the last published package version and the last git tag before this one. `0.1.22` is the wave that made Windows work, proved the three installers by artefact, and shipped the standalone release pipeline.
 
+## [0.2.23] — 2026-11-26
+
+### Fixed
+
+- **`window.capture` answered `ok: true` with a solid-colour PNG when the view had never composited**, so a caller saved a grey rectangle and reported a successful screenshot. That state used to answer a named `no-completion` error, which was worse-behaved but honest; it now answers `no-picture` and names both remedies (show the window, or `prime: true`). The refusal is decided by platform state, not by the pixels: a flat image is refused only when the view also reports it never composited, so a page that legitimately draws one colour is untouched.
+- **A crash guard could exit without recording a crash**, which is exactly when a crash record matters most. `runtime-crash-guard-watch.ts` treated an unreadable process start time as pid reuse, so under load — a child dying between `alive()` and `ps`, or `ps` failing to fork — the guard ended quietly with no record. It now ends a watch only on a genuinely different start time, rechecks liveness after the identity probe, and retries an unreadable identity. Measured by slowing `ps` by 250 ms: the old code timed out 1/1 at 15.6 s, the new code passed 10/10 under 24 CPU hogs plus the same slowdown.
+- **The dogear end-to-end test could lose its save-panel step under load.** The page fired its step log without awaiting the write and then reported `done`, and the harness kills the app on `done` — so the line was still in flight and vanished, failing five assertions of which four were consequences. Reporting now resolves only after the terminal write; a check cannot answer before its line has been delivered.
+
+### Changed
+
+- **The fullscreen capture probe measures the right thing.** Its condition no longer keys on the probe window being off the active Space — a real run showed that view suspended *while* `onActiveSpace=1`, so Space membership was a coincidence of the launching arrangement, not the cause. The condition is now the state that actually matters (the view never composited), and when the proxy says "never composited" but an un-primed capture nonetheless returns real pixels, the probe refuses with `nothing to measure` rather than claiming a pass.
+- **Probes that launch a GUI app are covered by the focus-classification total**, so a new harness cannot silently escape focus restoration.
+
 ## [0.2.22] — 2026-11-25
 
 ### Fixed
