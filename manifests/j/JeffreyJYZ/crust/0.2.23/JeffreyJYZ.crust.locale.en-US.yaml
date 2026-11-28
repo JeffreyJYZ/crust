@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.28.0.schema.json
+
+PackageIdentifier: JeffreyJYZ.crust
+PackageVersion: 0.2.23
+PackageLocale: en-US
+Publisher: JeffreyJYZ
+PublisherUrl: https://github.com/JeffreyJYZ
+PublisherSupportUrl: https://github.com/JeffreyJYZ/crust/issues
+PackageName: crust
+PackageUrl: https://github.com/JeffreyJYZ/crust
+License: MIT
+LicenseUrl: https://github.com/JeffreyJYZ/crust/blob/main/package.json
+Copyright: Copyright (c) JeffreyJYZ
+ShortDescription: Bun-native desktop app framework using the system WebView
+Description: |-
+  crust builds desktop apps with Bun and the operating system WebView. No Rust toolchain and no bundled Chromium.
+Tags:
+- bun
+- desktop
+- framework
+- webview
+ReleaseNotesUrl: https://github.com/JeffreyJYZ/crust/releases/tag/v0.2.23
+InstallationNotes: crust requires Bun to be installed before its CLI can run.
+ManifestType: defaultLocale
+ManifestVersion: 1.28.0

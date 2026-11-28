@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.28.0.schema.json
+
+PackageIdentifier: JeffreyJYZ.crust
+PackageVersion: 0.2.23
+InstallerType: portable
+Commands:
+- crust
+ReleaseDate: 2026-11-26
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/JeffreyJYZ/crust/releases/download/v0.2.23/crust-0.2.23-windows-x64.exe
+  InstallerSha256: 931CF435D7C7D51EBBC10C0D70717B9F70C9814A71C7CCFBEE88CF531E715260
+- Architecture: arm64
+  InstallerUrl: https://github.com/JeffreyJYZ/crust/releases/download/v0.2.23/crust-0.2.23-windows-arm64.exe
+  InstallerSha256: 611F02AAC8CEB70AAD82A1683859E2A7E4382EB06C03B6F9BBD28A5A5022B814
+ManifestType: installer
+ManifestVersion: 1.28.0
