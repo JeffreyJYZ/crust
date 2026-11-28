@@ -21,8 +21,11 @@ brew install JeffreyJYZ/tap/crust            # macOS; the formula tracks the new
 crust init my-app --react                   # also --next, --svelte, --vue, --solid
 cd my-app && bun install && bun run dev
 ```
+Not on macOS? Use a [release binary](https://github.com/JeffreyJYZ/crust/releases/latest): Linux `crust-<version>-linux-x64`, Windows `crust-<version>-windows-x64.exe`.
 
-For a Bun global install, name no version here: every release publishes the exact `github:#v<version>` specifier on the [install page](https://crust.jyz.land/docs/start/install), so copy the current one there. That page also covers release binaries, a checkout and a standalone executable. `bun add crust` fetches an unrelated 2020 package, and a bare `github:JeffreyJYZ/crust` follows whatever a stale `bunx` cache resolved first. Plain `crust init my-app` is HTML with no bundler, and `crust dev app.tsx` runs a single file with no config.
+- 🦀 **Bun global:** name no version here; every release publishes the exact `github:#v<version>` specifier on the [install page](https://crust.jyz.land/docs/start/install), so copy the current one there. That page also covers release binaries, a checkout and a standalone executable.
+- ⚠️ **No npm package:** `bun add crust` fetches an unrelated 2020 package, and a bare `github:JeffreyJYZ/crust` follows whatever a stale `bunx` cache resolved first.
+- 🧱 **Other modes:** plain `crust init my-app` is HTML with no bundler, and `crust dev app.tsx` runs a single file with no config.
 
 ## 🧩 Features
 
