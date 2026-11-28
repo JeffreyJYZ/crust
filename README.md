@@ -9,7 +9,7 @@ crust builds desktop apps from Bun and the WebView already on the machine. No Ru
 
 ## ✨ Why crust
 
-- 🦀 **Tiny runtime.** Embedded Bun plus your code, no browser engine shipped with the app.
+- 🦀 **A page calls native directly.** Windows, dialogs, tray, files and SQLite through `window.crust.invoke`. No IPC schema to design and no native module to write.
 - 🪟 **The OS WebView.** WKWebView on macOS, WebKitGTK on Linux, WebView2 on Windows.
 - ⚡ **One language.** TypeScript on both sides of a loopback bridge backed by a bearer token.
 - 🔧 **Nothing to build before `run`.** A small C shim compiles at launch with the TinyCC inside Bun.
@@ -17,30 +17,33 @@ crust builds desktop apps from Bun and the WebView already on the machine. No Ru
 ## 🚀 Quickstart
 
 ```sh
-bun add -g github:JeffreyJYZ/crust#v0.2.23   # macOS: brew install JeffreyJYZ/tap/crust
+brew install JeffreyJYZ/tap/crust            # macOS; the formula tracks the newest tag
 crust init my-app --react                   # also --next, --svelte, --vue, --solid
 cd my-app && bun install && bun run dev
 ```
 
-Name a tag in that `github:` specifier. A bare specifier keeps serving whatever a stale `bunx` cache resolved first. There is no npm package, and `bun add crust` fetches an unrelated 2020 package. The [install guide](https://crust.jyz.land/docs/start/install) covers release binaries, a checkout and a standalone executable. Plain `crust init my-app` is HTML with no bundler, and `crust dev app.tsx` runs a single file with no config.
+For a Bun global install, name no version here: every release publishes the exact `github:#v<version>` specifier on the [install page](https://crust.jyz.land/docs/start/install), so copy the current one there. That page also covers release binaries, a checkout and a standalone executable. `bun add crust` fetches an unrelated 2020 package, and a bare `github:JeffreyJYZ/crust` follows whatever a stale `bunx` cache resolved first. Plain `crust init my-app` is HTML with no bundler, and `crust dev app.tsx` runs a single file with no config.
 
 ## 🧩 Features
 
 | Feature | What you get |
 | --- | --- |
+| **Most distinctive** | |
 | 🪟 Windows | Create, focus, resize and close multiple real windows from the page. |
-| 📂 Dialogs | Native open and save panels with filters, non-blocking. |
 | 📑 Menus and tray | App menus, context menus and a menu-bar tray that fires into the page. |
 | 🔒 Scoped filesystem | Read and write real files, narrowed by `fs.scope` prefixes in config. |
+| 🧪 Testing | Drive and capture a real WebView page with no cursor and no screen grant. |
+| 🌐 Embedded browser | A second WebView surface with bounds, navigation and capture on macOS. |
+| **Solid but expected** | |
 | 🗄️ SQLite | Open named databases, run SQL and read rows through `bun:sqlite`. |
-| 📋 Clipboard | Read and write text or PNG images. |
-| 🔔 Notifications | Deliver native notifications with a permission flow. |
+| 📂 Dialogs | Native open and save panels with filters, non-blocking. |
 | 🔗 Deep links | Register a `urlScheme` and receive URLs through the `deep-link` plugin. |
 | ⬆️ Update and autostart | Signed updater plus OS autostart, both configured in `crust.config.ts`. |
-| 🌐 Embedded browser | A second WebView surface with bounds, navigation and capture on macOS. |
 | 📦 Sidecars | Bundle executables beside the binary and spawn them from the page. |
 | 🛡️ Permissions | Capabilities and per-window grants, deny by default when configured. |
-| 🧪 Testing | Drive and capture a real WebView page with no cursor and no screen grant. |
+| **Nice to have** | |
+| 📋 Clipboard | Read and write text or PNG images. |
+| 🔔 Notifications | Deliver native notifications with a permission flow. |
 | 📈 Performance | Mount the `perf` plugin, then record and diff frame numbers headlessly. |
 
 Every namespace has a page in the [command reference](https://crust.jyz.land/docs/reference/api).
