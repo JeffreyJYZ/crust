@@ -3,19 +3,25 @@
  * Cut a release: bump, gate, tag, push, open the tap PR. Hand-releasing is where the mistakes were — a tag pushed before the version bump (v0.1.2 pointed at a tree still saying 0.1.1), a formula pinned to a tag predating its own fixes, three PRs for one afternoon of work.
  * Needs a clean tree on `main` and the `gh` identity that may push the tap branch (jyzbot). It does not merge: tap `main` is protected and the review is the point. Shell in `release/git.ts`, gate in `release/gate.ts`.
  */
+import { bumpFormula, tapPrBody } from "./release/formula.ts";
 import { gate } from "./release/gate.ts";
+import { fail, failureCount, gitEnv, nextVersion, REMOTE, REPO, sh, step } from "./release/git.ts";
 import {
-	fail,
-	failureCount,
-	gitEnv,
-	nextVersion,
-	REMOTE,
-	REPO,
-	sh,
-	step,
-	TAP_DIR,
-	TAP_REMOTE,
-} from "./release/git.ts";
+	type LinuxDigests,
+	RELEASE_ASSETS_QUERY,
+	waitForLinuxDigests,
+} from "./release/linux-assets.ts";
+import { openTapPr } from "./release/tap.ts";
+
+/** Printed by `--dry` and pinned by the release tests; the code below follows this order. */
+const STEP_ORDER = [
+	"gate",
+	"bump, commit, tag",
+	"push main and tag",
+	"wait for the tag's Linux assets and read their digests",
+	"tarball digest",
+	"write formula and open one tap PR",
+];
 
 const args = Bun.argv.slice(2);
 const dry = args.includes("--dry");
@@ -41,7 +47,8 @@ const tag = `v${version}`;
 step("release", `${manifest.version} -> ${version} (${tag})`);
 
 if (dry) {
-	step("dry", "stopping before any write");
+	step("dry", "stopping before any write; planned order:");
+	for (const item of STEP_ORDER) step("plan", item);
 	process.exit(0);
 }
 
@@ -87,7 +94,41 @@ step("tag", tag);
 await sh(["git", "push", REMOTE, "main", tag], REPO, gitEnv);
 step("push", `main and ${tag}`);
 
-// ---- 5. Tarball digest -----------------------------------------------------
+// ---- 5. Linux assets -------------------------------------------------------
+// CI creates the release on the tag push and uploads the binaries after it. Wait for
+// both here and read GitHub's own digests: opening the PR first and asking a human to
+// refresh the hashes shipped formulas whose Linux sha256 named the previous release.
+let linux: LinuxDigests;
+try {
+	linux = await waitForLinuxDigests({
+		tag,
+		version,
+		note: (detail) => step("assets", detail),
+		look: () =>
+			sh(
+				[
+					"gh",
+					"release",
+					"view",
+					tag,
+					"--repo",
+					"JeffreyJYZ/crust",
+					"--json",
+					"assets",
+					"-q",
+					RELEASE_ASSETS_QUERY,
+				],
+				REPO,
+				gitEnv,
+			),
+	});
+	step("assets", `arm64 ${linux.arm64}; x64 ${linux.x64}`);
+} catch (error) {
+	fail("assets", error instanceof Error ? error.message : String(error));
+	process.exit(1);
+}
+
+// ---- 6. Tarball digest -----------------------------------------------------
 // GitHub serves an archive a moment after the tag lands, and a 404 here would bake a
 // wrong checksum into the formula, so this retries rather than guessing.
 let sha = "";
@@ -106,60 +147,15 @@ if (sha === "") {
 }
 step("digest", sha);
 
-// ---- 6. Formula and PR -----------------------------------------------------
-const formula = `${TAP_DIR}/Formula/crust.rb`;
-await sh(["git", "fetch", TAP_REMOTE], TAP_DIR, gitEnv);
-await sh(["git", "checkout", "-q", "-B", `crust-${version}`, `${TAP_REMOTE}/main`], TAP_DIR);
-const text = await Bun.file(formula).text();
-const bumped = text
-	.replace(/refs\/tags\/v[0-9.]+\.tar\.gz/, `refs/tags/${tag}.tar.gz`)
-	.replace(/sha256 "[0-9a-f]{64}"/, `sha256 "${sha}"`)
-	.replace(
-		/assert_match "0\.[0-9.]+", shell_output\("#\{bin\}\/crust --version"\)/,
-		`assert_match "${version}", shell_output("#{bin}/crust --version")`,
-	);
-if (bumped === text) {
-	fail("formula", `no version, digest or assertion changed in ${formula}`);
+// ---- 7. Formula and PR -----------------------------------------------------
+// Both digests are known now, so the PR opens once with a correct formula.
+let url: string;
+try {
+	url = await openTapPr(version, sha, linux);
+} catch (error) {
+	fail("formula", error instanceof Error ? error.message : String(error));
 	process.exit(1);
 }
-await Bun.write(formula, bumped);
-await sh(["git", "add", "Formula/crust.rb"], TAP_DIR);
-await sh(
-	[
-		"git",
-		"-c",
-		"user.name=jyzbot",
-		"-c",
-		"user.email=jyz-agent@botmail.pro",
-		"commit",
-		"-q",
-		"-m",
-		`feat: crust ${version}`,
-	],
-	TAP_DIR,
-);
-await sh(["git", "push", TAP_REMOTE, `crust-${version}`], TAP_DIR, gitEnv);
-const body = `${TAP_DIR}/.crust-${version}.md`;
-await Bun.write(
-	body,
-	`Bumps crust to ${version}.\n\nSource formula on macOS, unchanged in shape: crust is TypeScript Bun runs, and its\nruntime compiles the bundled C shim at launch with the TinyCC inside Bun, so there is\nnothing to build or bottle. Linux installs the standalone binary attached to the tag.\n\nUpdated from the tagged archive: \`${tag}\`, sha256 \`${sha}\`, and the formula test now\nexpects \`crust --version\` to print \`${version}\`.\n\nLinux digests: CI uploads the two Linux binaries after this PR opens, so the \`on_linux\`\nsha256 values in \`Formula/crust.rb\` still name the previous release and must be refreshed\nbefore merge. Once the release is public, run:\n\n  gh release view ${tag} --repo JeffreyJYZ/crust --json assets -q '.assets[] | select(.name | test("linux-(x64|arm64)$")) | [.name, .digest] | @tsv'\n\nReplace both \`sha256\` lines in the \`on_linux\` block with those digests, stripping the\n\`sha256:\` prefix, and push to this branch. The URLs already name ${tag}.\n\nUpstream gate at the tag: \`bun check\`, the unit suite, and the e2e suites — see the tag\nmessage and the repo's CI run for this commit.\n`,
-);
-const url = await sh([
-	"gh",
-	"pr",
-	"create",
-	"--repo",
-	"JeffreyJYZ/homebrew-tap",
-	"--base",
-	"main",
-	"--head",
-	`crust-${version}`,
-	"--title",
-	`feat: crust ${version}`,
-	"--body-file",
-	body,
-]);
-await sh(["rm", body]);
 step("pr", url);
 
 console.log(`\nrelease: ${version} tagged and pushed; merge the tap PR to deliver it.`);
