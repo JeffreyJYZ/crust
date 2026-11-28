@@ -5,6 +5,10 @@ PackageVersion: 0.2.23
 InstallerType: portable
 Commands:
 - crust
+Dependencies:
+  PackageDependencies:
+  - PackageIdentifier: Oven-sh.Bun
+    MinimumVersion: 1.2.0
 ReleaseDate: 2026-11-26
 Installers:
 - Architecture: x64
