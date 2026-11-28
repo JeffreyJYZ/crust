@@ -46,7 +46,7 @@ brew install JeffreyJYZ/tap/crust
 crust --version                 # 0.2.21
 ```
 
-macOS only — the formula declares `depends_on macos: :ventura`, so on Linux or Windows use a [release binary](#download-a-binary) instead. It is a source install for darwin: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`.
+macOS and Linux — darwin is still a source install: the tree lands in `/opt/homebrew/Cellar/crust/<version>/libexec/`, and `/opt/homebrew/bin/crust` execs the brewed `bun` on it; Linux installs the matching prebuilt `linux-x64` or `linux-arm64` binary from the same tag. The formula tracks the newest tag, so a brewed `crust` is that release rather than `main`. Caveat: macOS needs Ventura or newer and the Xcode command line tools to build and sign apps, Linux needs GTK3 and WebKitGTK ([platforms](/docs/reference/platforms)), and Windows is not supported by Homebrew — use a [release binary](#download-a-binary).
 
   </TabPanel>
   <TabPanel label="Bun global">

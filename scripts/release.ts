@@ -19,11 +19,7 @@ import {
 
 const args = Bun.argv.slice(2);
 const dry = args.includes("--dry");
-const level = args.includes("--minor")
-	? "minor"
-	: args.includes("--major")
-		? "major"
-		: "patch";
+const level = args.includes("--minor") ? "minor" : args.includes("--major") ? "major" : "patch";
 
 // ---- 1. Preconditions ------------------------------------------------------
 const dirty = await sh(["git", "status", "--porcelain"]);
@@ -69,15 +65,10 @@ for (const path of [`${REPO}/README.md`, `${REPO}/site/public/SKILL.md`]) {
 	const text = await Bun.file(path).text();
 	const updated = text.replaceAll(`#v${manifest.version}`, `#${tag}`);
 	if (updated !== text) await Bun.write(path, updated);
-	step(
-		"pins",
-		`${path.slice(REPO.length + 1)}${updated === text ? " (no change)" : ""}`,
-	);
+	step("pins", `${path.slice(REPO.length + 1)}${updated === text ? " (no change)" : ""}`);
 }
 await sh(["git", "add", "package.json", "README.md", "site/public/SKILL.md"]);
-console.log(
-	"  note      re-measure the bunx tag in site/app/docs/start/install for this tag",
-);
+console.log("  note      re-measure the bunx tag in site/app/docs/start/install for this tag");
 await sh([
 	"git",
 	"-c",
@@ -118,10 +109,7 @@ step("digest", sha);
 // ---- 6. Formula and PR -----------------------------------------------------
 const formula = `${TAP_DIR}/Formula/crust.rb`;
 await sh(["git", "fetch", TAP_REMOTE], TAP_DIR, gitEnv);
-await sh(
-	["git", "checkout", "-q", "-B", `crust-${version}`, `${TAP_REMOTE}/main`],
-	TAP_DIR,
-);
+await sh(["git", "checkout", "-q", "-B", `crust-${version}`, `${TAP_REMOTE}/main`], TAP_DIR);
 const text = await Bun.file(formula).text();
 const bumped = text
 	.replace(/refs\/tags\/v[0-9.]+\.tar\.gz/, `refs/tags/${tag}.tar.gz`)
@@ -154,7 +142,7 @@ await sh(["git", "push", TAP_REMOTE, `crust-${version}`], TAP_DIR, gitEnv);
 const body = `${TAP_DIR}/.crust-${version}.md`;
 await Bun.write(
 	body,
-	`Bumps crust to ${version}.\n\nSource formula, unchanged in shape: crust is TypeScript Bun runs, and its runtime\ncompiles the bundled C shim at launch with the TinyCC inside Bun, so there is nothing to\nbuild or bottle.\n\nUpdated from the tagged archive: \`${tag}\`, sha256 \`${sha}\`, and the formula test now\nexpects \`crust --version\` to print \`${version}\`.\n\nUpstream gate at the tag: \`bun check\`, the unit suite, and the e2e suites — see the tag\nmessage and the repo's CI run for this commit.\n`,
+	`Bumps crust to ${version}.\n\nSource formula on macOS, unchanged in shape: crust is TypeScript Bun runs, and its\nruntime compiles the bundled C shim at launch with the TinyCC inside Bun, so there is\nnothing to build or bottle. Linux installs the standalone binary attached to the tag.\n\nUpdated from the tagged archive: \`${tag}\`, sha256 \`${sha}\`, and the formula test now\nexpects \`crust --version\` to print \`${version}\`.\n\nLinux digests: CI uploads the two Linux binaries after this PR opens, so the \`on_linux\`\nsha256 values in \`Formula/crust.rb\` still name the previous release and must be refreshed\nbefore merge. Once the release is public, run:\n\n  gh release view ${tag} --repo JeffreyJYZ/crust --json assets -q '.assets[] | select(.name | test("linux-(x64|arm64)$")) | [.name, .digest] | @tsv'\n\nReplace both \`sha256\` lines in the \`on_linux\` block with those digests, stripping the\n\`sha256:\` prefix, and push to this branch. The URLs already name ${tag}.\n\nUpstream gate at the tag: \`bun check\`, the unit suite, and the e2e suites — see the tag\nmessage and the repo's CI run for this commit.\n`,
 );
 const url = await sh([
 	"gh",
@@ -174,6 +162,4 @@ const url = await sh([
 await sh(["rm", body]);
 step("pr", url);
 
-console.log(
-	`\nrelease: ${version} tagged and pushed; merge the tap PR to deliver it.`,
-);
+console.log(`\nrelease: ${version} tagged and pushed; merge the tap PR to deliver it.`);
